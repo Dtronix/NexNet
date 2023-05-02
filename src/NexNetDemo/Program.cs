@@ -1,0 +1,331 @@
+﻿using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Reflection.Metadata.Ecma335;
+using System.Security.Authentication;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Logging;
+using NexNet;
+using NexNet.Transports;
+
+namespace NexNetDemo;
+
+partial interface IClientHub
+{
+    void Update();
+    //void UpdateData(string data);
+    ValueTask<int> GetTask();
+    ValueTask<int> GetTaskAgain();
+}
+
+partial interface IServerHub
+{
+    void ServerVoid();
+    void ServerVoidWithParam(int id);
+    ValueTask ServerTask();
+    ValueTask ServerTaskWithParam(int data);
+    ValueTask<int> ServerTaskValue();
+    ValueTask<int> ServerTaskValueWithParam(int data);
+    ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken);
+    ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
+    ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+}
+
+
+
+
+
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub
+{
+    private int i = 0;
+    public void Update()
+    {
+        global::System.Int32 t = 25;
+
+        //Console.WriteLine("ClientHub Update called and invoked properly.");
+    }
+
+    public ValueTask<int> GetTask()
+    {
+        //Console.WriteLine(i++);
+        return ValueTask.FromResult(i);
+    }
+    public async ValueTask<int> GetTaskAgain()
+    {
+        return Interlocked.Increment(ref i);
+    }
+
+    protected override async ValueTask OnConnected(bool isReconnected)
+    {
+        for (int j = 0; j < 50000; j++)
+        {
+  
+            switch (Random.Shared.Next(4, 5))
+            {
+                case 0:
+                    //Console.WriteLine("ServerVoid()");
+                    Context.Proxy.ServerVoid();
+                    break;
+                case 1:
+                    //Console.WriteLine("ServerVoidWithParam(10)");
+                    Context.Proxy.ServerVoidWithParam(10);
+                    break;
+                case 2:
+                    //Console.WriteLine("ServerTaskWithParam(20)");
+                    await Context.Proxy.ServerTaskWithParam(20);
+                    break;
+                case 3:
+                    //Console.WriteLine("ServerTaskValue()");
+                    await Context.Proxy.ServerTaskValue();
+                    break;    
+                case 4:
+                    // Problem
+                    //Console.WriteLine("ServerTaskValueWithParam(30)");
+                    await Context.Proxy.ServerTaskValueWithParam(30);
+                    break;
+                case 5:
+                    //Console.WriteLine("ServerTaskWithCancellation(CancellationToken.None)");
+                    await Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
+                    break;
+                case 6:
+                    //Console.WriteLine("ServerTaskWithValueAndCancellation(40, CancellationToken.None)");
+                    await Context.Proxy.ServerTaskWithValueAndCancellation(40, CancellationToken.None);
+                    break;
+                case 7:
+                    //Console.WriteLine("ServerTaskValueWithCancellation(CancellationToken.None)");
+                    await Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
+                    break;
+                case 8:
+                    //Console.WriteLine("ServerTaskValueWithValueAndCancellation(40, CancellationToken.None)");
+                    await Context.Proxy.ServerTaskValueWithValueAndCancellation(40, CancellationToken.None);
+                    break;
+            }
+
+        }
+
+    }
+
+}
+
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    private int i = 0;
+    public void ServerVoid()
+    {
+        //Console.WriteLine(i++ + ") ServerVoid()");
+    }
+
+    public void ServerVoidWithParam(int id)
+    {
+        //Console.WriteLine(i++ + $") ServerVoidWithParam({id})");
+    }
+
+    public ValueTask ServerTask()
+    {
+        //Console.WriteLine(i++ + $") ServerTask()");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask ServerTaskWithParam(int data)
+    {
+        //Console.WriteLine(i++ + $") ServerTaskWithParam({data})");
+        return ValueTask.CompletedTask;
+    }
+
+    public ValueTask<int> ServerTaskValue()
+    {
+        //Console.WriteLine(i++ + $") ServerTaskValue()");
+        return ValueTask.FromResult(i);
+    }
+
+    public ValueTask<int> ServerTaskValueWithParam(int data)
+    {
+
+        //Console.WriteLine(i++ + $") ServerTaskValueWithParam({data})");
+        return ValueTask.FromResult(i);
+    }
+
+    public async ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken)
+    {
+        //Console.WriteLine(i++ + $") ServerTaskWithCancellation(CancellationToken)");
+        try
+        {
+            //await Task.Delay(10, cancellationToken);
+        }
+        catch (TaskCanceledException e)
+        {
+            throw;
+        }
+    }
+
+    public async ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken)
+    {
+        //Console.WriteLine(i++ + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
+        try
+        {
+            //await Task.Delay(10, cancellationToken);
+        }
+        catch (TaskCanceledException e)
+        {
+            throw;
+        }
+    }
+
+    public async ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken)
+    {
+        //Console.WriteLine(i++ + $") ServerTaskWithCancellation(CancellationToken)");
+        try
+        {
+            //await Task.Delay(10, cancellationToken);
+        }
+        catch (TaskCanceledException e)
+        {
+            throw;
+        }
+
+        return i;
+    }
+
+    public async ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
+    {
+        //Console.WriteLine(i++ + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
+        try
+        {
+            //await Task.Delay(10, cancellationToken);
+        }
+        catch (TaskCanceledException e)
+        {
+            throw;
+        }
+        return i;
+    }
+
+    protected override async ValueTask OnConnected(bool isReconnected)
+    {
+
+    }
+}
+
+class LoggerAdapter : INexNetLogger
+{
+    private readonly ILogger _logger;
+
+    public LoggerAdapter(ILogger logger)
+    {
+        _logger = logger;
+    }
+    public void Log(INexNetLogger.LogLevel logLevel, Exception? exception, string message)
+    {
+        _logger.Log((LogLevel)logLevel, exception, message);
+    }
+}
+
+internal class Program
+{
+  static async Task Main(string[] args)
+  {
+
+      var type = typeof(NexNetHubAttribute<,>);
+        var path = "test.sock";
+        if (File.Exists(path))
+            File.Delete(path);
+
+        var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddFilter(level => true).AddConsole();
+        });
+        /*
+        var serverConfig = new UdsServerConfig()
+        {
+            EndPoint = new UnixDomainSocketEndPoint(path),
+            Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
+        };
+        var clientConfig = new UdsClientConfig()
+        {
+            EndPoint = new UnixDomainSocketEndPoint(path),
+            Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
+        };*/
+        /*
+        var serverConfig = new TcpServerConfig()
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
+            //Logger = loggerFactory.CreateLogger("SV")
+        };
+        var clientConfig = new TcpClientConfig()
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
+            //Logger = loggerFactory.CreateLogger("CL")
+        };
+        // Describe certificate
+        string subject = "CN=localhost,CN=127.0.0.1";
+        var curve = ECDsa.Create(ECCurve.NamedCurves.nistP521);
+
+        // Create certificate request
+        var certificateRequest = new CertificateRequest(
+            subject, 
+            curve,
+            HashAlgorithmName.SHA256
+        );
+
+
+        var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(10));
+        */
+        //await File.WriteAllBytesAsync("server.pfx", certificate.Export(X509ContentType.Pfx));
+
+        var serverConfig = new TcpTlsServerConfig()
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV")),
+            SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
+            {
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                ClientCertificateRequired = false,
+                AllowRenegotiation = false,
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+            },
+        };
+        var clientConfig = new TcpTlsClientConfig()
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL")),
+            SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
+            {
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                AllowRenegotiation = false,
+                RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
+            }
+        };
+
+
+        var server = ServerHub.CreateServer(serverConfig, () => new ServerHub());
+
+        server.Start();
+
+        var client = ClientHub.CreateClient(clientConfig, new ClientHub());
+
+        try
+        {
+            await client.ConnectAsync();
+        }
+        catch (Exception e)
+        {
+            //Console.WriteLine(e);
+            throw;
+        }
+
+
+        await Task.Delay(3000);
+
+        //server.Stop();
+
+
+        Console.ReadLine();
+        
+    }
+}
