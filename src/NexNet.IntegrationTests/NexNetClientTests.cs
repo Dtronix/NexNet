@@ -16,8 +16,8 @@ internal partial class NexNetClientTests : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         clientHub.OnConnectedEvent = async (hub, _) => tcs.SetResult();
 
@@ -32,10 +32,10 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ConnectsToServer(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
 
@@ -52,10 +52,10 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public void ClientFailsGracefullyWithNoServer(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         clientConfig.ConnectionTimeout = 100;
@@ -68,10 +68,10 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public void ClientTimesOutWithNoServer(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         clientConfig.ConnectionTimeout = 50;
@@ -85,8 +85,8 @@ internal partial class NexNetClientTests : BaseTests
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         server.Start();
 
@@ -107,8 +107,8 @@ internal partial class NexNetClientTests : BaseTests
     public void ConnectTimesOutWithNoServer(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         Assert.ThrowsAsync<SocketException>(async () => await client.ConnectAsync());
     }
@@ -118,10 +118,10 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientProvidesAuthenticationToken(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         server.Start();
@@ -148,12 +148,12 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsPing(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         clientConfig.PingInterval = 20;
         var tcs = new TaskCompletionSource();
 
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         server.Start();
@@ -174,12 +174,12 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientResumePingOnDisconnect(Type type)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         clientConfig.PingInterval = 20;
         var tcs = new TaskCompletionSource();
 
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         server.Start();
@@ -203,10 +203,10 @@ internal partial class NexNetClientTests : BaseTests
 
     private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerHub> setup, Action<T, TaskCompletionSource> onMessage, Func<NexNetClient<ClientHub, ServerHubProxyImpl>, ValueTask> action)
     {
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
         setup?.Invoke(serverHub);

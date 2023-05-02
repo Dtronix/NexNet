@@ -20,7 +20,6 @@
     <None Include="NexNetPipe.cs" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Nerdbank.Streams" Version="2.9.112" />
     <PackageReference Include="Pipelines.Sockets.Unofficial" Version="2.2.2" />
     <PackageReference Include="MemoryPack" Version="1.9.13" />
   </ItemGroup>

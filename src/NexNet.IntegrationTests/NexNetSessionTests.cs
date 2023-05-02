@@ -30,7 +30,7 @@ internal class NexNetSessionTests : BaseTests
             {
                 Id = 0,
                 Cache = new SessionCacheManager<ServerHubProxyImpl>(),
-                Configs = CreateClientConfig(type, true),
+                Configs = CreateClientConfig(type, false),
                 Hub = new ClientHub(),
                 IsServer = false,
                 SessionManager = new SessionManager(),

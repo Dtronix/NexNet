@@ -16,10 +16,10 @@ internal partial class NexNetServerTests : BaseTests
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var serverConfig = CreateServerConfig(type, true);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(
             serverConfig,
-            CreateClientConfig(type, true));
+            CreateClientConfig(type, false));
 
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
@@ -37,8 +37,8 @@ internal partial class NexNetServerTests : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         serverHub.OnConnectedEvent = async hub => tcs.SetResult();
 
@@ -56,8 +56,8 @@ internal partial class NexNetServerTests : BaseTests
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
 
         for (int i = 0; i < 5; i++)
