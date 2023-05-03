@@ -268,6 +268,7 @@ internal partial class NexNetClientTests : BaseTests
     }
 
 
+    [Repeat(100)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     //[TestCase(Type.TcpTls)]

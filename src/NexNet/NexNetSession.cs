@@ -115,10 +115,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         using var buffer = _bufferWriter.Flush();
 
-        if (_config.InternalOnSend != null)
-        {
-            _config.InternalOnSend.Invoke(this, buffer.Value.ToArray());
-        }
+        _config.InternalOnSend?.Invoke(this, buffer.Value.ToArray());
+
         buffer.Value.CopyTo(_pipeOutput.GetSpan(length));
         _pipeOutput.Advance(length);
 
@@ -145,10 +143,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
 
-        if (_config.InternalOnSend != null)
-        {
-            _config.InternalOnSend.Invoke(this, new[] { (byte)type });
-        }
+        _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
 
         _pipeOutput.GetSpan(1)[0] = (byte)type;
         _pipeOutput.Advance(1);
@@ -177,9 +172,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private async Task StartReadAsync()
     {
+        _config.Logger?.LogTrace($"NexNetSession.StartReadAsync()");
         try
         {
-            _config.Logger?.LogTrace($"Starting reading loop.");
             while (true)
             {
                 if (_pipeInput == null)
@@ -485,6 +480,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public async ValueTask StartAsClient()
     {
+        _config.Logger?.LogTrace("NexNetSession.StartAsClient()");
         var clientConfig = Unsafe.As<ClientConfig>(_config);
         var greetingMessage = _cacheManager.ClientGreetingDeserializer.Rent();
 
@@ -505,13 +501,16 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public Task StartAsServer()
     {
+        _config.Logger?.LogTrace("NexNetSession.StartAsServer()");
         return StartReadAsync();
     }
 
     private async ValueTask<bool> TryReconnectAsClient()
     {
+        _config.Logger?.LogTrace("NexNetSession.TryReconnectAsClient()");
         if (_isServer)
             return false;
+
 
         var clientConfig = Unsafe.As<ClientConfig>(_config);
         var clientHub = Unsafe.As<ClientHubBase<TProxy>>(_hub);
@@ -553,6 +552,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private async Task DisconnectCore(DisconnectReason reason, bool sendDisconnect)
     {
+        _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
         if (_pipeInput == null)
             return;
 
