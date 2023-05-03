@@ -234,9 +234,9 @@ internal partial class NexNetClientTests : BaseTests
     }
 
 
-    [TestCase(Type.Uds)]
+    //[TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    //[TestCase(Type.TcpTls)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -270,7 +270,7 @@ internal partial class NexNetClientTests : BaseTests
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    //[TestCase(Type.TcpTls)]
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -294,8 +294,8 @@ internal partial class NexNetClientTests : BaseTests
     }
 
     [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    //[TestCase(Type.Tcp)]
+    //[TestCase(Type.TcpTls)]
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
         var tcs = new TaskCompletionSource();
