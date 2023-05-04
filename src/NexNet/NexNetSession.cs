@@ -45,6 +45,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private readonly SemaphoreSlim _invocationSemaphore;
     private readonly bool _isServer;
     private bool _isReconnected = false;
+    private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
 
     public long Id { get; }
@@ -196,6 +197,15 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 if (result.IsCompleted || result.IsCanceled)
                 {
                     _config.Logger?.LogTrace($"Reading completed with IsCompleted: {result.IsCompleted} and IsCanceled: {result.IsCanceled}.");
+
+                    if (_registeredDisconnectReason == DisconnectReason.None)
+                    {
+                        _config.Logger?.LogTrace("Disconnected without a reason.");
+
+                        // If there is not a disconnect reason, then we disconnected for an unknown reason and should 
+                        // be allowed to reconnect.
+                        await DisconnectCore(DisconnectReason.DisconnectSocketError, false);
+                    }
                     return;
                 }
 
@@ -558,6 +568,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     {
         if (_pipeInput == null)
             return;
+
+        _registeredDisconnectReason = reason;
 
         _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
 
