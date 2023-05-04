@@ -22,6 +22,13 @@ public abstract class ConfigBase
     public int DisconnectDelay { get; set; } = 200;
 
 
+    /// <summary>
+    /// If a client has not sent any message within this time frame,
+    /// including a ping, the client will be disconnected.
+    /// </summary>
+    public int Timeout { get; set; } = 30_000;
+
+
     internal EndPoint SocketEndPoint { get; init; }
     internal AddressFamily SocketAddressFamily { get; init; }
     internal SocketType SocketType { get; init; }

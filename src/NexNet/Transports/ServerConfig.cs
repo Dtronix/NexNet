@@ -17,11 +17,6 @@ public abstract class ServerConfig : ConfigBase
     public int AcceptorBacklog { get; init; } = 20;
 
 
-    /// <summary>
-    /// If a client has not sent any message within this time frame,
-    /// including a ping, the client will be disconnected.
-    /// </summary>
-    public int ClientTimeout { get; init; } = 30_000;
 
     /// <summary>
     /// If a client hasn't sent a full "HelloMessage" within this time the client will be disconnected.

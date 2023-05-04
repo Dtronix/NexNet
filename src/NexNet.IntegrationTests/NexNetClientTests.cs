@@ -266,6 +266,35 @@ internal partial class NexNetClientTests : BaseTests
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
+    
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ReconnectsOnTimeout(Type type)
+    {
+        var tcs = new TaskCompletionSource();
+        var clientConfig = CreateClientConfig(type, true);
+        var serverConfig = CreateServerConfig(type, true);
+        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) }, true);
+
+        clientHub.OnConnectedEvent = async (_, isReconnected) =>
+        {
+            if (isReconnected)
+                tcs.TrySetResult();
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+        clientConfig.PingInterval = 75;
+        clientConfig.Timeout = 50;
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]

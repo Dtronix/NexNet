@@ -170,6 +170,20 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         return DisconnectCore(reason, true);
     }
 
+
+    public bool DisconnectIfTimeout(long timeoutTicks)
+    {
+        if (timeoutTicks > LastReceived)
+        {
+            _config.Logger?.LogTrace($"Timed out session {Id}");
+            DisconnectAsync(DisconnectReason.Timeout);
+            return true;
+        }
+
+        return false;
+    }
+
+
     private async Task StartReadAsync()
     {
         _config.Logger?.LogTrace($"NexNetSession.StartReadAsync()");
@@ -255,6 +269,11 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                     else if (type == MessageType.Ping)
                     {
                         _recMessageHeader.Reset();
+
+                        // If we are the server, send back a ping message to help the client know if it is still connected.
+                        if (_isServer)
+                            await SendHeader(MessageType.Ping);
+
                         continue;
                     }
                     else
@@ -551,6 +570,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 _pipeInput = transport.Input;
                 _pipeOutput = transport.Output;
                 _transportConnection = transport;
+
+                _config.Logger?.LogTrace($"Reconnection succeeded.");
 
                 _isReconnected = true;
                 await StartAsClient();

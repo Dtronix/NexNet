@@ -28,8 +28,6 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
 
     private Socket? _listener;
 
-    private readonly int _clientTimeout;
-
     public ServerConfig Config => _config;
 
     /// <summary>
@@ -41,7 +39,6 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
     {
         _config = config;
         _hubFactory = hubFactory;
-        _clientTimeout = _config.ClientTimeout;
 
         _cacheManager = new SessionCacheManager<TClientProxy>();
 
@@ -59,7 +56,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         _listener = listener;
         StartOnScheduler(_config.ReceivePipeOptions?.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
 
-        _watchdogTimer.Change(_clientTimeout / 4, _clientTimeout / 4);
+        _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
         return true;
     }
 
@@ -172,19 +169,10 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
 
     private void ConnectionWatchdog(object? state)
     {
-        var currentTicks = Environment.TickCount64 - _clientTimeout;
+        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
 
-        foreach (var ipcSession in _sessionManager.Sessions)
-        {
-            var session = ipcSession.Value;
-            if (currentTicks > session.LastReceived)
-            {
-                _config.Logger?.LogTrace($"[IpcServer] Timed out session {session.Id}");
-                session.DisconnectAsync(DisconnectReason.Timeout);
-                
-            }
-
-        }
+        foreach (var session in _sessionManager.Sessions)
+            session.Value.DisconnectIfTimeout(timeoutTicks);
     }
     
     private async Task ListenForConnectionsAsync()

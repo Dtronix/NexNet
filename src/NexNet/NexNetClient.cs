@@ -7,6 +7,7 @@ using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Invocation;
 using Pipelines.Sockets.Unofficial;
+using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet;
 
@@ -38,6 +39,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
         _hub = hub;
         _pingTimer = new Timer(PingTimer);
+        
     }
 
     public async Task ConnectAsync()
@@ -89,6 +91,12 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
     private void PingTimer(object? state)
     {
+        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
+
+        // Check to see if we have timed out on receiving first.
+        if (_session?.DisconnectIfTimeout(timeoutTicks) == true)
+            return;
+
         _session?.SendHeader(MessageType.Ping);
     }
 
