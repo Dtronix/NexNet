@@ -185,6 +185,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                 var (position, disconnect, issueDisconnectMessage) = await Process(result.Buffer).ConfigureAwait(false);
 
+                _config.Logger?.LogTrace($"Reading completed.");
+
                 if (disconnect != DisconnectReason.None)
                 {
                     await DisconnectCore(disconnect, issueDisconnectMessage);
@@ -192,7 +194,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 }
 
                 if (result.IsCompleted || result.IsCanceled)
+                {
+                    _config.Logger?.LogTrace($"Reading completed with IsCompleted: {result.IsCompleted} and IsCanceled: {result.IsCanceled}.");
                     return;
+                }
 
                 _pipeInput?.AdvanceTo(position);
             }
