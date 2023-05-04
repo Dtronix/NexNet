@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <Company>Dtronix</Company>
+    <Product>NexNet</Product>
+    <Copyright>Copyright © Dtronix 2023</Copyright>
+    <Authors>DJGosnell</Authors>
+    <PackageProjectUrl>https://github.com/Dtronix/NexNet</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Dtronix/NexNet</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageTags>rpc sockets uds tcp tls secure source generator</PackageTags>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+  </PropertyGroup>
+</Project>
