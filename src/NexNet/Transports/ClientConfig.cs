@@ -7,9 +7,6 @@ namespace NexNet.Transports;
 
 public abstract class ClientConfig : ConfigBase
 {
-    private IReconnectionPolicy _reconnectionPolicy = new DefaultReconnectionPolicy();
-
-
     /// <summary>
     /// Number of milliseconds before the connection cancels.
     /// </summary>
@@ -20,15 +17,7 @@ public abstract class ClientConfig : ConfigBase
     /// </summary>
     public int PingInterval { get; set; } = 10_000;
 
-    public IReconnectionPolicy ReconnectionPolicy
-    {
-        get => _reconnectionPolicy;
-        set
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            _reconnectionPolicy = value;
-        }
-    }
+    public IReconnectionPolicy? ReconnectionPolicy { get; set; } = new DefaultReconnectionPolicy();
 
     /// <summary>
     /// Method called to pass data to the server upon connection.  If not overridden,

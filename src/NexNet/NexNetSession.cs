@@ -64,9 +64,12 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     public IIdentity? Identity { get; private set; }
 
     public Action? OnSent { get; set; }
+
+    public ConnectionState State { get; private set; }
     
     public NexNetSession(in NexNetSessionConfigurations<THub, TProxy> configurations)
     {
+        State = ConnectionState.Connecting;
         Id = configurations.Id;
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
@@ -94,10 +97,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     public async ValueTask SendHeaderWithBody<TMessage>(TMessage body, CancellationToken cancellationToken = default)
         where TMessage : IMessageBodyBase
     {
-        if (_pipeOutput == null)
+        if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
-        if (cancellationToken.IsCancellationRequested)
+        if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
             return;
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
@@ -133,10 +136,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public async ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
     {
-        if (_pipeOutput == null)
+        if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
-        if (cancellationToken.IsCancellationRequested)
+        if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
             return;
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
@@ -157,7 +160,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
         catch (ObjectDisposedException)
         {
-            
+
         }
 
         OnSent?.Invoke();
@@ -165,6 +168,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         if (result.IsCanceled || result.IsCompleted)
             await DisconnectCore(DisconnectReason.TransportError, false);
     }
+
     public Task DisconnectAsync(DisconnectReason reason)
     {
         return DisconnectCore(reason, true);
@@ -173,6 +177,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public bool DisconnectIfTimeout(long timeoutTicks)
     {
+        if (State != ConnectionState.Connected)
+            return false;
+
         if (timeoutTicks > LastReceived)
         {
             _config.Logger?.LogTrace($"Timed out session {Id}");
@@ -184,14 +191,16 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     }
 
 
-    private async Task StartReadAsync()
+    public async Task StartReadAsync()
     {
         _config.Logger?.LogTrace($"NexNetSession.StartReadAsync()");
+        State = ConnectionState.Connected;
         try
         {
             while (true)
             {
-                if (_pipeInput == null)
+                if (_pipeInput == null
+                    || State != ConnectionState.Connected)
                     return;
 
                 var result = await _pipeInput.ReadAsync().ConfigureAwait(false);
@@ -522,20 +531,15 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         greetingMessage.ClientHubMethodHash = THub.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke();
 
+        State = ConnectionState.Connected;
+
         await SendHeaderWithBody(greetingMessage);
 
         _cacheManager.ClientGreetingDeserializer.Return(greetingMessage);
 
         // ReSharper disable once MethodSupportsCancellation
-
         _ = Task.Factory.StartNew(StartReadAsync, TaskCreationOptions.LongRunning);
 
-    }
-
-    public Task StartAsServer()
-    {
-        _config.Logger?.LogTrace("NexNetSession.StartAsServer()");
-        return StartReadAsync();
     }
 
     private async ValueTask<bool> TryReconnectAsClient()
@@ -544,10 +548,15 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         if (_isServer)
             return false;
 
-
         var clientConfig = Unsafe.As<ClientConfig>(_config);
         var clientHub = Unsafe.As<ClientHubBase<TProxy>>(_hub);
 
+        if (clientConfig.ReconnectionPolicy == null)
+            return false;
+
+        State = ConnectionState.Reconnecting;
+
+        // Notify the hub.
         await clientHub.Reconnecting();
         int count = 0;
 
@@ -556,6 +565,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             ITransportBase? transport = null;
             try
             {
+                // Get the next delay or cancellation.
                 var delay = clientConfig.ReconnectionPolicy.ReconnectDelay(count++);
 
                 if (delay == null)
@@ -566,6 +576,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 _config.Logger?.LogTrace($"Reconnection attempt {count}");
 
                 transport = await clientConfig.ConnectTransport();
+                State = ConnectionState.Connecting;
 
                 _pipeInput = transport.Input;
                 _pipeOutput = transport.Output;
@@ -587,16 +598,15 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private async Task DisconnectCore(DisconnectReason reason, bool sendDisconnect)
     {
-        if (_pipeInput == null)
+        // If we are already disconnecting, don't do anything
+        if (State == ConnectionState.Disconnecting || State == ConnectionState.Disconnecting)
             return;
+
+        State = ConnectionState.Disconnecting;
 
         _registeredDisconnectReason = reason;
 
         _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
-
-        // ReSharper disable once MethodHasAsyncOverload
-        _pipeInput!.Complete();
-        _pipeInput = null;
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
@@ -609,16 +619,21 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             }
         }
 
+        // This can not be stopped on some transports as they don't have an understanding about
+        // shutting down of rending pipes separately from receiving pipes.
+        // ReSharper disable once MethodHasAsyncOverload
+        _pipeInput!.Complete();
+        _pipeInput = null;
 
         if (_config.InternalNoLingerOnShutdown)
         {
             _transportConnection.Socket.LingerState = new LingerOption(true, 0);
             _transportConnection.Socket.Close(0);
-            _pipeInput = null;
             return;
         }
         else
         {
+            // Cancel all current invocations.
             SessionInvocationStateManager.CancelAll();
 
             // ReSharper disable once MethodHasAsyncOverload
@@ -645,7 +660,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             if (await TryReconnectAsClient())
                 return;
         }
-        
+
+        State = ConnectionState.Disconnected;
+
         _hub.Disconnected(new DisconnectReasonException(reason, null));
         OnDisconnected?.Invoke();
 

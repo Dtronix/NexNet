@@ -11,6 +11,6 @@ public class ConsoleLogger : INexNetLogger
     }
     public void Log(INexNetLogger.LogLevel logLevel, Exception? exception, string message)
     {
-        Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix}: {message}");
+        Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix}: {message} {exception}");
     }
 }

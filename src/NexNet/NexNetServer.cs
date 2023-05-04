@@ -108,7 +108,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         {
             var session = new NexNetSession<TServerHub, TClientProxy>(arguments);
 
-            await session.StartAsServer().ConfigureAwait(false);
+            await session.StartReadAsync().ConfigureAwait(false);
 
             try
             {

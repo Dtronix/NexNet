@@ -273,8 +273,8 @@ internal partial class NexNetClientTests : BaseTests
     public async Task ReconnectsOnTimeout(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, true);
-        var serverConfig = CreateServerConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) }, true);
@@ -302,8 +302,8 @@ internal partial class NexNetClientTests : BaseTests
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, true);
-        var serverConfig = CreateServerConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         clientHub.OnReconnectingEvent = async _ =>

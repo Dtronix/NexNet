@@ -53,11 +53,12 @@ internal partial class NexNetServerTests : BaseTests
     //[Test]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
 
 
         for (int i = 0; i < 5; i++)
@@ -70,7 +71,7 @@ internal partial class NexNetServerTests : BaseTests
 
             server.Stop();
 
-            await Task.Delay(500);
+            await Task.Delay(100);
 
             // Wait for the client to process the disconnect.
 

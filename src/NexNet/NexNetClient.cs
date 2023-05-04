@@ -24,7 +24,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
     internal NexNetSession<TClientHub, TServerProxy>? Session => _session;
 
-    public ConnectionState State { get; private set; }
+    public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
 
     public TServerProxy Proxy { get; private set; }
 
@@ -46,8 +46,6 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     {
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
-
-        State = ConnectionState.Connecting;
 
         var client = await _config.ConnectTransport();
 
@@ -105,7 +103,6 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         //_receiveLoopThread = null;
         _pingTimer.Change(-1, -1);
         _session = null;
-        State = ConnectionState.Disconnected;
     }
 
     private void OnSent()
