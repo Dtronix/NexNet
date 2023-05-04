@@ -323,6 +323,9 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        await clientHub.ConnectedTCS.Task;
+        await Task.Delay(100);
         server.Stop();
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
