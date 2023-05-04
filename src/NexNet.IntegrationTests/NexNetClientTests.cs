@@ -269,7 +269,7 @@ internal partial class NexNetClientTests : BaseTests
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    //[TestCase(Type.TcpTls)]
+    [TestCase(Type.TcpTls)]
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -294,13 +294,13 @@ internal partial class NexNetClientTests : BaseTests
     }
 
     [TestCase(Type.Uds)]
-    //[TestCase(Type.Tcp)]
-    //[TestCase(Type.TcpTls)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, true);
-        var serverConfig = CreateServerConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ConnectionTimeout = 100;

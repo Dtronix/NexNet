@@ -51,8 +51,8 @@ internal partial class NexNetServerTests : BaseTests
 
 
     //[Test]
-    //[TestCase(Type.Uds)]
-    //[TestCase(Type.Tcp)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
