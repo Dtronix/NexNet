@@ -57,8 +57,8 @@ internal partial class NexNetServerTests : BaseTests
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
 
         for (int i = 0; i < 5; i++)
