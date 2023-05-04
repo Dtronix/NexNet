@@ -258,6 +258,7 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await clientHub.ConnectedTCS.Task;
         server.Stop();
 
         // Wait for the client to process the disconnect.
