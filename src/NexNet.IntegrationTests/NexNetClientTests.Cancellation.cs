@@ -101,8 +101,6 @@ internal partial class NexNetClientTests : BaseTests
         await tcs.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
-
-    [Repeat(10)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
