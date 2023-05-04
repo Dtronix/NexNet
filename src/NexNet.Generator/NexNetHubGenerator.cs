@@ -101,7 +101,7 @@ public partial class NexNetHubGenerator : IIncrementalGenerator
     
     class GeneratorContext : IGeneratorContext
     {
-        SourceProductionContext context;
+        readonly SourceProductionContext context;
 
         public GeneratorContext(SourceProductionContext context, LanguageVersion languageVersion)
         {

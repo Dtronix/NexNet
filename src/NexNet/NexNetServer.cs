@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Net.Sockets;
 using System.Threading;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -8,10 +7,13 @@ using NexNet.Invocation;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using Pipelines.Sockets.Unofficial;
 
 namespace NexNet;
-
+/// <summary>
+/// Class which manages session connections.
+/// </summary>
+/// <typeparam name="TServerHub">The hub which will be running locally on the server.</typeparam>
+/// <typeparam name="TClientProxy">Proxy used to invoke methods on remote hubs.</typeparam>
 public sealed class NexNetServer<TServerHub, TClientProxy>
     where TServerHub : ServerHubBase<TClientProxy>, IInterfaceMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
@@ -22,12 +24,19 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
     private readonly Func<TServerHub> _hubFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
 
+    private ITransportListener? _listener;
+
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementor;
+
+    /// <summary>
+    /// True if the server is running, false otherwise.
+    /// </summary>
     public bool IsStarted => _listener != null;
 
-    private Socket? _listener;
-
+    /// <summary>
+    /// Configurations the server us currently using.
+    /// </summary>
     public ServerConfig Config => _config;
 
     /// <summary>
@@ -45,27 +54,29 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         _watchdogTimer = new Timer(ConnectionWatchdog);
     }
 
-
-    public bool Start()
+    /// <summary>
+    /// Starts the server.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
+    public void Start()
     {
         if (_listener != null) throw new InvalidOperationException("Server is already running");
-        Socket listener = new Socket(_config.SocketAddressFamily, _config.SocketType, _config.SocketProtocolType);
-        listener.Bind(_config.SocketEndPoint);
-        listener.Listen(_config.AcceptorBacklog);
+        _listener = _config.CreateServerListener();
 
-        _listener = listener;
-        StartOnScheduler(_config.ReceivePipeOptions?.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
+        StartOnScheduler(_config.ReceivePipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
 
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
-        return true;
     }
 
+    /// <summary>
+    /// Stops the server.
+    /// </summary>
     public void Stop()
     {
 
-        var socket = _listener;
+        var listener = _listener;
         _listener = null;
-        if (socket != null)
+        if (listener != null)
         {
             try
             {
@@ -77,18 +88,12 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
                     session.Value.DisconnectAsync(DisconnectReason.DisconnectServerShutdown);
                 }
 
-                if (_config.InternalNoLingerOnShutdown)
-                {
-                    socket.LingerState = new LingerOption(true, 0);
-                    socket.Close(0);
-                }
-                else
-                {
-                    socket.Dispose();
-                }
-
+                listener.Close(!_config.InternalNoLingerOnShutdown);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
         }
 
     }
@@ -181,24 +186,10 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         {
             while (true)
             {
-                var clientSocket = await _listener!.AcceptAsync().ConfigureAwait(false);
-                SocketConnection.SetRecommendedServerOptions(clientSocket);
+                var clientTransport = await _listener!.AcceptTransportAsync().ConfigureAwait(false);
 
-                ITransportBase transport;
-                try
-                {
-                    transport = await _config.CreateTransport(clientSocket);
-                }
-                catch (Exception e)
-                {
-                    _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
-
-                    // Immediate disconnect.
-                    clientSocket.LingerState = new LingerOption(true, 0);
-                    clientSocket.Close(0);
-                    return;
-                }
-
+                if(clientTransport == null)
+                    continue;
 
                 _config.InternalOnConnect?.Invoke();
 
@@ -212,11 +203,12 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
                     RunClientAsync,
                     new NexNetSessionConfigurations<TServerHub, TClientProxy>()
                     {
-                        Transport = transport,
+                        Transport = clientTransport,
                         Cache = _cacheManager,
                         Configs = _config,
                         SessionManager = _sessionManager,
                         IsServer = true,
+                        // ReSharper disable once RedundantCast
                         Id = (long)baseSessionId << 32 | (long)Environment.TickCount,
                         Hub = _hubFactory.Invoke()
                     });
@@ -224,17 +216,11 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         }
         catch (NullReferenceException) { }
         catch (ObjectDisposedException) { }
-        catch (Exception ex) { OnServerFaulted(ex); }
+        catch (Exception ex)
+        {
+            Stop();
+        }
     }
-
-    /// <summary>
-    /// Invoked when the server has faulted
-    /// </summary>
-    private void OnServerFaulted(Exception exception)
-    {
-
-    }
-
 
     private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, object? state)
     {

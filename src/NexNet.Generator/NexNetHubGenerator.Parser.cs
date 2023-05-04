@@ -6,9 +6,8 @@ using System.Text;
 
 namespace NexNet.Generator;
 
-public partial class InvocationInterfaceMeta
+internal partial class InvocationInterfaceMeta
 {
-    readonly ReferenceSymbols _reference;
     public INamedTypeSymbol Symbol { get; set; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
@@ -22,12 +21,12 @@ public partial class InvocationInterfaceMeta
 
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol symbol, ReferenceSymbols reference)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol)
     {
+        if (symbol == null)
+            throw new ArgumentNullException(nameof(symbol));
+
         int methodId = 0;
-
-
-        this._reference = reference;
         this.Symbol = symbol;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
@@ -82,9 +81,8 @@ public partial class InvocationInterfaceMeta
 
 
 
-public partial class HubMeta
+internal partial class HubMeta
 {
-    readonly ReferenceSymbols reference;
     public INamedTypeSymbol Symbol { get; set; }
     public string TypeName { get; }
     public string ClassName { get; }
@@ -99,11 +97,9 @@ public partial class HubMeta
     public InvocationInterfaceMeta ProxyInterface { get; }
     public MethodMeta[] Methods { get; }
 
-    public HubMeta(INamedTypeSymbol symbol, ReferenceSymbols reference)
+    public HubMeta(INamedTypeSymbol symbol)
     {
-        static object GetItem(TypedConstant arg) => arg.Kind == TypedConstantKind.Array ? arg.Values : arg.Value;
-
-        this.reference = reference;
+        static object GetItem(TypedConstant arg) => arg.Kind == TypedConstantKind.Array ? arg.Values : arg.Value ?? new object();
         this.Symbol = symbol;
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
@@ -143,10 +139,10 @@ public partial class HubMeta
             }
         }
 
-        var hubAttributeData = symbol.GetAttributes().First(att => att.AttributeClass.Name == "NexNetHubAttribute");
+        var hubAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexNetHubAttribute");
         //new InvocationInterfaceMeta()
-        HubInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass.TypeArguments[0] as INamedTypeSymbol, reference);
-        ProxyInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass.TypeArguments[1] as INamedTypeSymbol, reference);
+        HubInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol);
+        ProxyInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol);
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
@@ -169,7 +165,7 @@ public partial class HubMeta
     }
 }
 
-public partial class MethodParameterMeta
+internal partial class MethodParameterMeta
 {
     public IParameterSymbol Symbol { get; }
     public string Name { get; }
@@ -190,7 +186,7 @@ public partial class MethodParameterMeta
     }
 }
 
-public partial class MethodMeta
+internal partial class MethodMeta
 {
     private static XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }

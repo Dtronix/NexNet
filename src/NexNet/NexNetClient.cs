@@ -6,8 +6,6 @@ using NexNet.Transports;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Invocation;
-using Pipelines.Sockets.Unofficial;
-using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet;
 

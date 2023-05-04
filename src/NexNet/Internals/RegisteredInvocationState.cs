@@ -18,6 +18,14 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
 
+    public InvocationProxyResultMessage Result { get; set; } = null!;
+
+    /// <summary>
+    /// Environment.Ticks when this state was instanced.
+    /// </summary>
+    public long Created { get; set; }
+
+
 
     public void Reset()
     {
@@ -79,14 +87,6 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     }
 
     bool IValueTaskSource<bool>.GetResult(short token) => _source.GetResult(token);
-
-    public InvocationProxyResultMessage Result { get; set; }
-
-    /// <summary>
-    /// Environment.Ticks when this state was instanced.
-    /// </summary>
-    public long Created { get; set; }
-
     public RegisteredInvocationState()
     {
         // Sequence = new Sequence<byte>(ArrayPool<byte>.Shared);

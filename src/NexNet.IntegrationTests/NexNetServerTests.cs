@@ -40,7 +40,11 @@ internal partial class NexNetServerTests : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        serverHub.OnConnectedEvent = async hub => tcs.SetResult();
+        serverHub.OnConnectedEvent = hub =>
+        {
+            tcs.SetResult();
+            return ValueTask.CompletedTask;
+        };
 
         server.Start();
 

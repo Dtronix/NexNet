@@ -1,4 +1,6 @@
 ﻿using NUnit.Framework;
+#pragma warning disable CS1998
+#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
@@ -11,7 +13,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(Type type)
     {
-        var tcs = await ClientSendsMessage<NexNet.Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
             sHub => sHub.ServerTaskWithCancellationEvent = async (hub, token) =>
             {
@@ -33,7 +35,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<NexNet.Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
             sHub => sHub.ServerTaskWithValueAndCancellationEvent = async (hub, value, token) =>
             {
@@ -55,7 +57,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<NexNet.Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
             sHub => sHub.ServerTaskValueWithCancellationEvent = async (hub, token) =>
             {
@@ -81,7 +83,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<NexNet.Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
             sHub => sHub.ServerTaskValueWithValueAndCancellationEvent = async (hub, value, token) =>
             {
@@ -106,7 +108,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
-        var tcs = await ClientSendsMessage<NexNet.Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
             sHub => sHub.ServerTaskWithCancellationEvent = (hub, token) => ValueTask.CompletedTask,
             (message, source) =>

@@ -1,10 +1,12 @@
-﻿using System.IO.Pipelines;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
+/// <summary>
+/// Configurations for the client to connect to a TCP NexNet server.
+/// </summary>
 public class TcpClientConfig : ClientConfig
 {
     /// <summary>
@@ -55,29 +57,18 @@ public class TcpClientConfig : ClientConfig
     /// <summary>
     /// Endpoint
     /// </summary>
-    public required EndPoint EndPoint
-    {
-        get => SocketEndPoint;
-        init
-        {
-            SocketEndPoint = value;
-            SocketAddressFamily = SocketEndPoint.AddressFamily;
-        }
-    }
+    public required EndPoint EndPoint { get; set; }
 
-    public TcpClientConfig()
+    /// <inheritdoc />
+    protected override ValueTask<ITransport> OnConnectTransport()
     {
-        // SocketAddressFamily is set in the Endpoint property.
-        SocketType = SocketType.Stream;
-        SocketProtocolType = ProtocolType.Tcp;
-    }
-
-    public override ValueTask<ITransportBase> ConnectTransport()
-    {
-        return SocketTransport.ConnectAsync(this);
+        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
     }
 }
 
+/// <summary>
+/// Configurations for the server to allow connections from TCP NexNet clients.
+/// </summary>
 public class TcpServerConfig : ServerConfig
 {
     /// <summary>
@@ -140,28 +131,14 @@ public class TcpServerConfig : ServerConfig
     public bool ExclusiveAddressUse { get; set; }
 
     /// <summary>
-    /// Endpoint
+    /// Endpoint to bind to.
     /// </summary>
-    public required EndPoint EndPoint
-    {
-        get => SocketEndPoint;
-        init
-        {
-            SocketEndPoint = value;
-            SocketAddressFamily = SocketEndPoint.AddressFamily;
-        }
-    }
+    public required EndPoint EndPoint { get; set; }
 
 
-    public TcpServerConfig()
+    /// <inheritdoc />
+    protected override ITransportListener OnCreateServerListener()
     {
-        // SocketAddressFamily is set in the Endpoint property.
-        SocketType = SocketType.Stream;
-        SocketProtocolType = ProtocolType.Tcp;
-    }
-
-    public override ValueTask<ITransportBase> CreateTransport(Socket socket)
-    {
-        return SocketTransport.CreateFromSocket(socket, this);
+        return SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
     }
 }

@@ -1,18 +1,22 @@
 ﻿using System;
 using System.IO.Pipelines;
-using System.Net;
-using System.Net.Sockets;
-using System.Threading;
 using NexNet.Internals;
 
 namespace NexNet.Transports;
 
+/// <summary>
+/// Base configuration for servers and clients.
+/// </summary>
 public abstract class ConfigBase
 {
+    /// <summary>
+    /// Logger for the server/client.
+    /// </summary>
     public INexNetLogger? Logger { get; set; }
 
-    private long _sessionCounter = 0;
-
+    /// <summary>
+    /// The maximum number of concurrent invocations which can occur from a single connection.
+    /// </summary>
     public int MaxConcurrentConnectionInvocations { get; set; } = 2;
 
     /// <summary>
@@ -28,23 +32,24 @@ public abstract class ConfigBase
     /// </summary>
     public int Timeout { get; set; } = 30_000;
 
-
+    /*
     internal EndPoint SocketEndPoint { get; init; }
     internal AddressFamily SocketAddressFamily { get; init; }
     internal SocketType SocketType { get; init; }
-    internal ProtocolType SocketProtocolType { get; init; }
+    internal ProtocolType SocketProtocolType { get; init; }*/
 
+    /// <summary>
+    /// Options to configure the sending pipe with.
+    /// </summary>
     public PipeOptions SendPipeOptions { get; set; } = PipeOptions.Default;
+
+    /// <summary>
+    /// Options to configure the receiving pipe with.
+    /// </summary>
     public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;
 
     internal Action<INexNetSession, byte[]>? InternalOnSend;
     internal Action<INexNetSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
-
-
-    public long GetNewSessionId()
-    {
-        return Interlocked.Increment(ref _sessionCounter);
-    }
 }

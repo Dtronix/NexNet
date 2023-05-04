@@ -52,9 +52,9 @@ partial class ClientHub
         //Console.WriteLine(i++);
         return ValueTask.FromResult(i);
     }
-    public async ValueTask<int> GetTaskAgain()
+    public ValueTask<int> GetTaskAgain()
     {
-        return Interlocked.Increment(ref i);
+        return ValueTask.FromResult(Interlocked.Increment(ref i));
     }
 
     protected override async ValueTask OnConnected(bool isReconnected)
@@ -62,7 +62,7 @@ partial class ClientHub
         for (int j = 0; j < 10000; j++)
         {
   
-            switch (Random.Shared.Next(0, 9))
+            switch (Random.Shared.Next(0, 5))
             {
                 case 0:
                     //Console.WriteLine("ServerVoid()");
@@ -159,7 +159,7 @@ partial class ServerHub : IServerHub
         Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
@@ -173,7 +173,7 @@ partial class ServerHub : IServerHub
         Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
@@ -187,14 +187,14 @@ partial class ServerHub : IServerHub
         Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
             throw;
         }
 
-        return i;
+        return i2;
     }
 
     public async ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
@@ -203,18 +203,18 @@ partial class ServerHub : IServerHub
         Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
             throw;
         }
-        return i;
+        return i2;
     }
 
-    protected override async ValueTask OnConnected(bool isReconnected)
+    protected override ValueTask OnConnected(bool isReconnected)
     {
-
+        return ValueTask.CompletedTask;
     }
 }
 

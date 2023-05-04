@@ -14,9 +14,6 @@ using Pipelines.Sockets.Unofficial.Threading;
 using MemoryPack;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
-using Pipelines.Sockets.Unofficial;
-using System.Net.Sockets;
-using System.Net;
 
 namespace NexNet;
 
@@ -29,7 +26,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
 
-    private ITransportBase _transportConnection;
+    private ITransport _transportConnection;
     private PipeReader? _pipeInput;
     private PipeWriter? _pipeOutput;
 
@@ -388,7 +385,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 }
                 catch (Exception e)
                 {
-                    _config.Logger?.LogTrace("Could not deserialize body.");
+                    _config.Logger?.LogTrace(e, "Could not deserialize body.");
                     //_logger?.LogError(e, $"Could not deserialize body..");
                     disconnect = DisconnectReason.TransportError;
                     break;
@@ -562,7 +559,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         while (true)
         {
-            ITransportBase? transport = null;
+            ITransport? transport = null;
             try
             {
                 // Get the next delay or cancellation.
@@ -590,7 +587,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             }
             catch (Exception e)
             {
-                transport?.Dispose();
+                _config.Logger?.LogError(e, "Reconnection failed with exception.");
+                transport?.Close(true);
             }
         }
 
@@ -627,8 +625,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         if (_config.InternalNoLingerOnShutdown)
         {
-            _transportConnection.Socket.LingerState = new LingerOption(true, 0);
-            _transportConnection.Socket.Close(0);
+            _transportConnection.Close(false);
             return;
         }
         else
@@ -647,7 +644,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             }
 
             _pipeOutput = null;
-            _transportConnection.Dispose();
+            _transportConnection.Close(true);
         }
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client

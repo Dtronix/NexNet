@@ -1,10 +1,12 @@
 ﻿using System;
-using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
+/// <summary>
+/// Base client configurations.
+/// </summary>
 public abstract class ClientConfig : ConfigBase
 {
     /// <summary>
@@ -17,6 +19,10 @@ public abstract class ClientConfig : ConfigBase
     /// </summary>
     public int PingInterval { get; set; } = 10_000;
 
+    /// <summary>
+    /// Policy for reconnecting to the server upon connection closing.
+    /// Set to null to disable this functionality.
+    /// </summary>
     public IReconnectionPolicy? ReconnectionPolicy { get; set; } = new DefaultReconnectionPolicy();
 
     /// <summary>
@@ -25,8 +31,23 @@ public abstract class ClientConfig : ConfigBase
     /// </summary>
     public Func<byte[]?>? Authenticate { get; set; }
 
-    internal Action? InternalOnClientConnect;
+    /// <summary>
+    /// Returns the transport configured and connected for the overridden configurations.
+    /// </summary>
+    /// <returns>Connected transport.</returns>
+    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    internal ValueTask<ITransport> ConnectTransport()
+    {
+        return OnConnectTransport();
+    }
 
-    public abstract ValueTask<ITransportBase> ConnectTransport();
+    /// <summary>
+    /// Override to return the transport configured and connected for the overridden configurations.
+    /// </summary>
+    /// <returns>Connected transport.</returns>
+    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    protected abstract ValueTask<ITransport> OnConnectTransport();
+
+    internal Action? InternalOnClientConnect;
 
 }
