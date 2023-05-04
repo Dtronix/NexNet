@@ -234,14 +234,14 @@ internal partial class NexNetClientTests : BaseTests
     }
 
 
-    //[TestCase(Type.Uds)]
+    [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    //[TestCase(Type.TcpTls)]
+    [TestCase(Type.TcpTls)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, true);
-        var serverConfig = CreateServerConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) }, true);
@@ -267,8 +267,6 @@ internal partial class NexNetClientTests : BaseTests
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
-
-    [Repeat(100)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     //[TestCase(Type.TcpTls)]
@@ -339,8 +337,8 @@ internal partial class NexNetClientTests : BaseTests
         var tcs = new TaskCompletionSource();
 
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         serverHub.ServerTaskValueEvent = async hub =>
         {
