@@ -6,7 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AnalyzerLanguage>cs</AnalyzerLanguage>
     <Nullable>enable</Nullable>
-    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackBuildOutputs</TargetsForTfmSpecificContentInPackage>
     <IncludeBuildOutput>false</IncludeBuildOutput>
     <DevelopmentDependency>true</DevelopmentDependency>
     <IncludeSymbols>false</IncludeSymbols>

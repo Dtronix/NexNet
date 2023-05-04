@@ -7,11 +7,7 @@ namespace NexNet.Internals;
 
 internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 {
-    //private static readonly TaskCanceledException _tce = new TaskCanceledException();
     public int InvocationId { get; set; }
-    //public Sequence<byte> Sequence;
-    //public readonly MemoryPackWriterOptionalState OptionalState;
-    //public ManualResetAwaiterSource ResetEvent { get; } = new ManualResetAwaiterSource();
 
     // Mutable struct.
     private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); 
