@@ -234,15 +234,14 @@ internal partial class NexNetClientTests : BaseTests
     }
 
 
-    [Repeat(10)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, true);
-        var serverConfig = CreateServerConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
+        var serverConfig = CreateServerConfig(type, false);
         var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) }, true);

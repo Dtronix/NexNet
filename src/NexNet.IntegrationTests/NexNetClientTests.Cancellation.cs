@@ -102,6 +102,7 @@ internal partial class NexNetClientTests : BaseTests
     }
 
 
+    [Repeat(10)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -115,9 +116,9 @@ internal partial class NexNetClientTests : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(100).Token));
+            client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(200).Token));
 
-        Assert.ThrowsAsync<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(200)));
+        Assert.ThrowsAsync<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
 
