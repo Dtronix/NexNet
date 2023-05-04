@@ -67,7 +67,10 @@ internal partial class NexNetClientTests : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            async client => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token)).WaitAsync(TimeSpan.FromSeconds(1));
+            async client =>
+            {
+                Assert.ThrowsAsync<TaskCanceledException>(async() => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token));
+            }).WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.WaitAsync(TimeSpan.FromSeconds(1));
     }
@@ -90,7 +93,10 @@ internal partial class NexNetClientTests : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            async client => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token)).WaitAsync(TimeSpan.FromSeconds(1));
+            async client =>
+            {
+                Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
+            }).WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.WaitAsync(TimeSpan.FromSeconds(1));
     }

@@ -328,6 +328,47 @@ internal partial class NexNetClientTests : BaseTests
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ClientProxyInvocationCancelsOnDisconnect(Type type)
+    {
+        var tcs = new TaskCompletionSource();
+
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
+
+        serverHub.ServerTaskValueEvent = async hub =>
+        {
+            await Task.Delay(100000);
+            return 12345;
+        };
+
+        clientHub.OnConnectedEvent = async (hub, b) =>
+        {
+            try
+            {
+                var result = await client.Proxy.ServerTaskValue();
+            }
+            catch (TaskCanceledException e)
+            {
+                tcs.TrySetResult();
+            }
+            catch(Exception e)
+            {
+
+            }
+
+        };
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        await Task.Delay(100);
+        server.Stop();
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
 
 
 }

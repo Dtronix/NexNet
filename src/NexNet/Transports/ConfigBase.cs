@@ -13,7 +13,14 @@ public abstract class ConfigBase
 
     private long _sessionCounter = 0;
 
-    public int MaxConcurrentConnectionInvocations { get; set; } = 5;
+    public int MaxConcurrentConnectionInvocations { get; set; } = 2;
+
+    /// <summary>
+    /// This delay is added at the end of connections to ensure that the disconnect message has time to send.
+    /// Values less than 1 disable this functionality.
+    /// </summary>
+    public int DisconnectDelay { get; set; } = 200;
+
 
     internal EndPoint SocketEndPoint { get; init; }
     internal AddressFamily SocketAddressFamily { get; init; }
@@ -27,6 +34,7 @@ public abstract class ConfigBase
     internal Action<INexNetSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
+
 
     public long GetNewSessionId()
     {

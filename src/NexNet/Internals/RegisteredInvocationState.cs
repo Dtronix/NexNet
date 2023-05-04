@@ -13,10 +13,13 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     //public readonly MemoryPackWriterOptionalState OptionalState;
     //public ManualResetAwaiterSource ResetEvent { get; } = new ManualResetAwaiterSource();
 
-    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); // Mutable struct, not readonly
+    // Mutable struct.
+    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); 
 
     public bool IsComplete { get; set; }
     public bool IsCanceled { get; set; }
+
+    public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
 
 
@@ -39,16 +42,24 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
         return true;
     }
 
-    public bool TrySetCanceled()
+    /// <summary>
+    /// Cancels the current pending invocation.
+    /// </summary>
+    /// <param name="notifyConnection">Set to true to send a notification that this invocation
+    /// has been canceled.  False to just cancel.</param>
+    /// <returns>True if the call succeeded.  False if the state has already been set.</returns>
+    public bool TrySetCanceled(bool notifyConnection)
     {
         if (IsComplete)
             return false;
         IsComplete = true;
         IsCanceled = true;
-
+        NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;
     }
+
+
 
     public bool TrySetException(Exception exception)
     {

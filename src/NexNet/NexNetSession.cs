@@ -159,7 +159,6 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             
         }
 
-
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
@@ -552,16 +551,26 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private async Task DisconnectCore(DisconnectReason reason, bool sendDisconnect)
     {
-        _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
         if (_pipeInput == null)
             return;
+
+        _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
 
         // ReSharper disable once MethodHasAsyncOverload
         _pipeInput!.Complete();
         _pipeInput = null;
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
+        {
             await SendHeader((MessageType)reason);
+
+            if (_config.DisconnectDelay > 0)
+            {
+                // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
+                await Task.Delay(_config.DisconnectDelay);
+            }
+        }
+
 
         if (_config.InternalNoLingerOnShutdown)
         {
