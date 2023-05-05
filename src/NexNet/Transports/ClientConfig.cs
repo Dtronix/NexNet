@@ -1,15 +1,14 @@
 ﻿using System;
-using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
+/// <summary>
+/// Base client configurations.
+/// </summary>
 public abstract class ClientConfig : ConfigBase
 {
-    private IReconnectionPolicy _reconnectionPolicy = new DefaultReconnectionPolicy();
-
-
     /// <summary>
     /// Number of milliseconds before the connection cancels.
     /// </summary>
@@ -20,15 +19,11 @@ public abstract class ClientConfig : ConfigBase
     /// </summary>
     public int PingInterval { get; set; } = 10_000;
 
-    public IReconnectionPolicy ReconnectionPolicy
-    {
-        get => _reconnectionPolicy;
-        set
-        {
-            ArgumentNullException.ThrowIfNull(value);
-            _reconnectionPolicy = value;
-        }
-    }
+    /// <summary>
+    /// Policy for reconnecting to the server upon connection closing.
+    /// Set to null to disable this functionality.
+    /// </summary>
+    public IReconnectionPolicy? ReconnectionPolicy { get; set; } = new DefaultReconnectionPolicy();
 
     /// <summary>
     /// Method called to pass data to the server upon connection.  If not overridden,
@@ -36,8 +31,23 @@ public abstract class ClientConfig : ConfigBase
     /// </summary>
     public Func<byte[]?>? Authenticate { get; set; }
 
-    internal Action? InternalOnClientConnect;
+    /// <summary>
+    /// Returns the transport configured and connected for the overridden configurations.
+    /// </summary>
+    /// <returns>Connected transport.</returns>
+    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    internal ValueTask<ITransport> ConnectTransport()
+    {
+        return OnConnectTransport();
+    }
 
-    public abstract ValueTask<ITransportBase> ConnectTransport();
+    /// <summary>
+    /// Override to return the transport configured and connected for the overridden configurations.
+    /// </summary>
+    /// <returns>Connected transport.</returns>
+    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    protected abstract ValueTask<ITransport> OnConnectTransport();
+
+    internal Action? InternalOnClientConnect;
 
 }

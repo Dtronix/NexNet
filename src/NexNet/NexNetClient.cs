@@ -6,7 +6,6 @@ using NexNet.Transports;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Invocation;
-using Pipelines.Sockets.Unofficial;
 
 namespace NexNet;
 
@@ -23,7 +22,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
     internal NexNetSession<TClientHub, TServerProxy>? Session => _session;
 
-    public ConnectionState State { get; private set; }
+    public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
 
     public TServerProxy Proxy { get; private set; }
 
@@ -38,14 +37,13 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
         _hub = hub;
         _pingTimer = new Timer(PingTimer);
+        
     }
 
     public async Task ConnectAsync()
     {
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
-
-        State = ConnectionState.Connecting;
 
         var client = await _config.ConnectTransport();
 
@@ -89,6 +87,12 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
     private void PingTimer(object? state)
     {
+        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
+
+        // Check to see if we have timed out on receiving first.
+        if (_session?.DisconnectIfTimeout(timeoutTicks) == true)
+            return;
+
         _session?.SendHeader(MessageType.Ping);
     }
 
@@ -97,7 +101,6 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         //_receiveLoopThread = null;
         _pingTimer.Change(-1, -1);
         _session = null;
-        State = ConnectionState.Disconnected;
     }
 
     private void OnSent()

@@ -12,7 +12,7 @@ public interface IGeneratorContext
     LanguageVersion LanguageVersion { get; }
 }
 
-public static class GeneratorContextExtensions
+internal static class GeneratorContextExtensions
 {
     public static bool IsCSharp9OrGreater(this IGeneratorContext context)
     {

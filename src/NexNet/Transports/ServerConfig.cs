@@ -1,11 +1,10 @@
 ﻿using System;
-using System.IO.Pipelines;
-using System.Net.Sockets;
-using System.Threading.Tasks;
-using NexNet.Internals;
 
 namespace NexNet.Transports;
 
+/// <summary>
+/// Base configuration file for servers.
+/// </summary>
 public abstract class ServerConfig : ConfigBase
 {
     /// <summary>
@@ -16,22 +15,27 @@ public abstract class ServerConfig : ConfigBase
     /// </remarks>
     public int AcceptorBacklog { get; init; } = 20;
 
-
-    /// <summary>
-    /// If a client has not sent any message within this time frame,
-    /// including a ping, the client will be disconnected.
-    /// </summary>
-    public int ClientTimeout { get; init; } = 30_000;
-
     /// <summary>
     /// If a client hasn't sent a full "HelloMessage" within this time the client will be disconnected.
     /// </summary>
     public int HandshakeTimeout { get; init; } = 15_000;
 
+    /// <summary>
+    /// Set to true to authenticate teh client connection.
+    /// </summary>
     public bool Authenticate { get; set; } = false;
 
-    internal Action? InternalOnConnect;
+    /// <summary>
+    /// Creates the listener and starts.
+    /// </summary>
+    /// <returns>Listener interface.</returns>
+    protected abstract ITransportListener OnCreateServerListener();
 
-    public abstract ValueTask<ITransportBase> CreateTransport(Socket socket);
+    internal ITransportListener CreateServerListener()
+    {
+        return OnCreateServerListener();
+    }
+
+    internal Action? InternalOnConnect;
 
 }

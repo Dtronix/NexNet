@@ -7,17 +7,24 @@ namespace NexNet.Internals;
 
 internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 {
-    //private static readonly TaskCanceledException _tce = new TaskCanceledException();
     public int InvocationId { get; set; }
-    //public Sequence<byte> Sequence;
-    //public readonly MemoryPackWriterOptionalState OptionalState;
-    //public ManualResetAwaiterSource ResetEvent { get; } = new ManualResetAwaiterSource();
 
-    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); // Mutable struct, not readonly
+    // Mutable struct.
+    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); 
 
     public bool IsComplete { get; set; }
     public bool IsCanceled { get; set; }
+
+    public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
+
+    public InvocationProxyResultMessage Result { get; set; } = null!;
+
+    /// <summary>
+    /// Environment.Ticks when this state was instanced.
+    /// </summary>
+    public long Created { get; set; }
+
 
 
     public void Reset()
@@ -39,16 +46,24 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
         return true;
     }
 
-    public bool TrySetCanceled()
+    /// <summary>
+    /// Cancels the current pending invocation.
+    /// </summary>
+    /// <param name="notifyConnection">Set to true to send a notification that this invocation
+    /// has been canceled.  False to just cancel.</param>
+    /// <returns>True if the call succeeded.  False if the state has already been set.</returns>
+    public bool TrySetCanceled(bool notifyConnection)
     {
         if (IsComplete)
             return false;
         IsComplete = true;
         IsCanceled = true;
-
+        NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;
     }
+
+
 
     public bool TrySetException(Exception exception)
     {
@@ -72,14 +87,6 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     }
 
     bool IValueTaskSource<bool>.GetResult(short token) => _source.GetResult(token);
-
-    public InvocationProxyResultMessage Result { get; set; }
-
-    /// <summary>
-    /// Environment.Ticks when this state was instanced.
-    /// </summary>
-    public long Created { get; set; }
-
     public RegisteredInvocationState()
     {
         // Sequence = new Sequence<byte>(ArrayPool<byte>.Shared);

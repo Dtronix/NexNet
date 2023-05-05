@@ -6,5 +6,6 @@ public enum ConnectionState
     Connecting,
     Connected,
     Reconnecting,
-    Disconnected
+    Disconnected,
+    Disconnecting
 }

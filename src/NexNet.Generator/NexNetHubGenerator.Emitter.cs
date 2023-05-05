@@ -17,8 +17,7 @@ partial class NexNetHubGenerator
             return;
         }
 
-        var reference = new ReferenceSymbols(compilation);
-        var hubMeta = new HubMeta(typeSymbol, reference);
+        var hubMeta = new HubMeta(typeSymbol);
 
         // ReportDiagnostic when validate failed.
         if (!hubMeta.Validate(syntax, context))

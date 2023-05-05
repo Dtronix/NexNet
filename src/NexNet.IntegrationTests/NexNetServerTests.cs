@@ -40,7 +40,11 @@ internal partial class NexNetServerTests : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        serverHub.OnConnectedEvent = async hub => tcs.SetResult();
+        serverHub.OnConnectedEvent = hub =>
+        {
+            tcs.SetResult();
+            return ValueTask.CompletedTask;
+        };
 
         server.Start();
 
@@ -51,8 +55,9 @@ internal partial class NexNetServerTests : BaseTests
 
 
     //[Test]
-    //[TestCase(Type.Uds)]
-    //[TestCase(Type.Tcp)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
@@ -70,7 +75,7 @@ internal partial class NexNetServerTests : BaseTests
 
             server.Stop();
 
-            await Task.Delay(500);
+            await Task.Delay(100);
 
             // Wait for the client to process the disconnect.
 

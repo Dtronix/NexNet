@@ -83,7 +83,7 @@ internal class SessionInvocationStateManager
             {
                 //Console.WriteLine("Canceled");
                 var state = (RegisteredInvocationState)arg!;
-                state.TrySetCanceled();
+                state.TrySetCanceled(true);
             }
 
             cancellationToken.Value.Register(Callback, state);
@@ -114,6 +114,8 @@ internal class SessionInvocationStateManager
     public void CancelAll()
     {
         foreach (var invocationState in _invocationStates)
-            invocationState.Value.TrySetCanceled();
+            invocationState.Value.TrySetCanceled(false);
+
+        _invocationStates.Clear();
     }
 }

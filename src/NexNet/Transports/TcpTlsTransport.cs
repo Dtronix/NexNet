@@ -1,47 +1,49 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
 
 namespace NexNet.Transports;
 
-internal class TcpTlsTransport : ITransportBase
+internal class TcpTlsTransport : ITransport
 {
     private readonly NetworkStream _networkStream;
     private readonly SslStream _sslStream;
+    private readonly Socket _socket;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
-
-    public Socket Socket { get; }
 
     private TcpTlsTransport(Socket socket, NetworkStream networkStream, SslStream sslStream)
     {
         _networkStream = networkStream;
         _sslStream = sslStream;
-        Socket = socket;
+        _socket = socket;
         Input = PipeReader.Create(sslStream);
         Output = PipeWriter.Create(sslStream);
     }
 
-
-    public void Dispose()
+    public void Close(bool linger)
     {
+        if (!linger)
+        {
+            _socket.LingerState = new LingerOption(true, 0);
+            _socket.Close(0);
+            return;
+        }
+
         _sslStream.Dispose();
         _networkStream.Dispose();
-        Socket.Dispose();
+        _socket.Close();
     }
 
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static async ValueTask<ITransportBase> CreateFromSocket(Socket socket, TcpTlsServerConfig config)
+    public static async ValueTask<ITransport> CreateFromSocket(Socket socket, TcpTlsServerConfig config)
     {
         var networkStream = new NetworkStream(socket, false);
         var sslStream = new SslStream(networkStream, true);
@@ -57,11 +59,11 @@ internal class TcpTlsTransport : ITransportBase
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static async ValueTask<ITransportBase> ConnectAsync(TcpTlsClientConfig clientConfig)
+    public static async ValueTask<ITransport> ConnectAsync(TcpTlsClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
     {
         using var timeoutCancellation = new CancellationTokenSource(clientConfig.ConnectionTimeout);
 
-        var socket = new Socket(clientConfig.SocketAddressFamily, clientConfig.SocketType, clientConfig.SocketProtocolType);
+        var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
 
         try
         {
@@ -82,7 +84,7 @@ internal class TcpTlsTransport : ITransportBase
         {
             throw;
         }
-        catch (Exception e)
+        catch (Exception)
         {
             throw new SocketException((int)SocketError.NotConnected);
         }

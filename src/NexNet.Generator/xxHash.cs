@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 namespace NexNet.Generator;
 
 /// <summary>Represents the xxHash32 implementation. This class cannot be derived.</summary>
-public sealed class XxHash32
+internal sealed class XxHash32
 {
     private const UInt32 P1 = 0x9E3779B1u;
     private const UInt32 P2 = 0x85EBCA77u;
