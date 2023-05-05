@@ -1,42 +1,51 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Pipelines;
-using System.Linq;
+using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
 
 namespace NexNet.Transports;
 
-internal class SocketTransport : ITransportBase
+internal class SocketTransport : ITransport
 {
     private readonly SocketConnection _socketConnection;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
 
-    public Socket Socket { get; }
+    private readonly Socket _socket;
 
     private SocketTransport(SocketConnection socketConnection)
     {
         _socketConnection = socketConnection;
-        Socket = socketConnection.Socket;
+        _socket = socketConnection.Socket;
         Input = socketConnection.Input;
         Output = socketConnection.Output;
+    }
+
+    public void Close(bool linger)
+    {
+        if (!linger)
+        {
+            _socket.LingerState = new LingerOption(true, 0);
+            _socket.Close(0);
+            return;
+        }
+
+        _socketConnection.Dispose();
     }
 
 
     public void Dispose()
     {
-        _socketConnection.Dispose();
+        Close(true);
     }
 
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static ValueTask<ITransportBase> CreateFromSocket(Socket socket, ServerConfig config)
+    public static ValueTask<ITransport> CreateFromSocket(Socket socket, ServerConfig config)
     {
         var pipe = SocketConnection.Create(
             socket,
@@ -44,15 +53,16 @@ internal class SocketTransport : ITransportBase
             config.ReceivePipeOptions,
             SocketConnectionOptions.InlineConnect | SocketConnectionOptions.InlineReads | SocketConnectionOptions.InlineWrites);
 
-        return ValueTask.FromResult((ITransportBase)new SocketTransport(pipe));
+        return ValueTask.FromResult((ITransport)new SocketTransport(pipe));
     }
 
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static async ValueTask<ITransportBase> ConnectAsync(ClientConfig clientConfig)
+    /// 
+    public static async ValueTask<ITransport> ConnectAsync(ClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
     {
-        var socket = new Socket(clientConfig.SocketAddressFamily, clientConfig.SocketType, clientConfig.SocketProtocolType);
+        var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
 
         SocketConnection.SetRecommendedClientOptions(socket);
 
@@ -64,7 +74,7 @@ internal class SocketTransport : ITransportBase
 
         using (var args = new SocketAwaitableEventArgs(null))
         {
-            args.RemoteEndPoint = clientConfig.SocketEndPoint;
+            args.RemoteEndPoint = endPoint;
 
             try
             {
@@ -119,4 +129,5 @@ internal class SocketTransport : ITransportBase
 
         return new SocketTransport(connection);
     }
+
 }

@@ -2,3 +2,4 @@
 /tools/certgen/*.crt
 /tools/certgen/*.csr
 /tools/certgen/*.pfx
+artifacts

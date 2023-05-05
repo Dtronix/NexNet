@@ -1,8 +1,6 @@
-﻿using System.IO.Pipelines;
-using NexNet.Cache;
+﻿using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Transports;
-using Pipelines.Sockets.Unofficial;
 
 namespace NexNet.Internals;
 
@@ -12,7 +10,7 @@ internal readonly struct NexNetSessionConfigurations<THub, TProxy>
 {
     public required ConfigBase Configs { get; init; }
 
-    public required ITransportBase Transport { get; init; }
+    public required ITransport Transport { get; init; }
 
     public required SessionCacheManager<TProxy> Cache { get; init; }
 

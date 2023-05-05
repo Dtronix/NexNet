@@ -34,8 +34,11 @@ jobs:
     - name: Execute unit tests
       run: dotnet test src/NexNet.IntegrationTests -c Release
       
-    - name: Pack
+    - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts
+      
+    - name: Pack NexNet.Generator
+      run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
       
     - name: Export artifacts
       uses: actions/upload-artifact@v2

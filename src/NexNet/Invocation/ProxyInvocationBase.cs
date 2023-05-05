@@ -253,14 +253,21 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
             if (state.IsCanceled)
             {
-                var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
-                message.InvocationId = state.InvocationId;
-                _session?.SendHeaderWithBody(message);
-                CacheManager.InvocationCancellationRequestDeserializer.Return(message);
+                if (state.NotifyConnection)
+                {
+                    var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
+                    message.InvocationId = state.InvocationId;
+                    _session?.SendHeaderWithBody(message);
+                    CacheManager.InvocationCancellationRequestDeserializer.Return(message);
+                }
 
                 ReturnState(state);
-                return default;
+                throw new TaskCanceledException();
             }
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
         }
         catch (Exception e)
         {

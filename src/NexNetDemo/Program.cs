@@ -14,7 +14,6 @@ namespace NexNetDemo;
 partial interface IClientHub
 {
     void Update();
-    //void UpdateData(string data);
     ValueTask<int> GetTask();
     ValueTask<int> GetTaskAgain();
 }
@@ -53,17 +52,17 @@ partial class ClientHub
         //Console.WriteLine(i++);
         return ValueTask.FromResult(i);
     }
-    public async ValueTask<int> GetTaskAgain()
+    public ValueTask<int> GetTaskAgain()
     {
-        return Interlocked.Increment(ref i);
+        return ValueTask.FromResult(Interlocked.Increment(ref i));
     }
 
     protected override async ValueTask OnConnected(bool isReconnected)
     {
-        for (int j = 0; j < 50000; j++)
+        for (int j = 0; j < 10000; j++)
         {
   
-            switch (Random.Shared.Next(4, 5))
+            switch (Random.Shared.Next(0, 5))
             {
                 case 0:
                     //Console.WriteLine("ServerVoid()");
@@ -116,45 +115,51 @@ partial class ServerHub : IServerHub
     private int i = 0;
     public void ServerVoid()
     {
-        //Console.WriteLine(i++ + ") ServerVoid()");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + ") ServerVoid()");
     }
 
     public void ServerVoidWithParam(int id)
     {
-        //Console.WriteLine(i++ + $") ServerVoidWithParam({id})");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerVoidWithParam({id})");
     }
 
     public ValueTask ServerTask()
     {
-        //Console.WriteLine(i++ + $") ServerTask()");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTask()");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask ServerTaskWithParam(int data)
     {
-        //Console.WriteLine(i++ + $") ServerTaskWithParam({data})");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskWithParam({data})");
         return ValueTask.CompletedTask;
     }
 
     public ValueTask<int> ServerTaskValue()
     {
-        //Console.WriteLine(i++ + $") ServerTaskValue()");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskValue()");
         return ValueTask.FromResult(i);
     }
 
     public ValueTask<int> ServerTaskValueWithParam(int data)
     {
-
-        //Console.WriteLine(i++ + $") ServerTaskValueWithParam({data})");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskValueWithParam({data})");
         return ValueTask.FromResult(i);
     }
 
     public async ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken)
     {
-        //Console.WriteLine(i++ + $") ServerTaskWithCancellation(CancellationToken)");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
@@ -164,10 +169,11 @@ partial class ServerHub : IServerHub
 
     public async ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken)
     {
-        //Console.WriteLine(i++ + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
@@ -177,36 +183,38 @@ partial class ServerHub : IServerHub
 
     public async ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken)
     {
-        //Console.WriteLine(i++ + $") ServerTaskWithCancellation(CancellationToken)");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
             throw;
         }
 
-        return i;
+        return i2;
     }
 
     public async ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
     {
-        //Console.WriteLine(i++ + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
+        var i2 = Interlocked.Increment(ref i);
+        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
         try
         {
-            //await Task.Delay(10, cancellationToken);
+            await Task.Delay(10, cancellationToken);
         }
         catch (TaskCanceledException e)
         {
             throw;
         }
-        return i;
+        return i2;
     }
 
-    protected override async ValueTask OnConnected(bool isReconnected)
+    protected override ValueTask OnConnected(bool isReconnected)
     {
-
+        return ValueTask.CompletedTask;
     }
 }
 
@@ -238,17 +246,17 @@ internal class Program
         {
             builder.AddFilter(level => true).AddConsole();
         });
-        /*
+        
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
-        };*/
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
+        };
         /*
         var serverConfig = new TcpServerConfig()
         {
@@ -260,22 +268,7 @@ internal class Program
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
             //Logger = loggerFactory.CreateLogger("CL")
         };
-        // Describe certificate
-        string subject = "CN=localhost,CN=127.0.0.1";
-        var curve = ECDsa.Create(ECCurve.NamedCurves.nistP521);
-
-        // Create certificate request
-        var certificateRequest = new CertificateRequest(
-            subject, 
-            curve,
-            HashAlgorithmName.SHA256
-        );
-
-
-        var certificate = certificateRequest.CreateSelfSigned(DateTimeOffset.Now.AddYears(-1), DateTimeOffset.Now.AddYears(10));
-        */
-        //await File.WriteAllBytesAsync("server.pfx", certificate.Export(X509ContentType.Pfx));
-
+        *//*
         var serverConfig = new TcpTlsServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
@@ -301,7 +294,7 @@ internal class Program
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
             }
         };
-
+        */
 
         var server = ServerHub.CreateServer(serverConfig, () => new ServerHub());
 
@@ -318,12 +311,6 @@ internal class Program
             //Console.WriteLine(e);
             throw;
         }
-
-
-        await Task.Delay(3000);
-
-        //server.Stop();
-
 
         Console.ReadLine();
         
