@@ -1,4 +1,6 @@
-﻿namespace NexNet.IntegrationTests.TestInterfaces;
+﻿using NexNet.Messages;
+
+namespace NexNet.IntegrationTests.TestInterfaces;
 
 public partial interface IClientHub
 {
@@ -108,7 +110,7 @@ public partial class ClientHub
         return OnConnectedEvent.Invoke(this, isReconnected);
     }
 
-    protected override ValueTask OnDisconnected(DisconnectReasonException exception)
+    protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
         DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)
@@ -204,7 +206,7 @@ public partial class ServerHub
         return OnConnectedEvent.Invoke(this);
     }
 
-    protected override ValueTask OnDisconnected(DisconnectReasonException exception)
+    protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
         DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)

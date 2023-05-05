@@ -306,10 +306,10 @@ internal partial class NexNetClientTests : BaseTests
 
     private async Task InvokeFromClientAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<NexNetClient<ClientHub, ServerHubProxyImpl>> action)
     {
-        var clientConfig = CreateClientConfig(type, false);
+        var clientConfig = CreateClientConfig(type, true);
         var tcs = new TaskCompletionSource();
         var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, false),
+            CreateServerConfig(type, true),
             clientConfig);
 
         server.Start();

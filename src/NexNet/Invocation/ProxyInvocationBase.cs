@@ -5,10 +5,12 @@ using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
-using static NexNet.Messages.InvocationProxyResultMessage;
 
 namespace NexNet.Invocation;
 
+/// <summary>
+/// Base for proxy invocations and handling of return and cancellations.
+/// </summary>
 public abstract class ProxyInvocationBase : IProxyInvoker
 {
 
@@ -16,7 +18,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private ProxyInvocationMode _mode;
     private long[]? _modeClientArguments;
     private string[]? _modeGroupArguments;
-    private INexNetSession _session;
+    private INexNetSession _session = null!;
     
 
     internal CacheManager CacheManager
@@ -35,6 +37,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
         switch (mode)
         {
+            case ProxyInvocationMode.Client:
+                _modeClientArguments = Unsafe.As<long[]>(modeArguments!);
+                break;
+
             case ProxyInvocationMode.Clients:
                 _modeClientArguments = Unsafe.As<long[]>(modeArguments!);
                 break;
@@ -42,11 +48,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             case ProxyInvocationMode.AllExcept:
                 _modeClientArguments = Unsafe.As<long[]>(modeArguments!);
                 break;
-
-            //case ProxyInvocationMode.Client:
-            //    _modeClientArguments = Unsafe.As<long[]>(modeArguments!);
-            //    break;
-            //
+            
             //case ProxyInvocationMode.Group:
             //    _modeGroupArguments = Unsafe.As<string[]>(modeArguments!);
             //    break;
@@ -73,7 +75,14 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
 
-
+    /// <summary>
+    /// Invokes the specified method on the connected session and waits until the message has been completely sent.
+    /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
+    /// </summary>
+    /// <param name="methodId">Method ID to invoke.</param>
+    /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
+    /// <returns>Task which returns when the invocations messages have been issued.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
     protected async ValueTask InvokeMethod(ushort methodId, byte[]? arguments)
     {
         var message = _cacheManager.InvocationRequestDeserializer.Rent();
@@ -91,10 +100,18 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.All:
             {
-                foreach (var (id, session) in _session.SessionManager!.Sessions)
+                foreach (var (_, session) in _session.SessionManager!.Sessions)
                 {
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId();
-                    await session.SendHeaderWithBody(message);
+                    try
+                    {
+                        await session.SendHeaderWithBody(message);
+                    }
+                    catch
+                    {
+                        // Don't care if we can't invoke on another session here.
+                    }
+
                 }
 
                 break;
@@ -106,35 +123,68 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     if (id == _session.Id)
                         continue;
 
-                    await session.SendHeaderWithBody(message);
+                    try
+                    {
+                        await session.SendHeaderWithBody(message);
+                    }
+                    catch
+                    {
+                        // Don't care if we can't invoke on another session here.
+                    }
                 }
 
                 break;
             }
+
+
             case ProxyInvocationMode.Clients:
             {
-                for (int i = 0; i < _modeClientArguments.Length; i++)
+                for (int i = 0; i < _modeClientArguments!.Length; i++)
                 {
                     if (_session.SessionManager!.Sessions.TryGetValue(_modeClientArguments[i], out var session))
-                        await session.SendHeaderWithBody(message);
+                        try
+                        {
+                            await session.SendHeaderWithBody(message);
+                        }
+                        catch
+                        {
+                            // Don't care if we can't invoke on another session here.
+                        }
                 }
 
                 break;
             }
-            //case ProxyInvocationMode.Client:
-            //{
-            //    if (_sessionManager!.Sessions.TryGetValue(_modeClientArguments[0], out var session))
-            //        session.Channel.SendHeaderWithBody(message);
-            //    break;
-            //}
+            case ProxyInvocationMode.Client:
+            {
+                if (_session.SessionManager!.Sessions.TryGetValue(_modeClientArguments![0], out var session))
+                {
+                    try
+                    {
+                        await session.SendHeaderWithBody(message);
+                    }
+                    catch
+                    {
+                        // Don't care if we can't invoke on another session here.
+                    }
+                }
+
+                break;
+            }
             case ProxyInvocationMode.AllExcept:
             {
                 foreach (var (id, session) in _session.SessionManager!.Sessions)
                 {
-                    if (id == _modeClientArguments[0])
+                    if (id == _modeClientArguments![0])
                         continue;
 
-                    await session.SendHeaderWithBody(message);
+                    try
+                    {
+                        await session.SendHeaderWithBody(message);
+                    }
+                    catch
+                    {
+                        // Don't care if we can't invoke on another session here.
+                    }
                 }
 
                 break;
@@ -147,11 +197,18 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    break;
             case ProxyInvocationMode.Groups:
             {
-                for (int i = 0; i < _modeGroupArguments.Length; i++)
+                for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
                     await _session.SessionManager!.GroupChannelIterator(_modeGroupArguments[i], static async (session, message) =>
                     {
-                        await session.SendHeaderWithBody(message);
+                        try
+                        {
+                            await session.SendHeaderWithBody(message);
+                        }
+                        catch
+                        {
+                            // Don't care if we can't invoke on another session here.
+                        }
                     }, message);
                 }
 
@@ -174,82 +231,112 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         _cacheManager.RegisteredInvocationStateCache.Return(state);
     }
 
+    /// <summary>
+    /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
+    /// and waits the the completion of the invocation.
+    /// </summary>
+    /// <param name="methodId">Method ID to invoke.</param>
+    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
+    /// <returns>ValueTask which completes upon remote invocation completion.</returns>
+    /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
+    /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
     protected async ValueTask InvokeWaitForResult(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        // If we are invoking on multiple sessions, then we are not going to wait
-        // on the results on this proxy invocation.
-        if (_mode != ProxyInvocationMode.Caller)
-        {
-            await InvokeMethod(methodId, arguments);
-            return;
-        }
-
-        var state = await _session.SessionInvocationStateManager.InvokeMethodWithResultCore(methodId, arguments, _session, cancellationToken);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
 
         if (state == null)
             return;
 
-        try
+        var messageState = state.Result.State;
+        ReturnState(state);
+
+        switch (messageState)
         {
-            if (cancellationToken?.IsCancellationRequested == true)
+            case InvocationProxyResultMessage.StateType.CompletedResult:
                 return;
 
-            await new ValueTask<bool>(state, state.Version);
+            case InvocationProxyResultMessage.StateType.Exception:
+                throw new ProxyRemoteInvocationException();
 
-            if (state.IsCanceled)
-            {
-                var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
-                message.InvocationId = state.InvocationId;
-                _session?.SendHeaderWithBody(message);
-                CacheManager.InvocationCancellationRequestDeserializer.Return(message);
-
-                ReturnState(state);
-                return;
-            }
-
+            default:
+                throw new InvalidOperationException($"Unknown state {messageState}");
         }
-        catch (Exception e)
-        {
-            //noop
-        }
+    }
+
+    /// <summary>
+    /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token,
+    /// waits the the completion of the invocation and returns the value of the invocation.
+    /// </summary>
+    /// <typeparam name="TReturn">Expected type to be returned by the remote invocation proxy.</typeparam>
+    /// <param name="methodId">Method ID to invoke.</param>
+    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
+    /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
+    /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
+    /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
+    protected async ValueTask<TReturn?> InvokeWaitForResult<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    {
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
+
+        if (state == null)
+            return default;
 
         switch (state.Result.State)
         {
-            case StateType.CompletedResult:
-                return;
+            case InvocationProxyResultMessage.StateType.CompletedResult:
+                var result = state.Result.GetResult<TReturn>();
+                ReturnState(state);
+                return result;
 
-            case StateType.Exception:
+            case InvocationProxyResultMessage.StateType.Exception:
+                ReturnState(state);
                 throw new ProxyRemoteInvocationException();
-                break;
 
             default:
+                ReturnState(state);
                 throw new InvalidOperationException($"Unknown state {state.Result.State}");
         }
-
-        ReturnState(state);
     }
 
-    protected async ValueTask<TReturn?> InvokeWaitForResult<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
+        ushort methodId, 
+        byte[]? arguments,
+        CancellationToken? cancellationToken = null)
     {
         // If we are invoking on multiple sessions, then we are not going to wait
         // on the results on this proxy invocation.
-        if (_mode != ProxyInvocationMode.Caller)
+        if (_mode != ProxyInvocationMode.Caller && _mode != ProxyInvocationMode.Client)
         {
             await InvokeMethod(methodId, arguments);
-            return default;
+            return null;
         }
 
-        var state = await _session.SessionInvocationStateManager.InvokeMethodWithResultCore(methodId, arguments, _session, cancellationToken);
+        var session = _session;
+        if (_mode == ProxyInvocationMode.Client)
+        {
+            _session.SessionManager!.Sessions.TryGetValue(_modeClientArguments![0], out session);
+
+            if (session == null)
+                throw new InvalidOperationException(
+                    $"Can't invoke on client {_modeClientArguments![0]} as it does not exist.");
+        }
+
+        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(methodId, arguments, session,
+            cancellationToken);
 
         if (state == null)
-            return default;
+            return null;
 
         try
         {
             if (cancellationToken?.IsCancellationRequested == true)
-                return default;
+            {
+                ReturnState(state);
+                return null;
+            }
 
-            await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
+            await new ValueTask<bool>(state, state.Version);
 
             if (state.IsCanceled)
             {
@@ -257,41 +344,24 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 {
                     var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
                     message.InvocationId = state.InvocationId;
-                    _session?.SendHeaderWithBody(message);
+                    await session.SendHeaderWithBody(message);
                     CacheManager.InvocationCancellationRequestDeserializer.Return(message);
                 }
 
                 ReturnState(state);
                 throw new TaskCanceledException();
             }
+
         }
         catch (TaskCanceledException)
         {
             throw;
         }
-        catch (Exception e)
+        catch (Exception)
         {
             //noop
         }
 
-        switch (state.Result.State)
-        {
-            case StateType.CompletedResult:
-                var result = state.Result.GetResult<TReturn>();
-                ReturnState(state);
-                return result;
-
-            case StateType.Exception:
-                ReturnState(state);
-                throw new ProxyRemoteInvocationException();
-                break;
-
-            default:
-                ReturnState(state);
-                throw new InvalidOperationException($"Unknown state {state.Result.State}");
-        }
-
-        return default;
-
+        return state;
     }
 }

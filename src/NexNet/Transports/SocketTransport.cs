@@ -70,9 +70,7 @@ internal class SocketTransport : ITransport
                                 | SocketConnectionOptions.InlineReads
                                 | SocketConnectionOptions.InlineWrites;
 
-        //using (var args = new SocketAwaitableEventArgs((connectionOptions & SocketConnectionOptions.InlineConnect) == 0 ? PipeScheduler.ThreadPool : null))
-
-        using (var args = new SocketAwaitableEventArgs(null))
+        using (var args = new SocketAwaitableEventArgs())
         {
             args.RemoteEndPoint = endPoint;
 
@@ -86,10 +84,6 @@ internal class SocketTransport : ITransport
                     {
                         await Task.Delay(clientConfig.ConnectionTimeout, timeoutCancellation.Token);
                         socket.Close(0);
-                    }
-                    catch (TaskCanceledException e)
-                    {
-                        return;
                     }
                     catch
                     {
@@ -109,11 +103,11 @@ internal class SocketTransport : ITransport
 
                 timeoutCancellation.Cancel();
             }
-            catch (SocketException e)
+            catch (SocketException)
             {
                 throw;
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 throw new SocketException((int)SocketError.NotConnected);
             }
@@ -124,8 +118,7 @@ internal class SocketTransport : ITransport
             socket,
             clientConfig.SendPipeOptions,
             clientConfig.ReceivePipeOptions,
-            connectionOptions,
-            null);
+            connectionOptions);
 
         return new SocketTransport(connection);
     }

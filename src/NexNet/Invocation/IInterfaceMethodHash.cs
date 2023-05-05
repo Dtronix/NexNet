@@ -1,5 +1,8 @@
 ﻿namespace NexNet.Invocation;
 
+/// <summary>
+/// Interface for registering hashes of public methods.
+/// </summary>
 public interface IInterfaceMethodHash
 {
     /// <summary>

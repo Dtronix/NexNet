@@ -4,6 +4,10 @@ using NexNet.Messages;
 
 namespace NexNet.Invocation;
 
+/// <summary>
+/// Base context for hubs to use.
+/// </summary>
+/// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
 public abstract class SessionContext<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
@@ -30,7 +34,7 @@ public abstract class SessionContext<TProxy>
     /// </summary>
     public void Disconnect()
     {
-        Session.DisconnectAsync(DisconnectReason.DisconnectFromHub);
+        Session.DisconnectAsync(DisconnectReason.Graceful);
     }
 
     internal abstract void Reset();

@@ -152,19 +152,22 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
                 {
 
 """);
-            HubInterface.Methods[i].EmitHubInvocation(sb);
+            HubInterface.Methods[i].EmitHubInvocation(sb, this.ProxyInterface);
             sb.AppendLine("""
                     break;
                 }
 """);
         }
-        sb.AppendLine("""
+        sb.AppendLine($$"""
             }
         }
         finally
         {
             if(cts!= null)
-                ReturnCancellationToken(message.InvocationId);
+            {
+                var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.ProxyInterface.ProxyImplNameWithNamespace}}>>(this);
+                methodInvoker.ReturnCancellationToken(message.InvocationId);
+            }
         }
 
     }
@@ -178,11 +181,12 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
 
 partial class MethodMeta
 {
-    public void EmitHubInvocation(StringBuilder sb)
+    public void EmitHubInvocation(StringBuilder sb, InvocationInterfaceMeta proxyImplementation)
     {
         if (CancellationTokenParameter != null)
         {
-            sb.AppendLine("                    cts = RegisterCancellationToken(message.InvocationId);");
+            sb.AppendLine($"                    var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{proxyImplementation.ProxyImplNameWithNamespace}>>(this);");
+            sb.AppendLine("                    cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
         }
         if (ParametersLessCancellation.Length > 0)
         {

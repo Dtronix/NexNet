@@ -3,7 +3,7 @@
 namespace NexNet.Messages;
 
 [MemoryPackable]
-public partial class ClientGreetingMessage : IMessageBodyBase
+internal partial class ClientGreetingMessage : IMessageBodyBase
 {
     public static MessageType Type { get; } = MessageType.GreetingClient;
 

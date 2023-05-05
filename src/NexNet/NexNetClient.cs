@@ -8,7 +8,11 @@ using NexNet.Internals;
 using NexNet.Invocation;
 
 namespace NexNet;
-
+/// <summary>
+/// Main client class which facilitates the communication with a matching NexNet server.
+/// </summary>
+/// <typeparam name="TClientHub">Hub  used by this client for incoming invocation handling.</typeparam>
+/// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     where TClientHub : ClientHubBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInterfaceMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
@@ -22,12 +26,26 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
     internal NexNetSession<TClientHub, TServerProxy>? Session => _session;
 
+    /// <summary>
+    /// Current state of the connection
+    /// </summary>
     public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
 
+    /// <summary>
+    /// Proxy used for invoking remote methods on the server.
+    /// </summary>
     public TServerProxy Proxy { get; private set; }
 
+    /// <summary>
+    /// Configurations used for this session.  Should not be changed once connection has been established.
+    /// </summary>
     public ClientConfig Config => _config;
 
+    /// <summary>
+    /// Creates a NexNet client for communication with a matching NexNet server.
+    /// </summary>
+    /// <param name="config">Configurations for this client.</param>
+    /// <param name="hub">Hub used for handling incoming invocations.</param>
     public NexNetClient(ClientConfig config, TClientHub hub)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -40,6 +58,11 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         
     }
 
+    /// <summary>
+    /// Connects to the server.
+    /// </summary>
+    /// <returns>Task for completion</returns>
+    /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
     public async Task ConnectAsync()
     {
         if (_session != null)
@@ -72,14 +95,23 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     }
 
 
+    /// <summary>
+    /// Disconnects from the server.
+    /// </summary>
+    /// <returns>Task which completes upon disconnection.</returns>
     public Task DisconnectAsync()
     {
         if (_session == null)
             return Task.CompletedTask;
 
-        return _session.DisconnectAsync(DisconnectReason.DisconnectGraceful);
+        return _session.DisconnectAsync(DisconnectReason.Graceful);
     }
 
+    /// <summary>
+    /// Disposes the client and disconnects if the client is connected to a server.
+    /// Same as <see cref="DisconnectAsync"/>.
+    /// </summary>
+    /// <returns></returns>
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync();

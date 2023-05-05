@@ -8,6 +8,10 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Invocation;
 
+/// <summary>
+/// Base hub with common methods used between server and client.
+/// </summary>
+/// <typeparam name="TProxy">Proxy type for the session.</typeparam>
 public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
@@ -19,6 +23,18 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     // ReSharper disable once StaticMemberInGenericType
     private static readonly ConcurrentBag<BufferWriter<byte>> _bufferWriters = new ConcurrentBag<BufferWriter<byte>>();
 
+    /// <summary>
+    /// Disposes the hub and releases all the resources associated with it.
+    /// </summary>
+    void IDisposable.Dispose()
+    {
+        foreach (var cancellationTokenSource in _cancellableInvocations)
+        {
+            _cancellableInvocations.TryRemove(cancellationTokenSource);
+            cancellationTokenSource.Value.Dispose();
+        }
+    }
+
     ValueTask IMethodInvoker<TProxy>.InvokeMethod(InvocationRequestMessage requestMessage)
     {
         var args = InvokeMethodCoreArgs.Get();
@@ -27,6 +43,71 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         args.InvokeMethodCore = InvokeMethodCore;
         return InvokeMethodCoreTask(args);
     }
+
+    CancellationTokenSource IMethodInvoker<TProxy>.RegisterCancellationToken(int invocationId)
+    {
+        var cts = SessionContext.CacheManager.CancellationTokenSourceCache.Rent();
+
+        _cancellableInvocations.TryAdd(invocationId, cts);
+        return cts;
+    }
+
+    void IMethodInvoker<TProxy>.ReturnCancellationToken(int invocationId)
+    {
+        if (!_cancellableInvocations.TryRemove(invocationId, out var cts))
+            return;
+
+        // Try to reset the cts for another operation.
+        SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
+    }
+
+
+    void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationRequestMessage message)
+    {
+        if (!_cancellableInvocations.TryRemove(message.InvocationId, out var cts))
+            return;
+
+        cts.Cancel();
+    }
+
+    /// <summary>
+    /// Method used to invoke 
+    /// </summary>
+    /// <param name="message"></param>
+    /// <param name="returnBuffer"></param>
+    /// <returns></returns>
+    protected abstract ValueTask InvokeMethodCore(InvocationRequestMessage message, IBufferWriter<byte>? returnBuffer);
+   
+    /// <summary>
+    /// Invoked when a hub has it's connection established and ready for usage.
+    /// </summary>
+    /// <param name="isReconnected">True if the connection has been re-established after it has been lost.</param>
+    /// <returns></returns>
+    protected virtual ValueTask OnConnected(bool isReconnected)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// Invoked when the hub has been disconnected.
+    /// </summary>
+    /// <param name="reason">Reason for the disconnection.</param>
+    /// <returns></returns>
+    protected virtual ValueTask OnDisconnected(DisconnectReason reason)
+    {
+        return ValueTask.CompletedTask;
+    }
+
+    internal ValueTask Connected(bool isReconnected)
+    {
+        return OnConnected(isReconnected);
+    }
+
+    internal void Disconnected(DisconnectReason reason)
+    {
+        OnDisconnected(reason);
+    }
+
 
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)
     {
@@ -62,7 +143,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
                 bufferResult = bufferWriter.Flush();
                 message.Result = bufferResult.Value;
             }
-            
+
             message.State = InvocationProxyResultMessage.StateType.CompletedResult;
             await context.Session.SendHeaderWithBody(message).ConfigureAwait(false);
             bufferResult?.Dispose();
@@ -93,67 +174,6 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         }
     }
 
-    protected CancellationTokenSource RegisterCancellationToken(int invocationId)
-    {
-        var cts = SessionContext.CacheManager.CancellationTokenSourceCache.Rent();
-
-        _cancellableInvocations.TryAdd(invocationId, cts);
-        return cts;
-    }
-
-    protected void ReturnCancellationToken(int invocationId)
-    {
-        if (!_cancellableInvocations.TryRemove(invocationId, out var cts))
-            return;
-
-        // Try to reset the cts for another operation.
-        SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
-    }
-
-
-    void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationRequestMessage message)
-    {
-        if (!_cancellableInvocations.TryRemove(message.InvocationId, out var cts))
-            return;
-
-        cts.Cancel();
-    }
-
-    /// <summary>
-    /// Method used to invoke 
-    /// </summary>
-    /// <param name="message"></param>
-    /// <param name="returnBuffer"></param>
-    /// <returns></returns>
-    protected abstract ValueTask InvokeMethodCore(InvocationRequestMessage message, IBufferWriter<byte>? returnBuffer);
-    protected virtual ValueTask OnConnected(bool isReconnected)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    protected virtual ValueTask OnDisconnected(DisconnectReasonException exception)
-    {
-        return ValueTask.CompletedTask;
-    }
-
-    internal ValueTask Connected(bool isReconnected)
-    {
-        return OnConnected(isReconnected);
-    }
-
-    internal void Disconnected(DisconnectReasonException exception)
-    {
-        OnDisconnected(exception);
-    }
-
-    public void Dispose()
-    {
-        foreach (var cancellationTokenSource in _cancellableInvocations)
-        {
-            _cancellableInvocations.TryRemove(cancellationTokenSource);
-            cancellationTokenSource.Value.Dispose();
-        }
-    }
     private class InvokeMethodCoreArgs
     {
         private static readonly ConcurrentBag<InvokeMethodCoreArgs> _cache = new();

@@ -41,7 +41,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private readonly SemaphoreSlim _invocationSemaphore;
     private readonly bool _isServer;
-    private bool _isReconnected = false;
+    private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
 
@@ -128,7 +128,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.TransportError, false);
+            await DisconnectCore(DisconnectReason.ProtocolError, false);
     }
 
     public async ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
@@ -163,7 +163,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.TransportError, false);
+            await DisconnectCore(DisconnectReason.ProtocolError, false);
     }
 
     public Task DisconnectAsync(DisconnectReason reason)
@@ -224,7 +224,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                         // If there is not a disconnect reason, then we disconnected for an unknown reason and should 
                         // be allowed to reconnect.
-                        await DisconnectCore(DisconnectReason.DisconnectSocketError, false);
+                        await DisconnectCore(DisconnectReason.SocketError, false);
                     }
                     return;
                 }
@@ -237,7 +237,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         catch (Exception ex)
         {
             _config.Logger?.LogError(ex, "Reading exited with exception.");
-            await DisconnectCore(DisconnectReason.DisconnectSocketError, false);
+            await DisconnectCore(DisconnectReason.SocketError, false);
         }
     }
 
@@ -261,7 +261,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                     var type = _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
                     position++;
-                    _config.Logger?.LogTrace($"Received {(MessageType)type} header.");
+                    _config.Logger?.LogTrace($"Received {type} header.");
 
                     // Header only messages
                     if ((byte)type >= 20 && (byte)type < 40)
@@ -317,13 +317,14 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         }
 
                         _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
+                        // ReSharper disable once RedundantJumpStatement
                         continue;
                     }
                     catch (Exception e)
                     {
-                        _config.Logger?.LogTrace($"Reset data due to transport error. {e.ToString()}");
+                        _config.Logger?.LogTrace($"Reset data due to transport error. {e}");
                         //_logger?.LogError(e, $"Could not parse message header with {bodyLength.Length} bytes.");
-                        disconnect = DisconnectReason.TransportError;
+                        disconnect = DisconnectReason.ProtocolError;
                         break;
                     }
                 }
@@ -363,17 +364,22 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                             break;
 
                         case MessageType.InvocationCancellationRequest:
-                            body = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice); ;
+                            body = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice);
                             break;
 
                         default:
                             _config.Logger?.LogError($"Deserialized type not recognized. {_recMessageHeader.Type}.");
-                            disconnect = DisconnectReason.TransportError;
+                            disconnect = DisconnectReason.ProtocolError;
                             break;
                     }
 
+                    // Used only when the header type is not recognized.
+                    if (disconnect != DisconnectReason.None)
+                        break;
+
                     _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
-                    disconnect = await MessageHandler(body!, _recMessageHeader.Type);
+                    disconnect = await MessageHandler(body!);
+
                     if (disconnect != DisconnectReason.None)
                     {
                         _config.Logger?.LogTrace($"Message could not be handled and disconnected with {disconnect}");
@@ -387,7 +393,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 {
                     _config.Logger?.LogTrace(e, "Could not deserialize body.");
                     //_logger?.LogError(e, $"Could not deserialize body..");
-                    disconnect = DisconnectReason.TransportError;
+                    disconnect = DisconnectReason.ProtocolError;
                     break;
                 }
 
@@ -401,7 +407,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     }
 
 
-    private async ValueTask<DisconnectReason> MessageHandler(IMessageBodyBase message, MessageType messageType)
+    private async ValueTask<DisconnectReason> MessageHandler(IMessageBodyBase message)
     {
         static async void InvokeOnConnected(object? sessionObj)
         {
@@ -416,17 +422,17 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         {
             // Verify that this is the server
             if (!_isServer)
-                return DisconnectReason.TransportError;
+                return DisconnectReason.ProtocolError;
 
             // Verify what the greeting method hashes matches this hub's and proxy's
             if (cGreeting.ServerHubMethodHash != THub.MethodHash)
             {
-                return DisconnectReason.DisconnectServerHubMismatch;
+                return DisconnectReason.ServerHubMismatch;
             }
 
             if (cGreeting.ClientHubMethodHash != TProxy.MethodHash)
             {
-                return DisconnectReason.DisconnectClientHubMismatch;
+                return DisconnectReason.ClientHubMismatch;
             }
 
             var serverConfig = Unsafe.As<ServerConfig>(_config);
@@ -440,7 +446,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                 // If the token is not good, disconnect.
                 if (Identity == null)
-                    return DisconnectReason.DisconnectAuthentication;
+                    return DisconnectReason.Authentication;
             }
 
             var serverGreeting = _cacheManager.ServerGreetingDeserializer.Rent();
@@ -453,11 +459,11 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
         }
-        else if (message is ServerGreetingMessage sGreeting)
+        else if (message is ServerGreetingMessage)
         {
             // Verify that this is the client
             if (_isServer)
-                return DisconnectReason.TransportError;
+                return DisconnectReason.ProtocolError;
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
@@ -511,7 +517,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         {
             // If we don't know what the message is, then disconnect the connection
             // as we have received invalid/unexpected data.
-            return DisconnectReason.DisconnectMessageParsingError;
+            return DisconnectReason.ProtocolError;
         }
 
         return DisconnectReason.None;
@@ -649,9 +655,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client
         if (_isServer == false
-            && reason == DisconnectReason.DisconnectSocketError
+            && reason == DisconnectReason.SocketError
             || reason == DisconnectReason.Timeout
-            || reason == DisconnectReason.DisconnectServerRestarting)
+            || reason == DisconnectReason.ServerRestarting)
         {
             // If we reconnect, stop the disconnection process.
             if (await TryReconnectAsClient())
@@ -660,7 +666,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         State = ConnectionState.Disconnected;
 
-        _hub.Disconnected(new DisconnectReasonException(reason, null));
+        _hub.Disconnected(reason);
         OnDisconnected?.Invoke();
 
         _sessionManager?.UnregisterSession(this);
@@ -668,9 +674,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _invocationTaskArgumentsPool.Clear();
     }
 
-    internal class InvocationTaskArguments
+    private class InvocationTaskArguments
     {
-        public InvocationRequestMessage Message { get; set; }
-        public NexNetSession<THub, TProxy> Session { get; set; }
+        public InvocationRequestMessage Message { get; set; } = null!;
+        public NexNetSession<THub, TProxy> Session { get; set; } = null!;
     }
 }

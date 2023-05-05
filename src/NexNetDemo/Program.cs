@@ -2,6 +2,7 @@
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
+using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -43,7 +44,6 @@ partial class ClientHub
     public void Update()
     {
         global::System.Int32 t = 25;
-
         //Console.WriteLine("ClientHub Update called and invoked properly.");
     }
 

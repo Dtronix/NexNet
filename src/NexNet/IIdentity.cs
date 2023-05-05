@@ -1,11 +1,23 @@
 ﻿namespace NexNet;
 
+/// <summary>
+/// Identity interface for the authentication process.
+/// </summary>
 public interface IIdentity
 {
-    string DisplayName { get; }
+    /// <summary>
+    /// Name used for referencing this connection.
+    /// </summary>
+    string? DisplayName { get; }
 }
 
+/// <summary>
+/// A simple default identity implementation
+/// </summary>
 public class DefaultIdentity : IIdentity
 {
-    public string DisplayName { get; set; }
+    /// <summary>
+    /// Name used for referencing this connection.
+    /// </summary>
+    public string? DisplayName { get; set; }
 }
