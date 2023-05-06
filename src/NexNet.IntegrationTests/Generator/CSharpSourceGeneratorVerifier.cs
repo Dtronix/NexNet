@@ -43,7 +43,7 @@ partial class ClientHub : IClientHub
 """); 
 
         /*
-        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
 namespace TestNamespace;
 interface IClientHub

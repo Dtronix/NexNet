@@ -70,7 +70,7 @@ internal class SessionInvocationStateManager
         message.InvocationId = GetNextId();
         message.MethodId = methodId;
         message.Arguments = arguments;
-        message.Flags = InvocationRequestMessage.InvocationFlags.None; 
+        message.Flags = InvocationFlags.None; 
 
         var state = _cacheManager.RegisteredInvocationStateCache.Rent();
 

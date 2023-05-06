@@ -19,8 +19,8 @@ public class BaseTests
         TcpTls
     }
 
-    private int _counter = 0;
-    private DirectoryInfo _socketDirectory;
+    private int _counter;
+    private DirectoryInfo? _socketDirectory;
     protected UnixDomainSocketEndPoint? CurrentPath;
     //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
@@ -38,7 +38,7 @@ public class BaseTests
     [OneTimeTearDown]
     public virtual void OneTimeTearDown()
     {
-        _socketDirectory.Delete(true);
+        _socketDirectory?.Delete(true);
         Trace.Flush();
     }
 
@@ -54,7 +54,7 @@ public class BaseTests
         if (type == Type.Uds)
         {
             CurrentPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory.FullName,
+                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
             return new UdsServerConfig()
@@ -93,7 +93,8 @@ public class BaseTests
                 },
             };
         }
-        return null;
+
+        throw new InvalidOperationException();
     }
 
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
@@ -102,7 +103,7 @@ public class BaseTests
         if (type == Type.Uds)
         {
             CurrentPath ??=
-                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory.FullName,
+                new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
             return new UdsClientConfig()
@@ -134,12 +135,12 @@ public class BaseTests
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,
-                    RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
+                    RemoteCertificateValidationCallback = (_, _, _, _) => true
                 }
             };
         }
 
-        return null;
+        throw new InvalidOperationException();
     }
 
 

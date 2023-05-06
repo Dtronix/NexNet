@@ -76,7 +76,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     /// <param name="message"></param>
     /// <param name="returnBuffer"></param>
     /// <returns></returns>
-    protected abstract ValueTask InvokeMethodCore(InvocationRequestMessage message, IBufferWriter<byte>? returnBuffer);
+    protected abstract ValueTask InvokeMethodCore(IInvocationRequestMessage message, IBufferWriter<byte>? returnBuffer);
    
     /// <summary>
     /// Invoked when a hub has it's connection established and ready for usage.
@@ -116,7 +116,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
 
         // If we have the flag to ignore the return value, then all we have to do is invoke and then
         // return the rest args to the cache.
-        if (requestArgs.Message.Flags == InvocationRequestMessage.InvocationFlags.IgnoreReturn)
+        if (requestArgs.Message.Flags == InvocationFlags.IgnoreReturn)
         {
             await requestArgs.InvokeMethodCore(requestArgs.Message, null).ConfigureAwait(false);
             ReturnArgsToCache(context, requestArgs);

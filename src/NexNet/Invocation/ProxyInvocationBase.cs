@@ -88,7 +88,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         var message = _cacheManager.InvocationRequestDeserializer.Rent();
         message.MethodId = methodId;
         message.Arguments = arguments;
-        message.Flags = InvocationRequestMessage.InvocationFlags.IgnoreReturn;
+        message.Flags = InvocationFlags.IgnoreReturn;
         message.InvocationId = 0;
 
         switch (_mode)

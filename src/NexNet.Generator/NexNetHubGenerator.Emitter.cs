@@ -7,7 +7,7 @@ namespace NexNet.Generator;
 
 partial class NexNetHubGenerator
 {
-    public static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, IGeneratorContext context)
+    internal static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, IGeneratorContext context)
     {
         var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
 
@@ -137,7 +137,7 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
 
         sb.AppendLine($$"""
 
-    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.InvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
+    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
     {
         global::System.Threading.CancellationTokenSource? cts = null;
         try

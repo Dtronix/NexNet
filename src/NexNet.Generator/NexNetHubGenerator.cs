@@ -28,7 +28,7 @@ namespace NexNet.Generator;
 // <CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
 
 [Generator(LanguageNames.CSharp)]
-public partial class NexNetHubGenerator : IIncrementalGenerator
+internal partial class NexNetHubGenerator : IIncrementalGenerator
 {
     public const string NexNetHubAttributeFullName = "NexNet.NexNetHubAttribute`2";
 
@@ -85,7 +85,7 @@ public partial class NexNetHubGenerator : IIncrementalGenerator
 
     class Comparer : IEqualityComparer<(TypeDeclarationSyntax, Compilation)>
     {
-        public static readonly Comparer Instance = new Comparer();
+        public static readonly Comparer Instance = new();
 
         public bool Equals((TypeDeclarationSyntax, Compilation) x, (TypeDeclarationSyntax, Compilation) y)
         {
@@ -101,26 +101,26 @@ public partial class NexNetHubGenerator : IIncrementalGenerator
     
     class GeneratorContext : IGeneratorContext
     {
-        readonly SourceProductionContext context;
+        readonly SourceProductionContext _context;
 
         public GeneratorContext(SourceProductionContext context, LanguageVersion languageVersion)
         {
-            this.context = context;
+            this._context = context;
             this.LanguageVersion = languageVersion;
         }
 
-        public CancellationToken CancellationToken => context.CancellationToken;
+        public CancellationToken CancellationToken => _context.CancellationToken;
 
         public Microsoft.CodeAnalysis.CSharp.LanguageVersion LanguageVersion { get; }
 
         public void AddSource(string hintName, string source)
         {
-            context.AddSource(hintName, source);
+            _context.AddSource(hintName, source);
         }
 
         public void ReportDiagnostic(Diagnostic diagnostic)
         {
-            context.ReportDiagnostic(diagnostic);
+            _context.ReportDiagnostic(diagnostic);
         }
     }
 }

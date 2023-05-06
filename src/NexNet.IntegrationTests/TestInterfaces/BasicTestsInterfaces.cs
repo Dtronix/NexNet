@@ -1,4 +1,7 @@
 ﻿using NexNet.Messages;
+// ReSharper disable InconsistentNaming
+#pragma warning disable CS8618
+#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.TestInterfaces;
 

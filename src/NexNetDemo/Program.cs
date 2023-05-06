@@ -43,7 +43,6 @@ partial class ClientHub
     private int i = 0;
     public void Update()
     {
-        global::System.Int32 t = 25;
         //Console.WriteLine("ClientHub Update called and invoked properly.");
     }
 
@@ -161,7 +160,7 @@ partial class ServerHub : IServerHub
         {
             await Task.Delay(10, cancellationToken);
         }
-        catch (TaskCanceledException e)
+        catch (TaskCanceledException)
         {
             throw;
         }
@@ -175,7 +174,7 @@ partial class ServerHub : IServerHub
         {
             await Task.Delay(10, cancellationToken);
         }
-        catch (TaskCanceledException e)
+        catch (TaskCanceledException)
         {
             throw;
         }
@@ -189,7 +188,7 @@ partial class ServerHub : IServerHub
         {
             await Task.Delay(10, cancellationToken);
         }
-        catch (TaskCanceledException e)
+        catch (TaskCanceledException)
         {
             throw;
         }
@@ -205,7 +204,7 @@ partial class ServerHub : IServerHub
         {
             await Task.Delay(10, cancellationToken);
         }
-        catch (TaskCanceledException e)
+        catch (TaskCanceledException)
         {
             throw;
         }
@@ -306,7 +305,7 @@ internal class Program
         {
             await client.ConnectAsync();
         }
-        catch (Exception e)
+        catch (Exception)
         {
             //Console.WriteLine(e);
             throw;
