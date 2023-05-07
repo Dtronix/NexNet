@@ -3,6 +3,14 @@ Modern &amp; Compact .NET Asynchronous Server and Client
 
 Built similarly to SignalR, but slimmed down and without all the ASP.NET requirements. Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial] for Pipeline socket transports.
 
+## Features
+- Automatic reconnection upon timeout or socket losing connection.
+- High performance Socket and Pipeline usage.
+- Multiple transports and easy extensibility.
+- Server <-> Client communication
+  - Cancellable Invocations
+  
+
 
 ## Transports Supported
 - Unix Domain Sockets (UDS)
