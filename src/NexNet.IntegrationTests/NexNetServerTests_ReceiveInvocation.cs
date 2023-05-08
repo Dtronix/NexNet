@@ -96,6 +96,23 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ServerTaskValue_ReturnedValue(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) =>
+            {
+                var value = await hub.Context.Proxy.ServerTaskValue();
+                Assert.AreEqual(54321, value);
+                tcs.SetResult();
+            };
+            sHub.ServerTaskValueEvent = hub => ValueTask.FromResult(54321);
+        });
+    }
+
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -112,6 +129,23 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
 
                 return ValueTask.FromResult(54321);
             };
+        });
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ServerTaskValueWithParam_ReturnedValue(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) =>
+            {
+                var value = await hub.Context.Proxy.ServerTaskValueWithParam(12345);
+                Assert.AreEqual(54321, value);
+                tcs.SetResult();
+            };
+            sHub.ServerTaskValueWithParamEvent = (hub, param) => ValueTask.FromResult(54321);
         });
     }
 
@@ -150,6 +184,112 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
             };
         });
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ClientTaskValueWithCancellation(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
+            sHub.ServerTaskValueWithCancellationEvent = (hub, ct) =>
+            {
+                tcs.SetResult();
+                return ValueTask.FromResult(54321);
+            };
+        });
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) =>
+            {
+                var value = await hub.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
+                Assert.AreEqual(54321, value);
+                tcs.SetResult();
+            };
+            sHub.ServerTaskValueWithCancellationEvent = (hub, ct) => ValueTask.FromResult(54321);
+        });
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
+            sHub.ServerTaskValueWithValueAndCancellationEvent = (hub, param, ct) =>
+            {
+                if (param == 12345)
+                    tcs.SetResult();
+
+                return ValueTask.FromResult(54321);
+            };
+        });
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
+    {
+        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        {
+            cHub.OnConnectedEvent = async (hub, _) =>
+            {
+                var value = await hub.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
+                Assert.AreEqual(54321, value);
+                tcs.SetResult();
+            };
+            sHub.ServerTaskValueWithValueAndCancellationEvent = (hub, param, ct) => ValueTask.FromResult(54321);
+        });
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     private async Task ServerReceivesInvocation(Type type, Action<ServerHub, ClientHub, TaskCompletionSource> action)
     {
