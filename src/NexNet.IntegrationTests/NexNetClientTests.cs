@@ -9,7 +9,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetClientTests
+internal partial class NexNetClientTests : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -203,41 +203,6 @@ internal partial class NexNetClientTests
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
-
-
-    private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerHub> setup, Action<T, TaskCompletionSource> onMessage, Func<NexNetClient<ClientHub, ServerHubProxyImpl>, ValueTask> action)
-    {
-        var clientConfig = CreateClientConfig(type);
-        var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, _) = CreateServerClient(
-            CreateServerConfig(type),
-            clientConfig);
-
-        setup.Invoke(serverHub);
-
-        server.Start();
-
-        clientConfig.InternalOnSend = (_, bytes) =>
-        {
-            try
-            {
-                var message = MemoryPackSerializer.Deserialize<T>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                Debug.Assert(message != null, nameof(message) + " != null");
-                onMessage(message, tcs);
-            }
-            catch
-            {
-                // not a type we care about
-            }
-        };
-
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-
-        await action.Invoke(client);
-
-        return tcs.Task;
-    }
-
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
