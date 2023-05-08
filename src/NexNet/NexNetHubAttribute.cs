@@ -26,6 +26,8 @@ public enum NexNetHubType
 [AttributeUsage(AttributeTargets.Class)]
 // ReSharper disable twice UnusedTypeParameter
 public class NexNetHubAttribute<THub, TProxy> : Attribute
+    where THub : class
+    where TProxy : class
 {
     /// <summary>
     /// Gets the type of hub this is implemented as.

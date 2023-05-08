@@ -9,9 +9,6 @@ namespace NexNet.Messages;
 [MemoryPackable]
 internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationRequestMessage
 {
-
-
-
     public static MessageType Type { get; } = MessageType.InvocationWithResponseRequest;
 
     public int InvocationId { get; set; }
@@ -19,6 +16,7 @@ internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationR
     public ushort MethodId { get; set; }
 
     public InvocationFlags Flags { get; set; } = InvocationFlags.None;
+
 
     public Memory<byte> Arguments { get; set; }
 }

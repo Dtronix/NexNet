@@ -90,6 +90,8 @@ internal partial class HubMeta
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
 
+    public string Namespace { get; }
+
     public bool IsClientHub { get; }
     public bool IsServerHub { get; }
 
@@ -102,7 +104,7 @@ internal partial class HubMeta
         static object GetItem(TypedConstant arg) => arg.Kind == TypedConstantKind.Array ? arg.Values : arg.Value ?? new object();
         this.Symbol = symbol;
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
-
+        this.Namespace = Symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
         foreach (AttributeData attributeData in symbol.GetAttributes())
         {
@@ -152,10 +154,24 @@ internal partial class HubMeta
             .Select(x => new MethodMeta(x, -1))
             .ToArray();
     }
+    
 
 
     public bool Validate(TypeDeclarationSyntax syntax, IGeneratorContext context)
     {
+        if (Symbol.IsGenericType)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.HubMustNotBeGeneric, syntax.Identifier.GetLocation(), Symbol.Name));
+            return false;
+        }
+
+        var invokeMethodCoreExists = Methods.FirstOrDefault(m => m.Name == "InvokeMethodCore");
+        if (invokeMethodCoreExists != null)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, syntax.Identifier.GetLocation(), invokeMethodCoreExists.Symbol.Name));
+            return false;
+        }
+
         return true;
     }
 
@@ -174,13 +190,26 @@ internal partial class MethodParameterMeta
 
     public bool IsParamsArray { get; set; }
 
+    public bool IsArrayType { get; set; }
+
     public bool IsCancellationToken { get; set; }
 
     public MethodParameterMeta(IParameterSymbol symbol)
     {
         this.Symbol = symbol;
         this.Name = symbol.Name;
-        this.ParamType = symbol.Type.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + symbol.Type.Name;
+        IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
+        if (IsArrayType)
+        {
+            var type = ((IArrayTypeSymbol)symbol.Type);
+            var arrayType = type.ElementType;
+            this.ParamType = arrayType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + arrayType.Name + "[]";
+        }
+        else
+        {
+            this.ParamType = symbol.Type.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + symbol.Type.Name;
+        }
+
         this.IsParamsArray = symbol.IsParams;
         IsCancellationToken = symbol.Type.Name == "CancellationToken";
     }
@@ -225,10 +254,19 @@ internal partial class MethodMeta
 
         if (ReturnArity > 0)
         {
-            var returnType = (INamedTypeSymbol)returnSymbol.TypeArguments[0];
-            
-            //this.ReturnType = "global::" + returnType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-            this.ReturnType = returnType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + returnType.Name;
+            var firstReturnType = returnSymbol.TypeArguments[0];
+
+            if (firstReturnType.TypeKind == TypeKind.Array)
+            {
+                var type = ((IArrayTypeSymbol)firstReturnType);
+                var arrayType = type.ElementType;
+                this.ReturnType = arrayType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + arrayType.Name + "[]";
+            }
+            else
+            {
+                var returnType = (INamedTypeSymbol)firstReturnType;
+                this.ReturnType = returnType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + returnType.Name;
+            }
         }
     }
 

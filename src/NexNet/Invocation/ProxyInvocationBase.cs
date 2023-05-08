@@ -75,6 +75,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
 
+
     /// <summary>
     /// Invokes the specified method on the connected session and waits until the message has been completely sent.
     /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
@@ -151,8 +152,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                             // Don't care if we can't invoke on another session here.
                         }
                 }
-
-                break;
+                throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
+                    break;
             }
             case ProxyInvocationMode.Client:
             {

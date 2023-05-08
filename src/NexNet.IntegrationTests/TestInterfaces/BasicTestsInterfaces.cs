@@ -1,4 +1,6 @@
-﻿using NexNet.Messages;
+﻿using Newtonsoft.Json.Linq;
+using System.Threading;
+using NexNet.Messages;
 // ReSharper disable InconsistentNaming
 #pragma warning disable CS8618
 #pragma warning disable VSTHRD200
@@ -32,6 +34,8 @@ public partial interface IServerHub
     ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+
+    void ServerData(byte[] data);
 }
 
 [NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
@@ -144,6 +148,7 @@ public partial class ServerHub
     public Func<ServerHub, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
     public Func<ServerHub, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
     public Func<ServerHub, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
+    public Action<ServerHub, byte[]> ServerDataEvent;
     public Func<ServerHub, ValueTask>? OnConnectedEvent;
     public Func<ServerHub, ValueTask>? OnDisconnectedEvent;
     public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
@@ -198,6 +203,10 @@ public partial class ServerHub
     public ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
     {
         return ServerTaskValueWithValueAndCancellationEvent.Invoke(this, value, cancellationToken);
+    }
+    public void ServerData(byte[] data)
+    {
+        ServerDataEvent.Invoke(this, data);
     }
 
     protected override ValueTask OnConnected(bool isReconnected)

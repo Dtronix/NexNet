@@ -14,6 +14,14 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor MustNotBeAbstract = new(
+        id: "NEXNET001",
+        title: "NexNetHub class must be partial",
+        messageFormat: "The NexNetHub object '{0}' must be partial",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static readonly DiagnosticDescriptor MustReturnVoidOrValueTask = new(
         id: "NEXNET002",
         title: "NexNetHub method must return either void, ValueTask or ValueTask<T>",
@@ -22,10 +30,10 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    public static readonly DiagnosticDescriptor MustNotBeGenericMethod = new(
+    public static readonly DiagnosticDescriptor HubMustNotBeGeneric = new(
         id: "NEXNET003",
-        title: "NexNetHub method not be generic",
-        messageFormat: "The NexNetHub object '{0}' must not be generic",
+        title: "NexNetHub hub must not be generic",
+        messageFormat: "The NexNetHub hub '{0}' must not be generic",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

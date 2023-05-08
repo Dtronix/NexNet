@@ -8,6 +8,15 @@ namespace NexNet.Messages;
 public interface IInvocationRequestMessage
 {
     /// <summary>
+    /// Max length allowed: ushort.MaxValue - (Type:byte) - (InvocationId:int) - (MethodId:ushort) - (Flags:byte) = 65527;
+    /// </summary>
+    public const int MaxArgumentSize = 65519;/*ushort.MaxValue
+                                         - sizeof(int) // InvocationId
+                                         - sizeof(ushort) // MethodId
+                                         - sizeof(InvocationFlags) // Flags
+                                         - sizeof(MessageType) // header Type
+                                         - 2; // BodyLength*/
+    /// <summary>
     /// Unique invocation ID.
     /// </summary>
     int InvocationId { get; set; }

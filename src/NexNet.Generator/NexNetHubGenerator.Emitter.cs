@@ -17,6 +17,20 @@ partial class NexNetHubGenerator
             return;
         }
 
+        // verify is partial
+        if (!IsPartial(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustBePartial, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
+        // nested is not allowed
+        if (IsNested(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
         var hubMeta = new HubMeta(typeSymbol);
 
         // ReportDiagnostic when validate failed.
@@ -86,6 +100,17 @@ partial class NexNetHubGenerator
         context.AddSource($"{fullType}.NexNetHub.g.cs", code);
     }
 
+    static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
+    {
+        return typeDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword));
+    }
+
+    static bool IsNested(TypeDeclarationSyntax typeDeclaration)
+    {
+        return typeDeclaration.Parent is TypeDeclarationSyntax;
+    }
+
+
 }
 
 partial class HubMeta
@@ -112,9 +137,9 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
     /// <param name="config">Configurations for this instance.</param>
     /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetServer for handling incoming connections.</returns>
-    public static global::NexNet.NexNetServer<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateServer(global::NexNet.Transports.ServerConfig config, Func<{{TypeName}}> hubFactory)
+    public static global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> hubFactory)
     {
-        return new global::NexNet.NexNetServer<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hubFactory);
+        return new global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hubFactory);
     }
 """);
         }
@@ -128,9 +153,9 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
     /// <param name="config">Configurations for this instance.</param>
     /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
-    public static global::NexNet.NexNetClient<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
+    public static global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
     {
-        return new global::NexNet.NexNetClient<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hub);
+        return new global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hub);
     }
 """);
         }
@@ -294,7 +319,7 @@ partial class MethodMeta
         if (ParametersLessCancellation.Length > 0)
         {
             sb.Append("        var arguments = global::MemoryPack.MemoryPackSerializer.Serialize<global::System.ValueTuple<");
-
+            
             foreach (var p in ParametersLessCancellation)
             {
                 sb.Append(p.ParamType).Append(", ");
@@ -317,6 +342,14 @@ partial class MethodMeta
             }
 
             sb.AppendLine("));");
+
+            sb.AppendLine("""
+
+        // Check for arguments which exceed max length.
+        if (arguments.Length > global::NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize)
+            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
+
+""");
         }
 
         sb.Append("        ");

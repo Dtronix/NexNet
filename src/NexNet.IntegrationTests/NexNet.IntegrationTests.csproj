@@ -9,8 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Generator\CSharpGeneratorRunner.cs" />
-    <Compile Remove="Generator\CSharpSourceGeneratorVerifier.cs" />
     <Compile Remove="NexNetSessionTests.cs" />
   </ItemGroup>
 
@@ -18,8 +16,6 @@
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="Generator\CSharpGeneratorRunner.cs" />
-    <None Include="Generator\CSharpSourceGeneratorVerifier.cs" />
   </ItemGroup>
 
   <ItemGroup>
