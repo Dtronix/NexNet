@@ -1,13 +1,9 @@
-﻿using System.Net.Sockets;
-using MemoryPack;
-using NexNet.IntegrationTests.TestInterfaces;
-using NexNet.Messages;
-using NexNet.Transports;
-using NUnit.Framework;
+﻿using NUnit.Framework;
+#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetServerTests : BaseTests
+internal class NexNetServerTests : BaseTests
 {
 
     [TestCase(Type.Uds)]
@@ -60,7 +56,7 @@ internal partial class NexNetServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, _, client, clientHub) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 

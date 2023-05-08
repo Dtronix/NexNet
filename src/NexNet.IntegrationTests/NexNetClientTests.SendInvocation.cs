@@ -2,6 +2,7 @@
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
 using NUnit.Framework;
+#pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
@@ -15,7 +16,11 @@ internal partial class NexNetClientTests : BaseTests
     {
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
-            sHub.OnConnectedEvent = async hub => hub.Context.Clients.Caller.ClientVoid();
+            sHub.OnConnectedEvent = hub =>
+            {
+                hub.Context.Clients.Caller.ClientVoid();
+                return ValueTask.CompletedTask;
+            };
             cHub.ClientVoidEvent = hub => tcs.SetResult();
         });
     }
@@ -27,7 +32,11 @@ internal partial class NexNetClientTests : BaseTests
     {
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
-            sHub.OnConnectedEvent = async hub => hub.Context.Clients.Caller.ClientVoidWithParam(12345);
+            sHub.OnConnectedEvent = hub =>
+            {
+                hub.Context.Clients.Caller.ClientVoidWithParam(12345);
+                return ValueTask.CompletedTask;
+            };
             cHub.ClientVoidWithParamEvent = (hub, param) =>
             {
                 if (param == 12345)
@@ -44,7 +53,11 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = hub => hub.Context.Clients.Caller.ClientTask();
-            cHub.ClientTaskEvent = async hub => tcs.SetResult();
+            cHub.ClientTaskEvent = hub =>
+            {
+                tcs.SetResult();
+                return ValueTask.CompletedTask;
+            };
         });
     }
 
@@ -57,10 +70,11 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = hub => hub.Context.Clients.Caller.ClientTaskWithParam(12345);
-            cHub.ClientTaskWithParamEvent = async (hub, param) =>
+            cHub.ClientTaskWithParamEvent = (hub, param) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
+                return ValueTask.CompletedTask;
             };
         });
     }
@@ -74,10 +88,10 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = async hub => await hub.Context.Clients.Caller.ClientTaskValue();
-            cHub.ClientTaskValueEvent = async hub =>
+            cHub.ClientTaskValueEvent = hub =>
             {
                 tcs.SetResult();
-                return 54321;
+                return ValueTask.FromResult(54321);
             };
         });
     }
@@ -91,12 +105,12 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = async hub => await hub.Context.Clients.Caller.ClientTaskValueWithParam(12345);
-            cHub.ClientTaskValueWithParamEvent = async (hub, param) =>
+            cHub.ClientTaskValueWithParamEvent = (hub, param) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
 
-                return 54321;
+                return ValueTask.FromResult(54321);
             };
         });
     }
@@ -111,9 +125,10 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = async hub => await hub.Context.Clients.Caller.ClientTaskWithCancellation(CancellationToken.None);
-            cHub.ClientTaskWithCancellationEvent = async (hub, ct) =>
+            cHub.ClientTaskWithCancellationEvent = (hub, ct) =>
             {
                 tcs.SetResult();
+                return ValueTask.CompletedTask;
             };
         });
     }
@@ -127,10 +142,11 @@ internal partial class NexNetClientTests : BaseTests
         return ClientReceivesInvocation(type, (sHub, cHub, tcs) =>
         {
             sHub.OnConnectedEvent = async hub => await hub.Context.Clients.Caller.ClientTaskWithValueAndCancellation(12345, CancellationToken.None);
-            cHub.ClientTaskWithValueAndCancellationEvent = async (hub, param, ct) =>
+            cHub.ClientTaskWithValueAndCancellationEvent = (hub, param, ct) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
+                return ValueTask.CompletedTask;
             };
         });
     }
@@ -160,7 +176,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = Memory<byte>.Empty,
-            Flags = InvocationRequestMessage.InvocationFlags.IgnoreReturn,
+            Flags = InvocationFlags.IgnoreReturn,
             InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 0
         }, client => client.Proxy.ServerVoid());
@@ -175,7 +191,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
-            Flags = InvocationRequestMessage.InvocationFlags.IgnoreReturn,
+            Flags = InvocationFlags.IgnoreReturn,
             InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 1
         }, client => client.Proxy.ServerVoidWithParam(54321));
@@ -190,7 +206,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = Memory<byte>.Empty,
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1,
             MethodId = 2
         }, client => client.Proxy.ServerTask());
@@ -205,7 +221,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 3
         }, client => client.Proxy.ServerTaskWithParam(54321));
@@ -220,7 +236,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = Memory<byte>.Empty,
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 4
         }, client => client.Proxy.ServerTaskValue());
@@ -235,7 +251,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 5
         }, client => client.Proxy.ServerTaskValueWithParam(54321));
@@ -251,7 +267,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = Memory<byte>.Empty,
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 6
         }, client => client.Proxy.ServerTaskWithCancellation(CancellationToken.None));
@@ -266,7 +282,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 7
         }, client => client.Proxy.ServerTaskWithValueAndCancellation(54321, CancellationToken.None));
@@ -283,7 +299,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = Memory<byte>.Empty,
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 8
         }, client => client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None));
@@ -298,7 +314,7 @@ internal partial class NexNetClientTests : BaseTests
         return InvokeFromClientAndVerifySent(type, new InvocationRequestMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
-            Flags = InvocationRequestMessage.InvocationFlags.None,
+            Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 9
         }, client => client.Proxy.ServerTaskValueWithValueAndCancellation(54321, CancellationToken.None));
@@ -319,6 +335,11 @@ internal partial class NexNetClientTests : BaseTests
             try
             {
                 var message = MemoryPackSerializer.Deserialize<InvocationRequestMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
+                Assert.NotNull(message);
+
+                if (message == null)
+                    return;
+
                 Assert.AreEqual(expectedMessage.Arguments.ToArray(), message.Arguments.ToArray());
                 Assert.AreEqual(expectedMessage.Flags, message.Flags);
                 Assert.AreEqual(expectedMessage.InvocationId, message.InvocationId);

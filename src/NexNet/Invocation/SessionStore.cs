@@ -9,9 +9,9 @@ namespace NexNet.Invocation;
 /// </summary>
 public class SessionStore : IDisposable
 {
-    private ConcurrentDictionary<string, object>? _store = new();
+    private readonly ConcurrentDictionary<string, object> _store = new();
 
-
+    private bool _isDisposed;
     /// <summary>
     /// Attempts to get the value associated with the specified key from the store.
     /// </summary>
@@ -23,7 +23,7 @@ public class SessionStore : IDisposable
     /// </param>
     /// <returns>true if the key was found in the store; otherwise, false.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="key"/> is a null reference.</exception>
-    public bool TryGet(string key, out object value) => _store!.TryGetValue(key, out value);
+    public bool TryGet(string key, out object? value) => _store.TryGetValue(key, out value);
 
     /// <summary>
     /// Attempts to add the specified key and value to the store.
@@ -36,7 +36,7 @@ public class SessionStore : IDisposable
     /// <exception cref="ArgumentNullException"><paramref name="key"/> is null reference.</exception>
     /// <exception cref="OverflowException">The store contains too many elements.</exception>
 
-    public bool TryAdd(string key, object value) => _store!.TryAdd(key, value);
+    public bool TryAdd(string key, object value) => _store.TryAdd(key, value);
 
 
     /// <summary>Gets or sets the value associated with the specified key.</summary>
@@ -59,10 +59,11 @@ public class SessionStore : IDisposable
 
     void IDisposable.Dispose()
     {
-        if (_store == null)
+        if (_isDisposed)
             return;
 
+        _isDisposed = true;
+
         _store.Clear();
-        _store = null;
     }
 }

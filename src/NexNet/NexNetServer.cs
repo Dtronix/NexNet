@@ -85,7 +85,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
 
                 foreach (var session in _sessionManager.Sessions)
                 {
-                    session.Value.DisconnectAsync(DisconnectReason.DisconnectServerShutdown);
+                    session.Value.DisconnectAsync(DisconnectReason.ServerShutdown);
                 }
 
                 listener.Close(!_config.InternalNoLingerOnShutdown);
@@ -218,6 +218,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
+            _config.Logger?.LogError(ex, "Server shut down.");
             Stop();
         }
     }

@@ -85,7 +85,7 @@ internal partial class HubMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
     public string TypeName { get; }
-    public string ClassName { get; }
+    //public string ClassName { get; }
     public bool IsValueType { get; set; }
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
@@ -188,7 +188,7 @@ internal partial class MethodParameterMeta
 
 internal partial class MethodMeta
 {
-    private static XxHash32 _hash = new XxHash32();
+    private static readonly XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }
     public string Name { get; }
     public bool IsStatic { get; }
@@ -225,7 +225,7 @@ internal partial class MethodMeta
 
         if (ReturnArity > 0)
         {
-            var returnType = returnSymbol.TypeArguments[0] as INamedTypeSymbol;
+            var returnType = (INamedTypeSymbol)returnSymbol.TypeArguments[0];
             
             //this.ReturnType = "global::" + returnType!.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
             this.ReturnType = returnType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + returnType.Name;

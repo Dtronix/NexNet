@@ -3,21 +3,17 @@ using MemoryPack;
 
 namespace NexNet.Messages;
 
+/// <summary>
+/// Contains an invocation request message data.
+/// </summary>
 [MemoryPackable]
-public partial class InvocationRequestMessage : IMessageBodyBase
+internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationRequestMessage
 {
-    [Flags]
-    public enum InvocationFlags : byte
-    {
-        None = 0,
-        IgnoreReturn = 1
-    }
+
+
 
     public static MessageType Type { get; } = MessageType.InvocationWithResponseRequest;
 
-    /// <summary>
-    /// Unique invocation ID.
-    /// </summary>
     public int InvocationId { get; set; }
 
     public ushort MethodId { get; set; }
@@ -25,7 +21,4 @@ public partial class InvocationRequestMessage : IMessageBodyBase
     public InvocationFlags Flags { get; set; } = InvocationFlags.None;
 
     public Memory<byte> Arguments { get; set; }
-
-
-
 }

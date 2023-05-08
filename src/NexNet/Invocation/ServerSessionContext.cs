@@ -4,10 +4,18 @@ using NexNet.Internals;
 
 namespace NexNet.Invocation;
 
+/// <summary>
+/// Base context for server hubs to use.
+/// </summary>
+/// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
 public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ClientProxy _proxy;
+
+    /// <summary>
+    /// Get the proxy for different client's invocations.
+    /// </summary>
     public IProxyClients<TProxy> Clients => _proxy;
 
         internal ServerSessionContext(INexNetSession<TProxy> session)
@@ -16,17 +24,29 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         _proxy = new ClientProxy(session.CacheManager, this);
     }
 
-
+    /// <summary>
+    /// Adds the current session to a group.  Used for grouping invocations.
+    /// </summary>
+    /// <param name="groupName">Group to add this session to.</param>
     public void AddToGroup(string groupName)
     {
         Session!.SessionManager?.RegisterSessionGroup(groupName, Session);
     }
 
+
+    /// <summary>
+    /// Adds the current session to multiple groups.  Used for grouping invocations.
+    /// </summary>
+    /// <param name="groupNames">Groups to add this session to.</param>
     public void AddToGroups(string[] groupNames)
     {
         Session!.SessionManager?.RegisterSessionGroup(groupNames, Session);
     }
 
+    /// <summary>
+    /// Removes the current session from a group.  Used for grouping invocations.
+    /// </summary>
+    /// <param name="groupName">Group to remove this session from.</param>
     public void RemoveFromGroup(string groupName)
     {
         Session!.SessionManager?.UnregisterSessionGroup(groupName, Session);
@@ -73,7 +93,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session!,
-                ProxyInvocationMode.Clients,
+                ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
 

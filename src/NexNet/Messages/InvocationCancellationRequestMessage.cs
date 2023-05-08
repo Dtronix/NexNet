@@ -3,7 +3,7 @@
 namespace NexNet.Messages;
 
 [MemoryPackable]
-public partial class InvocationCancellationRequestMessage : IMessageBodyBase
+internal partial class InvocationCancellationRequestMessage : IMessageBodyBase
 {
     public static MessageType Type { get; } = MessageType.InvocationCancellationRequest;
 
