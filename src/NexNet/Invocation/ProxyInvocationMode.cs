@@ -6,7 +6,7 @@ internal enum ProxyInvocationMode
     Others,
     AllExcept,
     All,
-    //Client,
+    Client,
     Clients,
     //Group,
     Groups,

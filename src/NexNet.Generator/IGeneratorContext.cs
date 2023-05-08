@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 namespace NexNet.Generator;
 
 // share context for SourceGenerator and IncrementalGenerator
-public interface IGeneratorContext
+internal interface IGeneratorContext
 {
     CancellationToken CancellationToken { get; }
     void ReportDiagnostic(Diagnostic diagnostic);

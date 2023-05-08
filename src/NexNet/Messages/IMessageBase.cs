@@ -1,6 +1,9 @@
-﻿namespace NexNet.Messages;
+﻿using System;
 
-public interface IMessageBodyBase
+namespace NexNet.Messages;
+
+internal interface IMessageBodyBase
 {
-    static abstract MessageType Type { get; }
+    public static abstract MessageType Type { get; }
+
 }
