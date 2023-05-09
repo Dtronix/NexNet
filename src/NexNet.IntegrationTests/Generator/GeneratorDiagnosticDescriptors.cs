@@ -68,7 +68,7 @@ partial class ServerHub : IServerHub
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstract.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id));
 
     }
 
@@ -86,12 +86,12 @@ partial class ClientHub : IClientHub
     public void Update() { }
 }
 [NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
-partial abstract class ServerHub : IServerHub
+abstract partial class ServerHub : IServerHub
 {
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstract.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id));
 
     }
 
@@ -104,7 +104,7 @@ namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
 [NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
-partial class ClientHub<T> : IClientHub
+abstract partial class ClientHub<T> : IClientHub
 {
     public void Update() { }
 }
@@ -145,7 +145,53 @@ partial class ServerHub : IServerHub
 
     }
 
+    [Test]
+    public void HubMustNotBeGeneric_Client()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { void Update(); }
+partial interface IServerHub { void Update(); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub<T> : IClientHub
+{
+    public void Update() { }
 
+}
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    public void Update() { }
+}
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.HubMustNotBeGeneric.Id));
+
+    }
+
+    [Test]
+    public void HubMustNotBeGeneric_Server()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { void Update(); }
+partial interface IServerHub { void Update(); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub
+{
+    public void Update() { }
+
+}
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub<T> : IServerHub
+{
+    public void Update() { }
+}
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.HubMustNotBeGeneric.Id));
+
+    }
 
 
 
@@ -166,6 +212,51 @@ partial class ClientHub : IClientHub
 """);
         Assert.IsEmpty(diagnostic);
 
+    }
+
+    [Test]
+    public void DuplicatedMethodId_Client()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { 
+[NexNetMethod(1)] void Update0();
+[NexNetMethod(1)] void Update1();
+}
+partial interface IServerHub { 
+
+}
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub
+{
+    public void Update() { }
+}
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
+    }
+
+
+    [Test]
+    public void DuplicatedMethodId_Server()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { 
+
+}
+partial interface IServerHub { 
+    [NexNetMethod(1)] void Update0();
+    [NexNetMethod(1)] void Update1();
+}
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    public void Update() { }
+}
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
     }
 
 

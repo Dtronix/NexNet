@@ -31,6 +31,13 @@ partial class NexNetHubGenerator
             return;
         }
 
+        // nested is not allowed
+        if (IsNested(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
         var hubMeta = new HubMeta(typeSymbol);
 
         // ReportDiagnostic when validate failed.
@@ -89,7 +96,7 @@ partial class NexNetHubGenerator
 
         sb.AppendLine();
         
-        if (hubMeta.IsClientHub)
+        if (hubMeta.NexNetHubAttribute.IsClientHub)
         {
             hubMeta.HubInterface.EmitInterfaceWithMethodHash(sb);
             sb.AppendLine();
@@ -115,10 +122,10 @@ partial class NexNetHubGenerator
 
 partial class HubMeta
 {
-    private string EmitServerClientName() => IsServerHub ? "Server" : "Client";
+    private string EmitServerClientName() => NexNetHubAttribute.IsServerHub ? "Server" : "Client";
     public void EmitHub(StringBuilder sb)
     {
-        var descriptionText = IsServerHub
+        var descriptionText = NexNetHubAttribute.IsServerHub
             ? "Hub used for handling all client communications."
             : "Hub used for handling all server communications.";
         sb.AppendLine($$"""
@@ -128,7 +135,7 @@ partial class HubMeta
 partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}HubBase<{{this.ProxyInterface.ProxyImplNameWithNamespace}}>, {{this.HubInterface.Namespace}}.{{this.HubInterface.TypeName}}
 {
 """);
-        if (IsServerHub)
+        if (NexNetHubAttribute.IsServerHub)
         {
             sb.AppendLine($$"""
     /// <summary>

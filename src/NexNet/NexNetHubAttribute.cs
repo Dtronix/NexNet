@@ -23,7 +23,7 @@ public enum NexNetHubType
 /// </summary>
 /// <typeparam name="THub">Hub interface.</typeparam>
 /// <typeparam name="TProxy">Proxy interface</typeparam>
-[AttributeUsage(AttributeTargets.Class)]
+[AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 // ReSharper disable twice UnusedTypeParameter
 public class NexNetHubAttribute<THub, TProxy> : Attribute
     where THub : class
