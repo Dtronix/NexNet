@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text;
+using static NexNet.Generator.NexNetHubGenerator;
 
 namespace NexNet.Generator;
 
@@ -81,7 +82,7 @@ internal partial class InvocationInterfaceMeta
 
 
 
-    public bool Validate(TypeDeclarationSyntax syntax, IGeneratorContext context)
+    public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
     {
         var noError = true;
         
@@ -262,7 +263,7 @@ internal partial class HubMeta
     }
 
 
-    public bool Validate(TypeDeclarationSyntax syntax, IGeneratorContext context)
+    public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
     {
         if (Symbol.IsGenericType)
         {

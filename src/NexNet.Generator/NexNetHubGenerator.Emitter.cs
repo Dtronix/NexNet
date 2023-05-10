@@ -7,7 +7,7 @@ namespace NexNet.Generator;
 
 partial class NexNetHubGenerator
 {
-    internal static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, IGeneratorContext context)
+    internal static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, GeneratorContext context)
     {
         var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
 
@@ -74,18 +74,8 @@ partial class NexNetHubGenerator
 #nullable enable
 ");
 
-        var ns = hubMeta.Symbol.ContainingNamespace;
-        if (!ns.IsGlobalNamespace)
-        {
-            if (context.IsCSharp10OrGreater())
-            {
-                sb.AppendLine($"namespace {ns};");
-            }
-            else
-            {
-                sb.AppendLine($"namespace {ns} {{");
-            }
-        }
+
+        sb.AppendLine($"namespace {hubMeta.Symbol.ContainingNamespace};");
         sb.AppendLine();
 
         hubMeta.EmitHub(sb);
