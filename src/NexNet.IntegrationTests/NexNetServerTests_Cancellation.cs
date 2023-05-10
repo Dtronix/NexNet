@@ -172,7 +172,7 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
 
         serverHub.OnConnectedEvent = hub =>
         {
-            action?.Invoke(serverHub);
+            _ = action.Invoke(serverHub);
             return ValueTask.CompletedTask;
         };
 

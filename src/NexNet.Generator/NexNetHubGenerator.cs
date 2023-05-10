@@ -99,7 +99,7 @@ internal partial class NexNetHubGenerator : IIncrementalGenerator
     }
 
     
-    class GeneratorContext : IGeneratorContext
+    internal class GeneratorContext
     {
         readonly SourceProductionContext _context;
 

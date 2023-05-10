@@ -169,8 +169,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                             // Don't care if we can't invoke on another session here.
                         }
                 }
-                throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
-                    break;
+
+                break;
             }
             case ProxyInvocationMode.Client:
             {
