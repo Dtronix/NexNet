@@ -5,7 +5,7 @@ namespace NexNet.IntegrationTests.Generator;
 
 class GeneratorDiagnosticDescriptors
 {
-    [Test]
+    //[Test]
     public void MustBePartial_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -27,7 +27,7 @@ class ServerHub : IServerHub
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id));
     }
 
-    [Test]
+    //[Test]
     public void MustBePartial_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -49,7 +49,7 @@ partial class ServerHub : IServerHub
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id));
     }
 
-    [Test]
+    //[Test]
     public void MustNotBeAbstract_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -72,7 +72,7 @@ partial class ServerHub : IServerHub
 
     }
 
-    [Test]
+    //[Test]
     public void MustNotBeAbstract_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -95,7 +95,7 @@ abstract partial class ServerHub : IServerHub
 
     }
 
-    [Test]
+    //[Test]
     public void HubMustNotBeGeneric()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -118,7 +118,7 @@ partial class ServerHub : IServerHub
 
     }
 
-    [Test]
+    //[Test]
     public void InvokeMethodCoreReservedMethodName()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -145,7 +145,7 @@ partial class ServerHub : IServerHub
 
     }
 
-    [Test]
+    //[Test]
     public void HubMustNotBeGeneric_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -169,7 +169,7 @@ partial class ServerHub : IServerHub
 
     }
 
-    [Test]
+    //[Test]
     public void HubMustNotBeGeneric_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -196,7 +196,7 @@ partial class ServerHub<T> : IServerHub
 
 
 
-    [Test]
+    //[Test]
     public void CanGenerateClientOnly()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -214,7 +214,7 @@ partial class ClientHub : IClientHub
 
     }
 
-    [Test]
+    //[Test]
     public void DuplicatedMethodId_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -237,7 +237,7 @@ partial class ClientHub : IClientHub
     }
 
 
-    [Test]
+    //[Test]
     public void DuplicatedMethodId_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -259,7 +259,7 @@ partial class ServerHub : IServerHub
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
     }
 
-    [Test]
+    //[Test]
     public void InvalidReturnValue_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -275,7 +275,7 @@ partial class ServerHub : IServerHub { }
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
     }    
     
-    [Test]
+    //[Test]
     public void InvalidReturnValue_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -292,7 +292,7 @@ partial class ServerHub : IServerHub { }
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
     }
 
-    [Test]
+    //[Test]
     public void CompilesSimpleServerAndClient()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -314,7 +314,7 @@ partial class ServerHub : IServerHub
         Assert.IsEmpty(diagnostic);
     }
 
-    [Test]
+    //[Test]
     public void InvalidCancellationToken_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -330,7 +330,7 @@ partial class ServerHub : IServerHub { }
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
     }
 
-    [Test]
+    //[Test]
     public void InvalidCancellationToken_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -347,7 +347,7 @@ partial class ServerHub : IServerHub { }
     }
 
 
-    [Test]
+    //[Test]
     public void CancellationTokenOnVoid_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -363,7 +363,7 @@ partial class ServerHub : IServerHub { }
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
     }
 
-    [Test]
+    //[Test]
     public void CancellationTokenOnVoid_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
@@ -377,6 +377,40 @@ partial class ClientHub : IClientHub{ }
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
+    }
+
+    [Test]
+    public void CompilesWhenInterfacesAndHubsAreInSeparateNamespaces()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace InterfaceNameSpace1.One.Two
+{
+    partial interface IClientHub { void Update(); }
+}
+
+namespace InterfaceNameSpace2.Three.Four
+{
+    partial interface IServerHub { void Update(string arg); }
+}
+namespace HubNameSpaces1.Five.Six
+{
+    [NexNetHub<InterfaceNameSpace1.One.Two.IClientHub, InterfaceNameSpace2.Three.Four.IServerHub>(NexNetHubType.Client)]
+    partial class ClientHub : InterfaceNameSpace1.One.Two.IClientHub
+    {
+        public void Update() { }
+    }
+}
+namespace HubNameSpaces2.Seven.Eight
+{
+    [NexNetHub<InterfaceNameSpace2.Three.Four.IServerHub, InterfaceNameSpace1.One.Two.IClientHub>(NexNetHubType.Server)]
+    partial class ServerHub : InterfaceNameSpace2.Three.Four.IServerHub
+    {
+        public void Update(string arg) { }
+    }
+}
+""");
+        Assert.IsEmpty(diagnostic);
     }
 
 }

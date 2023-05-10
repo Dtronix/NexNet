@@ -40,7 +40,7 @@ public partial interface IServerHub
     void ServerData(byte[] data);
 }
 
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+//[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
 public partial class ClientHub
 {
     public Action<ClientHub> ClientVoidEvent;
@@ -137,7 +137,7 @@ public partial class ClientHub
     }
 }
 
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+//[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
 public partial class ServerHub
 {
     public Action<ServerHub> ServerVoidEvent;

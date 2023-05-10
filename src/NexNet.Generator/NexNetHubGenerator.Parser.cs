@@ -11,16 +11,17 @@ internal partial class InvocationInterfaceMeta
 {
     private readonly HashSet<ushort> _methodIds = new HashSet<ushort>();
 
-    public INamedTypeSymbol Symbol { get; set; }
+    public INamedTypeSymbol Symbol { get; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
-    public bool IsValueType { get; set; }
+    public bool IsValueType { get; }
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
     public MethodMeta[] Methods { get; }
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
+    public string NamespaceName { get; }
 
     //public bool AlreadyGeneratedHash { get; }
 
@@ -31,7 +32,9 @@ internal partial class InvocationInterfaceMeta
 
         var usedHashes = new HashSet<ushort>();
         this.Symbol = symbol;
+        
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
@@ -78,6 +81,50 @@ internal partial class InvocationInterfaceMeta
         this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
         //this.AlreadyGeneratedHash = false;
+    }
+
+    static string GetNamespace(BaseTypeDeclarationSyntax syntax)
+    {
+        // If we don't have a namespace at all we'll return an empty string
+        // This accounts for the "default namespace" case
+        string nameSpace = string.Empty;
+
+        // Get the containing syntax node for the type declaration
+        // (could be a nested type, for example)
+        SyntaxNode? potentialNamespaceParent = syntax.Parent;
+
+        // Keep moving "out" of nested classes etc until we get to a namespace
+        // or until we run out of parents
+        while (potentialNamespaceParent != null &&
+               potentialNamespaceParent is not NamespaceDeclarationSyntax
+               && potentialNamespaceParent is not FileScopedNamespaceDeclarationSyntax)
+        {
+            potentialNamespaceParent = potentialNamespaceParent.Parent;
+        }
+
+        // Build up the final namespace by looping until we no longer have a namespace declaration
+        if (potentialNamespaceParent is BaseNamespaceDeclarationSyntax namespaceParent)
+        {
+            // We have a namespace. Use that as the type
+            nameSpace = namespaceParent.Name.ToString();
+
+            // Keep moving "out" of the namespace declarations until we 
+            // run out of nested namespace declarations
+            while (true)
+            {
+                if (namespaceParent.Parent is not NamespaceDeclarationSyntax parent)
+                {
+                    break;
+                }
+
+                // Add the outer namespace as a prefix to the final namespace
+                nameSpace = $"{namespaceParent.Name}.{nameSpace}";
+                namespaceParent = parent;
+            }
+        }
+
+        // return the final namespace
+        return nameSpace;
     }
 
 
