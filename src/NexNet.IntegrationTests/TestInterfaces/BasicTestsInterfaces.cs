@@ -19,7 +19,9 @@ public partial interface IClientHub
     ValueTask ClientTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+
 }
+
 
 
 public partial interface IServerHub

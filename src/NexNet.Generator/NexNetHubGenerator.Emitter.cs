@@ -222,14 +222,14 @@ partial class MethodMeta
         }
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("                    var arguments = global::MemoryPack.MemoryPackSerializer.Deserialize<System.ValueTuple<");
+            sb.Append("                    var arguments = message.DeserializeArguments<global::System.ValueTuple<");
             foreach (var methodParameterMeta in ParametersLessCancellation)
             {
                 sb.Append(methodParameterMeta.ParamType).Append(", ");
             }
 
             sb.Remove(sb.Length - 2, 2);
-            sb.AppendLine(">>(message.Arguments.Span);");
+            sb.AppendLine(">>();");
         }
         sb.Append("                    ");
         if (IsReturnVoid)
@@ -325,7 +325,7 @@ partial class MethodMeta
 
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("        var arguments = global::MemoryPack.MemoryPackSerializer.Serialize<global::System.ValueTuple<");
+            sb.Append("        var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
             
             foreach (var p in ParametersLessCancellation)
             {
@@ -349,26 +349,18 @@ partial class MethodMeta
             }
 
             sb.AppendLine("));");
-
-            sb.AppendLine("""
-
-        // Check for arguments which exceed max length.
-        if (arguments.Length > global::NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize)
-            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
-
-""");
         }
 
         sb.Append("        ");
 
         if (this.IsReturnVoid)
         {
-            sb.Append("InvokeMethod(").Append(this.Id).Append(", ");
+            sb.Append("ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
             sb.AppendLine(ParametersLessCancellation.Length > 0 ? "arguments);" : "null);");
         }
         else if (this.IsAsync)
         {
-            sb.Append("return InvokeWaitForResult");
+            sb.Append("return ProxyInvokeAndWaitForResultCore");
             if (this.ReturnType != null)
             {
                 sb.Append("<").Append(this.ReturnType).Append(">");

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using MemoryPack;
 
 namespace NexNet.Messages;
@@ -19,4 +20,10 @@ internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationR
 
 
     public Memory<byte> Arguments { get; set; }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? DeserializeArguments<T>()
+    {
+        return MemoryPackSerializer.Deserialize<T>(Arguments.Span);
+    }
 }

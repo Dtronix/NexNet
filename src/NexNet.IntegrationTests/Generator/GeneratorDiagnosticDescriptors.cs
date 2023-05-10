@@ -259,6 +259,125 @@ partial class ServerHub : IServerHub
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
     }
 
+    [Test]
+    public void InvalidReturnValue_Client()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { int Update(); }
+partial interface IServerHub { }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
+    }    
+    
+    [Test]
+    public void InvalidReturnValue_Server()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { }
+partial interface IServerHub { int Update();  }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
+    }
+
+    [Test]
+    public void CompilesSimpleServerAndClient()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { void Update(); }
+partial interface IServerHub { void Update(string arg); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub
+{
+    public void Update() { }
+}
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    public void Update(string arg) { }
+}
+""");
+        Assert.IsEmpty(diagnostic);
+    }
+
+    [Test]
+    public void InvalidCancellationToken_Client()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { ValueTask Update(CancellationToken ct, int val); }
+partial interface IServerHub { }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
+    }
+
+    [Test]
+    public void InvalidCancellationToken_Server()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { }
+partial interface IServerHub { ValueTask Update(CancellationToken ct, int val); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
+    }
+
+
+    [Test]
+    public void CancellationTokenOnVoid_Client()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { void Update(CancellationToken ct); }
+partial interface IServerHub { }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
+    }
+
+    [Test]
+    public void CancellationTokenOnVoid_Server()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { }
+partial interface IServerHub {  void Update(CancellationToken ct); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub{ }
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
+    }
 
 }
 

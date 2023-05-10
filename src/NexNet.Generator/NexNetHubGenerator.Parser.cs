@@ -273,7 +273,7 @@ internal partial class HubMeta
         var invokeMethodCoreExists = Methods.FirstOrDefault(m => m.Name == "InvokeMethodCore");
         if (invokeMethodCoreExists != null)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, syntax.Identifier.GetLocation(), invokeMethodCoreExists.Symbol.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, syntax.Identifier.GetLocation(), invokeMethodCoreExists.Name));
             return false;
         }
 
@@ -283,12 +283,15 @@ internal partial class HubMeta
             return false;
         }
 
+
+
         var hubs = new HashSet<ushort>();
         foreach (var hubInterfaceMethod in this.HubInterface.Methods)
         {
+            // Validate hub method ids.
             if (hubs.Contains(hubInterfaceMethod.Id))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Symbol.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
                 return false;
             }
             else
@@ -296,7 +299,33 @@ internal partial class HubMeta
                 hubs.Add(hubInterfaceMethod.Id);
             }
 
+            if (hubInterfaceMethod.ParametersLessCancellation.Any(p => p.IsCancellationToken))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+                return false;
+            }
+
+            if (hubInterfaceMethod.IsReturnVoid && hubInterfaceMethod.CancellationTokenParameter != null)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+                return false;
+            }
+
+
+            // Validate return values.
+            if (hubInterfaceMethod.IsReturnVoid)
+                continue;
+
+
+            if (hubInterfaceMethod.IsAsync
+                && hubInterfaceMethod.ReturnArity <= 1)
+                continue;
+
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+            return false;
         }
+
+        // Validate method hubs
 
         return true;
     }
@@ -348,7 +377,6 @@ internal partial class MethodMeta
     public string Name { get; }
     public bool IsStatic { get; }
 
-    public bool IsValueTypeReturn { get; }
     public bool IsReturnVoid { get; }
     public string? ReturnType { get; }
     public bool IsAsync { get; }
@@ -366,18 +394,23 @@ internal partial class MethodMeta
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
         this.IsAsync = returnSymbol!.OriginalDefinition.Name == "ValueTask";
-        this.ParametersLessCancellation = symbol.Parameters.Select(p => new MethodParameterMeta(p)).Where(p => !p.IsCancellationToken).ToArray();
+        var parameters = symbol.Parameters.Select(p => new MethodParameterMeta(p)).ToList();
+
+        var lastParameter = parameters.LastOrDefault();
+        if (lastParameter != null && lastParameter.IsCancellationToken)
+        {
+            this.CancellationTokenParameter = lastParameter;
+
+            // Remove this from the param list.
+            parameters.Remove(this.CancellationTokenParameter);
+        }
+
+        this.ParametersLessCancellation = parameters.ToArray();
         this.ReturnArity = returnSymbol.Arity;
         this.IsReturnVoid = returnSymbol.Name == "Void";
         this.NexNetMethodAttribute = new NexNetMethodAttributeMeta(symbol);
 
-        var lastParameter = symbol.Parameters.LastOrDefault();
-        if (lastParameter != null)
-        {
-            var lastParamMeta = new MethodParameterMeta(lastParameter);
-            if (lastParamMeta.IsCancellationToken)
-                this.CancellationTokenParameter = lastParamMeta;
-        }
+
 
         if (ReturnArity > 0)
         {

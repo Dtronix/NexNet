@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace NexNet.Messages;
 
@@ -35,4 +36,12 @@ public interface IInvocationRequestMessage
     /// Arguments 
     /// </summary>
     Memory<byte> Arguments { get; set; }
+
+    /// <summary>
+    /// Deserializes the arguments to the specified type.
+    /// </summary>
+    /// <typeparam name="T">Type to deserialize to.</typeparam>
+    /// <returns>Deserialized value</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    T? DeserializeArguments<T>();
 }

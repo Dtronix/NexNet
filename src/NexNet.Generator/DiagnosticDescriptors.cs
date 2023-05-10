@@ -61,4 +61,28 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidReturnValue = new(
+        id: "NEXNET008",
+        title: "NexNetHub method with invalid return type.",
+        messageFormat: "The NexNetHub method '{0}' have a return type of ValueTask, ValueTask<T> or void.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidCancellationToken = new(
+        id: "NEXNET009",
+        title: "NexNetHub method cancellation token invalid usage.",
+        messageFormat: "The NexNetHub method '{0}' must use the cancellation token at the end of the parameter list.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor CancellationTokenOnVoid = new(
+        id: "NEXNET010",
+        title: "NexNetHub method can't be void and support cancellation tokens.",
+        messageFormat: "The NexNetHub method '{0}' can't be void and use a cancellation token.  Must return ValueTask or ValueTask<T> to use a cancellation token.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

@@ -3,7 +3,7 @@
 namespace NexNet;
 
 /// <summary>
-/// Attribute to configure the generator creation of the hub method implementations.
+/// Attribute to configure the creation of the hub method implementations.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method,  AllowMultiple = false, Inherited = true)]
 public class NexNetMethodAttribute : Attribute
