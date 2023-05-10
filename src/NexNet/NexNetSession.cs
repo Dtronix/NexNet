@@ -128,7 +128,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.ProtocolError, false);
+            await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
     }
 
     public async ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
@@ -163,7 +163,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.ProtocolError, false);
+            await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
     }
 
     public Task DisconnectAsync(DisconnectReason reason)
@@ -210,7 +210,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                 if (disconnect != DisconnectReason.None)
                 {
-                    await DisconnectCore(disconnect, issueDisconnectMessage);
+                    await DisconnectCore(disconnect, issueDisconnectMessage).ConfigureAwait(false);
                     return;
                 }
 
@@ -224,7 +224,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                         // If there is not a disconnect reason, then we disconnected for an unknown reason and should 
                         // be allowed to reconnect.
-                        await DisconnectCore(DisconnectReason.SocketError, false);
+                        await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
                     }
                     return;
                 }
@@ -237,7 +237,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         catch (Exception ex)
         {
             _config.Logger?.LogError(ex, "Reading exited with exception.");
-            await DisconnectCore(DisconnectReason.SocketError, false);
+            await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
         }
     }
 
@@ -278,7 +278,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                         // If we are the server, send back a ping message to help the client know if it is still connected.
                         if (_isServer)
-                            await SendHeader(MessageType.Ping);
+                            await SendHeader(MessageType.Ping).ConfigureAwait(false);
 
                         continue;
                     }
@@ -378,7 +378,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         break;
 
                     _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
-                    disconnect = await MessageHandler(body!);
+                    disconnect = await MessageHandler(body!).ConfigureAwait(false);
 
                     if (disconnect != DisconnectReason.None)
                     {
@@ -412,7 +412,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         static async void InvokeOnConnected(object? sessionObj)
         {
             var session = Unsafe.As<NexNetSession<THub, TProxy>>(sessionObj)!;
-            await session._hub.Connected(session._isReconnected);
+            await session._hub.Connected(session._isReconnected).ConfigureAwait(false);
 
             // Reset the value;
             session._isReconnected = false;
@@ -452,7 +452,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             var serverGreeting = _cacheManager.ServerGreetingDeserializer.Rent();
             serverGreeting.Version = 0;
 
-            await SendHeaderWithBody(serverGreeting);
+            await SendHeaderWithBody(serverGreeting).ConfigureAwait(false);
 
             _cacheManager.ServerGreetingDeserializer.Return(serverGreeting);
             _sessionManager!.RegisterSession(this);
@@ -471,7 +471,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         else if (message is InvocationRequestMessage invocationRequestMessage)
         {
             // Throttle invocations.
-            await _invocationSemaphore.WaitAsync();
+            await _invocationSemaphore.WaitAsync().ConfigureAwait(false);
 
             if (!_invocationTaskArgumentsPool.TryTake(out var args))
                 args = new InvocationTaskArguments();
@@ -487,7 +487,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 var message = arguments.Message;
                 try
                 {
-                    await session._hub.InvokeMethod(message);
+                    await session._hub.InvokeMethod(message).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -536,7 +536,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         State = ConnectionState.Connected;
 
-        await SendHeaderWithBody(greetingMessage);
+        await SendHeaderWithBody(greetingMessage).ConfigureAwait(false);
 
         _cacheManager.ClientGreetingDeserializer.Return(greetingMessage);
 
@@ -560,7 +560,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         State = ConnectionState.Reconnecting;
 
         // Notify the hub.
-        await clientHub.Reconnecting();
+        await clientHub.Reconnecting().ConfigureAwait(false);
         int count = 0;
 
         while (true)
@@ -574,11 +574,11 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 if (delay == null)
                     return false;
 
-                await Task.Delay(delay.Value);
+                await Task.Delay(delay.Value).ConfigureAwait(false);
 
                 _config.Logger?.LogTrace($"Reconnection attempt {count}");
 
-                transport = await clientConfig.ConnectTransport();
+                transport = await clientConfig.ConnectTransport().ConfigureAwait(false);
                 State = ConnectionState.Connecting;
 
                 _pipeInput = transport.Input;
@@ -588,7 +588,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 _config.Logger?.LogTrace($"Reconnection succeeded.");
 
                 _isReconnected = true;
-                await StartAsClient();
+                await StartAsClient().ConfigureAwait(false);
                 return true;
             }
             catch (Exception e)
@@ -614,12 +614,12 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
-            await SendHeader((MessageType)reason);
+            await SendHeader((MessageType)reason).ConfigureAwait(false);
 
             if (_config.DisconnectDelay > 0)
             {
                 // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
-                await Task.Delay(_config.DisconnectDelay);
+                await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);
             }
         }
 
@@ -660,7 +660,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             || reason == DisconnectReason.ServerRestarting)
         {
             // If we reconnect, stop the disconnection process.
-            if (await TryReconnectAsClient())
+            if (await TryReconnectAsClient().ConfigureAwait(false))
                 return;
         }
 

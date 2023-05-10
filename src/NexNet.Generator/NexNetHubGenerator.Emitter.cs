@@ -355,7 +355,7 @@ partial class MethodMeta
 
         if (this.IsReturnVoid)
         {
-            sb.Append("ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
+            sb.Append("_ = ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
             sb.AppendLine(ParametersLessCancellation.Length > 0 ? "arguments);" : "null);");
         }
         else if (this.IsAsync)

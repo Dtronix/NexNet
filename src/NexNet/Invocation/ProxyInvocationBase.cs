@@ -113,7 +113,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             case ProxyInvocationMode.Caller:
             {
-                await _session.SendHeaderWithBody(message);
+                await _session.SendHeaderWithBody(message).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.All:
@@ -123,7 +123,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId();
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -143,7 +143,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -162,7 +162,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     if (_session.SessionManager!.Sessions.TryGetValue(_modeClientArguments[i], out var session))
                         try
                         {
-                            await session.SendHeaderWithBody(message);
+                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
                         }
                         catch
                         {
@@ -178,7 +178,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 {
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -197,7 +197,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -221,13 +221,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     {
                         try
                         {
-                            await session.SendHeaderWithBody(message);
+                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
                         }
                         catch
                         {
                             // Don't care if we can't invoke on another session here.
                         }
-                    }, message);
+                    }, message).ConfigureAwait(false);
                 }
 
                 break;
@@ -253,7 +253,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
     protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return;
@@ -287,7 +287,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
     protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return default;
@@ -325,7 +325,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // on the results on this proxy invocation.
         if (_mode != ProxyInvocationMode.Caller && _mode != ProxyInvocationMode.Client)
         {
-            await ProxyInvokeMethodCore(methodId, arguments);
+            await ProxyInvokeMethodCore(methodId, arguments).ConfigureAwait(false);
             return null;
         }
 
@@ -339,8 +339,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     $"Can't invoke on client {_modeClientArguments![0]} as it does not exist.");
         }
 
-        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(methodId, arguments, session,
-            cancellationToken);
+        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            methodId, 
+            arguments, 
+            session, 
+            cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return null;
@@ -353,7 +356,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 return null;
             }
 
-            await new ValueTask<bool>(state, state.Version);
+            await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
 
             if (state.IsCanceled)
             {
@@ -361,7 +364,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 {
                     var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
                     message.InvocationId = state.InvocationId;
-                    await session.SendHeaderWithBody(message);
+                    await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     CacheManager.InvocationCancellationRequestDeserializer.Return(message);
                 }
 
