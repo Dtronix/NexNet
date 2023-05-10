@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MemoryPack;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
@@ -74,6 +75,23 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
+    /// <summary>
+    /// Checks the passed data and serializes the data into a byte array. 
+    /// </summary>
+    /// <typeparam name="T">Data type to serialize.</typeparam>
+    /// <param name="data">Data to serialize.</param>
+    /// <returns>Serialized data.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Throws if the serialized data exceeds the maximum message length.</exception>
+    protected byte[] SerializeArgumentsCore<T>(in T data)
+    {
+        var arguments = MemoryPackSerializer.Serialize<T>(data);
+
+        // Check for arguments which exceed max length.
+        if (arguments.Length > IInvocationRequestMessage.MaxArgumentSize)
+            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
+
+        return arguments;
+    }
 
     /// <summary>
     /// Invokes the specified method on the connected session and waits until the message has been completely sent.
@@ -83,7 +101,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    protected async ValueTask InvokeMethod(ushort methodId, byte[]? arguments)
+    protected async ValueTask ProxyInvokeMethodCore(ushort methodId, byte[]? arguments)
     {
         var message = _cacheManager.InvocationRequestDeserializer.Rent();
         message.MethodId = methodId;
@@ -95,7 +113,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             case ProxyInvocationMode.Caller:
             {
-                await _session.SendHeaderWithBody(message);
+                await _session.SendHeaderWithBody(message).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.All:
@@ -105,7 +123,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId();
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -125,7 +143,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -144,15 +162,15 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     if (_session.SessionManager!.Sessions.TryGetValue(_modeClientArguments[i], out var session))
                         try
                         {
-                            await session.SendHeaderWithBody(message);
+                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
                         }
                         catch
                         {
                             // Don't care if we can't invoke on another session here.
                         }
                 }
-
-                break;
+                throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
+                    break;
             }
             case ProxyInvocationMode.Client:
             {
@@ -160,7 +178,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 {
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -179,7 +197,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message);
+                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -203,13 +221,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     {
                         try
                         {
-                            await session.SendHeaderWithBody(message);
+                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
                         }
                         catch
                         {
                             // Don't care if we can't invoke on another session here.
                         }
-                    }, message);
+                    }, message).ConfigureAwait(false);
                 }
 
                 break;
@@ -223,14 +241,6 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         _cacheManager.InvocationRequestDeserializer.Return(message);
     }
 
-
-    private void ReturnState(RegisteredInvocationState state)
-    {
-        _cacheManager.InvocationProxyResultDeserializer.Return(state.Result);
-        state.Result = null!;
-        _cacheManager.RegisteredInvocationStateCache.Return(state);
-    }
-
     /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
     /// and waits the the completion of the invocation.
@@ -241,9 +251,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask InvokeWaitForResult(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return;
@@ -275,9 +285,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> InvokeWaitForResult<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return default;
@@ -299,6 +309,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
+    private void ReturnState(RegisteredInvocationState state)
+    {
+        _cacheManager.InvocationProxyResultDeserializer.Return(state.Result);
+        state.Result = null!;
+        _cacheManager.RegisteredInvocationStateCache.Return(state);
+    }
+
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
         ushort methodId, 
         byte[]? arguments,
@@ -308,7 +325,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // on the results on this proxy invocation.
         if (_mode != ProxyInvocationMode.Caller && _mode != ProxyInvocationMode.Client)
         {
-            await InvokeMethod(methodId, arguments);
+            await ProxyInvokeMethodCore(methodId, arguments).ConfigureAwait(false);
             return null;
         }
 
@@ -322,8 +339,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     $"Can't invoke on client {_modeClientArguments![0]} as it does not exist.");
         }
 
-        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(methodId, arguments, session,
-            cancellationToken);
+        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            methodId, 
+            arguments, 
+            session, 
+            cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return null;
@@ -336,7 +356,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 return null;
             }
 
-            await new ValueTask<bool>(state, state.Version);
+            await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
 
             if (state.IsCanceled)
             {
@@ -344,7 +364,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 {
                     var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
                     message.InvocationId = state.InvocationId;
-                    await session.SendHeaderWithBody(message);
+                    await session.SendHeaderWithBody(message).ConfigureAwait(false);
                     CacheManager.InvocationCancellationRequestDeserializer.Return(message);
                 }
 

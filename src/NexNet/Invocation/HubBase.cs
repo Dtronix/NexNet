@@ -157,7 +157,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         {
             message.Result = null;
             message.State = InvocationProxyResultMessage.StateType.Exception;
-            await context.Session.SendHeaderWithBody(message);
+            await context.Session.SendHeaderWithBody(message).ConfigureAwait(false);
         }
         finally
         {

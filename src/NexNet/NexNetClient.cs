@@ -68,7 +68,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
 
-        var client = await _config.ConnectTransport();
+        var client = await _config.ConnectTransport().ConfigureAwait(false);
 
         _config.InternalOnClientConnect?.Invoke();
 
@@ -91,7 +91,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
         
         Proxy.Configure(_session, ProxyInvocationMode.Caller, null);
 
-        await _session.StartAsClient();
+        await _session.StartAsClient().ConfigureAwait(false);
     }
 
 
@@ -114,7 +114,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     /// <returns></returns>
     public async ValueTask DisposeAsync()
     {
-        await DisconnectAsync();
+        await DisconnectAsync().ConfigureAwait(false);
     }
 
     private void PingTimer(object? state)

@@ -3,7 +3,7 @@
 
 namespace NexNet.IntegrationTests;
 
-internal class NexNetServerTests : BaseTests
+internal partial class NexNetServerTests : BaseTests
 {
 
     [TestCase(Type.Uds)]

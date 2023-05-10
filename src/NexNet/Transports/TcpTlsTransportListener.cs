@@ -37,7 +37,7 @@ internal class TcpTlsTransportListener : ITransportListener
 
         try
         {
-            return await TcpTlsTransport.CreateFromSocket(clientSocket, _config);
+            return await TcpTlsTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (Exception e)
         {

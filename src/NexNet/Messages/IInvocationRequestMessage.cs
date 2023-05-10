@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 
 namespace NexNet.Messages;
 
@@ -7,6 +8,15 @@ namespace NexNet.Messages;
 /// </summary>
 public interface IInvocationRequestMessage
 {
+    /// <summary>
+    /// Max length allowed: ushort.MaxValue - (Type:byte) - (InvocationId:int) - (MethodId:ushort) - (Flags:byte) = 65527;
+    /// </summary>
+    public const int MaxArgumentSize = 65519;/*ushort.MaxValue
+                                         - sizeof(int) // InvocationId
+                                         - sizeof(ushort) // MethodId
+                                         - sizeof(InvocationFlags) // Flags
+                                         - sizeof(MessageType) // header Type
+                                         - 2; // BodyLength*/
     /// <summary>
     /// Unique invocation ID.
     /// </summary>
@@ -26,4 +36,12 @@ public interface IInvocationRequestMessage
     /// Arguments 
     /// </summary>
     Memory<byte> Arguments { get; set; }
+
+    /// <summary>
+    /// Deserializes the arguments to the specified type.
+    /// </summary>
+    /// <typeparam name="T">Type to deserialize to.</typeparam>
+    /// <returns>Deserialized value</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    T? DeserializeArguments<T>();
 }

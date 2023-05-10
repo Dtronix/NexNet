@@ -37,7 +37,7 @@ internal class SocketTransportListener : ITransportListener
 
         try
         {
-            return await SocketTransport.CreateFromSocket(clientSocket, _config);
+            return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (Exception e)
         {
