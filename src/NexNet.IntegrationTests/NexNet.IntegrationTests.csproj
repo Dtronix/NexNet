@@ -21,12 +21,6 @@
   <ItemGroup>
     <None Include="NexNetSessionTests.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj">
-      <OutputItemType>Analyzer</OutputItemType>
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.5.0" />
@@ -39,6 +33,10 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" />
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      SetTargetFramework="TargetFramework=netstandard2.0"/>
   </ItemGroup>
 
 </Project>
