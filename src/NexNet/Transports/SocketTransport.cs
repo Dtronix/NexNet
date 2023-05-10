@@ -82,7 +82,7 @@ internal class SocketTransport : ITransport
                 {
                     try
                     {
-                        await Task.Delay(clientConfig.ConnectionTimeout, timeoutCancellation.Token);
+                        await Task.Delay(clientConfig.ConnectionTimeout, timeoutCancellation.Token).ConfigureAwait(false);
                         socket.Close(0);
                     }
                     catch

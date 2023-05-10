@@ -22,7 +22,9 @@ partial interface IClientHub
 partial interface IServerHub
 {
     void ServerVoid();
+
     void ServerVoidWithParam(int id);
+
     ValueTask ServerTask();
     ValueTask ServerTaskWithParam(int data);
     ValueTask<int> ServerTaskValue();
@@ -58,7 +60,7 @@ partial class ClientHub
 
     protected override async ValueTask OnConnected(bool isReconnected)
     {
-        for (int j = 0; j < 10000; j++)
+        for (int j = 0; j < 1000000; j++)
         {
   
             switch (Random.Shared.Next(0, 5))

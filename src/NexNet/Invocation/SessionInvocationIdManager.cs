@@ -97,7 +97,7 @@ internal class SessionInvocationStateManager
         {
             _invocationStates.TryAdd(message.InvocationId, state);
 
-            await session.SendHeaderWithBody(message);
+            await session.SendHeaderWithBody(message).ConfigureAwait(false);
         }
         else
         {

@@ -51,7 +51,8 @@ internal class TcpTlsTransport : ITransport
         var sslTimeout = new CancellationTokenSource(config.SslConnectionTimeout);
 
  
-        await sslStream.AuthenticateAsServerAsync(config.SslServerAuthenticationOptions, sslTimeout.Token);
+        await sslStream.AuthenticateAsServerAsync(config.SslServerAuthenticationOptions, sslTimeout.Token)
+            .ConfigureAwait(false);
 
         return new TcpTlsTransport(socket, networkStream, sslStream);
     }
@@ -67,7 +68,7 @@ internal class TcpTlsTransport : ITransport
 
         try
         {
-            await socket.ConnectAsync(clientConfig.EndPoint, timeoutCancellation.Token);
+            await socket.ConnectAsync(clientConfig.EndPoint, timeoutCancellation.Token).ConfigureAwait(false);
 
             SocketConnection.SetRecommendedClientOptions(socket);
 
@@ -76,7 +77,8 @@ internal class TcpTlsTransport : ITransport
 
             var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
 
-            await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token);
+            await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token)
+                .ConfigureAwait(false);
 
             return new TcpTlsTransport(socket, networkStream, sslStream);
         }

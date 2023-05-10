@@ -17,6 +17,27 @@ partial class NexNetHubGenerator
             return;
         }
 
+        // verify is partial
+        if (!IsPartial(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustBePartial, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
+        // nested is not allowed
+        if (IsNested(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
+        // nested is not allowed
+        if (IsNested(syntax))
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
+            return;
+        }
+
         var hubMeta = new HubMeta(typeSymbol);
 
         // ReportDiagnostic when validate failed.
@@ -75,7 +96,7 @@ partial class NexNetHubGenerator
 
         sb.AppendLine();
         
-        if (hubMeta.IsClientHub)
+        if (hubMeta.NexNetHubAttribute.IsClientHub)
         {
             hubMeta.HubInterface.EmitInterfaceWithMethodHash(sb);
             sb.AppendLine();
@@ -86,14 +107,25 @@ partial class NexNetHubGenerator
         context.AddSource($"{fullType}.NexNetHub.g.cs", code);
     }
 
+    static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
+    {
+        return typeDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword));
+    }
+
+    static bool IsNested(TypeDeclarationSyntax typeDeclaration)
+    {
+        return typeDeclaration.Parent is TypeDeclarationSyntax;
+    }
+
+
 }
 
 partial class HubMeta
 {
-    private string EmitServerClientName() => IsServerHub ? "Server" : "Client";
+    private string EmitServerClientName() => NexNetHubAttribute.IsServerHub ? "Server" : "Client";
     public void EmitHub(StringBuilder sb)
     {
-        var descriptionText = IsServerHub
+        var descriptionText = NexNetHubAttribute.IsServerHub
             ? "Hub used for handling all client communications."
             : "Hub used for handling all server communications.";
         sb.AppendLine($$"""
@@ -103,7 +135,7 @@ partial class HubMeta
 partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}HubBase<{{this.ProxyInterface.ProxyImplNameWithNamespace}}>, {{this.HubInterface.Namespace}}.{{this.HubInterface.TypeName}}
 {
 """);
-        if (IsServerHub)
+        if (NexNetHubAttribute.IsServerHub)
         {
             sb.AppendLine($$"""
     /// <summary>
@@ -112,9 +144,9 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
     /// <param name="config">Configurations for this instance.</param>
     /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetServer for handling incoming connections.</returns>
-    public static global::NexNet.NexNetServer<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateServer(global::NexNet.Transports.ServerConfig config, Func<{{TypeName}}> hubFactory)
+    public static global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> hubFactory)
     {
-        return new global::NexNet.NexNetServer<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hubFactory);
+        return new global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hubFactory);
     }
 """);
         }
@@ -128,9 +160,9 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
     /// <param name="config">Configurations for this instance.</param>
     /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
-    public static global::NexNet.NexNetClient<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
+    public static global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
     {
-        return new global::NexNet.NexNetClient<{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hub);
+        return new global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hub);
     }
 """);
         }
@@ -190,14 +222,14 @@ partial class MethodMeta
         }
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("                    var arguments = global::MemoryPack.MemoryPackSerializer.Deserialize<System.ValueTuple<");
+            sb.Append("                    var arguments = message.DeserializeArguments<global::System.ValueTuple<");
             foreach (var methodParameterMeta in ParametersLessCancellation)
             {
                 sb.Append(methodParameterMeta.ParamType).Append(", ");
             }
 
             sb.Remove(sb.Length - 2, 2);
-            sb.AppendLine(">>(message.Arguments.Span);");
+            sb.AppendLine(">>();");
         }
         sb.Append("                    ");
         if (IsReturnVoid)
@@ -293,8 +325,8 @@ partial class MethodMeta
 
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("        var arguments = global::MemoryPack.MemoryPackSerializer.Serialize<global::System.ValueTuple<");
-
+            sb.Append("        var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
+            
             foreach (var p in ParametersLessCancellation)
             {
                 sb.Append(p.ParamType).Append(", ");
@@ -323,12 +355,12 @@ partial class MethodMeta
 
         if (this.IsReturnVoid)
         {
-            sb.Append("InvokeMethod(").Append(this.Id).Append(", ");
+            sb.Append("_ = ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
             sb.AppendLine(ParametersLessCancellation.Length > 0 ? "arguments);" : "null);");
         }
         else if (this.IsAsync)
         {
-            sb.Append("return InvokeWaitForResult");
+            sb.Append("return ProxyInvokeAndWaitForResultCore");
             if (this.ReturnType != null)
             {
                 sb.Append("<").Append(this.ReturnType).Append(">");

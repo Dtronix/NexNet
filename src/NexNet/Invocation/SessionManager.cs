@@ -98,7 +98,7 @@ internal class SessionManager
 
         foreach (var nexNetSession in group.SessionDictionary)
         {
-            await channelIterator(nexNetSession.Value, state);
+            await channelIterator(nexNetSession.Value, state).ConfigureAwait(false);
         }
     }
 
