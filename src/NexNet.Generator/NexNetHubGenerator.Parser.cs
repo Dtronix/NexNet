@@ -26,7 +26,7 @@ internal partial class InvocationInterfaceMeta
 
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol? symbol)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, bool isServer)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
@@ -79,7 +79,10 @@ internal partial class InvocationInterfaceMeta
         var members = Symbol.GetMembers().ToArray();
 
         var lessInterfaceI = symbol.Name[0] == 'I' ? symbol.Name.Substring(1) : symbol.Name;
-        this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
+        //this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
+
+        this.ProxyImplName = !isServer ? $"ServerProxy" : "ClientProxy";
+        //this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
         //this.AlreadyGeneratedHash = false;
     }
@@ -298,8 +301,10 @@ internal partial class HubMeta
         this.NexNetHubAttribute = new NexNetHubAttributeMeta(symbol);
 
         var hubAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexNetHubAttribute");
-        HubInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol);
-        ProxyInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol);
+        HubInterface = new InvocationInterfaceMeta(
+            hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
+        ProxyInterface = new InvocationInterfaceMeta(
+            hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;

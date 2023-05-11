@@ -305,6 +305,8 @@ namespace NexNetDemo2
 
             var client = ClientHub.CreateClient(clientConfig, new ClientHub());
 
+            client.
+
             try
             {
                 await client.ConnectAsync();
