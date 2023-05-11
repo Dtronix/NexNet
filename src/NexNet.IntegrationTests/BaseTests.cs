@@ -144,7 +144,7 @@ public class BaseTests
     }
 
 
-    protected (NexNetServer<ServerHub, ClientHubProxyImpl> server, ServerHub serverHub, NexNetClient<ClientHub, ServerHubProxyImpl> client, ClientHub clientHub)
+    protected (NexNetServer<ServerHub, ServerHub.ClientProxy> server, ServerHub serverHub, NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
         CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
     {
         var serverHub = new ServerHub();

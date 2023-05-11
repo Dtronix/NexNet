@@ -140,7 +140,7 @@ internal partial class NexNetClientTests_Cancellation : BaseTests
 
 
 
-    private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerHub> setup, Action<T, TaskCompletionSource> onMessage, Func<NexNetClient<ClientHub, ServerHubProxyImpl>, ValueTask> action)
+    private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerHub> setup, Action<T, TaskCompletionSource> onMessage, Func<NexNetClient<ClientHub, ClientHub.ServerProxy>, ValueTask> action)
         where T : IMessageBodyBase
     {
         var clientConfig = CreateClientConfig(type);

@@ -18,8 +18,8 @@ using System.Runtime.CompilerServices;
 namespace NexNet;
 
 internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInterfaceMethodHash
-    where TProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
+    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+    where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private readonly THub _hub;
     private readonly ConfigBase _config;

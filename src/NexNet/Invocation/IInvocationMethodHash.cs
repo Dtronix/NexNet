@@ -3,7 +3,7 @@
 /// <summary>
 /// Interface for registering hashes of public methods.
 /// </summary>
-public interface IInterfaceMethodHash
+public interface IInvocationMethodHash
 {
     /// <summary>
     /// This is a hash based upon the interface's method names, arguments and return values.

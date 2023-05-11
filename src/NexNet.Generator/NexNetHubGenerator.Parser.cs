@@ -11,10 +11,10 @@ internal partial class InvocationInterfaceMeta
 {
     private readonly HashSet<ushort> _methodIds = new HashSet<ushort>();
 
-    public INamedTypeSymbol Symbol { get; set; }
+    public INamedTypeSymbol Symbol { get; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
-    public bool IsValueType { get; set; }
+    public bool IsValueType { get; }
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
     public MethodMeta[] Methods { get; }
@@ -22,16 +22,20 @@ internal partial class InvocationInterfaceMeta
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
 
+    public string NamespaceName { get; }
+
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol? symbol)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, bool isServer)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
         var usedHashes = new HashSet<ushort>();
         this.Symbol = symbol;
+        
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
@@ -75,12 +79,13 @@ internal partial class InvocationInterfaceMeta
         var members = Symbol.GetMembers().ToArray();
 
         var lessInterfaceI = symbol.Name[0] == 'I' ? symbol.Name.Substring(1) : symbol.Name;
-        this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
+        //this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
+
+        this.ProxyImplName = !isServer ? $"ServerProxy" : "ClientProxy";
+        //this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
         //this.AlreadyGeneratedHash = false;
     }
-
-
 
     public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
     {
@@ -250,8 +255,10 @@ internal partial class HubMeta
         this.NexNetHubAttribute = new NexNetHubAttributeMeta(symbol);
 
         var hubAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexNetHubAttribute");
-        HubInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol);
-        ProxyInterface = new InvocationInterfaceMeta(hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol);
+        HubInterface = new InvocationInterfaceMeta(
+            hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
+        ProxyInterface = new InvocationInterfaceMeta(
+            hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
