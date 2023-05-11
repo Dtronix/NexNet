@@ -158,7 +158,7 @@ internal partial class NexNetClientTests_SendInvocation : BaseTests
         }, client => client.Proxy.ServerTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
 
-    private async Task InvokeFromClientAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<NexNetClient<ClientHub, ServerHubProxyImpl>> action)
+    private async Task InvokeFromClientAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<NexNetClient<ClientHub, ClientHub.ServerProxy>> action)
     {
         var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();

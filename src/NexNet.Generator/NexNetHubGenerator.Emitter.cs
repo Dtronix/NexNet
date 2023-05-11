@@ -74,25 +74,8 @@ partial class NexNetHubGenerator
 #nullable enable
 ");
 
-
-        sb.AppendLine($"namespace {hubMeta.Symbol.ContainingNamespace};");
-        sb.AppendLine();
-
         hubMeta.EmitHub(sb);
 
-        sb.AppendLine();
-
-        hubMeta.ProxyInterface.EmitProxyImpl(sb);
-
-        sb.AppendLine();
-        
-        if (hubMeta.NexNetHubAttribute.IsClientHub)
-        {
-            hubMeta.HubInterface.EmitInterfaceWithMethodHash(sb);
-            sb.AppendLine();
-            hubMeta.ProxyInterface.EmitInterfaceWithMethodHash(sb);
-        }
-        
         var code = sb.ToString();
         context.AddSource($"{fullType}.NexNetHub.g.cs", code);
     }
@@ -115,83 +98,94 @@ partial class HubMeta
     private string EmitServerClientName() => NexNetHubAttribute.IsServerHub ? "Server" : "Client";
     public void EmitHub(StringBuilder sb)
     {
-        var descriptionText = NexNetHubAttribute.IsServerHub
-            ? "Hub used for handling all client communications."
-            : "Hub used for handling all server communications.";
         sb.AppendLine($$"""
-/// <summary>
-/// {{descriptionText}}
-/// </summary>
-partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}HubBase<{{this.ProxyInterface.ProxyImplNameWithNamespace}}>, {{this.HubInterface.Namespace}}.{{this.HubInterface.TypeName}}
+namespace {{Symbol.ContainingNamespace}} 
 {
+    /// <summary>
+    /// Hub used for handling all {{EmitServerClientName()}} communications.
+    /// </summary>
+    partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}HubBase<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, {{this.HubInterface.Namespace}}.{{this.HubInterface.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
+    {
 """);
         if (NexNetHubAttribute.IsServerHub)
         {
             sb.AppendLine($$"""
-    /// <summary>
-    /// Creates an instance of the server for this hub and matching client.
-    /// </summary>
-    /// <param name="config">Configurations for this instance.</param>
-    /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
-    /// <returns>NexNetServer for handling incoming connections.</returns>
-    public static global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> hubFactory)
-    {
-        return new global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hubFactory);
-    }
+        /// <summary>
+        /// Creates an instance of the server for this hub and matching client.
+        /// </summary>
+        /// <param name="config">Configurations for this instance.</param>
+        /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
+        /// <returns>NexNetServer for handling incoming connections.</returns>
+        public static global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> hubFactory)
+        {
+            return new global::NexNet.NexNetServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>(config, hubFactory);
+        }
 """);
         }
         else
         {
 
             sb.AppendLine($$"""
-    /// <summary>
-    /// Creates an instance of the client for this hub and matching server.
-    /// </summary>
-    /// <param name="config">Configurations for this instance.</param>
-    /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
-    /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
-    public static global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
-    {
-        return new global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.ProxyInterface.ProxyImplNameWithNamespace}}>(config, hub);
-    }
+        /// <summary>
+        /// Creates an instance of the client for this hub and matching server.
+        /// </summary>
+        /// <param name="config">Configurations for this instance.</param>
+        /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
+        /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
+        public static global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} hub)
+        {
+            return new global::NexNet.NexNetClient<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>(config, hub);
+        }
 """);
         }
 
         sb.AppendLine($$"""
 
-    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
-    {
-        global::System.Threading.CancellationTokenSource? cts = null;
-        try
+        protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
-            switch (message.MethodId)
+            global::System.Threading.CancellationTokenSource? cts = null;
+            try
             {
+                switch (message.MethodId)
+                {
 """);
         for (int i = 0; i < HubInterface.Methods.Length; i++)
         {
             sb.Append($$"""
-                case {{HubInterface.Methods[i].Id}}:
-                {
+                    case {{HubInterface.Methods[i].Id}}:
+                    {
 
 """);
-            HubInterface.Methods[i].EmitHubInvocation(sb, this.ProxyInterface);
+            HubInterface.Methods[i].EmitHubInvocation(sb, this.ProxyInterface, this);
             sb.AppendLine("""
-                    break;
-                }
+                        break;
+                    }
 """);
         }
+
         sb.AppendLine($$"""
+                }
             }
-        }
-        finally
-        {
-            if(cts!= null)
+            finally
             {
-                var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.ProxyInterface.ProxyImplNameWithNamespace}}>>(this);
-                methodInvoker.ReturnCancellationToken(message.InvocationId);
+                if(cts!= null)
+                {
+                    var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
+                    methodInvoker.ReturnCancellationToken(message.InvocationId);
+                }
             }
+
         }
 
+        /// <summary>
+        /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+        /// </summary>
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{this.HubInterface.GetHash()}}; }
+""");
+        
+        ProxyInterface.EmitProxyImpl(sb);
+
+        sb.AppendLine($$"""
     }
 }
 """);
@@ -203,16 +197,16 @@ partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}
 
 partial class MethodMeta
 {
-    public void EmitHubInvocation(StringBuilder sb, InvocationInterfaceMeta proxyImplementation)
+    public void EmitHubInvocation(StringBuilder sb, InvocationInterfaceMeta proxyImplementation, HubMeta hub)
     {
         if (CancellationTokenParameter != null)
         {
-            sb.AppendLine($"                    var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{proxyImplementation.ProxyImplNameWithNamespace}>>(this);");
-            sb.AppendLine("                    cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
+            sb.AppendLine($"                        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{hub.Namespace}.{hub.TypeName}.{proxyImplementation.ProxyImplName}>>(this);");
+            sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
         }
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("                    var arguments = message.DeserializeArguments<global::System.ValueTuple<");
+            sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
             foreach (var methodParameterMeta in ParametersLessCancellation)
             {
                 sb.Append(methodParameterMeta.ParamType).Append(", ");
@@ -221,7 +215,7 @@ partial class MethodMeta
             sb.Remove(sb.Length - 2, 2);
             sb.AppendLine(">>();");
         }
-        sb.Append("                    ");
+        sb.Append("                        ");
         if (IsReturnVoid)
         {
             EmitHubMethodInvocation(sb);
@@ -238,8 +232,8 @@ partial class MethodMeta
                 sb.Append("var result = await ");
                 EmitHubMethodInvocation(sb);
                 sb.AppendLine("""
-                    if (returnBuffer != null)
-                        global::MemoryPack.MemoryPackSerializer.Serialize(returnBuffer, result);
+                        if (returnBuffer != null)
+                            global::MemoryPack.MemoryPackSerializer.Serialize(returnBuffer, result);
 """);
             }
         }
@@ -272,7 +266,7 @@ partial class MethodMeta
 
     public void EmitProxyMethodInvocation(StringBuilder sb)
     {
-        sb.Append("    public ");
+        sb.Append("             public ");
 
         if (this.IsReturnVoid)
         {
@@ -310,12 +304,12 @@ partial class MethodMeta
         }
 
         sb.AppendLine(")");
-        sb.AppendLine("    {");
+        sb.AppendLine("             {");
 
 
         if (ParametersLessCancellation.Length > 0)
         {
-            sb.Append("        var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
+            sb.Append("                 var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
             
             foreach (var p in ParametersLessCancellation)
             {
@@ -341,7 +335,7 @@ partial class MethodMeta
             sb.AppendLine("));");
         }
 
-        sb.Append("        ");
+        sb.Append("                 ");
 
         if (this.IsReturnVoid)
         {
@@ -361,7 +355,7 @@ partial class MethodMeta
             sb.Append(this.CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
         }
 
-        sb.AppendLine("    }").AppendLine();
+        sb.AppendLine("             }");
     }
 
 
@@ -372,27 +366,28 @@ partial class InvocationInterfaceMeta
     public void EmitProxyImpl(StringBuilder sb)
     {
         sb.AppendLine($$"""
-public class {{ProxyImplName}} : global::NexNet.Invocation.ProxyInvocationBase, {{this.Namespace}}.{{this.TypeName}}
-{
+
+        /// <summary>
+        /// Proxy invocation implementation for the matching hub.
+        /// </summary>
+        public class {{ProxyImplName}} : global::NexNet.Invocation.ProxyInvocationBase, {{this.Namespace}}.{{this.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
+        {
 """);
         foreach (var method in Methods)
         {
             method.EmitProxyMethodInvocation(sb);
         }
+
+
         sb.AppendLine($$"""
-}
+
+            /// <summary>
+            /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+            /// </summary>
+            static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{GetHash()}}; }
+        }
 """);
     }
 
-
-    public void EmitInterfaceWithMethodHash(StringBuilder sb)
-    {
-        sb.AppendLine($$"""
-partial interface {{TypeName}} : global::NexNet.Invocation.IInterfaceMethodHash
-{
-    static int global::NexNet.Invocation.IInterfaceMethodHash.MethodHash { get => {{GetHash()}}; }
-}
-""");
-    }
 }
 

@@ -15,8 +15,8 @@ namespace NexNet;
 /// <typeparam name="TServerHub">The hub which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on remote hubs.</typeparam>
 public sealed class NexNetServer<TServerHub, TClientProxy>
-    where TServerHub : ServerHubBase<TClientProxy>, IInterfaceMethodHash
-    where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
+    where TServerHub : ServerHubBase<TClientProxy>, IInvocationMethodHash
+    where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
