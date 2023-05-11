@@ -21,6 +21,7 @@ internal partial class InvocationInterfaceMeta
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
+
     public string NamespaceName { get; }
 
     //public bool AlreadyGeneratedHash { get; }

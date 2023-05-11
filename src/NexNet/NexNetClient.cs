@@ -14,8 +14,8 @@ namespace NexNet;
 /// <typeparam name="TClientHub">Hub  used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
-    where TClientHub : ClientHubBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInterfaceMethodHash
-    where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
+    where TClientHub : ClientHubBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
+    where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 
 {
     private readonly Timer _pingTimer;

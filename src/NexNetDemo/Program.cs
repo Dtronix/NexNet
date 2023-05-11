@@ -9,6 +9,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using NexNet;
 using NexNet.Transports;
+using NexNetDemo;
 
 namespace NexNetDemo
 {

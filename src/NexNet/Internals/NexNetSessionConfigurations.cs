@@ -5,8 +5,8 @@ using NexNet.Transports;
 namespace NexNet.Internals;
 
 internal readonly struct NexNetSessionConfigurations<THub, TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInterfaceMethodHash
-    where TProxy : ProxyInvocationBase, IProxyInvoker, IInterfaceMethodHash, new()
+    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+    where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     public required ConfigBase Configs { get; init; }
 

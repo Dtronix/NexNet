@@ -9,36 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="BaseTests.cs" />
-    <Compile Remove="ConsoleLogger.cs" />
-    <Compile Remove="NexNetClientTests.cs" />
-    <Compile Remove="NexNetClientTests_Cancellation.cs" />
-    <Compile Remove="NexNetClientTests_InvalidInvocations.cs" />
-    <Compile Remove="NexNetClientTests_ReceiveInvocation.cs" />
-    <Compile Remove="NexNetClientTests_SendInvocation.cs" />
-    <Compile Remove="NexNetServerTests.cs" />
-    <Compile Remove="NexNetServerTests_Cancellation.cs" />
-    <Compile Remove="NexNetServerTests_ReceiveInvocation.cs" />
-    <Compile Remove="NexNetServerTests_SendInvocation.cs" />
-    <Compile Remove="TestInterfaces\BasicTestsInterfaces.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="BaseTests.cs" />
-    <None Include="ConsoleLogger.cs" />
-    <None Include="NexNetClientTests.cs" />
-    <None Include="NexNetClientTests_Cancellation.cs" />
-    <None Include="NexNetClientTests_InvalidInvocations.cs" />
-    <None Include="NexNetClientTests_ReceiveInvocation.cs" />
-    <None Include="NexNetClientTests_SendInvocation.cs" />
-    <None Include="NexNetServerTests.cs" />
-    <None Include="NexNetServerTests_Cancellation.cs" />
-    <None Include="NexNetServerTests_ReceiveInvocation.cs" />
-    <None Include="NexNetServerTests_SendInvocation.cs" />
-    <None Include="TestInterfaces\BasicTestsInterfaces.cs" />
   </ItemGroup>
 
   <ItemGroup>
