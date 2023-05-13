@@ -36,7 +36,7 @@ partial class ClientHub
 [NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
-    private int i = 0;
+    private int i2 = 0;
 
     public async ValueTask<int> GetValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
     {
@@ -59,6 +59,10 @@ partial class ServerHub : IServerHub
 }
 
 ```
+
+## Lifetimes
+
+Each session created gets its own hub instance created upon initial connection.  once the session is closed, the hub is disposed.
 
 ## Features
 - Automatic reconnection upon timeout or socket losing connection.
