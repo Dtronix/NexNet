@@ -3,6 +3,63 @@ Modern &amp; Compact .NET Asynchronous Server and Client
 
 Built similarly to SignalR, but slimmed down and without all the ASP.NET requirements. Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial) for Pipeline socket transports.
 
+## Usage
+```
+partial interface IClientHub
+{
+    ValueTask<int> GetValue();
+}
+
+partial interface IServerHub
+{
+    ValueTask<int> GetValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+}
+
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub
+{
+    private int i = 0;
+
+    public ValueTask<int> GetValue()
+    {
+        //Console.WriteLine(i++);
+        return ValueTask.FromResult(i);
+    }
+    
+    protected override async ValueTask OnConnected(bool isReconnected)
+    {
+        var reaultValue =  Context.Proxy.GetValueWithValueAndCancellation(321, CancellationToken.None);
+    }
+
+}
+
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    private int i = 0;
+
+    public async ValueTask<int> GetValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
+    {
+        var i2 = Interlocked.Increment(ref i);
+        try
+        {
+            await Task.Delay(10, cancellationToken);
+        }
+        catch (TaskCanceledException)
+        {
+            throw;
+        }
+        return i2;
+    }
+
+    protected override ValueTask OnConnected(bool isReconnected)
+    {
+        return ValueTask.CompletedTask;
+    }
+}
+
+```
+
 ## Features
 - Automatic reconnection upon timeout or socket losing connection.
 - High performance Socket and Pipeline usage.
@@ -13,8 +70,9 @@ Built similarly to SignalR, but slimmed down and without all the ASP.NET require
     - void for "fire and forget" invocation situations such as notifications.
     - ValueTask whcih waiting for invocation completion.
     - ValueTask<T> which will return a value from the remote invocation method.
-- Automatic reconnection of clients upon timeout or loss of connection
-- Ping system to detect timeouts.
+- Automatic reconnection of clients upon timeout or loss of connection.
+- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
+- Ping system to detect timeouts from cline tand server side.
 - No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
 - Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
 - Minimal package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack) and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial)
