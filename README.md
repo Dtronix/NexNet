@@ -1,6 +1,6 @@
 # <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)  [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator)
 
-NexNet is a .NET real-time asynchronous networking library that provides communication between the server hub and multiple clients. The library manages connections and communication, allowing for seamless integration with new technologies.
+NexNet is a .NET real-time asynchronous networking library that provides bidirectional communication between the server hub and multiple clients. The library manages connections and communication, allowing for seamless integration with new technologies.
 
 
  Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial) for Pipeline socket transports.
