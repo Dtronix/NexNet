@@ -321,7 +321,7 @@ partial class ServerHub : IServerHub
 using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
-partial interface IClientHub { ValueTask<string?> Update(ValueTask<string[]?> sf, System.Nullable<string> sf5, int? tes); }
+partial interface IClientHub { ValueTask<string?> Update(string[]? val); }
 partial interface IServerHub { }
 
 [NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
