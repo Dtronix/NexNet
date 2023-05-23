@@ -1,4 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
+using MemoryPack;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -24,7 +25,8 @@ public static class CSharpGeneratorRunner
             });
 
         var references = systemAssemblies
-            .Append(typeof(NexNetHubAttribute<,>).Assembly.Location) // System Assemblies + MemoryPack.Core.dll
+            .Append(typeof(NexNetHubAttribute<,>).Assembly.Location) // System Assemblies 
+            .Append(typeof(MemoryPackableAttribute).Assembly.Location) // System Assemblies 
             .Select(x => MetadataReference.CreateFromFile(x))
             .ToArray();
 

@@ -315,6 +315,25 @@ partial class ServerHub : IServerHub
     }
 
     [Test]
+    public void CompilesSimpleServerAndClientWithNullableReturn()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientHub { ValueTask<string?> Update(ValueTask<string[]?> sf, System.Nullable<string> sf5, int? tes); }
+partial interface IServerHub { }
+
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+
+}
+""");
+        Assert.IsEmpty(diagnostic);
+    }
+
+    [Test]
     public void InvalidCancellationToken_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
