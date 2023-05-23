@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.IO.Pipelines;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
@@ -21,7 +22,7 @@ partial interface IClientHub
 
 partial interface IServerHub
 {
-    void ServerVoid();
+    void ServerVoid(IDuplexPipe pipe);
 
     void ServerVoidWithParam(int id);
 

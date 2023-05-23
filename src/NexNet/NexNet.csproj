@@ -11,17 +11,10 @@
     <Description>Communication system to two way communication between a single server and multiple clients.</Description>
     <Version>0.1.1</Version>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Remove="NexNetPipe.cs" />
-  </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>NexNet.IntegrationTests</_Parameter1>
     </AssemblyAttribute>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="NexNetPipe.cs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Pipelines.Sockets.Unofficial" Version="2.2.8" />
