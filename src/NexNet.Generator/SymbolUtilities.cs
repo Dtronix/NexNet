@@ -49,8 +49,7 @@ internal class SymbolUtilities
         var sb = GetStringBuilder();
         sb.Append(typeSymbol.ToDisplayString(NullableFlowState.NotNull, _symbolDisplayFormat));
 
-        if (typeSymbol.TypeKind == TypeKind.Array
-            && typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
+        if (typeSymbol.NullableAnnotation == NullableAnnotation.Annotated)
             sb.Append("?");
 
         if (sb.Length == 0)
