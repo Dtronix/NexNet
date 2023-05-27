@@ -669,6 +669,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _hub.Disconnected(reason);
         OnDisconnected?.Invoke();
 
+        _hub.SessionContext.Reset();
+
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();
         _invocationTaskArgumentsPool.Clear();
