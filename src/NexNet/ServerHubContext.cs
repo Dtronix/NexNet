@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using NexNet.Cache;
 using NexNet.Invocation;
 
@@ -7,45 +8,79 @@ namespace NexNet;
 /// <summary>
 /// 
 /// </summary>
-/// <typeparam name="TProxy"></typeparam>
-public class ServerHubContext<TProxy>
-    where TProxy : ProxyInvocationBase, IProxyInvoker, new()
+/// <typeparam name="TClientProxy"></typeparam>
+public class ServerHubContext<TClientProxy> : IDisposable
+    where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    public IProxyBase<TProxy> Clients { get; }
+    private readonly INexNetServer<TClientProxy> _server;
+    private readonly SessionManager _sessionManager;
 
-    public ServerHubContext(SessionCacheManager<TProxy> cacheManager)
+    /// <summary>
+    /// Client Proxy.
+    /// </summary>
+    public IProxyBase<TClientProxy> Clients { get; }
+
+
+    internal ServerHubContext(INexNetServer<TClientProxy> server, SessionManager sessionManager, SessionCacheManager<TClientProxy> cache)
     {
-        Clients = new ClientProxy(cacheManager, this)
+        _server = server;
+        _sessionManager = sessionManager;
+        Clients = new ClientProxy(sessionManager, cache, this);
+
     }
 
-    private sealed class ClientProxy : IProxyBase<TProxy>
+    /// <summary>
+    /// Gets all the connected client ids.
+    /// </summary>
+    /// <returns>Collection of connected client ids.</returns>
+    public IEnumerable<long> GetClientIds()
     {
-        private readonly SessionCacheManager<TProxy> _cacheManager;
-        private readonly ServerHubContext<TProxy> _context;
-        private readonly Stack<TProxy> _instancedProxies = new Stack<TProxy>();
+        return _sessionManager.Sessions.Keys;
+    }
 
-        private TProxy? _all;
-        public TProxy All
+    /// <summary>
+    /// Gets all the connected client ids.
+    /// </summary>
+    /// <returns>Collection of connected client ids.</returns>
+    public IEnumerable<string> GetGroupNames()
+    {
+        return _sessionManager.Groups.Keys;
+    }
+
+
+    private sealed class ClientProxy : IProxyBase<TClientProxy>
+    {
+        private readonly SessionManager _sessionManager;
+        private readonly SessionCacheManager<TClientProxy> _cacheManager;
+        private readonly ServerHubContext<TClientProxy> _context;
+        private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
+
+        private TClientProxy? _all;
+        public TClientProxy All
         {
             get => _all ??= _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager, 
+                null,
+                _sessionManager,
+                _cacheManager,
                 ProxyInvocationMode.All,
                 null);
         }
 
-        internal ClientProxy(SessionCacheManager<TProxy> cacheManager, ServerHubContext<TProxy> context)
+        internal ClientProxy(SessionManager sessionManager, SessionCacheManager<TClientProxy> cacheManager,
+            ServerHubContext<TClientProxy> context)
         {
+            _sessionManager = sessionManager;
             _cacheManager = cacheManager;
             _context = context;
         }
 
 
-        public TProxy Client(long id)
+        public TClientProxy Client(long id)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
+                null,
+                _sessionManager,
+                _cacheManager,
                 ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
@@ -53,11 +88,12 @@ public class ServerHubContext<TProxy>
             return proxy;
         }
 
-        public TProxy Clients(long[] ids)
+        public TClientProxy Clients(long[] ids)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
+                null,
+                _sessionManager,
+                _cacheManager,
                 ProxyInvocationMode.Clients,
                 ids);
             _instancedProxies.Push(proxy);
@@ -65,11 +101,12 @@ public class ServerHubContext<TProxy>
             return proxy;
         }
 
-        public TProxy Group(string groupName)
+        public TClientProxy Group(string groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
+                null,
+                _sessionManager,
+                _cacheManager,
                 ProxyInvocationMode.Groups,
                 new[] { groupName });
             _instancedProxies.Push(proxy);
@@ -77,11 +114,12 @@ public class ServerHubContext<TProxy>
             return proxy;
         }
 
-        public TProxy Groups(string[] groupName)
+        public TClientProxy Groups(string[] groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
+                null,
+                _sessionManager,
+                _cacheManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);
@@ -102,5 +140,14 @@ public class ServerHubContext<TProxy>
                 _cacheManager.ProxyCache.Return(proxy);
             }
         }
+    }
+
+    /// <summary>
+    /// Disposes the context for reuse at a later time.
+    /// </summary>
+    void IDisposable.Dispose()
+    {
+        ((ClientProxy)Clients).Reset();
+        _server.ServerHubContextCache.Add(this);
     }
 }

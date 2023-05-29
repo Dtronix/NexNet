@@ -1,19 +1,25 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
 
 namespace NexNet.Invocation;
-
+/// <summary>
+/// Manages all connected sessions to the server and their groupings.
+/// </summary>
 internal class SessionManager
 {
-    public readonly ConcurrentDictionary<long, INexNetSession> Sessions = new();
-
     private readonly ConcurrentDictionary<int, SessionGroup> _sessionGroups = new();
     private static int _idCounter = 0;
 
-    private ConcurrentDictionary<string, int> _groupIdDictionary = new();
+    private readonly ConcurrentDictionary<string, int> _groupIdDictionary = new();
+
+
+    public readonly ConcurrentDictionary<long, INexNetSession> Sessions = new();
+
+    public IReadOnlyDictionary<string, int> Groups => _groupIdDictionary;
 
     public bool RegisterSession(INexNetSession session)
     {

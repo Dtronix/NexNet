@@ -497,6 +497,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 {
                     session._invocationSemaphore.Release();
 
+                    // Clear out the references before returning to the pool.
                     arguments.Session = null!;
                     arguments.Message = null!;
                     session._invocationTaskArgumentsPool.Add(arguments);

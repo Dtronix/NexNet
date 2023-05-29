@@ -70,6 +70,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             get => _caller ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
                 _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Caller,
                 null);
         }
@@ -79,7 +80,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         {
             get => _all ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
-                _context.SessionManager, 
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.All, 
                 null);
         }
@@ -89,7 +91,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         {
             get => _others ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
-                _context.SessionManager, 
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Others,
                 null);
         }
@@ -107,6 +110,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
                 _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
@@ -119,6 +123,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
                 _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Clients,
                 ids);
             _instancedProxies.Push(proxy);
@@ -131,6 +136,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
                 _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Groups,
                 new[] { groupName });
             _instancedProxies.Push(proxy);
@@ -143,6 +149,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
                 _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);
