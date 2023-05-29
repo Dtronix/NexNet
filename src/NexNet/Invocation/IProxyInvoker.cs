@@ -9,7 +9,7 @@ public interface IProxyInvoker
 {
     internal void Configure(
         INexNetSession? session,
-        SessionManager sessionManager,
+        SessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments);
 }

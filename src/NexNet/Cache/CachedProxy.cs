@@ -12,6 +12,7 @@ internal class CachedProxy<TProxy>
 
     public TProxy Rent(
         INexNetSession<TProxy> session,
+        SessionManager sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments)
     {
@@ -20,7 +21,7 @@ internal class CachedProxy<TProxy>
         if (!_cache.TryTake(out var proxy))
             proxy = new TProxy() { CacheManager = session.CacheManager };
 
-        proxy.Configure(session, mode, modeArguments);
+        proxy.Configure(session, sessionManager, mode, modeArguments);
 
 
         return proxy;

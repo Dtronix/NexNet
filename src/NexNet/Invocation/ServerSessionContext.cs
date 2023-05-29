@@ -18,8 +18,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     /// </summary>
     public IProxyClients<TProxy> Clients => _proxy;
 
-        internal ServerSessionContext(INexNetSession<TProxy> session)
-        : base(session)
+    internal ServerSessionContext(INexNetSession<TProxy> session, SessionManager sessionManager)
+        : base(session, sessionManager)
     {
         _proxy = new ClientProxy(session.CacheManager, this);
     }
@@ -66,7 +66,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         private TProxy? _caller;
         public TProxy Caller
         {
-            get => _caller ??= _cacheManager.ProxyCache.Rent(_context.Session!, ProxyInvocationMode.Caller, null);
+            get => _caller ??= _cacheManager.ProxyCache.Rent(_context.Session!,  ProxyInvocationMode.Caller, null);
         }
 
         private TProxy? _all;

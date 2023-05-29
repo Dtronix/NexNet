@@ -17,11 +17,11 @@ public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>
     /// </summary>
     public TProxy Proxy
     {
-        get => _proxy ??= CacheManager.ProxyCache.Rent(Session!, ProxyInvocationMode.Caller, null);
+        get => _proxy ??= CacheManager.ProxyCache.Rent(Session!, SessionManager, ProxyInvocationMode.Caller, null);
     }
 
     internal ClientSessionContext(INexNetSession<TProxy> session)
-        : base(session)
+        : base(session, null)
     {
     }
 

@@ -19,8 +19,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private ProxyInvocationMode _mode;
     private long[]? _modeClientArguments;
     private string[]? _modeGroupArguments;
-    private INexNetSession? _session = null!;
-    private SessionManager _sessionManager = null!;
+    private INexNetSession? _session;
+    private SessionManager? _sessionManager;
     
 
     internal CacheManager CacheManager
@@ -31,12 +31,14 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     void IProxyInvoker.Configure(
         INexNetSession? session,
-        SessionManager sessionManager,
+        SessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments)
     {
         _session = session;
-        _sessionManager = sessionManager ?? throw new ArgumentNullException(nameof(sessionManager));
+        
+        // If the sessionManager is null, this is a client session.
+        _sessionManager = sessionManager;
         _mode = mode;
 
         switch (mode)
@@ -87,11 +89,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <exception cref="ArgumentOutOfRangeException">Throws if the serialized data exceeds the maximum message length.</exception>
     protected byte[] SerializeArgumentsCore<T>(in T data)
     {
-        var arguments = MemoryPackSerializer.Serialize<T>(data);
+        var arguments = MemoryPackSerializer.Serialize(data);
 
         // Check for arguments which exceed max length.
         if (arguments.Length > IInvocationRequestMessage.MaxArgumentSize)
-            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {NexNet.Messages.IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
+            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
 
         return arguments;
     }
@@ -121,6 +123,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.All:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 foreach (var (_, session) in _sessionManager.Sessions)
                 {
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId();
@@ -139,6 +145,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Others:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
                     if (id == _session!.Id)
@@ -160,6 +170,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
             case ProxyInvocationMode.Clients:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 for (int i = 0; i < _modeClientArguments!.Length; i++)
                 {
                     if (_sessionManager.Sessions.TryGetValue(_modeClientArguments[i], out var session))
@@ -177,6 +191,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Client:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 if (_sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out var session))
                 {
                     try
@@ -193,6 +211,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.AllExcept:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
                     if (id == _modeClientArguments![0])
@@ -218,19 +240,24 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    break;
             case ProxyInvocationMode.Groups:
             {
+                if (_sessionManager == null)
+                    throw new ArgumentNullException(nameof(_sessionManager),
+                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
                 for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
-                    await _sessionManager.GroupChannelIterator(_modeGroupArguments[i], static async (session, message) =>
-                    {
-                        try
+                    await _sessionManager.GroupChannelIterator(_modeGroupArguments[i],
+                        static async (session, message) =>
                         {
-                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            // Don't care if we can't invoke on another session here.
-                        }
-                    }, message).ConfigureAwait(false);
+                            try
+                            {
+                                await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                            }
+                            catch
+                            {
+                                // Don't care if we can't invoke on another session here.
+                            }
+                        }, message).ConfigureAwait(false);
                 }
 
                 break;
@@ -340,6 +367,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // Get the specific client if we are invoking on it.
         if (_mode == ProxyInvocationMode.Client)
         {
+            if (_sessionManager == null)
+                throw new ArgumentNullException(nameof(_sessionManager),
+                    "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+
             _sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out session);
 
             if (session == null)

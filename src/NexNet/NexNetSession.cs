@@ -77,8 +77,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _isServer = configurations.IsServer;
         _hub = configurations.Hub;
         _hub.SessionContext = configurations.IsServer
-            ? new ServerSessionContext<TProxy>(this)
-            : new ClientSessionContext<TProxy>(this);
+            ? new ServerSessionContext<TProxy>(this, _sessionManager!)
+            : new ClientSessionContext<TProxy>(this, _sessionManager);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache);
         SessionStore = new SessionStore();
