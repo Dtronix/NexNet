@@ -39,6 +39,8 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
     /// </summary>
     public ServerConfig Config => _config;
 
+    public ServerHubContext<TClientProxy> HubContext { get; }
+
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
     /// </summary>
@@ -52,6 +54,8 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         _cacheManager = new SessionCacheManager<TClientProxy>();
 
         _watchdogTimer = new Timer(ConnectionWatchdog);
+
+        HubContext = new ServerHubContext<TClientProxy>();
     }
 
     /// <summary>

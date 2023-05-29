@@ -12,7 +12,7 @@ internal class CachedProxy<TProxy>
 
     public TProxy Rent(
         INexNetSession<TProxy> session,
-        SessionManager sessionManager,
+        SessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments)
     {
