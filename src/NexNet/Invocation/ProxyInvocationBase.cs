@@ -354,6 +354,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // If we are invoking on multiple sessions, then we are not going to wait
         // on the results on this proxy invocation.
         if (_mode == ProxyInvocationMode.All
+            || _mode == ProxyInvocationMode.Groups
             || _mode == ProxyInvocationMode.AllExcept
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
