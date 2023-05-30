@@ -77,7 +77,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _isServer = configurations.IsServer;
         _hub = configurations.Hub;
         _hub.SessionContext = configurations.IsServer
-            ? new ServerSessionContext<TProxy>(this)
+            ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache);
@@ -444,6 +444,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 var serverHub = Unsafe.As<ServerHubBase<TProxy>>(_hub);
                 Identity = await serverHub.Authenticate(cGreeting.AuthenticationToken);
 
+                // Set the identity on the context.
+                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_hub.SessionContext);
+                serverContext.Identity = Identity;
+
                 // If the token is not good, disconnect.
                 if (Identity == null)
                     return DisconnectReason.Authentication;
@@ -497,6 +501,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 {
                     session._invocationSemaphore.Release();
 
+                    // Clear out the references before returning to the pool.
                     arguments.Session = null!;
                     arguments.Message = null!;
                     session._invocationTaskArgumentsPool.Add(arguments);
@@ -668,6 +673,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         _hub.Disconnected(reason);
         OnDisconnected?.Invoke();
+
+        _hub.SessionContext.Reset();
 
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();

@@ -89,7 +89,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
             OnSent = OnSent
         };
         
-        Proxy.Configure(_session, ProxyInvocationMode.Caller, null);
+        Proxy.Configure(_session, null, ProxyInvocationMode.Caller, null);
 
         await _session.StartAsClient().ConfigureAwait(false);
     }

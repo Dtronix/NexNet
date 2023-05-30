@@ -46,7 +46,7 @@ partial class ClientHub
     private int i = 0;
     public void Update()
     {
-        //Console.WriteLine("ClientHub Update called and invoked properly.");
+        Console.WriteLine("ClientHub Update called and invoked properly.");
     }
 
     public ValueTask<int> GetTask()
@@ -56,6 +56,7 @@ partial class ClientHub
     }
     public ValueTask<int> GetTaskAgain()
     {
+        Console.WriteLine("GetTaskAgain");
         return ValueTask.FromResult(Interlocked.Increment(ref i));
     }
 
@@ -313,7 +314,7 @@ internal class Program
             //Console.WriteLine(e);
             throw;
         }
-
+        
         Console.ReadLine();
         
     }

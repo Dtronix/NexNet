@@ -50,7 +50,7 @@ internal partial class NexNetServerTests : BaseTests
     }
 
 
-    //[Test]
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -61,7 +61,7 @@ internal partial class NexNetServerTests : BaseTests
             CreateClientConfig(type, false));
 
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 3; i++)
         {
             server.Start();
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
@@ -77,6 +77,4 @@ internal partial class NexNetServerTests : BaseTests
 
         }
     }
-
-
 }

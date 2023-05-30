@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Collections.Concurrent;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Diagnostics;
@@ -361,20 +362,10 @@ internal partial class MethodParameterMeta
     {
         this.Symbol = symbol;
         this.Name = symbol.Name;
-        IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
-        if (IsArrayType)
-        {
-            var type = ((IArrayTypeSymbol)symbol.Type);
-            var arrayType = type.ElementType;
-            this.ParamType = arrayType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + arrayType.Name + "[]";
-        }
-        else
-        {
-            this.ParamType = symbol.Type.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + symbol.Type.Name;
-        }
-
+        this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
+        this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
-        IsCancellationToken = symbol.Type.Name == "CancellationToken";
+        this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
     }
 }
 
@@ -418,24 +409,8 @@ internal partial class MethodMeta
         this.IsReturnVoid = returnSymbol.Name == "Void";
         this.NexNetMethodAttribute = new NexNetMethodAttributeMeta(symbol);
 
-
-
         if (ReturnArity > 0)
-        {
-            var firstReturnType = returnSymbol.TypeArguments[0];
-
-            if (firstReturnType.TypeKind == TypeKind.Array)
-            {
-                var type = ((IArrayTypeSymbol)firstReturnType);
-                var arrayType = type.ElementType;
-                this.ReturnType = arrayType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + arrayType.Name + "[]";
-            }
-            else
-            {
-                var returnType = (INamedTypeSymbol)firstReturnType;
-                this.ReturnType = returnType.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) + "." + returnType.Name;
-            }
-        }
+            this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
     }
 
 

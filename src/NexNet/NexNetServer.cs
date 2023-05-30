@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -14,7 +15,7 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerHub">The hub which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on remote hubs.</typeparam>
-public sealed class NexNetServer<TServerHub, TClientProxy>
+public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClientProxy>
     where TServerHub : ServerHubBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -23,8 +24,14 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
     private readonly ServerConfig _config;
     private readonly Func<TServerHub> _hubFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
-
     private ITransportListener? _listener;
+    private readonly ConcurrentBag<ServerHubContext<TClientProxy>> _serverHubContextCache = new();
+
+    /// <summary>
+    /// Cache for all the server hub contexts.
+    /// </summary>
+    ConcurrentBag<ServerHubContext<TClientProxy>> INexNetServer<TClientProxy>.ServerHubContextCache =>
+        _serverHubContextCache;
 
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementor;
@@ -52,6 +59,19 @@ public sealed class NexNetServer<TServerHub, TClientProxy>
         _cacheManager = new SessionCacheManager<TClientProxy>();
 
         _watchdogTimer = new Timer(ConnectionWatchdog);
+
+    }
+
+    /// <summary>
+    /// Gets a hub context which can be used outside of the hub.  Dispose after usage.
+    /// </summary>
+    /// <returns>Server hub context for invocation of client methods.</returns>
+    public ServerHubContext<TClientProxy> GetContext()
+    {
+        if(!_serverHubContextCache.TryTake(out var context))
+            context = new ServerHubContext<TClientProxy>(this, _sessionManager, _cacheManager);
+
+        return context;
     }
 
     /// <summary>
