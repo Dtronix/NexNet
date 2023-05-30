@@ -444,6 +444,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 var serverHub = Unsafe.As<ServerHubBase<TProxy>>(_hub);
                 Identity = await serverHub.Authenticate(cGreeting.AuthenticationToken);
 
+                // Set the identity on the context.
+                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_hub.SessionContext);
+                serverContext.Identity = Identity;
+
                 // If the token is not good, disconnect.
                 if (Identity == null)
                     return DisconnectReason.Authentication;
