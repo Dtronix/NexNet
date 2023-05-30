@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using NexNet.Cache;
 using NexNet.Internals;
 
@@ -7,49 +8,32 @@ namespace NexNet.Invocation;
 /// <summary>
 /// Base context for server hubs to use.
 /// </summary>
-/// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
-public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
-    where TProxy : ProxyInvocationBase, IProxyInvoker, new()
+/// <typeparam name="TClientProxy">Proxy class used for invocation.</typeparam>
+public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientProxy>
+    where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ClientProxy _proxy;
 
     /// <summary>
     /// Get the proxy for different client's invocations.
     /// </summary>
-    public IProxyClients<TProxy> Clients => _proxy;
+    public IProxyClients<TClientProxy> Clients => _proxy;
 
-    internal ServerSessionContext(INexNetSession<TProxy> session, SessionManager sessionManager)
+    /// <summary>
+    /// Provides the identity of this connection if there is one.
+    /// </summary>
+    public IIdentity? Identity { get; internal set; }
+
+    /// <summary>
+    /// Manages the groups for this session.
+    /// </summary>
+    public GroupManager Groups { get; }
+
+    internal ServerSessionContext(INexNetSession<TClientProxy> session, SessionManager sessionManager)
         : base(session, sessionManager)
     {
         _proxy = new ClientProxy(session.CacheManager, this);
-    }
-
-    /// <summary>
-    /// Adds the current session to a group.  Used for grouping invocations.
-    /// </summary>
-    /// <param name="groupName">Group to add this session to.</param>
-    public void AddToGroup(string groupName)
-    {
-        Session.SessionManager?.RegisterSessionGroup(groupName, Session);
-    }
-
-
-    /// <summary>
-    /// Adds the current session to multiple groups.  Used for grouping invocations.
-    /// </summary>
-    /// <param name="groupNames">Groups to add this session to.</param>
-    public void AddToGroups(string[] groupNames)
-    {
-        Session.SessionManager?.RegisterSessionGroup(groupNames, Session);
-    }
-
-    /// <summary>
-    /// Removes the current session from a group.  Used for grouping invocations.
-    /// </summary>
-    /// <param name="groupName">Group to remove this session from.</param>
-    public void RemoveFromGroup(string groupName)
-    {
-        Session.SessionManager?.UnregisterSessionGroup(groupName, Session);
+        Groups = new GroupManager(session, sessionManager);
     }
 
     internal override void Reset()
@@ -57,15 +41,15 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         _proxy.Reset();
     }
 
-    private sealed class ClientProxy : IProxyClients<TProxy>
+    private sealed class ClientProxy : IProxyClients<TClientProxy>
     {
-        private readonly SessionCacheManager<TProxy> _cacheManager;
-        private readonly ServerSessionContext<TProxy> _context;
-        private readonly Stack<TProxy> _instancedProxies = new Stack<TProxy>();
+        private readonly SessionCacheManager<TClientProxy> _cacheManager;
+        private readonly ServerSessionContext<TClientProxy> _context;
+        private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
 
-        private TProxy? _caller;
+        private TClientProxy? _caller;
 
-        public TProxy Caller
+        public TClientProxy Caller
         {
             get => _caller ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -75,8 +59,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
                 null);
         }
 
-        private TProxy? _all;
-        public TProxy All
+        private TClientProxy? _all;
+        public TClientProxy All
         {
             get => _all ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -86,8 +70,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
                 null);
         }
 
-        private TProxy? _others;
-        public TProxy Others
+        private TClientProxy? _others;
+        public TClientProxy Others
         {
             get => _others ??= _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -98,14 +82,16 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         }
 
 
-        internal ClientProxy(SessionCacheManager<TProxy> cacheManager, ServerSessionContext<TProxy> context)
+        internal ClientProxy(
+            SessionCacheManager<TClientProxy> cacheManager,
+            ServerSessionContext<TClientProxy> context)
         {
             _cacheManager = cacheManager;
             _context = context;
         }
 
 
-        public TProxy Client(long id)
+        public TClientProxy Client(long id)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -118,7 +104,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             return proxy;
         }
 
-        public TProxy Clients(long[] ids)
+        public TClientProxy Clients(long[] ids)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -131,7 +117,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             return proxy;
         }
 
-        public TProxy Group(string groupName)
+        public TClientProxy Group(string groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -144,7 +130,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             return proxy;
         }
 
-        public TProxy Groups(string[] groupName)
+        public TClientProxy Groups(string[] groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 _context.Session,
@@ -155,6 +141,11 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
             _instancedProxies.Push(proxy);
 
             return proxy;
+        }
+
+        public IEnumerable<long> GetIds()
+        {
+            return _context.SessionManager?.Sessions.Keys ?? Array.Empty<long>();
         }
 
         public void Reset()

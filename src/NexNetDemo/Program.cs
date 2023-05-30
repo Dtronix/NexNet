@@ -61,7 +61,6 @@ partial class ClientHub
 
     protected override async ValueTask OnConnected(bool isReconnected)
     {
-        return;
         for (int j = 0; j < 1000000; j++)
         {
   
@@ -314,14 +313,7 @@ internal class Program
             //Console.WriteLine(e);
             throw;
         }
-
-        await Task.Delay(100);
-        using var s = server.GetContext();
-
-        var id = s.GetClientIds().First();
-        //var s5 = await s.Clients.Client(id).GetTaskAgain();
-        var s54 = await s.Clients.Clients(new[] { id }).GetTaskAgain();
-
+        
         Console.ReadLine();
         
     }

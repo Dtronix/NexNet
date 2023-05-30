@@ -6,7 +6,6 @@ namespace NexNet.IntegrationTests;
 
 internal partial class NexNetServerTests_HubInvocations : BaseTests
 {
-    //[Test]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -29,7 +28,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
-    [Test]
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -48,7 +47,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
 
         serverHub.OnConnectedEvent = hub =>
         {
-            hub.Context.AddToGroup("myGroup");
+            hub.Context.Groups.Add("myGroup");
             return ValueTask.CompletedTask;
         };
 
@@ -59,7 +58,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
 
         using var context = server.GetContext();
         await context.Clients.All.ClientTask();
-        await context.Clients.Clients(context.GetClientIds().ToArray()).ClientTask();
+        await context.Clients.Clients(context.Clients.GetIds().ToArray()).ClientTask();
         await context.Clients.Group("myGroup").ClientTask();
         await context.Clients.Groups(new[] { "myGroup" }).ClientTask();
         Assert.IsFalse(completed);
@@ -77,10 +76,10 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
         {
             connectedHub.OnConnectedEvent = async hub =>
             {
-                hub.Context.AddToGroup("myGroup");
+                hub.Context.Groups.Add("myGroup");
 
                 await hub.Context.Clients.All.ClientTask();
-                await hub.Context.Clients.Clients(server.GetContext().GetClientIds().ToArray()).ClientTask();
+                await hub.Context.Clients.Clients(server.GetContext().Clients.GetIds().ToArray()).ClientTask();
                 await hub.Context.Clients.Group("myGroup").ClientTask();
                 await hub.Context.Clients.Groups(new[] { "myGroup" }).ClientTask();
                 Assert.IsFalse(completed);
@@ -105,7 +104,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
         await tcs1.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
-    //[Test]
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -124,7 +123,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
 
         using var context = server.GetContext();
 
-        var result = await context.Clients.Client(context.GetClientIds().First()).ClientTaskValue();
+        var result = await context.Clients.Client(context.Clients.GetIds().First()).ClientTaskValue();
 
         Assert.AreEqual(54321, result);
     }
@@ -179,7 +178,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
         {
             connectedHub.OnConnectedEvent = async hub =>
             {
-                hub.Context.AddToGroup("group");
+                hub.Context.Groups.Add("group");
                 // Second connection
                 if (++connectedCount == 2)
                 {
@@ -219,12 +218,12 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
             connectedHub.OnConnectedEvent = async hub =>
             {
                 if (++connectedCount == 1) {
-                    hub.Context.AddToGroup("group");
+                    hub.Context.Groups.Add("group");
                 }
                 // Second connection
                 if (connectedCount == 2)
                 {
-                    hub.Context.AddToGroup("group2");
+                    hub.Context.Groups.Add("group2");
                     await hub.Context.Clients.Groups(new []{ "group" , "group2" }).ClientTask();
                 }
             };
@@ -348,7 +347,7 @@ internal partial class NexNetServerTests_HubInvocations : BaseTests
                 // Second connection
                 if (++connectedCount == 2)
                 {
-                    var clientIds = server!.GetContext().GetClientIds().ToArray();
+                    var clientIds = server!.GetContext().Clients.GetIds().ToArray();
                     await hub.Context.Clients.Clients(clientIds).ClientTask();
                 }
             };

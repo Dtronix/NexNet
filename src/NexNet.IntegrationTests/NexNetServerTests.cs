@@ -50,7 +50,7 @@ internal partial class NexNetServerTests : BaseTests
     }
 
 
-    //[Test]
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]

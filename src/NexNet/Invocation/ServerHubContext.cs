@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using NexNet.Cache;
-using NexNet.Invocation;
 
-namespace NexNet;
+namespace NexNet.Invocation;
 
 /// <summary>
-/// 
+/// Context for external hub management.
 /// </summary>
-/// <typeparam name="TClientProxy"></typeparam>
+/// <typeparam name="TClientProxy">Proxy class used for invocation.</typeparam>
 public class ServerHubContext<TClientProxy> : IDisposable
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
@@ -20,39 +19,21 @@ public class ServerHubContext<TClientProxy> : IDisposable
     /// </summary>
     public IProxyBase<TClientProxy> Clients { get; }
 
-
-    internal ServerHubContext(INexNetServer<TClientProxy> server, SessionManager sessionManager, SessionCacheManager<TClientProxy> cache)
+    internal ServerHubContext(
+        INexNetServer<TClientProxy> server,
+        SessionManager sessionManager,
+        SessionCacheManager<TClientProxy> cache)
     {
         _server = server;
         _sessionManager = sessionManager;
-        Clients = new ClientProxy(sessionManager, cache, this);
+        Clients = new ClientProxy(sessionManager, cache);
 
     }
-
-    /// <summary>
-    /// Gets all the connected client ids.
-    /// </summary>
-    /// <returns>Collection of connected client ids.</returns>
-    public IEnumerable<long> GetClientIds()
-    {
-        return _sessionManager.Sessions.Keys;
-    }
-
-    /// <summary>
-    /// Gets all the connected client ids.
-    /// </summary>
-    /// <returns>Collection of connected client ids.</returns>
-    public IEnumerable<string> GetGroupNames()
-    {
-        return _sessionManager.Groups.Keys;
-    }
-
 
     private sealed class ClientProxy : IProxyBase<TClientProxy>
     {
         private readonly SessionManager _sessionManager;
         private readonly SessionCacheManager<TClientProxy> _cacheManager;
-        private readonly ServerHubContext<TClientProxy> _context;
         private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
 
         private TClientProxy? _all;
@@ -66,12 +47,12 @@ public class ServerHubContext<TClientProxy> : IDisposable
                 null);
         }
 
-        internal ClientProxy(SessionManager sessionManager, SessionCacheManager<TClientProxy> cacheManager,
-            ServerHubContext<TClientProxy> context)
+        internal ClientProxy(
+            SessionManager sessionManager,
+            SessionCacheManager<TClientProxy> cacheManager)
         {
             _sessionManager = sessionManager;
             _cacheManager = cacheManager;
-            _context = context;
         }
 
 
@@ -125,6 +106,11 @@ public class ServerHubContext<TClientProxy> : IDisposable
             _instancedProxies.Push(proxy);
 
             return proxy;
+        }
+
+        public IEnumerable<long> GetIds()
+        {
+            return _sessionManager.Sessions.Keys;
         }
 
         public void Reset()

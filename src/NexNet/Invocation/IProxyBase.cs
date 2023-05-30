@@ -1,4 +1,6 @@
-﻿namespace NexNet.Invocation;
+﻿using System.Collections.Generic;
+
+namespace NexNet.Invocation;
 
 /// <summary>
 /// Interface for selection of clients to invoke methods on.
@@ -39,4 +41,10 @@ public interface IProxyBase<out TProxy>
     /// <param name="groupName">Group names to get the proxies for.</param>
     /// <returns>Proxy</returns>
     TProxy Groups(string[] groupName);
+
+    /// <summary>
+    /// Gets all the connected client ids.
+    /// </summary>
+    /// <returns>Collection of connected client ids.</returns>
+    IEnumerable<long> GetIds();
 }
