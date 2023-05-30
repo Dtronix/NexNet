@@ -18,8 +18,8 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     /// </summary>
     public IProxyClients<TProxy> Clients => _proxy;
 
-        internal ServerSessionContext(INexNetSession<TProxy> session)
-        : base(session)
+    internal ServerSessionContext(INexNetSession<TProxy> session, SessionManager sessionManager)
+        : base(session, sessionManager)
     {
         _proxy = new ClientProxy(session.CacheManager, this);
     }
@@ -30,7 +30,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     /// <param name="groupName">Group to add this session to.</param>
     public void AddToGroup(string groupName)
     {
-        Session!.SessionManager?.RegisterSessionGroup(groupName, Session);
+        Session.SessionManager?.RegisterSessionGroup(groupName, Session);
     }
 
 
@@ -40,7 +40,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     /// <param name="groupNames">Groups to add this session to.</param>
     public void AddToGroups(string[] groupNames)
     {
-        Session!.SessionManager?.RegisterSessionGroup(groupNames, Session);
+        Session.SessionManager?.RegisterSessionGroup(groupNames, Session);
     }
 
     /// <summary>
@@ -49,7 +49,7 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
     /// <param name="groupName">Group to remove this session from.</param>
     public void RemoveFromGroup(string groupName)
     {
-        Session!.SessionManager?.UnregisterSessionGroup(groupName, Session);
+        Session.SessionManager?.UnregisterSessionGroup(groupName, Session);
     }
 
     internal override void Reset()
@@ -64,21 +64,37 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         private readonly Stack<TProxy> _instancedProxies = new Stack<TProxy>();
 
         private TProxy? _caller;
+
         public TProxy Caller
         {
-            get => _caller ??= _cacheManager.ProxyCache.Rent(_context.Session!, ProxyInvocationMode.Caller, null);
+            get => _caller ??= _cacheManager.ProxyCache.Rent(
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
+                ProxyInvocationMode.Caller,
+                null);
         }
 
         private TProxy? _all;
         public TProxy All
         {
-            get => _all ??= _cacheManager.ProxyCache.Rent(_context.Session!, ProxyInvocationMode.All, null);
+            get => _all ??= _cacheManager.ProxyCache.Rent(
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
+                ProxyInvocationMode.All, 
+                null);
         }
 
         private TProxy? _others;
         public TProxy Others
         {
-            get => _others ??= _cacheManager.ProxyCache.Rent(_context.Session!, ProxyInvocationMode.Others, null);
+            get => _others ??= _cacheManager.ProxyCache.Rent(
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
+                ProxyInvocationMode.Others,
+                null);
         }
 
 
@@ -92,7 +108,9 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         public TProxy Client(long id)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session!,
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
@@ -103,7 +121,9 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         public TProxy Clients(long[] ids)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session!,
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Clients,
                 ids);
             _instancedProxies.Push(proxy);
@@ -114,7 +134,9 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         public TProxy Group(string groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session!,
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Groups,
                 new[] { groupName });
             _instancedProxies.Push(proxy);
@@ -125,7 +147,9 @@ public sealed class ServerSessionContext<TProxy> : SessionContext<TProxy>
         public TProxy Groups(string[] groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session!,
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);

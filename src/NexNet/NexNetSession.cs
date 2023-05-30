@@ -77,7 +77,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _isServer = configurations.IsServer;
         _hub = configurations.Hub;
         _hub.SessionContext = configurations.IsServer
-            ? new ServerSessionContext<TProxy>(this)
+            ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache);
@@ -497,6 +497,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 {
                     session._invocationSemaphore.Release();
 
+                    // Clear out the references before returning to the pool.
                     arguments.Session = null!;
                     arguments.Message = null!;
                     session._invocationTaskArgumentsPool.Add(arguments);
@@ -668,6 +669,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         _hub.Disconnected(reason);
         OnDisconnected?.Invoke();
+
+        _hub.SessionContext.Reset();
 
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();

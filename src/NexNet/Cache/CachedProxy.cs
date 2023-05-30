@@ -10,27 +10,43 @@ internal class CachedProxy<TProxy>
 {
     private readonly ConcurrentBag<TProxy> _cache = new();
 
+    /// <summary>
+    /// Rents a proxy class.
+    /// </summary>
+    /// <param name="session">Session for this proxy.  Used in all cases except from the external hub context.</param>
+    /// <param name="sessionManager">Reference to the session manager.  Not used from client invocations.</param>
+    /// <param name="sessionCache">Cache for the sessions.</param>
+    /// <param name="mode">Mode to set this proxy to.</param>
+    /// <param name="modeArguments">Arguments to pass for this invocation mode.</param>
+    /// <returns></returns>
     public TProxy Rent(
-        INexNetSession<TProxy> session,
+        INexNetSession<TProxy>? session,
+        SessionManager? sessionManager,
+        SessionCacheManager<TProxy> sessionCache,
         ProxyInvocationMode mode,
         object? modeArguments)
     {
-        ArgumentNullException.ThrowIfNull(session);
-
         if (!_cache.TryTake(out var proxy))
-            proxy = new TProxy() { CacheManager = session.CacheManager };
+            proxy = new TProxy() { CacheManager = sessionCache };
 
-        proxy.Configure(session, mode, modeArguments);
+        proxy.Configure(session, sessionManager, mode, modeArguments);
 
 
         return proxy;
     }
 
-    public void Return(TProxy item)
+    /// <summary>
+    /// Returns the proxy for reuse.
+    /// </summary>
+    /// <param name="proxy">Proxy to return.</param>
+    public void Return(TProxy proxy)
     {
-        _cache.Add(item);
+        _cache.Add(proxy);
     }
 
+    /// <summary>
+    /// Clears the cache.
+    /// </summary>
     public void Clear()
     {
         _cache.Clear();
