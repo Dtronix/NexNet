@@ -7,5 +7,9 @@ namespace NexNet.Invocation;
 /// </summary>
 public interface IProxyInvoker
 {
-    internal void Configure(INexNetSession session, ProxyInvocationMode mode, object? modeArguments);
+    internal void Configure(
+        INexNetSession? session,
+        SessionManager? sessionManager,
+        ProxyInvocationMode mode,
+        object? modeArguments);
 }

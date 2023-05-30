@@ -155,6 +155,27 @@ public class BaseTests
         return (server, serverHub, client, clientHub);
     }
 
+    protected NexNetServer<ServerHub, ServerHub.ClientProxy>
+        CreateServer(ServerConfig sConfig, Action<ServerHub>? hubCreated)
+    {
+        var server = ServerHub.CreateServer(sConfig, () =>
+        {
+            var hub = new ServerHub();
+            hubCreated?.Invoke(hub);
+            return hub;
+        });
+        return server;
+    }
+
+    protected (NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
+        CreateClient(ClientConfig cConfig)
+    {
+        var clientHub = new ClientHub();
+        var client = ClientHub.CreateClient(cConfig, clientHub);
+
+        return (client, clientHub);
+    }
+
     private int FreeTcpPort()
     {
         TcpListener l = new TcpListener(IPAddress.Loopback, 0);
