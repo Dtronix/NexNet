@@ -432,5 +432,27 @@ namespace HubNameSpaces2.Seven.Eight
         Assert.IsEmpty(diagnostic);
     }
 
+    [Test]
+    public void CompilesWithNullableArguments()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientHub { void Update(long? arg); }
+partial interface IServerHub { void Update(long? arg); }
+[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+partial class ClientHub : IClientHub
+{
+    public void Update(long? arg) { }
+}
+[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+partial class ServerHub : IServerHub
+{
+    public void Update(long? arg) { }
+}
+""");
+        Assert.IsEmpty(diagnostic);
+    }
+
 }
 
