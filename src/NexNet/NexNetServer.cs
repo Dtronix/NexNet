@@ -34,7 +34,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
         _serverHubContextCache;
 
     // ReSharper disable once StaticMemberInGenericType
-    private static int _sessionIdIncrementor;
+    private static int _sessionIdIncrementer;
 
     /// <summary>
     /// True if the server is running, false otherwise.
@@ -137,6 +137,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Input.Complete();
             }
             catch
@@ -146,6 +147,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Output.Complete();
             }
             catch
@@ -157,6 +159,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
         {
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Input.Complete(ex);
             }
             catch
@@ -166,6 +169,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Output.Complete(ex);
             }
             catch
@@ -177,7 +181,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
         }
         finally
         {
-            if (arguments.Transport is IDisposable d)
+            /*if (arguments.Transport is IDisposable d)
             {
                 try
                 {
@@ -187,7 +191,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
                 {
                     // ignored
                 }
-            }
+            }*/
         }
     }
 
@@ -215,7 +219,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
-                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementor);
+                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
                 // boxed, but only once per client
                 StartOnScheduler(
