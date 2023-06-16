@@ -152,8 +152,9 @@ namespace {{Symbol.ContainingNamespace}}
         for (int i = 0; i < HubInterface.Methods.Length; i++)
         {
             sb.Append($$"""
-                    case {{HubInterface.Methods[i].Id}}:
+                    case (ushort){{HubInterface.Methods[i].Id}}:
                     {
+                        // {{HubInterface.Methods[i].ToString()}}
 
 """);
             HubInterface.Methods[i].EmitHubInvocation(sb, this.ProxyInterface, this);
