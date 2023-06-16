@@ -87,6 +87,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
     public void Start()
     {
         if (_listener != null) throw new InvalidOperationException("Server is already running");
+        _stoppedTcs?.TrySetResult();
         _stoppedTcs = new TaskCompletionSource();
         _listener = _config.CreateServerListener();
 
@@ -122,7 +123,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
             }
         }
 
-        _stoppedTcs?.SetResult();
+        _stoppedTcs?.TrySetResult();
     }
 
     /// <summary>
