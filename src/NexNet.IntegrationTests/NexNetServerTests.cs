@@ -77,4 +77,23 @@ internal partial class NexNetServerTests : BaseTests
 
         }
     }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task StopsAndReleasesStoppedTcs(Type type)
+    {
+        var (server, _, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
+
+        
+        Assert.IsNull(server.StoppedTcs);
+        server.Start();
+        Assert.IsFalse(server.StoppedTcs!.Task.IsCompleted);
+
+        server.Stop();
+
+        await server.StoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+    }
 }
