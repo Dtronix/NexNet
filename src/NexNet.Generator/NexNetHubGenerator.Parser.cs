@@ -365,7 +365,7 @@ internal partial class MethodParameterMeta
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
-        this.ParamTypeSource = symbol.Type.ToDisplayString();
+        this.ParamTypeSource = symbol.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
@@ -381,6 +381,7 @@ internal partial class MethodMeta
 
     public bool IsReturnVoid { get; }
     public string? ReturnType { get; }
+    public string ReturnTypeSource { get; }
     public bool IsAsync { get; }
     public int ReturnArity { get; }
     public MethodParameterMeta? CancellationTokenParameter { get; }
@@ -413,8 +414,12 @@ internal partial class MethodMeta
         this.NexNetMethodAttribute = new NexNetMethodAttributeMeta(symbol);
 
         if (ReturnArity > 0)
+        {
             this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
+            this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        }
     }
+
 
 
     public int GetHash()
@@ -461,7 +466,7 @@ internal partial class MethodMeta
 
             if (this.ReturnArity > 0)
             {
-                sb.Append("<").Append(this.ReturnType).Append(">");
+                sb.Append("<").Append(this.ReturnTypeSource).Append(">");
             }
         }
 
