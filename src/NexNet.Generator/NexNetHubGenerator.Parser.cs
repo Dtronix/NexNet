@@ -449,11 +449,11 @@ internal partial class MethodMeta
 
     public override string ToString()
     {
-        var sb = new StringBuilder();
+        var sb = SymbolUtilities.GetStringBuilder();
 
         if (IsReturnVoid)
         {
-            sb.Append("void ");
+            sb.Append("void");
         }
         else if(IsAsync)
         {
@@ -461,11 +461,12 @@ internal partial class MethodMeta
 
             if (this.ReturnArity > 0)
             {
-                sb.Append("<").Append(this.ReturnType).Append("> ");
+                sb.Append("<").Append(this.ReturnType).Append(">");
             }
         }
 
-        
+        sb.Append(" ");
+
         sb.Append(this.Name).Append("(");
 
         var paramsLength = this.ParametersLessCancellation.Length;
@@ -490,8 +491,13 @@ internal partial class MethodMeta
         }
 
 
-        sb.Append(");");
-        return sb.ToString();
+        sb.Append(")");
+
+        var stringMethod = sb.ToString();
+
+        SymbolUtilities.ReturnStringBuilder(sb);
+
+        return stringMethod;
     }
 
     public Location GetLocation(TypeDeclarationSyntax fallback)
