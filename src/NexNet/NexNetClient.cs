@@ -42,6 +42,17 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     public ClientConfig Config => _config;
 
     /// <summary>
+    /// Task which completes upon the completed connection and optional authentication of the client.
+    /// Null when the client is has not started connection or after disconnection.
+    /// </summary>
+    public Task? ReadyTask => _session?.ReadyTask;
+
+    /// <summary>
+    /// Task which completes upon the disconnection of the client.
+    /// </summary>
+    public Task DisconnectedTask => _session?.DisconnectedTask ?? Task.CompletedTask;
+
+    /// <summary>
     /// Creates a NexNet client for communication with a matching NexNet server.
     /// </summary>
     /// <param name="config">Configurations for this client.</param>
@@ -93,7 +104,6 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
         await _session.StartAsClient().ConfigureAwait(false);
     }
-
 
     /// <summary>
     /// Disconnects from the server.
