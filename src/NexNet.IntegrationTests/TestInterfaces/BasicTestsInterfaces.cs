@@ -56,8 +56,6 @@ public partial class ClientHub
     public Func<ClientHub, bool, ValueTask>? OnConnectedEvent;
     public Func<ClientHub, ValueTask>? OnReconnectingEvent;
     public Func<ClientHub, ValueTask>? OnDisconnectedEvent;
-    public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
-    public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
 
     public void ClientVoid()
     {
@@ -112,7 +110,6 @@ public partial class ClientHub
     
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        ConnectedTCS?.TrySetResult();
         if (OnConnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -121,7 +118,6 @@ public partial class ClientHub
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
-        DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -153,8 +149,7 @@ public partial class ServerHub
     public Action<ServerHub, byte[]> ServerDataEvent;
     public Func<ServerHub, ValueTask>? OnConnectedEvent;
     public Func<ServerHub, ValueTask>? OnDisconnectedEvent;
-    public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
-    public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
+    public Func<ServerHub, ValueTask<IIdentity?>>? OnAuthenticateEvent;
 
     public void ServerVoid()
     {
@@ -213,7 +208,6 @@ public partial class ServerHub
 
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        ConnectedTCS?.TrySetResult();
         if (OnConnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -222,10 +216,14 @@ public partial class ServerHub
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
-        DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)
             return ValueTask.CompletedTask;
 
         return OnDisconnectedEvent.Invoke(this);
+    }
+
+    protected override ValueTask<IIdentity?> OnAuthenticate(byte[]? authenticationToken)
+    {
+        return OnAuthenticateEvent!.Invoke(this);
     }
 }

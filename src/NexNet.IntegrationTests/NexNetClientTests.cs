@@ -97,11 +97,10 @@ internal partial class NexNetClientTests : BaseTests
         for (int i = 0; i < 5; i++)
         {
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-            await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.ConnectedTCS = new TaskCompletionSource();
+            await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+            var disconnected = client.DisconnectedTask;
             await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-            await clientHub.DisconnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.DisconnectedTCS = new TaskCompletionSource();
+            await disconnected.WaitAsync(TimeSpan.FromSeconds(1));
         }
     }
 
@@ -189,7 +188,7 @@ internal partial class NexNetClientTests : BaseTests
         server.Start();
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
         await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
 
@@ -228,7 +227,7 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task;
+        await client.ReadyTask;
         server.Stop();
 
         // Wait for the client to process the disconnect.
@@ -290,7 +289,7 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task;
+        await client.ReadyTask;
         server.Stop();
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -326,7 +325,7 @@ internal partial class NexNetClientTests : BaseTests
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        await clientHub.ConnectedTCS.Task;
+        await client.ReadyTask;
         await Task.Delay(100);
         server.Stop();
 
@@ -374,5 +373,134 @@ internal partial class NexNetClientTests : BaseTests
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ReadyTaskCompletesUponConnection(Type type)
+    {
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
+        server.Start();
+
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        await client.ReadyTask!.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ReadyTaskCompletesUponAuthentication(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        
+        bool authCompleted = false;
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        serverHub.OnAuthenticateEvent = async hub =>
+        {
+            authCompleted = true;
+            return new DefaultIdentity();
+        };
+
+        server.Start();
+
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask!.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.IsTrue(authCompleted);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ReadyTaskCompletesUponAuthFailure(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        server.Start();
+
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask!.WaitAsync(TimeSpan.FromSeconds(1));
+        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task DisconnectTaskCompletesUponDisconnection(Type type)
+    {
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask!.WaitAsync(TimeSpan.FromSeconds(1));
+        var disconnectTask = client.DisconnectedTask;
+
+        server.Stop();
+
+        await disconnectTask.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task DisconnectTaskCompletesUponAuthFailure(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            serverConfig,
+            CreateClientConfig(type));
+
+        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.DisconnectedTask.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task DisconnectTaskCompletesAfterDisconnect(Type type)
+    {
+        var (server, serverHub, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask!.WaitAsync(TimeSpan.FromSeconds(1));
+
+        server.Stop();
+
+        await Task.Delay(1000);
+
+        await client.DisconnectedTask.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+    }
 }

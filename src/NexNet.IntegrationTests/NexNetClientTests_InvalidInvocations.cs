@@ -21,7 +21,7 @@ internal partial class NexNetClientTests_InvalidInvocations : BaseTests
 
         server.Start();
         await client.ConnectAsync();
-        await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         var data = new byte[65521];
         Assert.Throws<ArgumentOutOfRangeException>(() => clientHub.Context.Proxy.ServerData(data));

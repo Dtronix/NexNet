@@ -66,8 +66,7 @@ internal partial class NexNetServerTests : BaseTests
             server.Start();
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.ConnectedTCS = new TaskCompletionSource();
+            await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
             server.Stop();
 
@@ -90,10 +89,10 @@ internal partial class NexNetServerTests : BaseTests
         
         Assert.IsNull(server.StoppedTcs);
         server.Start();
-        Assert.IsFalse(server.StoppedTcs!.Task.IsCompleted);
+        Assert.IsFalse(server.StoppedTcs!.IsCompleted);
 
         server.Stop();
 
-        await server.StoppedTcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await server.StoppedTcs!.WaitAsync(TimeSpan.FromSeconds(1));
     }
 }

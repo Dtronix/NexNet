@@ -50,7 +50,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
     /// <summary>
     /// Task completion source which completes upon the server stopping.
     /// </summary>
-    public TaskCompletionSource? StoppedTcs => _stoppedTcs;
+    public Task? StoppedTcs => _stoppedTcs?.Task;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
