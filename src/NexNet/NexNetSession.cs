@@ -44,6 +44,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
+    private readonly TaskCompletionSource _readyTaskCompletionSource = new TaskCompletionSource();
+    private readonly TaskCompletionSource _disconnectedTaskCompletionSource = new TaskCompletionSource();
 
     public long Id { get; }
 
@@ -63,6 +65,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     public Action? OnSent { get; set; }
 
     public ConnectionState State { get; private set; }
+
+    public Task ReadyTask => _readyTaskCompletionSource.Task;
+
+    public Task DisconnectedTask => _disconnectedTaskCompletionSource.Task;
     
     public NexNetSession(in NexNetSessionConfigurations<THub, TProxy> configurations)
     {
@@ -462,6 +468,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             _sessionManager!.RegisterSession(this);
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
+
+            _readyTaskCompletionSource.TrySetResult();
         }
         else if (message is ServerGreetingMessage)
         {
@@ -471,6 +479,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
+            _readyTaskCompletionSource.TrySetResult();
         }
         else if (message is InvocationRequestMessage invocationRequestMessage)
         {
@@ -547,7 +556,6 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         // ReSharper disable once MethodSupportsCancellation
         _ = Task.Factory.StartNew(StartReadAsync, TaskCreationOptions.LongRunning);
-
     }
 
     private async ValueTask<bool> TryReconnectAsClient()
@@ -679,6 +687,10 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();
         _invocationTaskArgumentsPool.Clear();
+
+        // Let any waiting tasks pass.
+        _disconnectedTaskCompletionSource.TrySetResult();
+        _readyTaskCompletionSource.TrySetResult();
     }
 
     private class InvocationTaskArguments
