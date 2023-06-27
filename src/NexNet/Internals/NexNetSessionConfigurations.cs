@@ -1,4 +1,5 @@
-﻿using NexNet.Cache;
+﻿using System.Threading.Tasks;
+using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Transports;
 
@@ -21,4 +22,6 @@ internal readonly struct NexNetSessionConfigurations<THub, TProxy>
     public required long Id { get; init; }
 
     public required THub Hub { get; init; }
+    public TaskCompletionSource? ReadyTaskCompletionSource { get; init; }
+    public TaskCompletionSource? DisconnectedTaskCompletionSource { get; init; }
 }

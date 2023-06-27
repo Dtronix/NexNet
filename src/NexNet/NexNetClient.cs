@@ -23,6 +23,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : INexNetClient
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
     private readonly TClientHub _hub;
     private NexNetSession<TClientHub, TServerProxy>? _session;
+    private TaskCompletionSource? _disconnectedTaskCompletionSource;
 
     internal NexNetSession<TClientHub, TServerProxy>? Session => _session;
 
@@ -45,12 +46,12 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : INexNetClient
     /// Task which completes upon the completed connection and optional authentication of the client.
     /// Null when the client is has not started connection or after disconnection.
     /// </summary>
-    public Task? ReadyTask => _session?.ReadyTask;
+    public Task? ReadyTask { get; private set; }
 
     /// <summary>
     /// Task which completes upon the disconnection of the client.
     /// </summary>
-    public Task DisconnectedTask => _session?.DisconnectedTask ?? Task.CompletedTask;
+    public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
 
     /// <summary>
     /// Creates a NexNet client for communication with a matching NexNet server.
@@ -79,6 +80,14 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : INexNetClient
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
 
+        // Set the ready task completion source now and get the task since the ConnectTransport
+        // call below can/will await and cause any usages of the ReadyTask used outside this function call
+        // to be null.
+        var readyTaskCompletionSource = new TaskCompletionSource();
+        var disconnectedTaskCompletionSource = new TaskCompletionSource();
+        ReadyTask = readyTaskCompletionSource.Task;
+        _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
+
         var client = await _config.ConnectTransport().ConfigureAwait(false);
 
         _config.InternalOnClientConnect?.Invoke();
@@ -91,7 +100,9 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : INexNetClient
             SessionManager = null,
             IsServer = false,
             Id = 0,
-            Hub = _hub
+            Hub = _hub,
+            ReadyTaskCompletionSource = readyTaskCompletionSource,
+            DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource
         };
 
         _session = new NexNetSession<TClientHub, TServerProxy>(config)
