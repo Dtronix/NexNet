@@ -13,7 +13,7 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TClientHub">Hub  used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
-public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
+public sealed class NexNetClient<TClientHub, TServerProxy> : INexNetClient
     where TClientHub : ClientHubBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 
