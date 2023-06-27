@@ -44,8 +44,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
-    private readonly TaskCompletionSource _readyTaskCompletionSource = new TaskCompletionSource();
-    private readonly TaskCompletionSource _disconnectedTaskCompletionSource = new TaskCompletionSource();
+    private readonly TaskCompletionSource? _readyTaskCompletionSource;
+    private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
 
     public long Id { get; }
 
@@ -66,10 +66,6 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public ConnectionState State { get; private set; }
 
-    public Task ReadyTask => _readyTaskCompletionSource.Task;
-
-    public Task DisconnectedTask => _disconnectedTaskCompletionSource.Task;
-    
     public NexNetSession(in NexNetSessionConfigurations<THub, TProxy> configurations)
     {
         State = ConnectionState.Connecting;
@@ -85,6 +81,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _hub.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
+
+        _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
+        _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache);
         SessionStore = new SessionStore();
@@ -469,7 +468,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
-            _readyTaskCompletionSource.TrySetResult();
+            _readyTaskCompletionSource?.TrySetResult();
         }
         else if (message is ServerGreetingMessage)
         {
@@ -479,7 +478,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
             _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
-            _readyTaskCompletionSource.TrySetResult();
+            _readyTaskCompletionSource?.TrySetResult();
         }
         else if (message is InvocationRequestMessage invocationRequestMessage)
         {
@@ -689,8 +688,8 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _invocationTaskArgumentsPool.Clear();
 
         // Let any waiting tasks pass.
-        _disconnectedTaskCompletionSource.TrySetResult();
-        _readyTaskCompletionSource.TrySetResult();
+        _disconnectedTaskCompletionSource?.TrySetResult();
+        _readyTaskCompletionSource?.TrySetResult();
     }
 
     private class InvocationTaskArguments
