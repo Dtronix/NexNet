@@ -32,7 +32,7 @@ public class NexNetHubAttribute<THub, TProxy> : Attribute
     /// <summary>
     /// Gets the type of hub this is implemented as.
     /// </summary>
-    public NexNetHubType HubType { get; init; }
+    public required NexNetHubType HubType { get; init; }
 
     /// <summary>
     /// Creates the attribute with the passed type.
