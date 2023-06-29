@@ -15,209 +15,200 @@ namespace NexNetDemo;
 
 partial interface IClientHub
 {
-    void Update();
-    ValueTask<int> GetTask();
-    ValueTask<int> GetTaskAgain();
 }
 
 partial interface IServerHub
 {
-    void ServerVoid(IDuplexPipe pipe);
-
-    void ServerVoidWithParam(int id);
-
-    ValueTask ServerTask();
-    ValueTask ServerTaskWithParam(int data);
-    ValueTask<int> ServerTaskValue();
-    ValueTask<int> ServerTaskValueWithParam(int data);
-    ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken);
-    ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
-    ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
-    ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    ValueTask ServerTaskWithParam(NexNetPipe pipe);
 }
 
 
 
+/// <summary>
+/// Hub used for handling all Client communications.
+/// </summary>
+partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNetDemo.ClientHub.ServerProxy>, global::NexNetDemo.IClientHub, global::NexNet.Invocation.IInvocationMethodHash
+{
+    /// <summary>
+    /// Creates an instance of the client for this hub and matching server.
+    /// </summary>
+    /// <param name="config">Configurations for this instance.</param>
+    /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
+    /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
+    public static global::NexNet.NexNetClient<global::NexNetDemo.ClientHub, global::NexNetDemo.ClientHub.ServerProxy> CreateClient(global::NexNet.Transports.ClientConfig config, ClientHub hub)
+    {
+        return new global::NexNet.NexNetClient<global::NexNetDemo.ClientHub, global::NexNetDemo.ClientHub.ServerProxy>(config, hub);
+    }
+
+    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
+    {
+        global::System.Threading.CancellationTokenSource? cts = null;
+        try
+        {
+            switch (message.MethodId)
+            {
+            }
+        }
+        finally
+        {
+            if (cts != null)
+            {
+                var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ClientHub.ServerProxy>>(this);
+                methodInvoker.ReturnCancellationToken(message.InvocationId);
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+    /// </summary>
+    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
+
+    /// <summary>
+    /// Proxy invocation implementation for the matching hub.
+    /// </summary>
+    public class ServerProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IServerHub, global::NexNet.Invocation.IInvocationMethodHash
+    {
+        public global::System.Threading.Tasks.ValueTask ServerTaskWithParam(global::NexNet.NexNetPipe pipe)
+        {
+            var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::NexNet.NexNetPipe>>(new(pipe));
+            return ProxyInvokeAndWaitForResultCore(0, arguments, null);
+        }
+
+        /// <summary>
+        /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+        /// </summary>
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => -696945704; }
+    }
+}
 
 
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
 partial class ClientHub
 {
-    private int i = 0;
-    public void Update()
-    {
-        Console.WriteLine("ClientHub Update called and invoked properly.");
-    }
-
-    public ValueTask<int> GetTask()
-    {
-        //Console.WriteLine(i++);
-        return ValueTask.FromResult(i);
-    }
-    public ValueTask<int> GetTaskAgain()
-    {
-        Console.WriteLine("GetTaskAgain");
-        return ValueTask.FromResult(Interlocked.Increment(ref i));
-    }
-
-    protected override async ValueTask OnConnected(bool isReconnected)
-    {
-        for (int j = 0; j < 1000000; j++)
-        {
-  
-            switch (Random.Shared.Next(0, 5))
-            {
-                case 0:
-                    //Console.WriteLine("ServerVoid()");
-                    Context.Proxy.ServerVoid();
-                    break;
-                case 1:
-                    //Console.WriteLine("ServerVoidWithParam(10)");
-                    Context.Proxy.ServerVoidWithParam(10);
-                    break;
-                case 2:
-                    //Console.WriteLine("ServerTaskWithParam(20)");
-                    await Context.Proxy.ServerTaskWithParam(20);
-                    break;
-                case 3:
-                    //Console.WriteLine("ServerTaskValue()");
-                    await Context.Proxy.ServerTaskValue();
-                    break;    
-                case 4:
-                    // Problem
-                    //Console.WriteLine("ServerTaskValueWithParam(30)");
-                    await Context.Proxy.ServerTaskValueWithParam(30);
-                    break;
-                case 5:
-                    //Console.WriteLine("ServerTaskWithCancellation(CancellationToken.None)");
-                    await Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
-                    break;
-                case 6:
-                    //Console.WriteLine("ServerTaskWithValueAndCancellation(40, CancellationToken.None)");
-                    await Context.Proxy.ServerTaskWithValueAndCancellation(40, CancellationToken.None);
-                    break;
-                case 7:
-                    //Console.WriteLine("ServerTaskValueWithCancellation(CancellationToken.None)");
-                    await Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-                    break;
-                case 8:
-                    //Console.WriteLine("ServerTaskValueWithValueAndCancellation(40, CancellationToken.None)");
-                    await Context.Proxy.ServerTaskValueWithValueAndCancellation(40, CancellationToken.None);
-                    break;
-            }
-
-        }
-
-    }
-
-}
-
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
-partial class ServerHub : IServerHub
-{
-    private int i = 0;
-    public void ServerVoid()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + ") ServerVoid()");
-    }
-
-    public void ServerVoidWithParam(int id)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerVoidWithParam({id})");
-    }
-
-    public ValueTask ServerTask()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTask()");
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask ServerTaskWithParam(int data)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithParam({data})");
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask<int> ServerTaskValue()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskValue()");
-        return ValueTask.FromResult(i);
-    }
-
-    public ValueTask<int> ServerTaskValueWithParam(int data)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskValueWithParam({data})");
-        return ValueTask.FromResult(i);
-    }
-
-    public async ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-    }
-
-    public async ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-    }
-
-    public async ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-
-        return i2;
-    }
-
-    public async ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-        return i2;
-    }
-
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        return ValueTask.CompletedTask;
+        var data = new byte[1024 * 60];
+        var number = 0;
+        var direction = 1;
+        for (int i = 0; i < data.Length; i++)
+        {
+            var delta = number += direction;
+            if (direction > 0 && delta == 256)
+            {
+                direction = -1;
+            }
+            else if(direction < 0 && delta == 0)
+            {
+                direction = -1;
+            }
+            data[i] = (byte)delta;
+        }
+
+        Task.Run(async () =>
+        {
+            var pipe = NexNetPipe.Create();
+
+            var invocationTask = this.Context.Proxy.ServerTaskWithParam(pipe);
+
+            Memory<byte> randomData = data;
+
+            while (true)
+            {
+                var size = Random.Shared.Next(1, 1024 * 60);
+                await pipe.Output.WriteAsync(randomData.Slice(size));
+            }
+        })
+
+        return base.OnConnected(isReconnected);
+    }
+}
+
+
+/// <summary>
+/// Hub used for handling all Server communications.
+/// </summary>
+partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNetDemo.ServerHub.ClientProxy>, global::NexNetDemo.IServerHub, global::NexNet.Invocation.IInvocationMethodHash
+{
+    /// <summary>
+    /// Creates an instance of the server for this hub and matching client.
+    /// </summary>
+    /// <param name="config">Configurations for this instance.</param>
+    /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
+    /// <returns>NexNetServer for handling incoming connections.</returns>
+    public static global::NexNet.NexNetServer<global::NexNetDemo.ServerHub, global::NexNetDemo.ServerHub.ClientProxy> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<global::NexNetDemo.ServerHub> hubFactory)
+    {
+        return new global::NexNet.NexNetServer<global::NexNetDemo.ServerHub, global::NexNetDemo.ServerHub.ClientProxy>(config, hubFactory);
+    }
+
+    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
+    {
+        global::System.Threading.CancellationTokenSource? cts = null;
+        NexNetPipe? pipe = null;
+        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerHub.ClientProxy>>(this);
+        try
+        {
+            switch (message.MethodId)
+            {
+                case 0:
+                    {
+                        pipe = methodInvoker.RegisterPipe(message.InvocationId);
+                        await ServerTaskWithParam(pipe);
+                        break;
+                    }
+            }
+        }
+        finally
+        {
+            if (cts != null)
+            {
+                methodInvoker.ReturnCancellationToken(message.InvocationId);
+            }
+
+            if (pipe != null)
+            {
+                methodInvoker.ReturnPipe(message.InvocationId);
+            }
+        }
+
+    }
+
+    /// <summary>
+    /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+    /// </summary>
+    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 1877661636; }
+
+    /// <summary>
+    /// Proxy invocation implementation for the matching hub.
+    /// </summary>
+    public class ClientProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IClientHub, global::NexNet.Invocation.IInvocationMethodHash
+    {
+
+        /// <summary>
+        /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
+        /// </summary>
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
+    }
+}
+
+
+
+partial class ServerHub : IServerHub
+{
+    private long _readData = 0;
+    public async ValueTask ServerTaskWithParam(NexNetPipe pipe)
+    {
+        while (true)
+        {
+            var data = await pipe.Input.ReadAsync();
+
+            if (data.IsCanceled || data.IsCompleted)
+                return;
+
+            _readData += data.Buffer.Length;
+
+            Console.WriteLine(_readData);
+        }
     }
 }
 

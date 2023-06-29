@@ -12,6 +12,7 @@ internal class CacheManager
     public readonly CachedDeserializer<ServerGreetingMessage> ServerGreetingDeserializer = new();
     public readonly CachedResettableItem<RegisteredInvocationState> RegisteredInvocationStateCache = new();
     public readonly CachedCts CancellationTokenSourceCache = new();
+    public readonly CachedPipe NexNetPipeCache = new();
 
     public virtual void Clear()
     {
@@ -23,5 +24,6 @@ internal class CacheManager
 
         RegisteredInvocationStateCache.Clear();
         CancellationTokenSourceCache.Clear();
+        NexNetPipeCache.Clear();
     }
 }

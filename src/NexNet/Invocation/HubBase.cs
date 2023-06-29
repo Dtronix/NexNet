@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
@@ -16,6 +17,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
+    private readonly ConcurrentDictionary<int, NexNetPipe> _invocationPipes = new();
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
 
@@ -32,6 +34,13 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         {
             _cancellableInvocations.TryRemove(cancellationTokenSource);
             cancellationTokenSource.Value.Dispose();
+        }
+
+        // Close any open pipes.
+        foreach (var pipe in _invocationPipes)
+        {
+            _invocationPipes.TryRemove(pipe);
+            pipe.Value.Input.Complete(new Exception("Session closed"));
         }
     }
 
@@ -59,6 +68,19 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
 
         // Try to reset the cts for another operation.
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
+    }
+
+    NexNetPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
+    {
+        var pipe = SessionContext.CacheManager.NexNetPipeCache.Rent();
+        new Pipe().
+        pipe.Configure();
+        throw new NotImplementedException();
+    }
+
+    void IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
+    {
+        throw new NotImplementedException();
     }
 
 
@@ -108,6 +130,10 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         OnDisconnected(reason);
     }
 
+    public static async ValueTask PushChannelData(byte[] data)
+    {
+
+    }
 
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)
     {

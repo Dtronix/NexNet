@@ -18,8 +18,8 @@ internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationR
 
     public InvocationFlags Flags { get; set; } = InvocationFlags.None;
 
-
     public Memory<byte> Arguments { get; set; }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<T>()

@@ -7,6 +7,9 @@ namespace NexNet.Internals;
 
 internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 {
+    /// <summary>
+    /// Id used for invocation management.
+    /// </summary>
     public int InvocationId { get; set; }
 
     // Mutable struct.

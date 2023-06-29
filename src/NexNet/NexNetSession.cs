@@ -21,6 +21,11 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
+    private record struct ProcessResult(
+        SequencePosition Position,
+        DisconnectReason DisconnectReason,
+        bool IssueisconnectMessage);
+
     private readonly THub _hub;
     private readonly ConfigBase _config;
     private readonly SessionCacheManager<TProxy> _cacheManager;
@@ -204,13 +209,13 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                 LastReceived = Environment.TickCount64;
 
-                var (position, disconnect, issueDisconnectMessage) = await Process(result.Buffer).ConfigureAwait(false);
+                var processResult = await Process(result.Buffer).ConfigureAwait(false);
 
                 _config.Logger?.LogTrace($"Reading completed.");
 
-                if (disconnect != DisconnectReason.None)
+                if (processResult.DisconnectReason != DisconnectReason.None)
                 {
-                    await DisconnectCore(disconnect, issueDisconnectMessage).ConfigureAwait(false);
+                    await DisconnectCore(processResult.DisconnectReason, processResult.IssueisconnectMessage).ConfigureAwait(false);
                     return;
                 }
 
@@ -229,7 +234,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                     return;
                 }
 
-                _pipeInput?.AdvanceTo(position);
+                _pipeInput?.AdvanceTo(processResult.Position);
             }
         }
         catch (NullReferenceException) { }
@@ -241,12 +246,13 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
     }
 
-    private async ValueTask<(SequencePosition, DisconnectReason, bool)> Process(ReadOnlySequence<byte> sequence)
+    private async ValueTask<ProcessResult> Process(ReadOnlySequence<byte> sequence)
     {
         var position = 0;
         var maxLength = sequence.Length;
         DisconnectReason disconnect = DisconnectReason.None;
         var issueDisconnectMessage = true;
+        bool breakLoop = false;
         while (true)
         {
             if (_recMessageHeader.Type == MessageType.Unset || _recMessageHeader.BodyLength == 0)
@@ -263,30 +269,62 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                     position++;
                     _config.Logger?.LogTrace($"Received {type} header.");
 
-                    // Header only messages
-                    if ((byte)type >= 20 && (byte)type < 40)
+                    switch (type)
                     {
-                        _config.Logger?.LogTrace($"Received disconnect message.");
-                        // Translate the type over to the reason.
-                        disconnect = (DisconnectReason)_recMessageHeader.Type;
-                        issueDisconnectMessage = false;
+                        case MessageType.Ping:
+                            _recMessageHeader.Reset();
+
+                            // If we are the server, send back a ping message to help the client know if it is still connected.
+                            if (_isServer)
+                                await SendHeader(MessageType.Ping).ConfigureAwait(false);
+
+                            continue;
+
+                        case MessageType.DisconnectSocketError:
+                        case MessageType.DisconnectGraceful:
+                        case MessageType.DisconnectProtocolError:
+                        case MessageType.DisconnectTimeout:
+                        case MessageType.DisconnectClientHubMismatch:
+                        case MessageType.DisconnectServerHubMismatch:
+                        case MessageType.DisconnectServerShutdown:
+                        case MessageType.DisconnectAuthentication:
+                        case MessageType.DisconnectServerRestarting:
+                            _config.Logger?.LogTrace($"Received disconnect message.");
+                            // Translate the type over to the reason.
+                            disconnect = (DisconnectReason)_recMessageHeader.Type;
+                            issueDisconnectMessage = false;
+                            breakLoop = true;
+                            break;
+
+                        case MessageType.GreetingClient:
+                        case MessageType.GreetingServer:
+                        case MessageType.InvocationWithResponseRequest:
+                        case MessageType.InvocationCancellationRequest:
+                        case MessageType.InvocationProxyResult:
+                            _config.Logger?.LogTrace($"Message has a standard body.");
+                            _recMessageHeader.BodyLength = 0;
+                            break;
+
+                        //case MessageType.PipeChannelOpen:
+                        //    _config.Logger?.LogTrace($"PipeChannel opened.");
+                        //    break;
+                        case MessageType.PipeChannelWrite:
+                            _config.Logger?.LogTrace($"PipeChannel received data.");
+
+                            break;
+                        //case MessageType.PipeChannelClose:
+                        //    _config.Logger?.LogTrace($"PipeChannel closed.");
+                        //    break;
+
+                        default:
+                            _config.Logger?.LogTrace($"received invalid MessageHeader '{type}'.");
+                            // If we are outside of the acceptable messages, disconnect the connection.
+                            disconnect = DisconnectReason.ProtocolError;
+                            break;
+                    }
+
+                    if (breakLoop)
                         break;
-                    }
-                    else if (type == MessageType.Ping)
-                    {
-                        _recMessageHeader.Reset();
-
-                        // If we are the server, send back a ping message to help the client know if it is still connected.
-                        if (_isServer)
-                            await SendHeader(MessageType.Ping).ConfigureAwait(false);
-
-                        continue;
-                    }
-                    else
-                    {
-                        _config.Logger?.LogTrace($"Message has a body.");
-                        _recMessageHeader.BodyLength = 0;
-                    }
                 }
 
                 if (_recMessageHeader.BodyLength == 0)
@@ -403,7 +441,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
 
         var seqPosition = sequence.GetPosition(position);
-        return (seqPosition, disconnect, issueDisconnectMessage);
+        return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
     }
 
 
