@@ -17,6 +17,10 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     public async ValueTask SendHeaderWithBody<TMessage>(TMessage body, CancellationToken cancellationToken = default)
         where TMessage : IMessageBodyBase
     {
+        // | MessageType | Body Length | Body   |
+        // |-------------|-------------|--------|
+        // | byte        | ushort      | byte[] |
+
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
@@ -55,8 +59,17 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     }
 
 
-    public async ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
+    public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
+        return SendHeaderWithBody(type, null, body, cancellationToken);
+    }
+
+    public async ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
+    {
+        // | MessageType | Body Length | Message Header? | Body   |
+        // |-------------|-------------|-----------------|--------|
+        // | byte        | ushort      | byte[]?         | byte[] |
+
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
@@ -70,10 +83,16 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         var length = (int)body.Length;
         var contentLength = checked((ushort)(length));
 
-        var header = _pipeOutput.GetMemory(3);
+        var headerLength = 3 + (messageHeader?.Length ?? 0);
+
+        var header = _pipeOutput.GetMemory(headerLength);
         header.Span[0] = (byte)type;
         BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
-        _pipeOutput.Advance(3);
+
+        // Copy the message header
+        messageHeader?.CopyTo(header.Slice(3));
+
+        _pipeOutput.Advance(headerLength);
         body.CopyTo(_pipeOutput.GetSpan((int)body.Length));
         _pipeOutput.Advance(length);
 
@@ -106,6 +125,10 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public async ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
     {
+        // | MessageType |
+        // |-------------|
+        // | byte        |
+
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 

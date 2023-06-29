@@ -25,6 +25,9 @@ internal class SessionInvocationStateManager
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetNextId()
     {
+        // TODO: Review adding a list of currently invoked invocations so that when
+        // we circle back around to the beginning and we have some long running invocation, we do not 
+        // override or send data to it erroneously.
         return Interlocked.Increment(ref _invocationId);
     }
 

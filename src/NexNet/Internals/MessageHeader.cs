@@ -4,8 +4,20 @@ namespace NexNet.Internals;
 
 internal struct MessageHeader
 {
-    public ushort BodyLength = ushort.MaxValue;
+    /// <summary>
+    /// Type of message this is.
+    /// </summary>
     public MessageType Type = MessageType.Unset;
+
+    /// <summary>
+    /// Number of bytes in the body.
+    /// </summary>
+    public int BodyLength = -1;
+
+    /// <summary>
+    /// Number of bytes required to read the post header.
+    /// </summary>
+    public int PostHeaderLength = -1;
 
     public MessageHeader()
     {
@@ -13,7 +25,8 @@ internal struct MessageHeader
 
     public void Reset()
     {
-        BodyLength = ushort.MaxValue;
+        BodyLength = -1;
         Type = MessageType.Unset;
+        PostHeaderLength = -1;
     }
 }

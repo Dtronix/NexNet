@@ -17,9 +17,10 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
-    private readonly ConcurrentDictionary<int, NexNetPipe> _invocationPipes = new();
+    internal readonly ConcurrentDictionary<int, NexNetPipe> InvocationPipes = new();
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
+
 
 
     // ReSharper disable once StaticMemberInGenericType
@@ -37,9 +38,9 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         }
 
         // Close any open pipes.
-        foreach (var pipe in _invocationPipes)
+        foreach (var pipe in InvocationPipes)
         {
-            _invocationPipes.TryRemove(pipe);
+            InvocationPipes.TryRemove(pipe);
             pipe.Value.Input.Complete(new Exception("Session closed"));
         }
     }
@@ -73,14 +74,19 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     NexNetPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
     {
         var pipe = SessionContext.CacheManager.NexNetPipeCache.Rent();
-        new Pipe().
-        pipe.Configure();
-        throw new NotImplementedException();
+        if (!InvocationPipes.TryAdd(invocationId, pipe))
+        {
+            throw new InvalidOperationException(
+                "Tried to create a pipe for a invocation which already has an active pipe.");
+        }
+
+        return pipe;
     }
 
     void IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
     {
-        throw new NotImplementedException();
+        if (!InvocationPipes.TryRemove(invocationId, out var pipe))
+            SessionContext.CacheManager.NexNetPipeCache.Return(pipe!);
     }
 
 

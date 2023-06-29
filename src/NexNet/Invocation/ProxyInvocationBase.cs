@@ -315,9 +315,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, NexNetPipe? pipe, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
+        var state = await InvokeWaitForResultCore(methodId, arguments, pipe, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return default;
@@ -390,9 +390,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             return null;
 
         if (nexNetPipe != null)
-        {
             nexNetPipe.Configure(state.InvocationId, session);
-        }
 
         try
         {

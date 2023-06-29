@@ -10,13 +10,14 @@ internal class CachedPipe
     public NexNetPipe Rent()
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = NexNetPipe.CreateReader();
+            cachedItem = new NexNetPipe(true);
 
         return cachedItem;
     }
 
     public void Return(NexNetPipe item)
     {
+        item.Reset();
         _cache.Add(item);
     }
 

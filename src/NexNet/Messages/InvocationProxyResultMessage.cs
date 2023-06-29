@@ -10,8 +10,8 @@ internal partial class InvocationProxyResultMessage : IMessageBodyBase
     public enum StateType : byte
     {
         Unset = 0,
-        CompletedResult = 3,
-        Exception = 5
+        CompletedResult = 1,
+        Exception = 2
     }
 
     public static MessageType Type { get; } = MessageType.InvocationProxyResult;

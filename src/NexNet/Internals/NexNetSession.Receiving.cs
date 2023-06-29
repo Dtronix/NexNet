@@ -4,6 +4,7 @@ using NexNet.Transports;
 using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
+using System.ComponentModel.Design;
 using System.Runtime.CompilerServices;
 
 namespace NexNet.Internals;
@@ -74,9 +75,9 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         var breakLoop = false;
         while (true)
         {
-            if (_recMessageHeader.Type == MessageType.Unset || _recMessageHeader.BodyLength == 0)
+            if (_recMessageHeader.Type == MessageType.Unset || _recMessageHeader.BodyLength == -1)
             {
-                if (_recMessageHeader.BodyLength == ushort.MaxValue)
+                if (_recMessageHeader.PostHeaderLength == 0)
                 {
                     if (position >= maxLength)
                     {
@@ -90,6 +91,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                     switch (type)
                     {
+                        // SINGLE BYTE HEADER ONLY
                         case MessageType.Ping:
                             _recMessageHeader.Reset();
 
@@ -115,12 +117,14 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                             breakLoop = true;
                             break;
 
+                        // HEADER + BODY
                         case MessageType.GreetingClient:
                         case MessageType.GreetingServer:
                         case MessageType.InvocationWithResponseRequest:
                         case MessageType.InvocationCancellationRequest:
                         case MessageType.InvocationProxyResult:
                             _config.Logger?.LogTrace($"Message has a standard body.");
+                            _recMessageHeader.PostHeaderLength = 2;
                             _recMessageHeader.BodyLength = 0;
                             break;
 
@@ -128,12 +132,14 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         //    _config.Logger?.LogTrace($"PipeChannel opened.");
                         //    break;
                         case MessageType.PipeChannelWrite:
+                            _recMessageHeader.PostHeaderLength = 4;
+                            _recMessageHeader.BodyLength = 0;
                             _config.Logger?.LogTrace($"PipeChannel received data.");
 
                             break;
-                        //case MessageType.PipeChannelClose:
-                        //    _config.Logger?.LogTrace($"PipeChannel closed.");
-                        //    break;
+                        case MessageType.PipeChannelClose:
+                            _config.Logger?.LogTrace($"PipeChannel closed.");
+                            break;
 
                         default:
                             _config.Logger?.LogTrace($"received invalid MessageHeader '{type}'.");
@@ -146,43 +152,51 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         break;
                 }
 
-                if (_recMessageHeader.BodyLength == 0)
+                if (_recMessageHeader.PostHeaderLength > 0 || _recMessageHeader.BodyLength == 0)
                 {
-                    // Read the body length size.
+                    // Check to see if we have the minimum amount of data to read for the header.
+                    ar totalHeaderToRead = (_recMessageHeader.PostHeaderLength > 0
+                        ? _recMessageHeader.PostHeaderLength
+                        : 0) + _recMessageHeader.BodyLength;
 
-                    if (position + 2 > maxLength)
+                    if (position + _recMessageHeader.PostHeaderLength > maxLength)
                     {
-                        _config.Logger?.LogTrace($"Could not read the next two bytes for the body length. Not enough data.");
+                        _config.Logger?.LogTrace($"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
                         break;
                     }
 
-                    try
+                    // If we have a body length of 0 here, it is needing to be read.
+                    // -1 indicates that there is no body length to read.
+                    if (_recMessageHeader.BodyLength == 0)
                     {
-                        var lengthSlice = sequence.Slice(position, 2);
-                        position += 2;
-                        // If this is a single segment, we can just treat it like a single span.
-                        // If we cross multiple spans, we need to copy the memory into a single
-                        // continuous span.
-                        if (lengthSlice.IsSingleSegment)
+                        try
                         {
-                            _recMessageHeader.BodyLength = BitConverter.ToUInt16(lengthSlice.FirstSpan);
-                        }
-                        else
-                        {
-                            lengthSlice.CopyTo(_bodyLengthBuffer);
-                            _recMessageHeader.BodyLength = BitConverter.ToUInt16(_bodyLengthBuffer);
-                        }
+                            var lengthSlice = sequence.Slice(position, 2);
+                            position += 2;
+                            // If this is a single segment, we can just treat it like a single span.
+                            // If we cross multiple spans, we need to copy the memory into a single
+                            // continuous span.
+                            if (lengthSlice.IsSingleSegment)
+                            {
+                                _recMessageHeader.BodyLength = BitConverter.ToUInt16(lengthSlice.FirstSpan);
+                            }
+                            else
+                            {
+                                lengthSlice.CopyTo(_bodyLengthBuffer);
+                                _recMessageHeader.BodyLength = BitConverter.ToUInt16(_bodyLengthBuffer);
+                            }
 
-                        _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
-                        // ReSharper disable once RedundantJumpStatement
-                        continue;
-                    }
-                    catch (Exception e)
-                    {
-                        _config.Logger?.LogTrace($"Reset data due to transport error. {e}");
-                        //_logger?.LogError(e, $"Could not parse message header with {bodyLength.Length} bytes.");
-                        disconnect = DisconnectReason.ProtocolError;
-                        break;
+                            _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
+                            // ReSharper disable once RedundantJumpStatement
+                            continue;
+                        }
+                        catch (Exception e)
+                        {
+                            _config.Logger?.LogTrace($"Reset data due to transport error. {e}");
+                            //_logger?.LogError(e, $"Could not parse message header with {bodyLength.Length} bytes.");
+                            disconnect = DisconnectReason.ProtocolError;
+                            break;
+                        }
                     }
                 }
             }

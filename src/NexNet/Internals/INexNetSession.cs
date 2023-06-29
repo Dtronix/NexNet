@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -84,6 +85,7 @@ internal interface INexNetSession
     /// <returns>True upon successful disconnection due to timeout.  False otherwise.</returns>
     bool DisconnectIfTimeout(long timeoutTicks);
 
+    ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

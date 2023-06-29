@@ -72,14 +72,14 @@ partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNet
     {
         public global::System.Threading.Tasks.ValueTask ServerTaskWithParam(global::NexNet.NexNetPipe pipe)
         {
-            var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::NexNet.NexNetPipe>>(new(pipe));
-            return ProxyInvokeAndWaitForResultCore(0, arguments, null);
+            //var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::NexNet.NexNetPipe>>(new(pipe));
+            return ProxyInvokeAndWaitForResultCore(0, null, pipe, null);
         }
 
         /// <summary>
         /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
         /// </summary>
-        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => -696945704; }
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
     }
 }
 
@@ -116,9 +116,9 @@ partial class ClientHub
             while (true)
             {
                 var size = Random.Shared.Next(1, 1024 * 60);
-                await pipe.Output.WriteAsync(randomData.Slice(size));
+                await pipe.Output.WriteAsync(randomData.Slice(0, size));
             }
-        })
+        });
 
         return base.OnConnected(isReconnected);
     }
@@ -176,7 +176,7 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
     /// <summary>
     /// Hash for this the methods on this proxy or hub.  Used to perform a simple client and server match check.
     /// </summary>
-    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 1877661636; }
+    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
 
     /// <summary>
     /// Proxy invocation implementation for the matching hub.
@@ -249,7 +249,7 @@ internal class Program
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
+            Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
         };
         /*
         var serverConfig = new TcpServerConfig()

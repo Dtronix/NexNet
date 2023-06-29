@@ -1,35 +1,30 @@
 ﻿using System;
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
 
-public class NexNetPipe
+public class NexNetPipe : IDisposable
 {
-    private readonly Mode _mode;
-    private PipeWriter? _output;
-    private readonly Pipe _pipe;
-    private int _invocationId;
+    private readonly Pipe? _pipe;
+    private PipeWriterImpl? _output;
 
-    /// <summary>
-    /// Only valid on readers.
-    /// </summary>
-    internal BufferWriter<byte> BufferWriter { get; }
-
-    private enum Mode
-    {
-        Reader,
-        Writer
-    }
+    private int? _invocationId;
+    private INexNetSession? _nexNetSession;
 
     public PipeReader Input
     {
         get
         {
-            if (_mode == Mode.Writer)
+            if (_pipe == null)
                 throw new InvalidOperationException("Can't access the input from a writer.");
             return _pipe.Reader;
         }
@@ -39,47 +34,137 @@ public class NexNetPipe
     {
         get
         {
-            if (_mode == Mode.Reader)
+            if (_pipe != null)
                 throw new InvalidOperationException("Can't access the output from a reader.");
-            return _output!;
+
+            if(_output == null)
+                throw new InvalidOperationException("Pipe has not been setup fully for usage.");
+            return _output;
         }
     }
 
-    private NexNetPipe(Mode mode)
+    internal NexNetPipe(bool readerMode)
     {
-        _mode = mode;
 
-        if (mode == Mode.Writer)
-            BufferWriter = BufferWriter<byte>.Create();
-
-        _pipe = new Pipe();
+        if (readerMode)
+            _pipe = new Pipe();
     }
 
     public static NexNetPipe Create()
     {
-        return new NexNetPipe(Mode.Writer);
+        return new NexNetPipe(false);
     }
 
-    internal static NexNetPipe CreateReader()
+    public void Dispose()
     {
-        return new NexNetPipe(Mode.Reader);
+        Reset();
+        _output?.Dispose();
     }
 
     internal void Reset()
     {
-        _pipe.Reset();
+        _nexNetSession = null;
+        _invocationId = null;
+        _pipe?.Reset();
+
+        // No need to reset anything with the writer as it is use once and dispose.
     }
     internal void Configure(int invocationId, INexNetSession nexNetSession)
     {
         _invocationId = invocationId;
+        _nexNetSession = nexNetSession;
+        _output = new PipeWriterImpl(invocationId, this._nexNetSession!);
     }
 
     internal void WriteFromStream(ReadOnlySequence<byte> data)
     {
-        if (_mode != Mode.Reader)
+        if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
 
         data.CopyTo(_pipe.Writer.GetSpan((int)data.Length));
+    }
+
+    private class PipeWriterImpl : PipeWriter, IDisposable
+    {
+        private readonly int _invocationId;
+        private readonly INexNetSession _session;
+
+        private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create();
+        private bool _isCanceled;
+        private bool _isCompleted;
+        private CancellationTokenSource? _flushCts;
+        private Memory<byte> _invocationIdBytes = new byte[4];
+
+        public PipeWriterImpl(int invocationId, INexNetSession session)
+        {
+            _invocationId = invocationId;
+            _session = session;
+        }
+    
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Advance(int bytes)
+        {
+            _bufferWriter.Advance(bytes);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override Memory<byte> GetMemory(int sizeHint = 0)
+        {
+            return _bufferWriter.GetMemory(sizeHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override Span<byte> GetSpan(int sizeHint = 0)
+        {
+            return _bufferWriter.GetSpan(sizeHint);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void CancelPendingFlush()
+        {
+            _isCanceled = true;
+            _flushCts?.Cancel();
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public override void Complete(Exception? exception = null)
+        {
+            _isCompleted = true;
+        }
+
+        public override async ValueTask<FlushResult> FlushAsync(
+            CancellationToken cancellationToken = new CancellationToken())
+        {
+            _flushCts ??= new CancellationTokenSource();
+
+            cancellationToken.Register(() => _flushCts.Cancel());
+            var data = _bufferWriter.Flush();
+            using var flushData = _bufferWriter.Flush();
+
+            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
+
+            try
+            {
+                await _session.SendHeaderWithBody(MessageType.PipeChannelWrite, _invocationIdBytes, flushData.Value, _flushCts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                // noop
+            }
+
+            // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
+            if (!_flushCts.TryReset())
+                _flushCts = null;
+
+            return new FlushResult(_isCanceled, _isCompleted);
+        }
+
+        public void Dispose()
+        {
+            _bufferWriter.Dispose();
+            _invocationIdBytes = null!;
+        }
     }
     /*
     private class PipeReaderImpl : PipeReader
