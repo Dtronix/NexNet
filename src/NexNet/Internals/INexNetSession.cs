@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Buffers;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
@@ -60,6 +61,15 @@ internal interface INexNetSession
         where TMessage : IMessageBodyBase;
 
     /// <summary>
+    /// Sends the passed sequence with prefixed header type and length.
+    /// </summary>
+    /// <param name="type">Type of header to send.</param>
+    /// <param name="body">Sequence of data to send in teh body</param>
+    /// <param name="cancellationToken">Cancellation token for sending.</param>
+    /// <returns>Task which completes upon sending.</returns>
+    ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Sends a header over the wire.
     /// </summary>
     /// <param name="type">Type of header to send.</param>
@@ -73,6 +83,7 @@ internal interface INexNetSession
     /// <param name="timeoutTicks">Normally use Environment.TickCount64 - Timeout</param>
     /// <returns>True upon successful disconnection due to timeout.  False otherwise.</returns>
     bool DisconnectIfTimeout(long timeoutTicks);
+
 }
 
 /// <summary>
