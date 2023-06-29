@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using NexNet.Messages;
 using NexNet.Cache;
-using NexNet.Internals;
 using NexNet.Transports;
 using NexNet.Invocation;
 using System.IO.Pipelines;
@@ -15,7 +14,7 @@ using MemoryPack;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
 
-namespace NexNet;
+namespace NexNet.Internals;
 
 internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
@@ -35,7 +34,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private PipeReader? _pipeInput;
     private PipeWriter? _pipeOutput;
 
-    private readonly MutexSlim _writeMutex = new MutexSlim(Int32.MaxValue);
+    private readonly MutexSlim _writeMutex = new MutexSlim(int.MaxValue);
     private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 8);
     private readonly byte[] _bodyLengthBuffer = new byte[2];
 
@@ -68,7 +67,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     public Action? OnSent { get; set; }
 
     public ConnectionState State { get; private set; }
-    
+
     public NexNetSession(in NexNetSessionConfigurations<THub, TProxy> configurations)
     {
         State = ConnectionState.Connecting;
@@ -112,7 +111,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         MemoryPackSerializer.Serialize(_bufferWriter, body);
 
         var contentLength = checked((ushort)(_bufferWriter.Length - 3));
-        
+
         header.Span[0] = (byte)TMessage.Type;
 
         BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
@@ -250,9 +249,9 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     {
         var position = 0;
         var maxLength = sequence.Length;
-        DisconnectReason disconnect = DisconnectReason.None;
+        var disconnect = DisconnectReason.None;
         var issueDisconnectMessage = true;
-        bool breakLoop = false;
+        var breakLoop = false;
         while (true)
         {
             if (_recMessageHeader.Type == MessageType.Unset || _recMessageHeader.BodyLength == 0)
@@ -604,7 +603,7 @@ internal class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         // Notify the hub.
         await clientHub.Reconnecting().ConfigureAwait(false);
-        int count = 0;
+        var count = 0;
 
         while (true)
         {
