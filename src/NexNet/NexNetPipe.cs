@@ -21,6 +21,7 @@ public class NexNetPipe : IDisposable
     private int? _invocationId;
     private INexNetSession? _nexNetSession;
     private ResetAwaiterSource? _writerReadyTcs;
+    private readonly Func<PipeWriter, Task>? _writer;
 
     public PipeReader Input
     {
@@ -50,16 +51,20 @@ public class NexNetPipe : IDisposable
         return _output!;
     }
 
-    internal NexNetPipe(bool readerMode)
+    internal NexNetPipe()
     {
-
-        if (readerMode)
-            _pipe = new Pipe();
+        _pipe = new Pipe();
     }
 
-    public static NexNetPipe Create()
+    private NexNetPipe(Func<PipeWriter, Task> writer)
     {
-        return new NexNetPipe(false);
+
+        _writer = writer;
+    }
+
+    public static NexNetPipe Create(Func<PipeWriter, Task> writer)
+    {
+        return new NexNetPipe(writer);
     }
 
     public void Dispose()
