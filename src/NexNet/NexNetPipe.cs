@@ -33,7 +33,7 @@ public class NexNetPipe : IDisposable
         }
     }
 
-
+    /*
     public async ValueTask<PipeWriter> GetWriter()
     {
         if (_pipe != null)
@@ -50,7 +50,7 @@ public class NexNetPipe : IDisposable
 
         return _output!;
     }
-
+    */
     internal NexNetPipe()
     {
         _pipe = new Pipe();
