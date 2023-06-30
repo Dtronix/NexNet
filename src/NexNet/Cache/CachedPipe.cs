@@ -10,7 +10,7 @@ internal class CachedPipe
     public NexNetPipe Rent()
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = new NexNetPipe(true);
+            cachedItem = new NexNetPipe();
 
         return cachedItem;
     }

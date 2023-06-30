@@ -280,7 +280,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
                     case MessageType.PipeChannelWrite:
                         if (_hub.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
-                            pipe.WriteFromStream(bodySlice);
+                            await pipe.WriteFromStream(bodySlice);
                         break;
 
                     default:

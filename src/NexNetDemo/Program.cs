@@ -1,4 +1,5 @@
-﻿using System.IO.Pipelines;
+﻿using System.Diagnostics;
+using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -107,20 +108,18 @@ partial class ClientHub
 
         Task.Run(async () =>
         {
-            var pipe = NexNetPipe.Create();
-
-            this.Context.Proxy.ServerTaskWithParam(pipe);
-
-            Memory<byte> randomData = data;
-
-            while (true)
+            var pipe = NexNetPipe.Create(async (writer, ct) =>
             {
-                var size = Random.Shared.Next(1, 1024 * 60);
-                var writer = await pipe.GetWriter();
+                Memory<byte> randomData = data;
 
-                await writer.WriteAsync(randomData.Slice(0, size));
-                return;
-            }
+                while (true)
+                {
+                    var size = Random.Shared.Next(1, 1024 * 32);
+                    await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
+                }
+            });
+
+            await this.Context.Proxy.ServerTaskWithParam(pipe);
         });
 
         return base.OnConnected(isReconnected);
@@ -201,16 +200,33 @@ partial class ServerHub : IServerHub
     private long _readData = 0;
     public async ValueTask ServerTaskWithParam(NexNetPipe pipe)
     {
+        long sentBytes = 0;
+        int loopNumber = 0;
+        var sw = new Stopwatch();
         while (true)
         {
-            var data = await pipe.Input.ReadAsync();
+            sw.Start();
+            var data = await pipe.Reader.ReadAsync();
+
 
             if (data.IsCanceled || data.IsCompleted)
                 return;
 
+            pipe.Reader.AdvanceTo(data.Buffer.End);
+
             _readData += data.Buffer.Length;
 
-            Console.WriteLine(_readData);
+            sentBytes += data.Buffer.Length;
+            if (loopNumber++ == 500)
+            {
+                var ellapsedms = sw.ElapsedMilliseconds;
+                var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
+                Console.WriteLine($"{value:F} MBps");
+                Console.SetCursorPosition(0,0);
+                sw.Restart();
+                sentBytes = 0;
+                loopNumber = 0;
+            }
         }
     }
 }
@@ -247,12 +263,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
+            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
         };
         /*
         var serverConfig = new TcpServerConfig()

@@ -58,7 +58,6 @@ internal class SessionInvocationStateManager
         }
     }
 
-
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
         NexNetPipe? pipe,
@@ -103,7 +102,18 @@ internal class SessionInvocationStateManager
 
             await session.SendHeaderWithBody(message).ConfigureAwait(false);
 
-            pipe?.Configure(message.InvocationId, session);
+            // Run the pipe writer if there is one.
+            if (pipe != null)
+            {
+                var ct = cancellationToken ?? CancellationToken.None;
+                _ = Task.Factory.StartNew(
+                    pipe.RunWriter,
+                    new NexNetPipe.RunWriterArguments(message.InvocationId, session, ct),
+                    ct,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
+            }
+
         }
         else
         {

@@ -13,17 +13,14 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
 
-public class NexNetPipe : IDisposable
+public class NexNetPipe
 {
     private readonly Pipe? _pipe;
-    private PipeWriterImpl? _output;
+    private readonly WriterDelegate? _writer;
 
-    private int? _invocationId;
-    private INexNetSession? _nexNetSession;
-    private ResetAwaiterSource? _writerReadyTcs;
-    private readonly Func<PipeWriter, Task>? _writer;
+    public delegate Task WriterDelegate(PipeWriter writer, CancellationToken cancellationToken);
 
-    public PipeReader Input
+    public PipeReader Reader
     {
         get
         {
@@ -33,77 +30,61 @@ public class NexNetPipe : IDisposable
         }
     }
 
-    /*
-    public async ValueTask<PipeWriter> GetWriter()
-    {
-        if (_pipe != null)
-            throw new InvalidOperationException("Can't access the output from a reader.");
-
-        if (_output != null)
-        {
-            return _output;
-        }
-
-        _writerReadyTcs ??= new ResetAwaiterSource(false);
-
-        await _writerReadyTcs.Awaiter;
-
-        return _output!;
-    }
-    */
     internal NexNetPipe()
     {
         _pipe = new Pipe();
     }
 
-    private NexNetPipe(Func<PipeWriter, Task> writer)
+    private NexNetPipe(WriterDelegate writer)
     {
-
         _writer = writer;
     }
 
-    public static NexNetPipe Create(Func<PipeWriter, Task> writer)
+    public static NexNetPipe Create(WriterDelegate writer)
     {
-        return new NexNetPipe(writer);
-    }
+        if (writer == null)
+            throw new ArgumentNullException(nameof(writer));
 
-    public void Dispose()
-    {
-        Reset();
-        _output?.Dispose();
+        return new NexNetPipe(writer);
     }
 
     internal void Reset()
     {
-        _nexNetSession = null;
-        _invocationId = null;
         _pipe?.Reset();
 
         // No need to reset anything with the writer as it is use once and dispose.
     }
-    internal void Configure(int invocationId, INexNetSession nexNetSession)
+    internal async Task RunWriter(object? arguments)
     {
-        _invocationId = invocationId;
-        _nexNetSession = nexNetSession;
-        _output = new PipeWriterImpl(invocationId, this._nexNetSession!);
+        var runArguments = Unsafe.As<RunWriterArguments>(arguments)!;
 
-        _writerReadyTcs?.TrySetResult();
+        using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session);
+
+        await Task.Delay(1000);
+        await _writer!.Invoke(writer, runArguments.CancellationToken);
     }
 
-    internal void WriteFromStream(ReadOnlySequence<byte> data)
+    internal async ValueTask WriteFromStream(ReadOnlySequence<byte> data)
     {
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
-
-        data.CopyTo(_pipe.Writer.GetSpan((int)data.Length));
+        var length = (int)data.Length;
+        data.CopyTo(_pipe.Writer.GetSpan(length));
+        _pipe.Writer.Advance(length);
+        await _pipe.Writer.FlushAsync();
     }
+
+    internal record RunWriterArguments(
+        int InvocationId, 
+        INexNetSession Session, 
+        CancellationToken CancellationToken);
 
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
         private readonly int _invocationId;
         private readonly INexNetSession _session;
 
-        private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create();
+        private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
         private bool _isCanceled;
         private bool _isCompleted;
         private CancellationTokenSource? _flushCts;
@@ -153,14 +134,13 @@ public class NexNetPipe : IDisposable
             _flushCts ??= new CancellationTokenSource();
 
             cancellationToken.Register(() => _flushCts.Cancel());
-            var data = _bufferWriter.Flush();
-            using var flushData = _bufferWriter.Flush();
+            using var data = _bufferWriter.Flush();
 
             BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
 
             try
             {
-                await _session.SendHeaderWithBody(MessageType.PipeChannelWrite, _invocationIdBytes, flushData.Value, _flushCts.Token);
+                await _session.SendHeaderWithBody(MessageType.PipeChannelWrite, _invocationIdBytes, data.Value, _flushCts.Token);
             }
             catch (TaskCanceledException)
             {
@@ -180,75 +160,4 @@ public class NexNetPipe : IDisposable
             _invocationIdBytes = null!;
         }
     }
-    /*
-    private class PipeReaderImpl : PipeReader
-    {
-        private readonly NexNetPipe _pipe;
-        public readonly ResetAwaiterSource ReceivedAwaiter = new ResetAwaiterSource(true);
-        private bool _complete;
-        private bool _cancel;
-        public PipeReaderImpl(NexNetPipe pipe)
-        {
-            _pipe = pipe;
-        }
-
-        public void Reset()
-        {
-            _complete = false;
-            _cancel = false;
-
-            ReceivedAwaiter.Reset();
-        }
-
-        public override void AdvanceTo(SequencePosition consumed)
-        {
-            
-            _pipe.BufferWriter.GetSequence()
-            throw new NotImplementedException();
-        }
-
-        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
-        {
-            throw new NotImplementedException();
-
-            
-        }
-
-        public override void CancelPendingRead()
-        {
-            _cancel = true;
-            ReceivedAwaiter.TrySetCanceled();
-        }
-
-        public override void Complete(Exception? exception = null)
-        {
-            _complete = true;
-            ReceivedAwaiter.TrySetResult();
-        }
-
-        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
-        {
-            if (_pipe.BufferWriter.Length == 0)
-                await ReceivedAwaiter.Awaiter;
-
-            if (_pipe.BufferWriter.Length == 0)
-                return new ReadResult(new ReadOnlySequence<byte>(), _cancel, _complete);
-
-            return new ReadResult(_pipe.BufferWriter.GetBuffer(), _cancel, _complete);
-        }
-
-        public override bool TryRead([UnscopedRef] out ReadResult result)
-        {
-            if (_pipe.BufferWriter.Length == 0)
-            {
-                result = new ReadResult(new ReadOnlySequence<byte>(), _cancel, _complete);
-                return false;
-            }
-
-            result = new ReadResult(_pipe.BufferWriter.GetBuffer(), _cancel, _complete);
-
-            return true;
-        }
-    }*/
-
 }

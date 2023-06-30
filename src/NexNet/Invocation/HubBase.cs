@@ -41,7 +41,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         foreach (var pipe in InvocationPipes)
         {
             InvocationPipes.TryRemove(pipe);
-            pipe.Value.Input.Complete(new Exception("Session closed"));
+            pipe.Value.Reader.Complete(new Exception("Session closed"));
         }
     }
 

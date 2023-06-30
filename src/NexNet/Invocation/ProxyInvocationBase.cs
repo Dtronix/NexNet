@@ -281,7 +281,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, NexNetPipe pipe, CancellationToken? cancellationToken = null)
+    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, NexNetPipe? pipe, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, pipe, cancellationToken).ConfigureAwait(false);
 
