@@ -115,7 +115,10 @@ partial class ClientHub
                 while (true)
                 {
                     var size = Random.Shared.Next(1, 1024 * 32);
-                    await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
+                    randomData.Slice(0, 1024 * 60).CopyTo(writer.GetMemory(1024 * 60));
+                    writer.Advance(1024 * 60);
+                    await writer.FlushAsync(ct);
+                    //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
             });
 

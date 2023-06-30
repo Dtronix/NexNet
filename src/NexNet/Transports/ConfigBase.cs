@@ -41,7 +41,10 @@ public abstract class ConfigBase
     /// <summary>
     /// Options to configure the sending pipe with.
     /// </summary>
-    public PipeOptions SendPipeOptions { get; set; } = PipeOptions.Default;
+    public PipeOptions SendPipeOptions { get; set; }  = PipeOptions.Default;/*= new PipeOptions(
+        pauseWriterThreshold: ushort.MaxValue,
+        resumeWriterThreshold: ushort.MaxValue / 2,
+        minimumSegmentSize: ushort.MaxValue);*/
 
     /// <summary>
     /// Options to configure the receiving pipe with.

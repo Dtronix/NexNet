@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
@@ -79,6 +80,38 @@ public class NexNetPipe
         INexNetSession Session, 
         CancellationToken CancellationToken);
 
+    private class PipeReaderImpl : PipeReader
+    {
+        public override void AdvanceTo(SequencePosition consumed)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void CancelPendingRead()
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void Complete(Exception? exception = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
+        {
+            throw new NotImplementedException();
+        }
+
+        public override bool TryRead([UnscopedRef] out ReadResult result)
+        {
+            throw new NotImplementedException();
+        }
+    }
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
         private readonly int _invocationId;
@@ -121,6 +154,7 @@ public class NexNetPipe
             _isCanceled = true;
             _flushCts?.Cancel();
         }
+
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void Complete(Exception? exception = null)
