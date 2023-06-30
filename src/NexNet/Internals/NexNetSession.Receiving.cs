@@ -5,7 +5,9 @@ using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
 using System.ComponentModel.Design;
+using System.Drawing;
 using System.Runtime.CompilerServices;
+using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;
 
@@ -66,6 +68,35 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
     }
 
+    private static bool TryReadUshort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ushort value)
+    {
+        const int size = 2;
+        try
+        {
+            var valueSlice = sequence.Slice(position, size);
+            position += size;
+            // If this is a single segment, we can just treat it like a single span.
+            // If we cross multiple spans, we need to copy the memory into a single
+            // continuous span.
+            if (valueSlice.IsSingleSegment)
+            {
+                value = BitConverter.ToUInt16(valueSlice.FirstSpan);
+            }
+            else
+            {
+                valueSlice.CopyTo(buffer);
+                value = BitConverter.ToUInt16(buffer);
+            }
+
+            return true;
+        }
+        catch
+        {
+            value = 0;
+            return false;
+        }
+    }
+
     private async ValueTask<ProcessResult> Process(ReadOnlySequence<byte> sequence)
     {
         var position = 0;
@@ -75,9 +106,9 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         var breakLoop = false;
         while (true)
         {
-            if (_recMessageHeader.Type == MessageType.Unset || _recMessageHeader.BodyLength == -1)
+            if (_recMessageHeader.IsHeaderComplete == false)
             {
-                if (_recMessageHeader.PostHeaderLength == 0)
+                if (_recMessageHeader.Type == MessageType.Unset)
                 {
                     if (position >= maxLength)
                     {
@@ -85,11 +116,11 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         break;
                     }
 
-                    var type = _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
+                    _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
                     position++;
-                    _config.Logger?.LogTrace($"Received {type} header.");
+                    _config.Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
 
-                    switch (type)
+                    switch (_recMessageHeader.Type)
                     {
                         // SINGLE BYTE HEADER ONLY
                         case MessageType.Ping:
@@ -124,25 +155,21 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         case MessageType.InvocationCancellationRequest:
                         case MessageType.InvocationProxyResult:
                             _config.Logger?.LogTrace($"Message has a standard body.");
-                            _recMessageHeader.PostHeaderLength = 2;
-                            _recMessageHeader.BodyLength = 0;
+                            _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
-                        //case MessageType.PipeChannelOpen:
-                        //    _config.Logger?.LogTrace($"PipeChannel opened.");
-                        //    break;
                         case MessageType.PipeChannelWrite:
-                            _recMessageHeader.PostHeaderLength = 4;
-                            _recMessageHeader.BodyLength = 0;
+                            _recMessageHeader.SetTotalHeaderSize(sizeof(int), true);
                             _config.Logger?.LogTrace($"PipeChannel received data.");
 
                             break;
                         case MessageType.PipeChannelClose:
+                            _recMessageHeader.SetTotalHeaderSize(sizeof(int), false);
                             _config.Logger?.LogTrace($"PipeChannel closed.");
                             break;
 
                         default:
-                            _config.Logger?.LogTrace($"received invalid MessageHeader '{type}'.");
+                            _config.Logger?.LogTrace($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
                             // If we are outside of the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
@@ -152,130 +179,156 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         break;
                 }
 
-                if (_recMessageHeader.PostHeaderLength > 0 || _recMessageHeader.BodyLength == 0)
+                // If the whole header can't be read, loop back around.
+                if (position + _recMessageHeader.TotalHeaderLength > maxLength)
                 {
-                    // Check to see if we have the minimum amount of data to read for the header.
-                    ar totalHeaderToRead = (_recMessageHeader.PostHeaderLength > 0
-                        ? _recMessageHeader.PostHeaderLength
-                        : 0) + _recMessageHeader.BodyLength;
+                    _config.Logger?.LogTrace(
+                        $"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
+                    break;
+                }
 
-                    if (position + _recMessageHeader.PostHeaderLength > maxLength)
+                // If we have a body length of 0 here, it is needing to be read.
+                // -1 indicates that there is no body length to read.
+                if (_recMessageHeader.BodyLength == 0)
+                {
+                    if (!TryReadUshort(sequence, _readBuffer, ref position, out var bodyLength))
                     {
-                        _config.Logger?.LogTrace($"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
+                        _config.Logger?.LogTrace($"Could not read body length.");
+                        disconnect = DisconnectReason.ProtocolError;
                         break;
                     }
 
-                    // If we have a body length of 0 here, it is needing to be read.
-                    // -1 indicates that there is no body length to read.
-                    if (_recMessageHeader.BodyLength == 0)
-                    {
-                        try
-                        {
-                            var lengthSlice = sequence.Slice(position, 2);
-                            position += 2;
-                            // If this is a single segment, we can just treat it like a single span.
-                            // If we cross multiple spans, we need to copy the memory into a single
-                            // continuous span.
-                            if (lengthSlice.IsSingleSegment)
-                            {
-                                _recMessageHeader.BodyLength = BitConverter.ToUInt16(lengthSlice.FirstSpan);
-                            }
-                            else
-                            {
-                                lengthSlice.CopyTo(_bodyLengthBuffer);
-                                _recMessageHeader.BodyLength = BitConverter.ToUInt16(_bodyLengthBuffer);
-                            }
-
-                            _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
-                            // ReSharper disable once RedundantJumpStatement
-                            continue;
-                        }
-                        catch (Exception e)
-                        {
-                            _config.Logger?.LogTrace($"Reset data due to transport error. {e}");
-                            //_logger?.LogError(e, $"Could not parse message header with {bodyLength.Length} bytes.");
-                            disconnect = DisconnectReason.ProtocolError;
-                            break;
-                        }
-                    }
+                    _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
+                    _recMessageHeader.BodyLength = bodyLength;
                 }
-            }
-            else
-            {
-                // Read the body.
-                if (position + _recMessageHeader.BodyLength > maxLength)
-                {
-                    _config.Logger?.LogTrace($"Could not read all the {_recMessageHeader.BodyLength} body bytes.");
-                    break;
-                }
-                _config.Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
 
-                var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
-
-                position += _recMessageHeader.BodyLength;
-                try
+                // Read the post header.
+                if (_recMessageHeader.PostHeaderLength > 0)
                 {
-                    IMessageBodyBase? body = null;
                     switch (_recMessageHeader.Type)
                     {
-                        case MessageType.GreetingClient:
-                            body = _cacheManager.ClientGreetingDeserializer.Deserialize(bodySlice);
-                            break;
+                        case MessageType.PipeChannelWrite:
+                            if (!TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
+                            {
+                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
+                                disconnect = DisconnectReason.ProtocolError;
+                                break;
+                            }
 
-                        case MessageType.GreetingServer:
-                            body = _cacheManager.ServerGreetingDeserializer.Deserialize(bodySlice);
-                            break;
+                            _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
 
-                        case MessageType.InvocationWithResponseRequest:
-                            body = _cacheManager.InvocationRequestDeserializer.Deserialize(bodySlice);
                             break;
+                        case MessageType.PipeChannelClose:
+                            
+                            if (!TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
+                            {
+                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
+                                disconnect = DisconnectReason.ProtocolError;
+                                break;
+                            }
 
-                        case MessageType.InvocationProxyResult:
-                            body = _cacheManager.InvocationProxyResultDeserializer.Deserialize(bodySlice);
-                            break;
-
-                        case MessageType.InvocationCancellationRequest:
-                            body = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice);
-                            break;
-
+                            _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
+                        break;
                         default:
-                            _config.Logger?.LogError($"Deserialized type not recognized. {_recMessageHeader.Type}.");
+                            _config.Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
+                            // If we are outside of the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
+
                     }
-
-                    // Used only when the header type is not recognized.
-                    if (disconnect != DisconnectReason.None)
-                        break;
-
-                    _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
-                    disconnect = await MessageHandler(body!).ConfigureAwait(false);
-
-                    if (disconnect != DisconnectReason.None)
-                    {
-                        _config.Logger?.LogTrace($"Message could not be handled and disconnected with {disconnect}");
-                        break;
-                    }
-                    _config.Logger?.LogTrace($"Resetting header.");
-                    // Reset the header.
-                    _recMessageHeader.Reset();
                 }
-                catch (Exception e)
+
+                _recMessageHeader.IsHeaderComplete = true;
+            }
+
+            // Read the body.
+            if (position + _recMessageHeader.BodyLength > maxLength)
+            {
+                _config.Logger?.LogTrace($"Could not read all the {_recMessageHeader.BodyLength} body bytes.");
+                break;
+            }
+
+            _config.Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
+
+            var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
+
+            position += _recMessageHeader.BodyLength;
+            try
+            {
+                IMessageBodyBase? messageBody = null;
+                switch (_recMessageHeader.Type)
                 {
-                    _config.Logger?.LogTrace(e, "Could not deserialize body.");
-                    //_logger?.LogError(e, $"Could not deserialize body..");
-                    disconnect = DisconnectReason.ProtocolError;
+                    case MessageType.GreetingClient:
+                        messageBody = _cacheManager.ClientGreetingDeserializer.Deserialize(bodySlice);
+                        break;
+
+                    case MessageType.GreetingServer:
+                        messageBody = _cacheManager.ServerGreetingDeserializer.Deserialize(bodySlice);
+                        break;
+
+                    case MessageType.InvocationWithResponseRequest:
+                        messageBody = _cacheManager.InvocationRequestDeserializer.Deserialize(bodySlice);
+                        break;
+
+                    case MessageType.InvocationProxyResult:
+                        messageBody = _cacheManager.InvocationProxyResultDeserializer.Deserialize(bodySlice);
+                        break;
+
+                    case MessageType.InvocationCancellationRequest:
+                        messageBody = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice);
+                        break;
+
+                    case MessageType.PipeChannelWrite:
+                        if (_hub.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
+                            pipe.WriteFromStream(bodySlice);
+                        break;
+
+                    default:
+                        _config.Logger?.LogError(
+                            $"Deserialized type not recognized. {_recMessageHeader.Type}.");
+                        disconnect = DisconnectReason.ProtocolError;
+                        break;
+                }
+
+                // Used only when the header type is not recognized.
+                if (disconnect != DisconnectReason.None)
+                    break;
+
+                // If we have a message body in the form of a MemoryPack, pass it to the message handler.
+                if (messageBody != null)
+                {
+                    _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
+                    disconnect = await MessageHandler(messageBody!).ConfigureAwait(false);
+                }
+
+                if (disconnect != DisconnectReason.None)
+                {
+                    _config.Logger?.LogTrace(
+                        $"Message could not be handled and disconnected with {disconnect}");
                     break;
                 }
 
+                _config.Logger?.LogTrace($"Resetting header.");
+                // Reset the header.
                 _recMessageHeader.Reset();
             }
+            catch (Exception e)
+            {
+                _config.Logger?.LogTrace(e, "Could not deserialize body.");
+                //_logger?.LogError(e, $"Could not deserialize body..");
+                disconnect = DisconnectReason.ProtocolError;
+                break;
+            }
+
+            _recMessageHeader.Reset();
+
 
         }
 
         var seqPosition = sequence.GetPosition(position);
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
     }
+
 
 
     private async ValueTask<DisconnectReason> MessageHandler(IMessageBodyBase message)
@@ -397,5 +450,59 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
 
         return DisconnectReason.None;
+    }
+
+    private static bool TryReadUShort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out uint value)
+    {
+        if (!TryRead(sequence, buffer, ref position, 2, out var spanValue))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BitConverter.ToUInt16(spanValue);
+        return true;
+    }
+
+    private static bool TryReadInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out int value)
+    {
+        if (!TryRead(sequence, buffer, ref position, 4, out var spanValue))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BitConverter.ToInt32(spanValue);
+        return true;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryRead(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, int size, out ReadOnlySpan<byte> value)
+    {
+        try
+        {
+            var valueSlice = sequence.Slice(position, size);
+            position += size;
+            // If this is a single segment, we can just treat it like a single span.
+            // If we cross multiple spans, we need to copy the memory into a single
+            // continuous span.
+
+            if (valueSlice.IsSingleSegment)
+            {
+                value = valueSlice.FirstSpan;
+            }
+            else
+            {
+                valueSlice.CopyTo(buffer);
+                value = buffer;
+            }
+
+            return true;
+        }
+        catch
+        {
+            value = ReadOnlySpan<byte>.Empty;
+            return false;
+        }
     }
 }

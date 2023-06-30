@@ -61,6 +61,7 @@ internal class SessionInvocationStateManager
 
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
+        NexNetPipe? pipe,
         byte[]? arguments,
         INexNetSession session,
         CancellationToken? cancellationToken = null)
@@ -73,7 +74,7 @@ internal class SessionInvocationStateManager
         message.InvocationId = GetNextId();
         message.MethodId = methodId;
         message.Arguments = arguments;
-        message.Flags = InvocationFlags.None; 
+        message.Flags = InvocationFlags.None;
 
         var state = _cacheManager.RegisteredInvocationStateCache.Rent();
 
@@ -101,6 +102,8 @@ internal class SessionInvocationStateManager
             _invocationStates.TryAdd(message.InvocationId, state);
 
             await session.SendHeaderWithBody(message).ConfigureAwait(false);
+
+            pipe?.Configure(message.InvocationId, session);
         }
         else
         {

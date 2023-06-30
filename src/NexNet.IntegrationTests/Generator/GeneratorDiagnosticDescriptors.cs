@@ -13,12 +13,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 class ServerHub : IServerHub
 {
     public void Update() { }
@@ -35,12 +35,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 class ClientHub : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -57,12 +57,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial abstract class ClientHub : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -80,12 +80,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 abstract partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -103,12 +103,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 abstract partial class ClientHub<T> : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -126,13 +126,13 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub<T> : IClientHub
 {
     public void Update() { }
 
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -153,13 +153,13 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub<T> : IClientHub
 {
     public void Update() { }
 
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -177,13 +177,13 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
 
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub<T> : IServerHub
 {
     public void Update() { }
@@ -204,7 +204,7 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
@@ -227,7 +227,7 @@ partial interface IClientHub {
 partial interface IServerHub { 
 
 }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
@@ -250,7 +250,7 @@ partial interface IServerHub {
     [NexNetMethod(1)] void Update0();
     [NexNetMethod(1)] void Update1();
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update() { }
@@ -267,9 +267,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { int Update(); }
 partial interface IServerHub { }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
@@ -283,9 +283,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { }
 partial interface IServerHub { int Update();  }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 
 """);
@@ -300,12 +300,12 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(); }
 partial interface IServerHub { void Update(string arg); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub
 {
     public void Update() { }
 }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
     public void Update(string arg) { }
@@ -324,7 +324,7 @@ namespace NexNetDemo;
 partial interface IClientHub { ValueTask<string?> Update(string[]? val); }
 partial interface IServerHub { }
 
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub
 {
 
@@ -341,9 +341,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { ValueTask Update(CancellationToken ct, int val); }
 partial interface IServerHub { }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
@@ -357,9 +357,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { }
 partial interface IServerHub { ValueTask Update(CancellationToken ct, int val); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
@@ -374,9 +374,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { void Update(CancellationToken ct); }
 partial interface IServerHub { }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
@@ -390,9 +390,9 @@ using NexNet;
 namespace NexNetDemo;
 partial interface IClientHub { }
 partial interface IServerHub {  void Update(CancellationToken ct); }
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
+[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
 partial class ClientHub : IClientHub{ }
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
+[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
 partial class ServerHub : IServerHub { }
 """);
         Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
@@ -414,7 +414,7 @@ namespace InterfaceNameSpace2.Three.Four
 }
 namespace HubNameSpaces1.Five.Six
 {
-    [NexNetHub<InterfaceNameSpace1.One.Two.IClientHub, InterfaceNameSpace2.Three.Four.IServerHub>(NexNetHubType.Client)]
+    [NexNetHub<InterfaceNameSpace1.One.Two.IClientHub, InterfaceNameSpace2.Three.Four.IServerHub>(HubType = NexNetHubType.Client)]
     partial class ClientHub : InterfaceNameSpace1.One.Two.IClientHub
     {
         public void Update() { }
@@ -422,7 +422,7 @@ namespace HubNameSpaces1.Five.Six
 }
 namespace HubNameSpaces2.Seven.Eight
 {
-    [NexNetHub<InterfaceNameSpace2.Three.Four.IServerHub, InterfaceNameSpace1.One.Two.IClientHub>(NexNetHubType.Server)]
+    [NexNetHub<InterfaceNameSpace2.Three.Four.IServerHub, InterfaceNameSpace1.One.Two.IClientHub>(HubType = NexNetHubType.Server)]
     partial class ServerHub : InterfaceNameSpace2.Three.Four.IServerHub
     {
         public void Update(string arg) { }

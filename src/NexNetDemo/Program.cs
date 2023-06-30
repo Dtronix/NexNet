@@ -109,14 +109,17 @@ partial class ClientHub
         {
             var pipe = NexNetPipe.Create();
 
-            var invocationTask = this.Context.Proxy.ServerTaskWithParam(pipe);
+            this.Context.Proxy.ServerTaskWithParam(pipe);
 
             Memory<byte> randomData = data;
 
             while (true)
             {
                 var size = Random.Shared.Next(1, 1024 * 60);
-                await pipe.Output.WriteAsync(randomData.Slice(0, size));
+                var writer = await pipe.GetWriter();
+
+                await writer.WriteAsync(randomData.Slice(0, size));
+                return;
             }
         });
 
@@ -151,11 +154,11 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
             switch (message.MethodId)
             {
                 case 0:
-                    {
-                        pipe = methodInvoker.RegisterPipe(message.InvocationId);
-                        await ServerTaskWithParam(pipe);
-                        break;
-                    }
+                {
+                    pipe = methodInvoker.RegisterPipe(message.InvocationId);
+                    await ServerTaskWithParam(pipe);
+                }
+                    break;
             }
         }
         finally
@@ -244,7 +247,7 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
+            Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
         };
         var clientConfig = new UdsClientConfig()
         {

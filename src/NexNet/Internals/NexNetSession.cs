@@ -34,7 +34,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     private readonly MutexSlim _writeMutex = new MutexSlim(int.MaxValue);
     private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 8);
-    private readonly byte[] _bodyLengthBuffer = new byte[2];
+    private readonly byte[] _readBuffer = new byte[8];
 
     // mutable struct.  Don't set to readonly.
     private MessageHeader _recMessageHeader = new MessageHeader();

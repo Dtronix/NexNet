@@ -352,6 +352,7 @@ partial class MethodMeta
 
             sb.Append("(").Append(this.Id).Append(", ");
             sb.Append(ParametersLessCancellation.Length > 0 ? "arguments, " : "null, ");
+            sb.Append("null, ");
             sb.Append(this.CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
         }
 

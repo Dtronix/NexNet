@@ -35,15 +35,6 @@ public class NexNetHubAttribute<THub, TProxy> : Attribute
     public required NexNetHubType HubType { get; init; }
 
     /// <summary>
-    /// Creates the attribute with the passed type.
-    /// </summary>
-    /// <param name="hubType">Type of hub to implement.</param>
-    public NexNetHubAttribute(NexNetHubType hubType)
-    {
-        HubType = hubType;
-    }
-
-    /// <summary>
     /// Creates a blank attribute to set the <see cref="HubType"/> at a later point.
     /// </summary>
     public NexNetHubAttribute()

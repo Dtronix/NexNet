@@ -381,16 +381,14 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
 
         var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
-            methodId, 
+            methodId,
+            nexNetPipe,
             arguments, 
             session, 
             cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return null;
-
-        if (nexNetPipe != null)
-            nexNetPipe.Configure(state.InvocationId, session);
 
         try
         {

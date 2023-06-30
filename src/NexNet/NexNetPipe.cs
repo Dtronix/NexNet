@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Internals.Tasks;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
@@ -19,6 +20,7 @@ public class NexNetPipe : IDisposable
 
     private int? _invocationId;
     private INexNetSession? _nexNetSession;
+    private ResetAwaiterSource? _writerReadyTcs;
 
     public PipeReader Input
     {
@@ -30,17 +32,22 @@ public class NexNetPipe : IDisposable
         }
     }
 
-    public PipeWriter Output
-    {
-        get
-        {
-            if (_pipe != null)
-                throw new InvalidOperationException("Can't access the output from a reader.");
 
-            if(_output == null)
-                throw new InvalidOperationException("Pipe has not been setup fully for usage.");
+    public async ValueTask<PipeWriter> GetWriter()
+    {
+        if (_pipe != null)
+            throw new InvalidOperationException("Can't access the output from a reader.");
+
+        if (_output != null)
+        {
             return _output;
         }
+
+        _writerReadyTcs ??= new ResetAwaiterSource(false);
+
+        await _writerReadyTcs.Awaiter;
+
+        return _output!;
     }
 
     internal NexNetPipe(bool readerMode)
@@ -74,6 +81,8 @@ public class NexNetPipe : IDisposable
         _invocationId = invocationId;
         _nexNetSession = nexNetSession;
         _output = new PipeWriterImpl(invocationId, this._nexNetSession!);
+
+        _writerReadyTcs?.TrySetResult();
     }
 
     internal void WriteFromStream(ReadOnlySequence<byte> data)
