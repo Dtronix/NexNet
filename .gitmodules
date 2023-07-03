@@ -1,0 +1,3 @@
+[submodule "src/Pipelines.Sockets.Unofficial"]
+	path = src/Pipelines.Sockets.Unofficial
+	url = https://github.com/DJGosnell/Pipelines.Sockets.Unofficial.git
