@@ -56,7 +56,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                     return;
                 }
 
-                _pipeInput?.AdvanceTo(processResult.Position);
+                _pipeInput?.AdvanceTo(processResult.Position, result.Buffer.End);
             }
         }
         catch (NullReferenceException) { }
@@ -65,35 +65,6 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         {
             _config.Logger?.LogError(ex, "Reading exited with exception.");
             await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
-        }
-    }
-
-    private static bool TryReadUshort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ushort value)
-    {
-        const int size = 2;
-        try
-        {
-            var valueSlice = sequence.Slice(position, size);
-            position += size;
-            // If this is a single segment, we can just treat it like a single span.
-            // If we cross multiple spans, we need to copy the memory into a single
-            // continuous span.
-            if (valueSlice.IsSingleSegment)
-            {
-                value = BitConverter.ToUInt16(valueSlice.FirstSpan);
-            }
-            else
-            {
-                valueSlice.CopyTo(buffer);
-                value = BitConverter.ToUInt16(buffer);
-            }
-
-            return true;
-        }
-        catch
-        {
-            value = 0;
-            return false;
         }
     }
 
@@ -191,7 +162,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 // -1 indicates that there is no body length to read.
                 if (_recMessageHeader.BodyLength == 0)
                 {
-                    if (!TryReadUshort(sequence, _readBuffer, ref position, out var bodyLength))
+                    if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out var bodyLength))
                     {
                         _config.Logger?.LogTrace($"Could not read body length.");
                         disconnect = DisconnectReason.ProtocolError;
@@ -208,7 +179,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                     switch (_recMessageHeader.Type)
                     {
                         case MessageType.PipeChannelWrite:
-                            if (!TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
+                            if (!ReadingHelpers.TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
                             {
                                 _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
                                 disconnect = DisconnectReason.ProtocolError;
@@ -220,7 +191,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                             break;
                         case MessageType.PipeChannelClose:
                             
-                            if (!TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
+                            if (!ReadingHelpers.TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
                             {
                                 _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
                                 disconnect = DisconnectReason.ProtocolError;
@@ -450,59 +421,5 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
 
         return DisconnectReason.None;
-    }
-
-    private static bool TryReadUShort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out uint value)
-    {
-        if (!TryRead(sequence, buffer, ref position, 2, out var spanValue))
-        {
-            value = 0;
-            return false;
-        }
-
-        value = BitConverter.ToUInt16(spanValue);
-        return true;
-    }
-
-    private static bool TryReadInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out int value)
-    {
-        if (!TryRead(sequence, buffer, ref position, 4, out var spanValue))
-        {
-            value = 0;
-            return false;
-        }
-
-        value = BitConverter.ToInt32(spanValue);
-        return true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryRead(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, int size, out ReadOnlySpan<byte> value)
-    {
-        try
-        {
-            var valueSlice = sequence.Slice(position, size);
-            position += size;
-            // If this is a single segment, we can just treat it like a single span.
-            // If we cross multiple spans, we need to copy the memory into a single
-            // continuous span.
-
-            if (valueSlice.IsSingleSegment)
-            {
-                value = valueSlice.FirstSpan;
-            }
-            else
-            {
-                valueSlice.CopyTo(buffer);
-                value = buffer;
-            }
-
-            return true;
-        }
-        catch
-        {
-            value = ReadOnlySpan<byte>.Empty;
-            return false;
-        }
     }
 }

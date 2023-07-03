@@ -22,7 +22,7 @@
     <PackageReference Include="System.IO.Pipelines" Version="7.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="../Pipelines.Sockets.Unofficial/src/Pipelines.Sockets.Unofficial/**/*.cs" Exclude="**/Assembly.cs">
+    <Compile Include="../Pipelines.Sockets.Unofficial/src/Pipelines.Sockets.Unofficial/**/*.cs" Exclude="**/Assembly.cs;**/obj/**">
       <Link>Pipelines.Sockets.Unofficial/%(RecursiveDir)/%(Filename)%(Extension)</Link>
     </Compile>
   </ItemGroup>

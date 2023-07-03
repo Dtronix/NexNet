@@ -62,7 +62,7 @@ public class NexNetPipe
         using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session);
 
         await Task.Delay(1000);
-        await _writer!.Invoke(writer, runArguments.CancellationToken);
+        await _writer!.Invoke(writer, runArguments.CancellationToken).ConfigureAwait(true);
     }
 
     internal async ValueTask WriteFromStream(ReadOnlySequence<byte> data)
@@ -72,7 +72,7 @@ public class NexNetPipe
         var length = (int)data.Length;
         data.CopyTo(_pipe.Writer.GetSpan(length));
         _pipe.Writer.Advance(length);
-        await _pipe.Writer.FlushAsync();
+        await _pipe.Writer.FlushAsync().ConfigureAwait(true);
     }
 
     internal record RunWriterArguments(
@@ -172,18 +172,28 @@ public class NexNetPipe
 
             _flushCts ??= new CancellationTokenSource();
 
+            // ReSharper disable once UseAwaitUsing
             using var reg = cancellationToken.Register(CancelCallback, _flushCts);
-            using var data = _bufferWriter.Flush();
+
+            var buffer = _bufferWriter.GetBuffer();
 
             BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
 
             try
             {
-                await _session.SendHeaderWithBody(MessageType.PipeChannelWrite, _invocationIdBytes, data.Value, _flushCts.Token);
+                await _session.SendHeaderWithBody(
+                    MessageType.PipeChannelWrite, 
+                    _invocationIdBytes, 
+                    buffer,
+                    _flushCts.Token).ConfigureAwait(true);
             }
             catch (TaskCanceledException)
             {
                 // noop
+            }
+            finally
+            {
+                _bufferWriter.Deallocate(buffer);
             }
 
             // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.

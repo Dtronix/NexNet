@@ -111,12 +111,12 @@ partial class ClientHub
             var pipe = NexNetPipe.Create(async (writer, ct) =>
             {
                 Memory<byte> randomData = data;
-
+                var length = 1024 * 16;
                 while (true)
                 {
                     var size = Random.Shared.Next(1, 1024 * 32);
-                    randomData.Slice(0, 1024 * 60).CopyTo(writer.GetMemory(1024 * 60));
-                    writer.Advance(1024 * 60);
+                    randomData.Slice(0, length).CopyTo(writer.GetMemory(length));
+                    writer.Advance(length);
                     await writer.FlushAsync(ct);
                     //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
@@ -201,10 +201,20 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
 partial class ServerHub : IServerHub
 {
     private long _readData = 0;
+
+    double ApproxRollingAverage(double avg, double new_sample)
+    {
+
+        avg -= avg / 100;
+        avg += new_sample / 100;
+
+        return avg;
+    }
     public async ValueTask ServerTaskWithParam(NexNetPipe pipe)
     {
         long sentBytes = 0;
         int loopNumber = 0;
+        double average = 0;
         var sw = new Stopwatch();
         while (true)
         {
@@ -220,11 +230,13 @@ partial class ServerHub : IServerHub
             _readData += data.Buffer.Length;
 
             sentBytes += data.Buffer.Length;
-            if (loopNumber++ == 500)
+            if (loopNumber++ == 300)
             {
                 var ellapsedms = sw.ElapsedMilliseconds;
                 var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
-                Console.WriteLine($"{value:F} MBps");
+
+                average = ApproxRollingAverage(average, value);
+                Console.WriteLine($"{average:F} MBps");
                 Console.SetCursorPosition(0,0);
                 sw.Restart();
                 sentBytes = 0;
@@ -262,7 +274,7 @@ internal class Program
         {
             builder.AddFilter(level => true).AddConsole();
         });
-        
+
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
@@ -284,7 +296,7 @@ internal class Program
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
             //Logger = loggerFactory.CreateLogger("CL")
         };
-        *//*
+        
         var serverConfig = new TcpTlsServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
@@ -309,8 +321,8 @@ internal class Program
                 AllowRenegotiation = false,
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
             }
-        };
-        */
+        };*/
+
 
         var server = ServerHub.CreateServer(serverConfig, () => new ServerHub());
 
