@@ -165,9 +165,14 @@ public class NexNetPipe
         public override async ValueTask<FlushResult> FlushAsync(
             CancellationToken cancellationToken = new CancellationToken())
         {
+            static void CancelCallback(object? ctsObject)
+            {
+                Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();
+            }
+
             _flushCts ??= new CancellationTokenSource();
 
-            cancellationToken.Register(() => _flushCts.Cancel());
+            using var reg = cancellationToken.Register(CancelCallback, _flushCts);
             using var data = _bufferWriter.Flush();
 
             BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
