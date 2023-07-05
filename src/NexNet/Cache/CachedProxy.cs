@@ -20,7 +20,7 @@ internal class CachedProxy<TProxy>
     /// <param name="modeArguments">Arguments to pass for this invocation mode.</param>
     /// <returns></returns>
     public TProxy Rent(
-        INexNetSession<TProxy>? session,
+        INexusSession<TProxy>? session,
         SessionManager? sessionManager,
         SessionCacheManager<TProxy> sessionCache,
         ProxyInvocationMode mode,

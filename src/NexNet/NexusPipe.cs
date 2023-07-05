@@ -2,13 +2,10 @@
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
-using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Cache;
 using NexNet.Internals;
-using NexNet.Internals.Tasks;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
@@ -16,10 +13,15 @@ namespace NexNet;
 
 public class NexusPipe
 {
+
+    private const int MaxFlushLength = 1 << 14;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
 
+    internal INexusLogger? Logger;
+
     public delegate Task WriterDelegate(PipeWriter writer, CancellationToken cancellationToken);
+
 
     public PipeReader Reader
     {
@@ -59,9 +61,8 @@ public class NexusPipe
     {
         var runArguments = Unsafe.As<RunWriterArguments>(arguments)!;
 
-        using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session);
+        using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session, runArguments.Logger);
 
-        await Task.Delay(1000);
         await _writer!.Invoke(writer, runArguments.CancellationToken).ConfigureAwait(true);
     }
 
@@ -78,44 +79,14 @@ public class NexusPipe
     internal record RunWriterArguments(
         int InvocationId, 
         INexusSession Session, 
+        INexusLogger? Logger,
         CancellationToken CancellationToken);
 
-    private class PipeReaderImpl : PipeReader
-    {
-        public override void AdvanceTo(SequencePosition consumed)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void CancelPendingRead()
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void Complete(Exception? exception = null)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
-        {
-            throw new NotImplementedException();
-        }
-
-        public override bool TryRead([UnscopedRef] out ReadResult result)
-        {
-            throw new NotImplementedException();
-        }
-    }
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
         private readonly int _invocationId;
         private readonly INexusSession _session;
+        private readonly INexusLogger? _logger;
 
         private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
         private bool _isCanceled;
@@ -123,10 +94,11 @@ public class NexusPipe
         private CancellationTokenSource? _flushCts;
         private Memory<byte> _invocationIdBytes = new byte[4];
 
-        public PipeWriterImpl(int invocationId, INexusSession session)
+        public PipeWriterImpl(int invocationId, INexusSession session, INexusLogger? logger)
         {
             _invocationId = invocationId;
             _session = session;
+            _logger = logger;
         }
     
 
@@ -170,6 +142,14 @@ public class NexusPipe
                 Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();
             }
 
+            var bufferLength = _bufferWriter.Length;
+
+            // Shortcut for empty buffer.
+            if (bufferLength == 0)
+                return new FlushResult(_isCanceled, _isCompleted);
+
+            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
+
             _flushCts ??= new CancellationTokenSource();
 
             // ReSharper disable once UseAwaitUsing
@@ -177,24 +157,45 @@ public class NexusPipe
 
             var buffer = _bufferWriter.GetBuffer();
 
-            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
+            var multiPartSend = bufferLength > NexusPipe.MaxFlushLength;
 
-            try
+            var sendingBuffer = multiPartSend
+                ? buffer.Slice(0, NexusPipe.MaxFlushLength) 
+                : buffer;
+            
+            var flushPosition = 0;
+
+            while (true)
             {
-                await _session.SendHeaderWithBody(
-                    MessageType.PipeChannelWrite, 
-                    _invocationIdBytes, 
-                    buffer,
-                    _flushCts.Token).ConfigureAwait(true);
+                try
+                {
+                    await _session.SendHeaderWithBody(
+                        MessageType.PipeChannelWrite,
+                        _invocationIdBytes,
+                        sendingBuffer,
+                        _flushCts.Token).ConfigureAwait(true);
+                }
+                catch (TaskCanceledException)
+                {
+                    break;
+                }
+                catch (Exception e)
+                {
+                    _logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_invocationId}.");
+                    await _session.DisconnectAsync(DisconnectReason.ProtocolError);
+                    break;
+                }
+
+                bufferLength -= MaxFlushLength;
+                if (bufferLength <= 0)
+                    break;
+
+                flushPosition += MaxFlushLength;
+
+                sendingBuffer = buffer.Slice(flushPosition, Math.Min(bufferLength, MaxFlushLength));
             }
-            catch (TaskCanceledException)
-            {
-                // noop
-            }
-            finally
-            {
-                _bufferWriter.Deallocate(buffer);
-            }
+
+            _bufferWriter.Deallocate(buffer);
 
             // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
             if (!_flushCts.TryReset())

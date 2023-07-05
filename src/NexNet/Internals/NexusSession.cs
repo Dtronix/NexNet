@@ -14,7 +14,7 @@ using System.Runtime.CompilerServices;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -82,7 +82,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache);
+        SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
         SessionStore = new SessionStore();
         _invocationSemaphore = new SemaphoreSlim(configurations.Configs.MaxConcurrentConnectionInvocations,
             configurations.Configs.MaxConcurrentConnectionInvocations);

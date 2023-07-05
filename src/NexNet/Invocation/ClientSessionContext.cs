@@ -25,7 +25,7 @@ public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>
             null);
     }
 
-    internal ClientSessionContext(INexNetSession<TProxy> session)
+    internal ClientSessionContext(INexusSession<TProxy> session)
         : base(session, null)
     {
     }

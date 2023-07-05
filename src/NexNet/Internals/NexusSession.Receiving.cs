@@ -11,7 +11,7 @@ using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {

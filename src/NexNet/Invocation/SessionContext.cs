@@ -11,7 +11,7 @@ namespace NexNet.Invocation;
 public abstract class SessionContext<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    internal INexNetSession<TProxy> Session { get; }
+    internal INexusSession<TProxy> Session { get; }
     internal SessionManager? SessionManager { get; }
     internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
 
@@ -26,7 +26,7 @@ public abstract class SessionContext<TProxy>
     /// </summary>
     public long Id => Session.Id;
 
-    internal SessionContext(INexNetSession<TProxy> session, SessionManager? sessionManager)
+    internal SessionContext(INexusSession<TProxy> session, SessionManager? sessionManager)
     {
         Session = session;
         SessionManager = sessionManager;

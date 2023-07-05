@@ -89,7 +89,7 @@ partial class ClientNexus
 {
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        var data = new byte[1024 * 60];
+        var data = new byte[1 << 15];
         var number = 0;
         var direction = 1;
         for (int i = 0; i < data.Length; i++)
@@ -111,10 +111,10 @@ partial class ClientNexus
             var pipe = NexusPipe.Create(async (writer, ct) =>
             {
                 Memory<byte> randomData = data;
-                var length = 1024 * 16;
+                var length = 1 << 14;
                 while (true)
                 {
-                    var size = Random.Shared.Next(1, 1024 * 32);
+                    //var size = Random.Shared.Next(1, 1024 * 32);
                     randomData.Slice(0, length).CopyTo(writer.GetMemory(length));
                     writer.Advance(length);
                     await writer.FlushAsync(ct);
@@ -264,9 +264,7 @@ internal class Program
 {
   static async Task Main(string[] args)
   {
-
-      var type = typeof(NexusAttribute<,>);
-        var path = "test.sock";
+      var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
 
@@ -274,7 +272,7 @@ internal class Program
         {
             builder.AddFilter(level => true).AddConsole();
         });
-
+        
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
@@ -296,7 +294,8 @@ internal class Program
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
             //Logger = loggerFactory.CreateLogger("CL")
         };
-        
+        */
+        /*
         var serverConfig = new TcpTlsServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
@@ -321,8 +320,8 @@ internal class Program
                 AllowRenegotiation = false,
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
             }
-        };*/
-
+        };
+        */
 
         var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
 

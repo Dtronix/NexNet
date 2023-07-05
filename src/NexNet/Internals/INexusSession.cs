@@ -92,7 +92,7 @@ internal interface INexusSession
 /// Base session with proxy information.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-internal interface INexNetSession<TProxy> : INexusSession
+internal interface INexusSession<TProxy> : INexusSession
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>

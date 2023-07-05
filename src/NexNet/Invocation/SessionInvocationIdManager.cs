@@ -12,14 +12,16 @@ namespace NexNet.Invocation;
 internal class SessionInvocationStateManager
 {
     private readonly CacheManager _cacheManager;
+    private readonly INexusLogger? _logger;
     private int _invocationId = 0;
 
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
 
-    public SessionInvocationStateManager(CacheManager cacheManager)
+    public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger)
     {
         _invocationStates = new ConcurrentDictionary<int, RegisteredInvocationState>();
         _cacheManager = cacheManager;
+        _logger = logger;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -108,7 +110,7 @@ internal class SessionInvocationStateManager
                 var ct = cancellationToken ?? CancellationToken.None;
                 _ = Task.Factory.StartNew(
                     pipe.RunWriter,
-                    new NexusPipe.RunWriterArguments(message.InvocationId, session, ct),
+                    new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct),
                     ct,
                     TaskCreationOptions.LongRunning,
                     TaskScheduler.Default);

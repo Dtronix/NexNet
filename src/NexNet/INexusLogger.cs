@@ -66,7 +66,7 @@ public interface INexusLogger
 /// <summary>
 /// Common logging extensions.
 /// </summary>
-public static class NexNetLoggerExtensions
+public static class NexusLoggerExtensions
 {
 
     /// <summary>

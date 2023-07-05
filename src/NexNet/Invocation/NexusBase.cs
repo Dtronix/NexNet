@@ -73,7 +73,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
 
     NexusPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
     {
-        var pipe = SessionContext.CacheManager.NexNetPipeCache.Rent();
+        var pipe = SessionContext.CacheManager.NexusPipeCache.Rent();
         if (!InvocationPipes.TryAdd(invocationId, pipe))
         {
             throw new InvalidOperationException(
@@ -86,7 +86,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     void IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
     {
         if (!InvocationPipes.TryRemove(invocationId, out var pipe))
-            SessionContext.CacheManager.NexNetPipeCache.Return(pipe!);
+            SessionContext.CacheManager.NexusPipeCache.Return(pipe!);
     }
 
 
