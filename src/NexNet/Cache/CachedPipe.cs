@@ -5,17 +5,17 @@ namespace NexNet.Cache;
 
 internal class CachedPipe
 {
-    private readonly ConcurrentBag<NexNetPipe> _cache = new();
+    private readonly ConcurrentBag<NexusPipe> _cache = new();
 
-    public NexNetPipe Rent()
+    public NexusPipe Rent()
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = new NexNetPipe();
+            cachedItem = new NexusPipe();
 
         return cachedItem;
     }
 
-    public void Return(NexNetPipe item)
+    public void Return(NexusPipe item)
     {
         item.Reset();
         _cache.Add(item);

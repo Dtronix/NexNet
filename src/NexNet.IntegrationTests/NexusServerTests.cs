@@ -3,7 +3,7 @@
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetServerTests : BaseTests
+internal partial class NexusServerTests : BaseTests
 {
 
     [TestCase(Type.Uds)]
@@ -13,7 +13,7 @@ internal partial class NexNetServerTests : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var serverConfig = CreateServerConfig(type, false);
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             serverConfig,
             CreateClientConfig(type, false));
 
@@ -29,14 +29,14 @@ internal partial class NexNetServerTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public async Task HubFiresOnConnected(Type type)
+    public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        serverHub.OnConnectedEvent = hub =>
+        serverNexus.OnConnectedEvent = nexus =>
         {
             tcs.SetResult();
             return ValueTask.CompletedTask;
@@ -56,7 +56,7 @@ internal partial class NexNetServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
-        var (server, _, client, clientHub) = CreateServerClient(
+        var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
@@ -66,8 +66,8 @@ internal partial class NexNetServerTests : BaseTests
             server.Start();
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.ConnectedTCS = new TaskCompletionSource();
+            await clientNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            clientNexus.ConnectedTCS = new TaskCompletionSource();
 
             server.Stop();
 

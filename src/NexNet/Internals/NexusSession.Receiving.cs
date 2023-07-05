@@ -11,8 +11,8 @@ using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;
 
-internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
+    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     public async Task StartReadAsync()
@@ -107,8 +107,8 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         case MessageType.DisconnectGraceful:
                         case MessageType.DisconnectProtocolError:
                         case MessageType.DisconnectTimeout:
-                        case MessageType.DisconnectClientHubMismatch:
-                        case MessageType.DisconnectServerHubMismatch:
+                        case MessageType.DisconnectClientMismatch:
+                        case MessageType.DisconnectServerMismatch:
                         case MessageType.DisconnectServerShutdown:
                         case MessageType.DisconnectAuthentication:
                         case MessageType.DisconnectServerRestarting:
@@ -250,7 +250,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                         break;
 
                     case MessageType.PipeChannelWrite:
-                        if (_hub.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
+                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
                             await pipe.WriteFromStream(bodySlice);
                         break;
 
@@ -306,8 +306,8 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     {
         static async void InvokeOnConnected(object? sessionObj)
         {
-            var session = Unsafe.As<NexNetSession<THub, TProxy>>(sessionObj)!;
-            await session._hub.Connected(session._isReconnected).ConfigureAwait(false);
+            var session = Unsafe.As<NexusSession<TNexus, TProxy>>(sessionObj)!;
+            await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
 
             // Reset the value;
             session._isReconnected = false;
@@ -319,15 +319,15 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             if (!_isServer)
                 return DisconnectReason.ProtocolError;
 
-            // Verify what the greeting method hashes matches this hub's and proxy's
-            if (cGreeting.ServerHubMethodHash != THub.MethodHash)
+            // Verify what the greeting method hashes matches this nexus's and proxy's
+            if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
             {
-                return DisconnectReason.ServerHubMismatch;
+                return DisconnectReason.ServerMismatch;
             }
 
-            if (cGreeting.ClientHubMethodHash != TProxy.MethodHash)
+            if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
             {
-                return DisconnectReason.ClientHubMismatch;
+                return DisconnectReason.ClientMismatch;
             }
 
             var serverConfig = Unsafe.As<ServerConfig>(_config);
@@ -336,11 +336,11 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             if (serverConfig.Authenticate)
             {
                 // Run the handler and verify that it is good.
-                var serverHub = Unsafe.As<ServerHubBase<TProxy>>(_hub);
-                Identity = await serverHub.Authenticate(cGreeting.AuthenticationToken);
+                var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
+                Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken);
 
                 // Set the identity on the context.
-                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_hub.SessionContext);
+                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
                 serverContext.Identity = Identity;
 
                 // If the token is not good, disconnect.
@@ -386,7 +386,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
                 var message = arguments.Message;
                 try
                 {
-                    await session._hub.InvokeMethod(message).ConfigureAwait(false);
+                    await session._nexus.InvokeMethod(message).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {
@@ -411,7 +411,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         }
         else if (message is InvocationCancellationRequestMessage invocationCancellationRequestMessage)
         {
-            _hub.CancelInvocation(invocationCancellationRequestMessage);
+            _nexus.CancelInvocation(invocationCancellationRequestMessage);
         }
         else
         {

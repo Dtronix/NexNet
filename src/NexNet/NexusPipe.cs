@@ -14,7 +14,7 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
 
-public class NexNetPipe
+public class NexusPipe
 {
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
@@ -31,22 +31,22 @@ public class NexNetPipe
         }
     }
 
-    internal NexNetPipe()
+    internal NexusPipe()
     {
         _pipe = new Pipe();
     }
 
-    private NexNetPipe(WriterDelegate writer)
+    private NexusPipe(WriterDelegate writer)
     {
         _writer = writer;
     }
 
-    public static NexNetPipe Create(WriterDelegate writer)
+    public static NexusPipe Create(WriterDelegate writer)
     {
         if (writer == null)
             throw new ArgumentNullException(nameof(writer));
 
-        return new NexNetPipe(writer);
+        return new NexusPipe(writer);
     }
 
     internal void Reset()
@@ -77,7 +77,7 @@ public class NexNetPipe
 
     internal record RunWriterArguments(
         int InvocationId, 
-        INexNetSession Session, 
+        INexusSession Session, 
         CancellationToken CancellationToken);
 
     private class PipeReaderImpl : PipeReader
@@ -115,7 +115,7 @@ public class NexNetPipe
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
         private readonly int _invocationId;
-        private readonly INexNetSession _session;
+        private readonly INexusSession _session;
 
         private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
         private bool _isCanceled;
@@ -123,7 +123,7 @@ public class NexNetPipe
         private CancellationTokenSource? _flushCts;
         private Memory<byte> _invocationIdBytes = new byte[4];
 
-        public PipeWriterImpl(int invocationId, INexNetSession session)
+        public PipeWriterImpl(int invocationId, INexusSession session)
         {
             _invocationId = invocationId;
             _session = session;

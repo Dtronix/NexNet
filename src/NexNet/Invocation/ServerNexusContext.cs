@@ -8,10 +8,10 @@ namespace NexNet.Invocation;
 /// Context for external hub management.
 /// </summary>
 /// <typeparam name="TClientProxy">Proxy class used for invocation.</typeparam>
-public class ServerHubContext<TClientProxy> : IDisposable
+public class ServerNexusContext<TClientProxy> : IDisposable
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    private readonly INexNetServer<TClientProxy> _server;
+    private readonly INexusServer<TClientProxy> _server;
     private readonly SessionManager _sessionManager;
 
     /// <summary>
@@ -19,8 +19,8 @@ public class ServerHubContext<TClientProxy> : IDisposable
     /// </summary>
     public IProxyBase<TClientProxy> Clients { get; }
 
-    internal ServerHubContext(
-        INexNetServer<TClientProxy> server,
+    internal ServerNexusContext(
+        INexusServer<TClientProxy> server,
         SessionManager sessionManager,
         SessionCacheManager<TClientProxy> cache)
     {
@@ -134,6 +134,6 @@ public class ServerHubContext<TClientProxy> : IDisposable
     void IDisposable.Dispose()
     {
         ((ClientProxy)Clients).Reset();
-        _server.ServerHubContextCache.Add(this);
+        _server.ServerNexusContextCache.Add(this);
     }
 }

@@ -13,7 +13,7 @@ internal class CachedProxy<TProxy>
     /// <summary>
     /// Rents a proxy class.
     /// </summary>
-    /// <param name="session">Session for this proxy.  Used in all cases except from the external hub context.</param>
+    /// <param name="session">Session for this proxy.  Used in all cases except from the external nexus context.</param>
     /// <param name="sessionManager">Reference to the session manager.  Not used from client invocations.</param>
     /// <param name="sessionCache">Cache for the sessions.</param>
     /// <param name="mode">Mode to set this proxy to.</param>

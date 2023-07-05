@@ -60,9 +60,9 @@ internal class SessionInvocationStateManager
 
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        NexNetPipe? pipe,
+        NexusPipe? pipe,
         byte[]? arguments,
-        INexNetSession session,
+        INexusSession session,
         CancellationToken? cancellationToken = null)
     {
         if (cancellationToken?.IsCancellationRequested == true)
@@ -108,7 +108,7 @@ internal class SessionInvocationStateManager
                 var ct = cancellationToken ?? CancellationToken.None;
                 _ = Task.Factory.StartNew(
                     pipe.RunWriter,
-                    new NexNetPipe.RunWriterArguments(message.InvocationId, session, ct),
+                    new NexusPipe.RunWriterArguments(message.InvocationId, session, ct),
                     ct,
                     TaskCreationOptions.LongRunning,
                     TaskScheduler.Default);

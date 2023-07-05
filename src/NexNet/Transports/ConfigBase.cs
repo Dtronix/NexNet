@@ -12,7 +12,7 @@ public abstract class ConfigBase
     /// <summary>
     /// Logger for the server/client.
     /// </summary>
-    public INexNetLogger? Logger { get; set; }
+    public INexusLogger? Logger { get; set; }
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
@@ -51,8 +51,8 @@ public abstract class ConfigBase
     /// </summary>
     public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;
 
-    internal Action<INexNetSession, byte[]>? InternalOnSend;
-    internal Action<INexNetSession>? InternalOnSessionSetup;
+    internal Action<INexusSession, byte[]>? InternalOnSend;
+    internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
 }

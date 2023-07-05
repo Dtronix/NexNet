@@ -4,10 +4,10 @@ using System.Threading.Tasks;
 namespace NexNet.Invocation;
 
 /// <summary>
-/// Base class used for all client hubs.
+/// Base class used for all client nexuses.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class ClientHubBase<TProxy> : HubBase<TProxy>
+public abstract class ClientNexusBase<TProxy> : NexusBase<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>

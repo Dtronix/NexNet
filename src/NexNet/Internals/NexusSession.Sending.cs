@@ -9,8 +9,8 @@ using MemoryPack;
 
 namespace NexNet.Internals;
 
-internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
+    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
    

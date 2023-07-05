@@ -13,13 +13,13 @@ internal partial class ClientGreetingMessage : IMessageBodyBase
     /// This is the hash of the server's methods.  If this does not match the server's hash,
     /// then the server and client method invocations are out of sync.
     /// </summary>
-    public int ServerHubMethodHash { get; set; }
+    public int ServerNexusMethodHash { get; set; }
 
     /// <summary>
     /// This is the hash of the client's methods.  If this does not match the server's hash,
     /// then the server and client method invocations are out of sync.
     /// </summary>
-    public int ClientHubMethodHash { get; set; }
+    public int ClientNexusMethodHash { get; set; }
 
     /// <summary>
     /// (Optional) Token to be passed to the server upon connection for validation.

@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetServerTests_SendInvocation : BaseTests
+internal partial class NexusServerTests_SendInvocation : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -19,7 +19,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.IgnoreReturn,
             InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 0
-        }, hub => hub.Context.Clients.Caller.ClientVoid());
+        }, nexus => nexus.Context.Clients.Caller.ClientVoid());
     }
 
     
@@ -34,7 +34,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.IgnoreReturn,
             InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 1
-        }, hub => hub.Context.Clients.Caller.ClientVoidWithParam(54321));
+        }, nexus => nexus.Context.Clients.Caller.ClientVoidWithParam(54321));
     }
     
     
@@ -49,7 +49,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1,
             MethodId = 2
-        }, hub => hub.Context.Clients.Caller.ClientTask());
+        }, nexus => nexus.Context.Clients.Caller.ClientTask());
     }
 
 
@@ -64,7 +64,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 3
-        }, hub => hub.Context.Clients.Caller.ClientTaskWithParam(54321));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskWithParam(54321));
     }
 
 
@@ -79,7 +79,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 4
-        }, hub => hub.Context.Clients.Caller.ClientTaskValue());
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskValue());
     }
 
 
@@ -94,7 +94,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 5
-        }, hub => hub.Context.Clients.Caller.ClientTaskValueWithParam(54321));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithParam(54321));
     }
 
 
@@ -110,7 +110,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 6
-        }, hub => hub.Context.Clients.Caller.ClientTaskWithCancellation(CancellationToken.None));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskWithCancellation(CancellationToken.None));
     }
 
 
@@ -125,7 +125,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 7
-        }, hub => hub.Context.Clients.Caller.ClientTaskWithValueAndCancellation(54321, CancellationToken.None));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskWithValueAndCancellation(54321, CancellationToken.None));
     }
 
 
@@ -140,7 +140,7 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 8
-        }, hub => hub.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None));
     }
 
 
@@ -155,15 +155,15 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 9
-        }, hub => hub.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(54321, CancellationToken.None));
+        }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
     
-    private async Task InvokeFromServerAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<ServerHub> action)
+    private async Task InvokeFromServerAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<ServerNexus> action)
     {
         var clientConfig = CreateClientConfig(type, false);
         var serverConfig = CreateServerConfig(type, false);
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         server.Start();
 
@@ -193,9 +193,9 @@ internal partial class NexNetServerTests_SendInvocation : BaseTests
 
         };
 
-        serverHub.OnConnectedEvent = hub =>
+        serverNexus.OnConnectedEvent = nexus =>
         {
-            action(hub);
+            action(nexus);
             return ValueTask.CompletedTask;
         };
 

@@ -144,36 +144,36 @@ public class BaseTests
     }
 
 
-    protected (NexNetServer<ServerHub, ServerHub.ClientProxy> server, ServerHub serverHub, NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, ServerNexus serverNexus, NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
         CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
     {
-        var serverHub = new ServerHub();
-        var clientHub = new ClientHub();
-        var server = ServerHub.CreateServer(sConfig, () => serverHub);
-        var client = ClientHub.CreateClient(cConfig, clientHub);
+        var serverNexus = new ServerNexus();
+        var clientNexus = new ClientNexus();
+        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
 
-        return (server, serverHub, client, clientHub);
+        return (server, serverNexus, client, clientNexus);
     }
 
-    protected NexNetServer<ServerHub, ServerHub.ClientProxy>
-        CreateServer(ServerConfig sConfig, Action<ServerHub>? hubCreated)
+    protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
+        CreateServer(ServerConfig sConfig, Action<ServerNexus>? hubCreated)
     {
-        var server = ServerHub.CreateServer(sConfig, () =>
+        var server = ServerNexus.CreateServer(sConfig, () =>
         {
-            var hub = new ServerHub();
-            hubCreated?.Invoke(hub);
-            return hub;
+            var nexus = new ServerNexus();
+            hubCreated?.Invoke(nexus);
+            return nexus;
         });
         return server;
     }
 
-    protected (NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
+    protected (NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
         CreateClient(ClientConfig cConfig)
     {
-        var clientHub = new ClientHub();
-        var client = ClientHub.CreateClient(cConfig, clientHub);
+        var clientNexus = new ClientNexus();
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
 
-        return (client, clientHub);
+        return (client, clientNexus);
     }
 
     private int FreeTcpPort()

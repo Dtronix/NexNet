@@ -5,7 +5,7 @@ namespace NexNet;
 /// <summary>
 /// Basic logging interface.
 /// </summary>
-public interface INexNetLogger
+public interface INexusLogger
 {
 
     /// <summary>
@@ -74,7 +74,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogTrace(this INexNetLogger logger, string message)
+    public static void LogTrace(this INexusLogger logger, string message)
     {
         LogTrace(logger, null, message);
     }
@@ -85,9 +85,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogTrace(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogTrace(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Trace, ex, message);
+        logger.Log(INexusLogger.LogLevel.Trace, ex, message);
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogDebug(this INexNetLogger logger, string message)
+    public static void LogDebug(this INexusLogger logger, string message)
     {
         LogDebug(logger, null, message);
     }
@@ -107,9 +107,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogDebug(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogDebug(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Debug, ex, message);
+        logger.Log(INexusLogger.LogLevel.Debug, ex, message);
     }
 
 
@@ -118,7 +118,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogInfo(this INexNetLogger logger, string message)
+    public static void LogInfo(this INexusLogger logger, string message)
     {
         LogInfo(logger, null, message);
     }
@@ -129,9 +129,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogInfo(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogInfo(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Information, ex, message);
+        logger.Log(INexusLogger.LogLevel.Information, ex, message);
     }
 
     /// <summary>
@@ -139,7 +139,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogWarning(this INexNetLogger logger, string message)
+    public static void LogWarning(this INexusLogger logger, string message)
     {
         LogWarning(logger, null, message);
     }
@@ -150,9 +150,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogWarning(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogWarning(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Warning, ex, message);
+        logger.Log(INexusLogger.LogLevel.Warning, ex, message);
     }
 
     /// <summary>
@@ -160,7 +160,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogError(this INexNetLogger logger, string message)
+    public static void LogError(this INexusLogger logger, string message)
     {
         LogError(logger, null, message);
     }
@@ -171,9 +171,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogError(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogError(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Error, ex, message);
+        logger.Log(INexusLogger.LogLevel.Error, ex, message);
     }
 
     /// <summary>
@@ -181,7 +181,7 @@ public static class NexNetLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
-    public static void LogCritical(this INexNetLogger logger, string message)
+    public static void LogCritical(this INexusLogger logger, string message)
     {
         LogCritical(logger, null, message);
     }
@@ -192,9 +192,9 @@ public static class NexNetLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
-    public static void LogCritical(this INexNetLogger logger, Exception? ex, string message)
+    public static void LogCritical(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexNetLogger.LogLevel.Critical, ex, message);
+        logger.Log(INexusLogger.LogLevel.Critical, ex, message);
     }
 
 }

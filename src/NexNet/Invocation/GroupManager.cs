@@ -8,10 +8,10 @@ namespace NexNet.Invocation;
 /// </summary>
 public class GroupManager
 {
-    private readonly INexNetSession _session;
+    private readonly INexusSession _session;
     private readonly SessionManager _sessionManager;
 
-    internal GroupManager(INexNetSession session, SessionManager sessionManager)
+    internal GroupManager(INexusSession session, SessionManager sessionManager)
     {
         _session = session;
         _sessionManager = sessionManager;

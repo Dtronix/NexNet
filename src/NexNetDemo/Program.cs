@@ -14,13 +14,13 @@ using NexNet.Transports;
 
 namespace NexNetDemo;
 
-partial interface IClientHub
+partial interface IClientNexus
 {
 }
 
-partial interface IServerHub
+partial interface IServerNexus
 {
-    ValueTask ServerTaskWithParam(NexNetPipe pipe);
+    ValueTask ServerTaskWithParam(NexusPipe pipe);
 }
 
 
@@ -28,17 +28,17 @@ partial interface IServerHub
 /// <summary>
 /// Hub used for handling all Client communications.
 /// </summary>
-partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNetDemo.ClientHub.ServerProxy>, global::NexNetDemo.IClientHub, global::NexNet.Invocation.IInvocationMethodHash
+partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::NexNetDemo.ClientNexus.ServerProxy>, global::NexNetDemo.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash
 {
     /// <summary>
     /// Creates an instance of the client for this hub and matching server.
     /// </summary>
     /// <param name="config">Configurations for this instance.</param>
-    /// <param name="hub">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
+    /// <param name="nexus">Hub used for this client while communicating with the server. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetClient for connecting to the matched NexNetServer.</returns>
-    public static global::NexNet.NexNetClient<global::NexNetDemo.ClientHub, global::NexNetDemo.ClientHub.ServerProxy> CreateClient(global::NexNet.Transports.ClientConfig config, ClientHub hub)
+    public static global::NexNet.NexusClient<global::NexNetDemo.ClientNexus, global::NexNetDemo.ClientNexus.ServerProxy> CreateClient(global::NexNet.Transports.ClientConfig config, ClientNexus nexus)
     {
-        return new global::NexNet.NexNetClient<global::NexNetDemo.ClientHub, global::NexNetDemo.ClientHub.ServerProxy>(config, hub);
+        return new global::NexNet.NexusClient<global::NexNetDemo.ClientNexus, global::NexNetDemo.ClientNexus.ServerProxy>(config, nexus);
     }
 
     protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
@@ -54,7 +54,7 @@ partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNet
         {
             if (cts != null)
             {
-                var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ClientHub.ServerProxy>>(this);
+                var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ClientNexus.ServerProxy>>(this);
                 methodInvoker.ReturnCancellationToken(message.InvocationId);
             }
         }
@@ -69,9 +69,9 @@ partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNet
     /// <summary>
     /// Proxy invocation implementation for the matching hub.
     /// </summary>
-    public class ServerProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IServerHub, global::NexNet.Invocation.IInvocationMethodHash
+    public class ServerProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash
     {
-        public global::System.Threading.Tasks.ValueTask ServerTaskWithParam(global::NexNet.NexNetPipe pipe)
+        public global::System.Threading.Tasks.ValueTask ServerTaskWithParam(global::NexNet.NexusPipe pipe)
         {
             //var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::NexNet.NexNetPipe>>(new(pipe));
             return ProxyInvokeAndWaitForResultCore(0, null, pipe, null);
@@ -85,7 +85,7 @@ partial class ClientHub : global::NexNet.Invocation.ClientHubBase<global::NexNet
 }
 
 
-partial class ClientHub
+partial class ClientNexus
 {
     protected override ValueTask OnConnected(bool isReconnected)
     {
@@ -108,7 +108,7 @@ partial class ClientHub
 
         Task.Run(async () =>
         {
-            var pipe = NexNetPipe.Create(async (writer, ct) =>
+            var pipe = NexusPipe.Create(async (writer, ct) =>
             {
                 Memory<byte> randomData = data;
                 var length = 1024 * 16;
@@ -133,7 +133,7 @@ partial class ClientHub
 /// <summary>
 /// Hub used for handling all Server communications.
 /// </summary>
-partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNetDemo.ServerHub.ClientProxy>, global::NexNetDemo.IServerHub, global::NexNet.Invocation.IInvocationMethodHash
+partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::NexNetDemo.ServerNexus.ClientProxy>, global::NexNetDemo.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash
 {
     /// <summary>
     /// Creates an instance of the server for this hub and matching client.
@@ -141,16 +141,16 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
     /// <param name="config">Configurations for this instance.</param>
     /// <param name="hubFactory">Factory used to instance hubs for the server on each client connection. Useful to pass parameters to the hub.</param>
     /// <returns>NexNetServer for handling incoming connections.</returns>
-    public static global::NexNet.NexNetServer<global::NexNetDemo.ServerHub, global::NexNetDemo.ServerHub.ClientProxy> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<global::NexNetDemo.ServerHub> hubFactory)
+    public static global::NexNet.NexusServer<global::NexNetDemo.ServerNexus, global::NexNetDemo.ServerNexus.ClientProxy> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<global::NexNetDemo.ServerNexus> hubFactory)
     {
-        return new global::NexNet.NexNetServer<global::NexNetDemo.ServerHub, global::NexNetDemo.ServerHub.ClientProxy>(config, hubFactory);
+        return new global::NexNet.NexusServer<global::NexNetDemo.ServerNexus, global::NexNetDemo.ServerNexus.ClientProxy>(config, hubFactory);
     }
 
     protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
     {
         global::System.Threading.CancellationTokenSource? cts = null;
-        NexNetPipe? pipe = null;
-        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerHub.ClientProxy>>(this);
+        NexusPipe? pipe = null;
+        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerNexus.ClientProxy>>(this);
         try
         {
             switch (message.MethodId)
@@ -186,7 +186,7 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
     /// <summary>
     /// Proxy invocation implementation for the matching hub.
     /// </summary>
-    public class ClientProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IClientHub, global::NexNet.Invocation.IInvocationMethodHash
+    public class ClientProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash
     {
 
         /// <summary>
@@ -198,7 +198,7 @@ partial class ServerHub : global::NexNet.Invocation.ServerHubBase<global::NexNet
 
 
 
-partial class ServerHub : IServerHub
+partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;
 
@@ -210,7 +210,7 @@ partial class ServerHub : IServerHub
 
         return avg;
     }
-    public async ValueTask ServerTaskWithParam(NexNetPipe pipe)
+    public async ValueTask ServerTaskWithParam(NexusPipe pipe)
     {
         long sentBytes = 0;
         int loopNumber = 0;
@@ -246,7 +246,7 @@ partial class ServerHub : IServerHub
     }
 }
 
-class LoggerAdapter : INexNetLogger
+class LoggerAdapter : INexusLogger
 {
     private readonly ILogger _logger;
 
@@ -254,7 +254,7 @@ class LoggerAdapter : INexNetLogger
     {
         _logger = logger;
     }
-    public void Log(INexNetLogger.LogLevel logLevel, Exception? exception, string message)
+    public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
         _logger.Log((LogLevel)logLevel, exception, message);
     }
@@ -265,7 +265,7 @@ internal class Program
   static async Task Main(string[] args)
   {
 
-      var type = typeof(NexNetHubAttribute<,>);
+      var type = typeof(NexusAttribute<,>);
         var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
@@ -324,11 +324,11 @@ internal class Program
         };*/
 
 
-        var server = ServerHub.CreateServer(serverConfig, () => new ServerHub());
+        var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
 
         server.Start();
 
-        var client = ClientHub.CreateClient(clientConfig, new ClientHub());
+        var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 
         try
         {

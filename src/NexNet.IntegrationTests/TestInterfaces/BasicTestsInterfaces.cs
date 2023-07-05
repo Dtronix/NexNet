@@ -7,7 +7,7 @@ using NexNet.Messages;
 
 namespace NexNet.IntegrationTests.TestInterfaces;
 
-public partial interface IClientHub
+public partial interface IClientNexus
 {
     void ClientVoid();
     void ClientVoidWithParam(int id);
@@ -24,7 +24,7 @@ public partial interface IClientHub
 
 
 
-public partial interface IServerHub
+public partial interface IServerNexus
 {
     void ServerVoid();
     void ServerVoidWithParam(int id);
@@ -40,22 +40,22 @@ public partial interface IServerHub
     void ServerData(byte[] data);
 }
 
-[NexNetHub<IClientHub, IServerHub>(HubType = NexNetHubType.Client)]
-public partial class ClientHub
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+public partial class ClientNexus
 {
-    public Action<ClientHub> ClientVoidEvent;
-    public Action<ClientHub, int> ClientVoidWithParamEvent;
-    public Func<ClientHub, ValueTask> ClientTaskEvent;
-    public Func<ClientHub, int, ValueTask> ClientTaskWithParamEvent;
-    public Func<ClientHub, ValueTask<int>> ClientTaskValueEvent;
-    public Func<ClientHub, int, ValueTask<int>> ClientTaskValueWithParamEvent;
-    public Func<ClientHub, CancellationToken, ValueTask> ClientTaskWithCancellationEvent;
-    public Func<ClientHub, int, CancellationToken, ValueTask> ClientTaskWithValueAndCancellationEvent;
-    public Func<ClientHub, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
-    public Func<ClientHub, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
-    public Func<ClientHub, bool, ValueTask>? OnConnectedEvent;
-    public Func<ClientHub, ValueTask>? OnReconnectingEvent;
-    public Func<ClientHub, ValueTask>? OnDisconnectedEvent;
+    public Action<ClientNexus> ClientVoidEvent;
+    public Action<ClientNexus, int> ClientVoidWithParamEvent;
+    public Func<ClientNexus, ValueTask> ClientTaskEvent;
+    public Func<ClientNexus, int, ValueTask> ClientTaskWithParamEvent;
+    public Func<ClientNexus, ValueTask<int>> ClientTaskValueEvent;
+    public Func<ClientNexus, int, ValueTask<int>> ClientTaskValueWithParamEvent;
+    public Func<ClientNexus, CancellationToken, ValueTask> ClientTaskWithCancellationEvent;
+    public Func<ClientNexus, int, CancellationToken, ValueTask> ClientTaskWithValueAndCancellationEvent;
+    public Func<ClientNexus, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
+    public Func<ClientNexus, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
+    public Func<ClientNexus, bool, ValueTask>? OnConnectedEvent;
+    public Func<ClientNexus, ValueTask>? OnReconnectingEvent;
+    public Func<ClientNexus, ValueTask>? OnDisconnectedEvent;
     public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
     public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
 
@@ -137,22 +137,22 @@ public partial class ClientHub
     }
 }
 
-[NexNetHub<IServerHub, IClientHub>(HubType = NexNetHubType.Server)]
-public partial class ServerHub
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+public partial class ServerNexus
 {
-    public Action<ServerHub> ServerVoidEvent;
-    public Action<ServerHub, int> ServerVoidWithParamEvent;
-    public Func<ServerHub, ValueTask> ServerTaskEvent;
-    public Func<ServerHub, int, ValueTask> ServerTaskWithParamEvent;
-    public Func<ServerHub, ValueTask<int>> ServerTaskValueEvent;
-    public Func<ServerHub, int, ValueTask<int>> ServerTaskValueWithParamEvent;
-    public Func<ServerHub, CancellationToken, ValueTask> ServerTaskWithCancellationEvent;
-    public Func<ServerHub, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
-    public Func<ServerHub, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
-    public Func<ServerHub, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
-    public Action<ServerHub, byte[]> ServerDataEvent;
-    public Func<ServerHub, ValueTask>? OnConnectedEvent;
-    public Func<ServerHub, ValueTask>? OnDisconnectedEvent;
+    public Action<ServerNexus> ServerVoidEvent;
+    public Action<ServerNexus, int> ServerVoidWithParamEvent;
+    public Func<ServerNexus, ValueTask> ServerTaskEvent;
+    public Func<ServerNexus, int, ValueTask> ServerTaskWithParamEvent;
+    public Func<ServerNexus, ValueTask<int>> ServerTaskValueEvent;
+    public Func<ServerNexus, int, ValueTask<int>> ServerTaskValueWithParamEvent;
+    public Func<ServerNexus, CancellationToken, ValueTask> ServerTaskWithCancellationEvent;
+    public Func<ServerNexus, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
+    public Func<ServerNexus, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
+    public Func<ServerNexus, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
+    public Action<ServerNexus, byte[]> ServerDataEvent;
+    public Func<ServerNexus, ValueTask>? OnConnectedEvent;
+    public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
     public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
 

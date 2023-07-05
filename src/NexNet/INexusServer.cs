@@ -3,11 +3,11 @@ using NexNet.Invocation;
 
 namespace NexNet;
 
-internal interface INexNetServer<TClientProxy>
+internal interface INexusServer<TClientProxy>
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>
-    /// Cache for all the server hub contexts.
+    /// Cache for all the server nexus contexts.
     /// </summary>
-    ConcurrentBag<ServerHubContext<TClientProxy>> ServerHubContextCache { get; }
+    ConcurrentBag<ServerNexusContext<TClientProxy>> ServerNexusContextCache { get; }
 }

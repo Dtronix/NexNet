@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetClientTests_InvalidInvocations : BaseTests
+internal partial class NexusClientTests_InvalidInvocations : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -15,16 +15,16 @@ internal partial class NexNetClientTests_InvalidInvocations : BaseTests
     public async Task ClientThrowsWhenArgumentTooLarge(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
         server.Start();
         await client.ConnectAsync();
-        await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await clientNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         var data = new byte[65521];
-        Assert.Throws<ArgumentOutOfRangeException>(() => clientHub.Context.Proxy.ServerData(data));
+        Assert.Throws<ArgumentOutOfRangeException>(() => clientNexus.Context.Proxy.ServerData(data));
     }
 
 

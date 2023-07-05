@@ -14,8 +14,8 @@ using System.Runtime.CompilerServices;
 
 namespace NexNet.Internals;
 
-internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+internal partial class NexusSession<TNexus, TProxy> : INexNetSession<TProxy>
+    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private record struct ProcessResult(
@@ -23,7 +23,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         DisconnectReason DisconnectReason,
         bool IssueDisconnectMessage);
 
-    private readonly THub _hub;
+    private readonly TNexus _nexus;
     private readonly ConfigBase _config;
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
@@ -66,7 +66,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
     public ConnectionState State { get; private set; }
 
-    public NexNetSession(in NexNetSessionConfigurations<THub, TProxy> configurations)
+    public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
         State = ConnectionState.Connecting;
         Id = configurations.Id;
@@ -77,8 +77,8 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         _cacheManager = configurations.Cache;
         _sessionManager = configurations.SessionManager;
         _isServer = configurations.IsServer;
-        _hub = configurations.Hub;
-        _hub.SessionContext = configurations.IsServer
+        _nexus = configurations.Nexus;
+        _nexus.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
@@ -121,8 +121,8 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
         var greetingMessage = _cacheManager.ClientGreetingDeserializer.Rent();
 
         greetingMessage.Version = 0;
-        greetingMessage.ServerHubMethodHash = TProxy.MethodHash;
-        greetingMessage.ClientHubMethodHash = THub.MethodHash;
+        greetingMessage.ServerNexusMethodHash = TProxy.MethodHash;
+        greetingMessage.ClientNexusMethodHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke();
 
         State = ConnectionState.Connected;
@@ -143,7 +143,7 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
             return false;
 
         var clientConfig = Unsafe.As<ClientConfig>(_config);
-        var clientHub = Unsafe.As<ClientHubBase<TProxy>>(_hub);
+        var clientHub = Unsafe.As<ClientNexusBase<TProxy>>(_nexus);
 
         if (clientConfig.ReconnectionPolicy == null)
             return false;
@@ -257,10 +257,10 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
 
         State = ConnectionState.Disconnected;
 
-        _hub.Disconnected(reason);
+        _nexus.Disconnected(reason);
         OnDisconnected?.Invoke();
 
-        _hub.SessionContext.Reset();
+        _nexus.SessionContext.Reset();
 
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();
@@ -270,6 +270,6 @@ internal partial class NexNetSession<THub, TProxy> : INexNetSession<TProxy>
     private class InvocationTaskArguments
     {
         public InvocationRequestMessage Message { get; set; } = null!;
-        public NexNetSession<THub, TProxy> Session { get; set; } = null!;
+        public NexusSession<TNexus, TProxy> Session { get; set; } = null!;
     }
 }

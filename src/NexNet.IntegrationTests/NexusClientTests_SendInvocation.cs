@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetClientTests_SendInvocation : BaseTests
+internal partial class NexusClientTests_SendInvocation : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -158,11 +158,11 @@ internal partial class NexNetClientTests_SendInvocation : BaseTests
         }, client => client.Proxy.ServerTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
 
-    private async Task InvokeFromClientAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<NexNetClient<ClientHub, ClientHub.ServerProxy>> action)
+    private async Task InvokeFromClientAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<NexusClient<ClientNexus, ClientNexus.ServerProxy>> action)
     {
         var clientConfig = CreateClientConfig(type, false);
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             clientConfig);
 
@@ -194,7 +194,7 @@ internal partial class NexNetClientTests_SendInvocation : BaseTests
 
         };
 
-        clientHub.OnConnectedEvent = (hub, b) =>
+        clientNexus.OnConnectedEvent = (nexus, b) =>
         {
             action.Invoke(client);
             return ValueTask.CompletedTask;

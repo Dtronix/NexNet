@@ -13,25 +13,25 @@ namespace NexNet;
 /// <summary>
 /// Class which manages session connections.
 /// </summary>
-/// <typeparam name="TServerHub">The hub which will be running locally on the server.</typeparam>
-/// <typeparam name="TClientProxy">Proxy used to invoke methods on remote hubs.</typeparam>
-public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClientProxy>
-    where TServerHub : ServerHubBase<TClientProxy>, IInvocationMethodHash
+/// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
+/// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>
+    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
     private readonly ServerConfig _config;
-    private readonly Func<TServerHub> _hubFactory;
+    private readonly Func<TServerNexus> _nexusFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
     private ITransportListener? _listener;
-    private readonly ConcurrentBag<ServerHubContext<TClientProxy>> _serverHubContextCache = new();
+    private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
 
     /// <summary>
-    /// Cache for all the server hub contexts.
+    /// Cache for all the server nexus contexts.
     /// </summary>
-    ConcurrentBag<ServerHubContext<TClientProxy>> INexNetServer<TClientProxy>.ServerHubContextCache =>
-        _serverHubContextCache;
+    ConcurrentBag<ServerNexusContext<TClientProxy>> INexusServer<TClientProxy>.ServerNexusContextCache =>
+        _serverNexusContextCache;
 
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementor;
@@ -50,11 +50,11 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
     /// Creates a NexNetServer class for handling incoming connections.
     /// </summary>
     /// <param name="config">Server configurations</param>
-    /// <param name="hubFactory">Factory called on each new connection.  Used to pass arguments to the hub.</param>
-    public NexNetServer(ServerConfig config, Func<TServerHub> hubFactory)
+    /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    public NexusServer(ServerConfig config, Func<TServerNexus> nexusFactory)
     {
         _config = config;
-        _hubFactory = hubFactory;
+        _nexusFactory = nexusFactory;
 
         _cacheManager = new SessionCacheManager<TClientProxy>();
 
@@ -63,13 +63,13 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
     }
 
     /// <summary>
-    /// Gets a hub context which can be used outside of the hub.  Dispose after usage.
+    /// Gets a nexus context which can be used outside of the nexus.  Dispose after usage.
     /// </summary>
-    /// <returns>Server hub context for invocation of client methods.</returns>
-    public ServerHubContext<TClientProxy> GetContext()
+    /// <returns>Server nexus context for invocation of client methods.</returns>
+    public ServerNexusContext<TClientProxy> GetContext()
     {
-        if(!_serverHubContextCache.TryTake(out var context))
-            context = new ServerHubContext<TClientProxy>(this, _sessionManager, _cacheManager);
+        if(!_serverNexusContextCache.TryTake(out var context))
+            context = new ServerNexusContext<TClientProxy>(this, _sessionManager, _cacheManager);
 
         return context;
     }
@@ -128,10 +128,10 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
 
     private static async void RunClientAsync(object? boxed)
     {
-        var arguments = (NexNetSessionConfigurations<TServerHub, TClientProxy>)boxed!;
+        var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
         try
         {
-            var session = new NexNetSession<TServerHub, TClientProxy>(arguments);
+            var session = new NexusSession<TServerNexus, TClientProxy>(arguments);
 
             await session.StartReadAsync().ConfigureAwait(false);
 
@@ -221,7 +221,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
                 StartOnScheduler(
                     _config.ReceivePipeOptions.ReaderScheduler,
                     RunClientAsync,
-                    new NexNetSessionConfigurations<TServerHub, TClientProxy>()
+                    new NexusSessionConfigurations<TServerNexus, TClientProxy>()
                     {
                         Transport = clientTransport,
                         Cache = _cacheManager,
@@ -230,7 +230,7 @@ public sealed class NexNetServer<TServerHub, TClientProxy> : INexNetServer<TClie
                         IsServer = true,
                         // ReSharper disable once RedundantCast
                         Id = (long)baseSessionId << 32 | (long)Environment.TickCount,
-                        Hub = _hubFactory.Invoke()
+                        Nexus = _nexusFactory.Invoke()
                     });
             }
         }

@@ -3,10 +3,10 @@
 namespace NexNet;
 
 /// <summary>
-/// Attribute to configure the creation of the hub method implementations.
+/// Attribute to configure the creation of the nexus method implementations.
 /// </summary>
 [AttributeUsage(AttributeTargets.Method,  AllowMultiple = false, Inherited = true)]
-public class NexNetMethodAttribute : Attribute
+public class NexusMethodAttribute : Attribute
 {
     /// <summary>
     /// Manually specifies the ID of this method.  Used for invocations.
@@ -25,7 +25,7 @@ public class NexNetMethodAttribute : Attribute
     /// </summary>
     /// <param name="methodId">Manually assigned method id for the attached method.
     /// Must be greater than 0, otherwise it will be auto-assigned.</param>
-    public NexNetMethodAttribute(ushort methodId)
+    public NexusMethodAttribute(ushort methodId)
     {
         MethodId = methodId;
     }
@@ -33,7 +33,7 @@ public class NexNetMethodAttribute : Attribute
     /// <summary>
     /// Creates a blank attribute.
     /// </summary>
-    public NexNetMethodAttribute()
+    public NexusMethodAttribute()
     {
     }
 

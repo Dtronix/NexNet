@@ -11,20 +11,20 @@ namespace NexNet;
 /// <summary>
 /// Main client class which facilitates the communication with a matching NexNet server.
 /// </summary>
-/// <typeparam name="TClientHub">Hub  used by this client for incoming invocation handling.</typeparam>
+/// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
-public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
-    where TClientHub : ClientHubBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
+public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
+    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 
 {
     private readonly Timer _pingTimer;
     private readonly ClientConfig _config;
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
-    private readonly TClientHub _hub;
-    private NexNetSession<TClientHub, TServerProxy>? _session;
+    private readonly TClientNexus _nexus;
+    private NexusSession<TClientNexus, TServerProxy>? _session;
 
-    internal NexNetSession<TClientHub, TServerProxy>? Session => _session;
+    internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
 
     /// <summary>
     /// Current state of the connection
@@ -45,15 +45,15 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
     /// Creates a NexNet client for communication with a matching NexNet server.
     /// </summary>
     /// <param name="config">Configurations for this client.</param>
-    /// <param name="hub">Hub used for handling incoming invocations.</param>
-    public NexNetClient(ClientConfig config, TClientHub hub)
+    /// <param name="nexus">Hub used for handling incoming invocations.</param>
+    public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
         _cacheManager = new SessionCacheManager<TServerProxy>();
         
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
-        _hub = hub;
+        _nexus = nexus;
         _pingTimer = new Timer(PingTimer);
         
     }
@@ -72,7 +72,7 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
 
         _config.InternalOnClientConnect?.Invoke();
 
-        var config = new NexNetSessionConfigurations<TClientHub, TServerProxy>()
+        var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
             Configs = _config,
             Transport = client,
@@ -80,10 +80,10 @@ public sealed class NexNetClient<TClientHub, TServerProxy> : IAsyncDisposable
             SessionManager = null,
             IsServer = false,
             Id = 0,
-            Hub = _hub
+            Nexus = _nexus
         };
 
-        _session = new NexNetSession<TClientHub, TServerProxy>(config)
+        _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
             OnSent = OnSent

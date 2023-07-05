@@ -9,19 +9,19 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetClientTests : BaseTests
+internal partial class NexusClientTests : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public async Task HubFiresOnConnected(Type type)
+    public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var (server, _, client, clientHub) = CreateServerClient(
+        var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        clientHub.OnConnectedEvent = (_, _) =>
+        clientNexus.OnConnectedEvent = (_, _) =>
         {
             tcs.SetResult();
             return ValueTask.CompletedTask;
@@ -88,7 +88,7 @@ internal partial class NexNetClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
-        var (server, _, client, clientHub) = CreateServerClient(
+        var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -97,11 +97,11 @@ internal partial class NexNetClientTests : BaseTests
         for (int i = 0; i < 5; i++)
         {
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-            await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.ConnectedTCS = new TaskCompletionSource();
+            await clientNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            clientNexus.ConnectedTCS = new TaskCompletionSource();
             await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-            await clientHub.DisconnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientHub.DisconnectedTCS = new TaskCompletionSource();
+            await clientNexus.DisconnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            clientNexus.DisconnectedTCS = new TaskCompletionSource();
         }
     }
 
@@ -182,14 +182,14 @@ internal partial class NexNetClientTests : BaseTests
         clientConfig.PingInterval = 20;
         var tcs = new TaskCompletionSource();
 
-        var (server, _, client, clientHub) = CreateServerClient(
+        var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
         server.Start();
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await clientNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
         await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
 
@@ -212,11 +212,11 @@ internal partial class NexNetClientTests : BaseTests
         var tcs = new TaskCompletionSource();
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
 
-        clientHub.OnConnectedEvent = (_, isReconnected) =>
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
         {
             if (isReconnected)
                 tcs.TrySetResult();
@@ -228,7 +228,7 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task;
+        await clientNexus.ConnectedTCS.Task;
         server.Stop();
 
         // Wait for the client to process the disconnect.
@@ -247,11 +247,11 @@ internal partial class NexNetClientTests : BaseTests
         var tcs = new TaskCompletionSource();
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
 
-        clientHub.OnConnectedEvent = (_, isReconnected) =>
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
         {
             if (isReconnected)
                 tcs.TrySetResult();
@@ -277,9 +277,9 @@ internal partial class NexNetClientTests : BaseTests
         var tcs = new TaskCompletionSource();
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
-        clientHub.OnReconnectingEvent = _ =>
+        clientNexus.OnReconnectingEvent = _ =>
         {
             tcs.TrySetResult();
             return ValueTask.CompletedTask;
@@ -290,7 +290,7 @@ internal partial class NexNetClientTests : BaseTests
 
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await clientHub.ConnectedTCS.Task;
+        await clientNexus.ConnectedTCS.Task;
         server.Stop();
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -304,7 +304,7 @@ internal partial class NexNetClientTests : BaseTests
         var tcs = new TaskCompletionSource();
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ConnectionTimeout = 100;
 
@@ -314,7 +314,7 @@ internal partial class NexNetClientTests : BaseTests
         }, false);
 
 
-        clientHub.OnDisconnectedEvent = _ =>
+        clientNexus.OnDisconnectedEvent = _ =>
         {
             tcs.TrySetResult();
             return ValueTask.CompletedTask;
@@ -326,7 +326,7 @@ internal partial class NexNetClientTests : BaseTests
         server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-        await clientHub.ConnectedTCS.Task;
+        await clientNexus.ConnectedTCS.Task;
         await Task.Delay(100);
         server.Stop();
 
@@ -340,17 +340,17 @@ internal partial class NexNetClientTests : BaseTests
     {
         var tcs = new TaskCompletionSource();
 
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        serverHub.ServerTaskValueEvent = async _ =>
+        serverNexus.ServerTaskValueEvent = async _ =>
         {
             await Task.Delay(100000);
             return 12345;
         };
 
-        clientHub.OnConnectedEvent = async (_, _) =>
+        clientNexus.OnConnectedEvent = async (_, _) =>
         {
             try
             {

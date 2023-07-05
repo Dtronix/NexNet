@@ -13,11 +13,11 @@ namespace NexNet.Invocation;
 /// Base hub with common methods used between server and client.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
+public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
-    internal readonly ConcurrentDictionary<int, NexNetPipe> InvocationPipes = new();
+    internal readonly ConcurrentDictionary<int, NexusPipe> InvocationPipes = new();
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
 
@@ -71,7 +71,7 @@ public abstract class HubBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    NexNetPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
+    NexusPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
     {
         var pipe = SessionContext.CacheManager.NexNetPipeCache.Rent();
         if (!InvocationPipes.TryAdd(invocationId, pipe))

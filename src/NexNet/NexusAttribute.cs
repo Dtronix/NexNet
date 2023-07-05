@@ -5,7 +5,7 @@ namespace NexNet;
 /// <summary>
 /// Mode of the hub.
 /// </summary>
-public enum NexNetHubType
+public enum NexusType
 {
     /// <summary>
     /// Hub is operating in client mode.
@@ -25,19 +25,19 @@ public enum NexNetHubType
 /// <typeparam name="TProxy">Proxy interface</typeparam>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 // ReSharper disable twice UnusedTypeParameter
-public class NexNetHubAttribute<THub, TProxy> : Attribute
+public class NexusAttribute<THub, TProxy> : Attribute
     where THub : class
     where TProxy : class
 {
     /// <summary>
     /// Gets the type of hub this is implemented as.
     /// </summary>
-    public required NexNetHubType HubType { get; init; }
+    public required NexusType NexusType { get; init; }
 
     /// <summary>
-    /// Creates a blank attribute to set the <see cref="HubType"/> at a later point.
+    /// Creates a blank attribute to set the <see cref="NexusType"/> at a later point.
     /// </summary>
-    public NexNetHubAttribute()
+    public NexusAttribute()
     {
     }
 

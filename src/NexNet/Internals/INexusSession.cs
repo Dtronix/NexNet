@@ -12,7 +12,7 @@ namespace NexNet.Internals;
 /// <summary>
 /// Base interface for all sessions.
 /// </summary>
-internal interface INexNetSession
+internal interface INexusSession
 {
     /// <summary>
     /// ID of this session.
@@ -37,7 +37,7 @@ internal interface INexNetSession
     SessionManager? SessionManager { get; }
 
     /// <summary>
-    ///  Store for maintaining data between invocations on the hub.
+    ///  Store for maintaining data between invocations on the nexus.
     /// </summary>
     public SessionStore SessionStore { get; }
 
@@ -92,7 +92,7 @@ internal interface INexNetSession
 /// Base session with proxy information.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-internal interface INexNetSession<TProxy> : INexNetSession
+internal interface INexNetSession<TProxy> : INexusSession
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>

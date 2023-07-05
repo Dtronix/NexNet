@@ -50,12 +50,12 @@ public enum MessageType : byte
     /// <summary>
     /// Client hub does not match server's version. No body.
     /// </summary>
-    DisconnectClientHubMismatch = 24,
+    DisconnectClientMismatch = 24,
 
     /// <summary>
     /// Server's hub does not match client's version. No body.
     /// </summary>
-    DisconnectServerHubMismatch = 25,
+    DisconnectServerMismatch = 25,
     //DisconnectMessageParsingError = 26,
     //DisconnectFromHub = 27,
 

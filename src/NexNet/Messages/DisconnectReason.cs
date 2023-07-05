@@ -31,14 +31,14 @@ public enum DisconnectReason : byte
     Timeout = MessageType.DisconnectTimeout,
 
     /// <summary>
-    /// Client hub does not match server's version.
+    /// Client nexus does not match server's version.
     /// </summary>
-    ClientHubMismatch = MessageType.DisconnectClientHubMismatch,
+    ClientMismatch = MessageType.DisconnectClientMismatch,
 
     /// <summary>
-    /// Server's hub does not match client's version.
+    /// Server nexus does not match client's version.
     /// </summary>
-    ServerHubMismatch = MessageType.DisconnectServerHubMismatch,
+    ServerMismatch = MessageType.DisconnectServerMismatch,
 
     /// <summary>
     /// Server is shutting down.

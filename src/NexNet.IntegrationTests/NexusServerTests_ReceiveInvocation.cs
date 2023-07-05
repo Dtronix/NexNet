@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
+internal partial class NexusServerTests_ReceiveInvocation : BaseTests
 {
     
     [TestCase(Type.Uds)]
@@ -14,14 +14,14 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerVoid(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = (hub, _) =>
+            cNexus.OnConnectedEvent = (nexus, _) =>
             {
-                hub.Context.Proxy.ServerVoid();
+                nexus.Context.Proxy.ServerVoid();
                 return ValueTask.CompletedTask;
             };
-            sHub.ServerVoidEvent = hub => tcs.SetResult();
+            sNexus.ServerVoidEvent = nexus => tcs.SetResult();
         });
     }
 
@@ -30,14 +30,14 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerVoidWithParam(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = (hub, _) =>
+            cNexus.OnConnectedEvent = (nexus, _) =>
             {
-                hub.Context.Proxy.ServerVoidWithParam(12345);
+                nexus.Context.Proxy.ServerVoidWithParam(12345);
                 return ValueTask.CompletedTask;
             };
-            sHub.ServerVoidWithParamEvent = (hub, param) =>
+            sNexus.ServerVoidWithParamEvent = (nexus, param) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
@@ -50,10 +50,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTask(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = (hub, _) => hub.Context.Proxy.ServerTask();
-            sHub.ServerTaskEvent = hub =>
+            cNexus.OnConnectedEvent = (nexus, _) => nexus.Context.Proxy.ServerTask();
+            sNexus.ServerTaskEvent = nexus =>
             {
                 tcs.SetResult();
                 return ValueTask.CompletedTask;
@@ -67,10 +67,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskWithParam(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = (hub, _) => hub.Context.Proxy.ServerTaskWithParam(12345);
-            sHub.ServerTaskWithParamEvent = (hub, param) =>
+            cNexus.OnConnectedEvent = (nexus, _) => nexus.Context.Proxy.ServerTaskWithParam(12345);
+            sNexus.ServerTaskWithParamEvent = (nexus, param) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
@@ -85,10 +85,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskValue(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValue();
-            sHub.ServerTaskValueEvent = hub =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValue();
+            sNexus.ServerTaskValueEvent = nexus =>
             {
                 tcs.SetResult();
                 return ValueTask.FromResult(54321);
@@ -101,15 +101,15 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskValue_ReturnedValue(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) =>
+            cNexus.OnConnectedEvent = async (nexus, _) =>
             {
-                var value = await hub.Context.Proxy.ServerTaskValue();
+                var value = await nexus.Context.Proxy.ServerTaskValue();
                 Assert.AreEqual(54321, value);
                 tcs.SetResult();
             };
-            sHub.ServerTaskValueEvent = hub => ValueTask.FromResult(54321);
+            sNexus.ServerTaskValueEvent = nexus => ValueTask.FromResult(54321);
         });
     }
 
@@ -119,10 +119,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValueWithParam(12345);
-            sHub.ServerTaskValueWithParamEvent = (hub, param) =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithParam(12345);
+            sNexus.ServerTaskValueWithParamEvent = (nexus, param) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
@@ -137,15 +137,15 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam_ReturnedValue(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) =>
+            cNexus.OnConnectedEvent = async (nexus, _) =>
             {
-                var value = await hub.Context.Proxy.ServerTaskValueWithParam(12345);
+                var value = await nexus.Context.Proxy.ServerTaskValueWithParam(12345);
                 Assert.AreEqual(54321, value);
                 tcs.SetResult();
             };
-            sHub.ServerTaskValueWithParamEvent = (hub, param) => ValueTask.FromResult(54321);
+            sNexus.ServerTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
         });
     }
 
@@ -156,10 +156,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskWithCancellation(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
-            sHub.ServerTaskWithCancellationEvent = (hub, ct) =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
+            sNexus.ServerTaskWithCancellationEvent = (nexus, ct) =>
             {
                 tcs.SetResult();
                 return ValueTask.CompletedTask;
@@ -173,10 +173,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ServerTaskWithValueAndCancellation(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskWithValueAndCancellation(12345, CancellationToken.None);
-            sHub.ServerTaskWithValueAndCancellationEvent = (hub, param, ct) =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskWithValueAndCancellation(12345, CancellationToken.None);
+            sNexus.ServerTaskWithValueAndCancellationEvent = (nexus, param, ct) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
@@ -207,10 +207,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-            sHub.ServerTaskValueWithCancellationEvent = (hub, ct) =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
+            sNexus.ServerTaskValueWithCancellationEvent = (nexus, ct) =>
             {
                 tcs.SetResult();
                 return ValueTask.FromResult(54321);
@@ -223,15 +223,15 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) =>
+            cNexus.OnConnectedEvent = async (nexus, _) =>
             {
-                var value = await hub.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
+                var value = await nexus.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
                 Assert.AreEqual(54321, value);
                 tcs.SetResult();
             };
-            sHub.ServerTaskValueWithCancellationEvent = (hub, ct) => ValueTask.FromResult(54321);
+            sNexus.ServerTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
         });
     }
 
@@ -240,10 +240,10 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) => await hub.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-            sHub.ServerTaskValueWithValueAndCancellationEvent = (hub, param, ct) =>
+            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
+            sNexus.ServerTaskValueWithValueAndCancellationEvent = (nexus, param, ct) =>
             {
                 if (param == 12345)
                     tcs.SetResult();
@@ -258,15 +258,15 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
-        return ServerReceivesInvocation(type, (sHub, cHub, tcs) =>
+        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
-            cHub.OnConnectedEvent = async (hub, _) =>
+            cNexus.OnConnectedEvent = async (nexus, _) =>
             {
-                var value = await hub.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
+                var value = await nexus.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
                 Assert.AreEqual(54321, value);
                 tcs.SetResult();
             };
-            sHub.ServerTaskValueWithValueAndCancellationEvent = (hub, param, ct) => ValueTask.FromResult(54321);
+            sNexus.ServerTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);
         });
     }
 
@@ -291,16 +291,16 @@ internal partial class NexNetServerTests_ReceiveInvocation : BaseTests
 
 
 
-    private async Task ServerReceivesInvocation(Type type, Action<ServerHub, ClientHub, TaskCompletionSource> action)
+    private async Task ServerReceivesInvocation(Type type, Action<ServerNexus, ClientNexus, TaskCompletionSource> action)
     {
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
         server.Start();
 
-        action(serverHub, clientHub, tcs);
+        action(serverNexus, clientNexus, tcs);
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 

@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexNetServerTests_Cancellation : BaseTests
+internal partial class NexusServerTests_Cancellation : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -17,7 +17,7 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
-            hub => hub.ClientTaskWithCancellationEvent = async (hub, token) =>
+            nexus => nexus.ClientTaskWithCancellationEvent = async (nexus, token) =>
             {
                 await Task.Delay(10000, token);
             },
@@ -26,11 +26,11 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            hub =>
+            nexus =>
             {
                 Assert.ThrowsAsync<TaskCanceledException>(async () =>
                 {
-                    await hub.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token);
+                    await nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token);
                 });
                 return ValueTask.CompletedTask;
             }).WaitAsync(TimeSpan.FromSeconds(1));
@@ -46,7 +46,7 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
-            hub => hub.ClientTaskWithValueAndCancellationEvent = async (hub, value, token) =>
+            nexus => nexus.ClientTaskWithValueAndCancellationEvent = async (nexus, value, token) =>
             {
                 await Task.Delay(10000, token);
             },
@@ -55,11 +55,11 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            hub =>
+            nexus =>
             {
                 Assert.ThrowsAsync<TaskCanceledException>(async () =>
                 {
-                    await hub.Context.Clients.Caller.ClientTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
+                    await nexus.Context.Clients.Caller.ClientTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
                 });
 
                 return default;
@@ -76,7 +76,7 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
-            hub => hub.ClientTaskValueWithCancellationEvent = async (hub, token) =>
+            nexus => nexus.ClientTaskValueWithCancellationEvent = async (nexus, token) =>
             {
                 await Task.Delay(10000, token);
                 return 12345;
@@ -86,9 +86,9 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            async hub =>
+            async nexus =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async() => await hub.Context.Clients.Caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
+                Assert.ThrowsAsync<TaskCanceledException>(async() => await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
             }).WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.WaitAsync(TimeSpan.FromSeconds(1));
@@ -102,7 +102,7 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
-            hub => hub.ClientTaskValueWithValueAndCancellationEvent = async (hub, value, token) =>
+            nexus => nexus.ClientTaskValueWithValueAndCancellationEvent = async (nexus, value, token) =>
             {
                 await Task.Delay(10000, token);
                 return 12345;
@@ -112,9 +112,9 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            async hub =>
+            async nexus =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async () => await hub.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
+                Assert.ThrowsAsync<TaskCanceledException>(async () => await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
             }).WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.WaitAsync(TimeSpan.FromSeconds(1));
@@ -127,28 +127,28 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationRequestMessage>(
             type,
-            hub => hub.ClientTaskWithCancellationEvent = (hub, token) => ValueTask.CompletedTask,
+            nexus => nexus.ClientTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
             {
                 Assert.AreEqual(1, message.InvocationId);
                 source.TrySetResult();
             },
-            hub => hub.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(200).Token));
+            nexus => nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(200).Token));
 
         Assert.ThrowsAsync<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
 
 
-    private async Task<Task> ServerSendsMessage<T>(Type type, Action<ClientHub> setup, Action<T, TaskCompletionSource> onMessage, Func<ServerHub, ValueTask> action)
+    private async Task<Task> ServerSendsMessage<T>(Type type, Action<ClientNexus> setup, Action<T, TaskCompletionSource> onMessage, Func<ServerNexus, ValueTask> action)
         where T : IMessageBodyBase
     {
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type, false);
         var tcs = new TaskCompletionSource();
-        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
-        setup.Invoke(clientHub);
+        setup.Invoke(clientNexus);
 
         server.Start();
 
@@ -170,9 +170,9 @@ internal partial class NexNetServerTests_Cancellation : BaseTests
         };
 
 
-        serverHub.OnConnectedEvent = hub =>
+        serverNexus.OnConnectedEvent = nexus =>
         {
-            _ = action.Invoke(serverHub);
+            _ = action.Invoke(serverNexus);
             return ValueTask.CompletedTask;
         };
 

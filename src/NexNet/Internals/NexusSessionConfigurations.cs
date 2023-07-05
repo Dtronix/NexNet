@@ -4,8 +4,8 @@ using NexNet.Transports;
 
 namespace NexNet.Internals;
 
-internal readonly struct NexNetSessionConfigurations<THub, TProxy>
-    where THub : HubBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
+    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     public required ConfigBase Configs { get; init; }
@@ -20,5 +20,5 @@ internal readonly struct NexNetSessionConfigurations<THub, TProxy>
 
     public required long Id { get; init; }
 
-    public required THub Hub { get; init; }
+    public required TNexus Nexus { get; init; }
 }

@@ -96,7 +96,7 @@ abstract partial class ServerHub : IServerHub
     }
 
     [Test]
-    public void HubMustNotBeGeneric()
+    public void NexusMustNotBeGeneric()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -114,7 +114,7 @@ partial class ServerHub : IServerHub
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.HubMustNotBeGeneric.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
 
     }
 
@@ -146,7 +146,7 @@ partial class ServerHub : IServerHub
     }
 
     [Test]
-    public void HubMustNotBeGeneric_Client()
+    public void NexusMustNotBeGeneric_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -165,12 +165,12 @@ partial class ServerHub : IServerHub
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.HubMustNotBeGeneric.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
 
     }
 
     [Test]
-    public void HubMustNotBeGeneric_Server()
+    public void NexusMustNotBeGeneric_Server()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -189,7 +189,7 @@ partial class ServerHub<T> : IServerHub
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.HubMustNotBeGeneric.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
 
     }
 
@@ -399,7 +399,7 @@ partial class ServerHub : IServerHub { }
     }
 
     [Test]
-    public void CompilesWhenInterfacesAndHubsAreInSeparateNamespaces()
+    public void CompilesWhenInterfacesAndNexusesAreInSeparateNamespaces()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;

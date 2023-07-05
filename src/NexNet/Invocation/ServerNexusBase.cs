@@ -7,7 +7,7 @@ namespace NexNet.Invocation;
 /// Base class used for all server session hubs.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class ServerHubBase<TProxy> : HubBase<TProxy>
+public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>

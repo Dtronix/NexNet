@@ -25,7 +25,7 @@ public static class CSharpGeneratorRunner
             });
 
         var references = systemAssemblies
-            .Append(typeof(NexNetHubAttribute<,>).Assembly.Location) // System Assemblies 
+            .Append(typeof(NexusAttribute<,>).Assembly.Location) // System Assemblies 
             .Append(typeof(MemoryPackableAttribute).Assembly.Location) // System Assemblies 
             .Select(x => MetadataReference.CreateFromFile(x))
             .ToArray();
@@ -45,7 +45,7 @@ public static class CSharpGeneratorRunner
         }
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11, preprocessorSymbols: preprocessorSymbols);
 
-        var driver = CSharpGeneratorDriver.Create(new NexNetHubGenerator()).WithUpdatedParseOptions(parseOptions);
+        var driver = CSharpGeneratorDriver.Create(new NexusGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
             driver = (Microsoft.CodeAnalysis.CSharp.CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);

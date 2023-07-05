@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Text;
-using static NexNet.Generator.NexNetHubGenerator;
+using static NexNet.Generator.NexusGenerator;
 
 namespace NexNet.Generator;
 
@@ -44,20 +44,20 @@ internal partial class InvocationInterfaceMeta
         this.Methods = Symbol.GetMembers()
             .OfType<IMethodSymbol>()
             .Select(x => new MethodMeta(x))
-            .Where(x => x.NexNetMethodAttribute.Ignore == false) // Bypass ignored items.
+            .Where(x => x.NexusMethodAttribute.Ignore == false) // Bypass ignored items.
             .ToArray();
 
 
         // Get all pre-defined method ids first.
         foreach (var methodMeta in this.Methods)
         {
-            if (methodMeta.NexNetMethodAttribute.MethodId != null)
+            if (methodMeta.NexusMethodAttribute.MethodId != null)
             {
                 // Assign defined ids.
-                methodMeta.Id = methodMeta.NexNetMethodAttribute.MethodId.Value;
+                methodMeta.Id = methodMeta.NexusMethodAttribute.MethodId.Value;
 
                 // Add the id to the hash list to prevent reuse during automatic assignment.
-                _methodIds.Add(methodMeta.NexNetMethodAttribute.MethodId.Value);
+                _methodIds.Add(methodMeta.NexusMethodAttribute.MethodId.Value);
             }
         }
 
@@ -135,8 +135,8 @@ internal abstract class AttributeMetaBase
         {
             if (attributeData.AttributeClass!.Name != _attributeClassName)
                 continue;
-            // supports: [NexNetHubAttribute<IHub, IProxy>(NexNetHubType.Client)]
-            // supports: [NexNetHubAttribute<IHub, IProxy>(hubType: NexNetHubType.Client)]
+            // supports: [Attribute<INexus, IProxy>(NexusType.Client)]
+            // supports: [Attribute<INexus, IProxy>(NexusType: NexusType.Client)]
             if (attributeData.ConstructorArguments.Any())
             {
                 ImmutableArray<TypedConstant> items = attributeData.ConstructorArguments;
@@ -148,7 +148,7 @@ internal abstract class AttributeMetaBase
             }
 
             // argument syntax takes parameters. e.g. EventId = 0
-            // supports: e.g. [NexNetHubAttribute<IHub, IProxy>(HubType = NexNetHubType.Client)]
+            // supports: e.g. [NexusAttribute<INexus, IProxy>(Type = NexusType.Client)]
             if (attributeData.NamedArguments.Any())
             {
                 foreach (KeyValuePair<string, TypedConstant> namedArgument in attributeData.NamedArguments)
@@ -177,27 +177,27 @@ internal abstract class AttributeMetaBase
     }
 }
 
-internal class NexNetHubAttributeMeta : AttributeMetaBase
+internal class NexusAttributeMeta : AttributeMetaBase
 {
-    public bool IsClientHub { get; private set; }
-    public bool IsServerHub { get; private set; }
+    public bool IsClient { get; private set; }
+    public bool IsServer { get; private set; }
 
-    public NexNetHubAttributeMeta(INamedTypeSymbol symbol)
-        : base("NexNetHubAttribute", symbol)
+    public NexusAttributeMeta(INamedTypeSymbol symbol)
+        : base("NexusAttribute", symbol)
     {
     }
 
     protected override void ProcessArgument(string? key, int? constructorArgIndex, TypedConstant typedConstant)
     {
-        if (key == "HubType" || constructorArgIndex == 0)
+        if (key == "NexusType" || constructorArgIndex == 0)
         {
-            IsClientHub = (int)GetItem(typedConstant) == 0;
-            IsServerHub = (int)GetItem(typedConstant) == 1;
+            IsClient = (int)GetItem(typedConstant) == 0;
+            IsServer = (int)GetItem(typedConstant) == 1;
         }
     }
 }
 
-internal class NexNetMethodAttributeMeta : AttributeMetaBase
+internal class NexusMethodAttributeMeta : AttributeMetaBase
 {
     /// <summary>
     /// Ignore this method
@@ -210,8 +210,8 @@ internal class NexNetMethodAttributeMeta : AttributeMetaBase
     /// </summary>
     public ushort? MethodId { get; private set; }
 
-    public NexNetMethodAttributeMeta(ISymbol symbol)
-        : base("NexNetMethodAttribute", symbol)
+    public NexusMethodAttributeMeta(ISymbol symbol)
+        : base("NexusMethodAttribute", symbol)
     {
     }
 
@@ -230,7 +230,7 @@ internal class NexNetMethodAttributeMeta : AttributeMetaBase
     }
 }
 
-internal partial class HubMeta
+internal partial class NexusMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
     public string TypeName { get; }
@@ -241,25 +241,25 @@ internal partial class HubMeta
 
     public string Namespace { get; }
 
-    public NexNetHubAttributeMeta NexNetHubAttribute { get; set; }
+    public NexusAttributeMeta NexusAttribute { get; set; }
 
-    public InvocationInterfaceMeta HubInterface { get; }
+    public InvocationInterfaceMeta NexusInterface { get; }
     public InvocationInterfaceMeta ProxyInterface { get; }
     public MethodMeta[] Methods { get; }
 
-    public HubMeta(INamedTypeSymbol symbol)
+    public NexusMeta(INamedTypeSymbol symbol)
     {
         
         this.Symbol = symbol;
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.Namespace = Symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        this.NexNetHubAttribute = new NexNetHubAttributeMeta(symbol);
+        this.NexusAttribute = new NexusAttributeMeta(symbol);
 
-        var hubAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexNetHubAttribute");
-        HubInterface = new InvocationInterfaceMeta(
-            hubAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
+        var nexusAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexusAttribute");
+        NexusInterface = new InvocationInterfaceMeta(
+            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute.IsServer);
         ProxyInterface = new InvocationInterfaceMeta(
-            hubAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexNetHubAttribute.IsServerHub);
+            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute.IsServer);
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
@@ -275,7 +275,7 @@ internal partial class HubMeta
     {
         if (Symbol.IsGenericType)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.HubMustNotBeGeneric, syntax.Identifier.GetLocation(), Symbol.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NexusMustNotBeGeneric, syntax.Identifier.GetLocation(), Symbol.Name));
             return false;
         }
 
@@ -294,47 +294,47 @@ internal partial class HubMeta
 
 
 
-        var hubs = new HashSet<ushort>();
-        foreach (var hubInterfaceMethod in this.HubInterface.Methods)
+        var nexusSet = new HashSet<ushort>();
+        foreach (var nexusInterfaceMethod in this.NexusInterface.Methods)
         {
-            // Validate hub method ids.
-            if (hubs.Contains(hubInterfaceMethod.Id))
+            // Validate nexus method ids.
+            if (nexusSet.Contains(nexusInterfaceMethod.Id))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                 return false;
             }
             else
             {
-                hubs.Add(hubInterfaceMethod.Id);
+                nexusSet.Add(nexusInterfaceMethod.Id);
             }
 
-            if (hubInterfaceMethod.ParametersLessCancellation.Any(p => p.IsCancellationToken))
+            if (nexusInterfaceMethod.ParametersLessCancellation.Any(p => p.IsCancellationToken))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                 return false;
             }
 
-            if (hubInterfaceMethod.IsReturnVoid && hubInterfaceMethod.CancellationTokenParameter != null)
+            if (nexusInterfaceMethod.IsReturnVoid && nexusInterfaceMethod.CancellationTokenParameter != null)
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                 return false;
             }
 
 
             // Validate return values.
-            if (hubInterfaceMethod.IsReturnVoid)
+            if (nexusInterfaceMethod.IsReturnVoid)
                 continue;
 
 
-            if (hubInterfaceMethod.IsAsync
-                && hubInterfaceMethod.ReturnArity <= 1)
+            if (nexusInterfaceMethod.IsAsync
+                && nexusInterfaceMethod.ReturnArity <= 1)
                 continue;
 
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, hubInterfaceMethod.GetLocation(syntax), hubInterfaceMethod.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
             return false;
         }
 
-        // Validate method hubs
+        // Validate method nexuses
 
         return true;
     }
@@ -383,7 +383,7 @@ internal partial class MethodMeta
     public MethodParameterMeta? CancellationTokenParameter { get; }
     public MethodParameterMeta[] ParametersLessCancellation { get; }
     public ushort Id { get; set; }
-    public NexNetMethodAttributeMeta NexNetMethodAttribute { get; }
+    public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
     public MethodMeta(IMethodSymbol symbol)
     {
@@ -407,7 +407,7 @@ internal partial class MethodMeta
         this.ParametersLessCancellation = parameters.ToArray();
         this.ReturnArity = returnSymbol.Arity;
         this.IsReturnVoid = returnSymbol.Name == "Void";
-        this.NexNetMethodAttribute = new NexNetMethodAttributeMeta(symbol);
+        this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
 
         if (ReturnArity > 0)
             this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
@@ -427,7 +427,7 @@ internal partial class MethodMeta
         hash.Add(Id);
 
         // Add the name of the method to the hash if we do not have a manually specified ID.
-        if (NexNetMethodAttribute.MethodId == null)
+        if (NexusMethodAttribute.MethodId == null)
         {
             // Take the name of the method into consideration.
             hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(Name)));

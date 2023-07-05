@@ -5,7 +5,7 @@ using NexNet.Messages;
 namespace NexNet.Invocation;
 
 /// <summary>
-/// Interface to be used by sessions to invoke method on local hubs.
+/// Interface to be used by sessions to invoke method on local nexus.
 /// </summary>
 /// <typeparam name="TProxy"></typeparam>
 public interface IMethodInvoker<TProxy>
@@ -28,11 +28,11 @@ public interface IMethodInvoker<TProxy>
     void ReturnCancellationToken(int invocationId);
 
     /// <summary>
-    /// Registers a pipe for reading by the hub and associates it with the specified invocation.
+    /// Registers a pipe for reading by the nexus and associates it with the specified invocation.
     /// </summary>
     /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
     /// <returns>Cancellation token source associated with a specific invocation.</returns>
-    NexNetPipe RegisterPipe(int invocationId);
+    NexusPipe RegisterPipe(int invocationId);
 
     /// <summary>
     /// Returns a the pipe associated with the specified invocation.
