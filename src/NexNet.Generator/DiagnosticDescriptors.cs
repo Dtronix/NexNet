@@ -73,15 +73,39 @@ internal static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor InvalidCancellationToken = new(
         id: "NEXNET009",
         title: "Nexus method cancellation token invalid usage.",
-        messageFormat: "The Nexus method '{0}' must use the cancellation token at the end of the parameter list.",
+        messageFormat: "The Nexus method '{0}' must use the cancellation token at the end of the parameters.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TooManyCancellationTokens = new(
+        id: "NEXNET010",
+        title: "Nexus method cancellation token invalid usage.",
+        messageFormat: "The Nexus method '{0}' has multiple cancellation tokens when only one is allowed.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static readonly DiagnosticDescriptor CancellationTokenOnVoid = new(
-        id: "NEXNET010",
+        id: "NEXNET011",
         title: "Nexus method can't be void and support cancellation tokens.",
         messageFormat: "The Nexus method '{0}' can't be void and use a cancellation token.  Must return ValueTask or ValueTask<T> to use a cancellation token.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor TooManyPipes = new(
+        id: "NEXNET012",
+        title: "Nexus method only supports one NexusPipe.",
+        messageFormat: "The Nexus method '{0}' has multiple NexusPipe parameters when only one is allowed.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor PipeOnVoid = new(
+        id: "NEXNET013",
+        title: "Nexus method can't be void and support NexusPipe transportation.",
+        messageFormat: "The Nexus method '{0}' can't be void and have a NexusPipe parameter.  Must return ValueTask or ValueTask<T> to use NexusPipe.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

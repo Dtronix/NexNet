@@ -20,6 +20,11 @@ public partial interface IClientNexus
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
 
+    ValueTask ClientTask(NexusPipe pipeTest);
+    ValueTask ClientTask(int test, NexusPipe pipeTest);
+    ValueTask ClientTask(int test, NexusPipe pipeTest, int test2);
+    ValueTask ClientTask(int test, NexusPipe pipeTest, int test2, CancellationToken cancellationToken);
+
 }
 
 
@@ -73,6 +78,26 @@ public partial class ClientNexus
     public ValueTask ClientTask()
     {
         return ClientTaskEvent.Invoke(this);
+    }
+
+    public ValueTask ClientTask(NexusPipe pipeTest)
+    {
+        throw new NotImplementedException();
+    }
+
+    public ValueTask ClientTask(int test, NexusPipe pipeTest)
+    {
+        throw new NotImplementedException();
+    }
+
+    public ValueTask ClientTask(int test, NexusPipe pipeTest, int test2)
+    {
+        throw new NotImplementedException();
+    }
+
+    public ValueTask ClientTask(int test, NexusPipe pipeTest, int test2, CancellationToken cancellationToken)
+    {
+        throw new NotImplementedException();
     }
 
     public ValueTask ClientTaskWithParam(int data)

@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
 using NexNet.Generator;
 
-namespace NexNet.IntegrationTests.Generator;
+namespace NexNet.Generator.Tests;
 
 public static class CSharpGeneratorRunner
 {
@@ -21,7 +21,7 @@ public static class CSharpGeneratorRunner
             {
                 var fileName = Path.GetFileName(x);
                 if (fileName.EndsWith("Native.dll")) return false;
-                return fileName.StartsWith("System") || (fileName is "mscorlib.dll" or "netstandard.dll");
+                return fileName.StartsWith("System") || fileName is "mscorlib.dll" or "netstandard.dll";
             });
 
         var references = systemAssemblies
@@ -48,7 +48,7 @@ public static class CSharpGeneratorRunner
         var driver = CSharpGeneratorDriver.Create(new NexusGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
-            driver = (Microsoft.CodeAnalysis.CSharp.CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);
+            driver = (CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);
         }
 
         var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));

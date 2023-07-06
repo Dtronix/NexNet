@@ -51,6 +51,13 @@ internal interface INexusSession
     /// </summary>
     long LastReceived { get; }
 
+    INexusLogger? Logger { get; }
+
+    /// <summary>
+    /// Contains 
+    /// </summary>
+    internal CacheManager CacheManager { get; }
+
     /// <summary>
     /// Sends a header with a message body.
     /// </summary>
@@ -98,6 +105,6 @@ internal interface INexusSession<TProxy> : INexusSession
     /// <summary>
     /// Contains 
     /// </summary>
-    internal SessionCacheManager<TProxy> CacheManager { get; }
+    internal new SessionCacheManager<TProxy> CacheManager { get; }
 }
 

@@ -71,7 +71,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    NexusPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId)
+    NexusPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId, CancellationToken? cancellationToken)
     {
         var pipe = SessionContext.CacheManager.NexusPipeCache.Rent();
         if (!InvocationPipes.TryAdd(invocationId, pipe))
@@ -79,6 +79,9 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
             throw new InvalidOperationException(
                 "Tried to create a pipe for a invocation which already has an active pipe.");
         }
+
+        if(cancellationToken != null)
+            pipe.RegisterCancellationToken(cancellationToken.Value);
 
         return pipe;
     }

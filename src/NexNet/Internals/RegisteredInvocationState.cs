@@ -13,9 +13,10 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     public int InvocationId { get; set; }
 
     // Mutable struct.
-    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); 
+    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>();
 
     public bool IsComplete { get; set; }
+
     public bool IsCanceled { get; set; }
 
     public bool NotifyConnection { get; set; }

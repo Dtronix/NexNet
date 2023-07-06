@@ -125,18 +125,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                         case MessageType.InvocationWithResponseRequest:
                         case MessageType.InvocationCancellationRequest:
                         case MessageType.InvocationProxyResult:
+                        case MessageType.PipeComplete:
                             _config.Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
-                        case MessageType.PipeChannelWrite:
+                        case MessageType.PipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(int), true);
                             _config.Logger?.LogTrace($"PipeChannel received data.");
-
-                            break;
-                        case MessageType.PipeChannelClose:
-                            _recMessageHeader.SetTotalHeaderSize(sizeof(int), false);
-                            _config.Logger?.LogTrace($"PipeChannel closed.");
                             break;
 
                         default:
@@ -178,7 +174,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 {
                     switch (_recMessageHeader.Type)
                     {
-                        case MessageType.PipeChannelWrite:
+                        case MessageType.PipeWrite:
                             if (!ReadingHelpers.TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
                             {
                                 _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
@@ -187,19 +183,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             }
 
                             _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
-
                             break;
-                        case MessageType.PipeChannelClose:
-                            
-                            if (!ReadingHelpers.TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
-                            {
-                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
-                                disconnect = DisconnectReason.ProtocolError;
-                                break;
-                            }
 
-                            _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
-                        break;
                         default:
                             _config.Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
                             // If we are outside of the acceptable messages, disconnect the connection.
@@ -249,10 +234,16 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                         messageBody = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice);
                         break;
 
-                    case MessageType.PipeChannelWrite:
-                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
-                            await pipe.WriteFromStream(bodySlice);
+                    case MessageType.PipeComplete:
+                        messageBody = _cacheManager.PipeCompleteMessageDeserializer.Deserialize(bodySlice);
                         break;
+
+                    case MessageType.PipeWrite:
+                    {
+                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
+                            await pipe.WriteFromUpstream(bodySlice);
+                        break;
+                    }
 
                     default:
                         _config.Logger?.LogError(
@@ -312,7 +303,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             // Reset the value;
             session._isReconnected = false;
         }
-
+        
         if (message is ClientGreetingMessage cGreeting)
         {
             // Verify that this is the server
@@ -412,6 +403,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         else if (message is InvocationCancellationRequestMessage invocationCancellationRequestMessage)
         {
             _nexus.CancelInvocation(invocationCancellationRequestMessage);
+        }
+        else if (message is PipeCompleteMessage pipeCloseMessage)
+        {
+            if (_nexus.InvocationPipes.TryGetValue(pipeCloseMessage.InvocationId, out var pipe))
+                pipe.CompleteFromUpstream(pipeCloseMessage.CompleteFlags);
         }
         else
         {

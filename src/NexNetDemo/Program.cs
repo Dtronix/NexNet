@@ -20,11 +20,11 @@ partial interface IClientNexus
 
 partial interface IServerNexus
 {
-    ValueTask ServerTaskWithParam(NexusPipe pipe);
+    ValueTask ServerTaskWithParam(int id, NexusPipe pipe, string myValue);
 }
 
 
-
+/*
 /// <summary>
 /// Hub used for handling all Client communications.
 /// </summary>
@@ -83,8 +83,8 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
     }
 }
-
-
+*/
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus
 {
     protected override ValueTask OnConnected(bool isReconnected)
@@ -112,24 +112,32 @@ partial class ClientNexus
             {
                 Memory<byte> randomData = data;
                 var length = 1 << 14;
+
+                var loopNumber = 0;
                 while (true)
                 {
                     //var size = Random.Shared.Next(1, 1024 * 32);
                     randomData.Slice(0, length).CopyTo(writer.GetMemory(length));
                     writer.Advance(length);
                     await writer.FlushAsync(ct);
+                    await Task.Delay(10);
+
+                    if (loopNumber++ == 200)
+                    {
+                        return;
+                    }
                     //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
             });
 
-            await this.Context.Proxy.ServerTaskWithParam(pipe);
+            await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
         });
 
         return base.OnConnected(isReconnected);
     }
 }
 
-
+/*
 /// <summary>
 /// Hub used for handling all Server communications.
 /// </summary>
@@ -149,7 +157,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
     protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
     {
         global::System.Threading.CancellationTokenSource? cts = null;
-        NexusPipe? pipe = null;
+        global::NexNet.NexusPipe? pipe = null;
         var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerNexus.ClientProxy>>(this);
         try
         {
@@ -195,9 +203,9 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
     }
 }
+*/
 
-
-
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;
@@ -210,7 +218,7 @@ partial class ServerNexus : IServerNexus
 
         return avg;
     }
-    public async ValueTask ServerTaskWithParam(NexusPipe pipe)
+    public async ValueTask ServerTaskWithParam(int id, NexusPipe pipe, string myValue)
     {
         long sentBytes = 0;
         int loopNumber = 0;
@@ -229,8 +237,11 @@ partial class ServerNexus : IServerNexus
 
             _readData += data.Buffer.Length;
 
+            Console.Write($"{sentBytes:D} Read from Pipe");
+            Console.SetCursorPosition(0, 0);
+
             sentBytes += data.Buffer.Length;
-            if (loopNumber++ == 300)
+            /*if (loopNumber++ == 300)
             {
                 var ellapsedms = sw.ElapsedMilliseconds;
                 var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
@@ -241,7 +252,7 @@ partial class ServerNexus : IServerNexus
                 sw.Restart();
                 sentBytes = 0;
                 loopNumber = 0;
-            }
+            }*/
         }
     }
 }

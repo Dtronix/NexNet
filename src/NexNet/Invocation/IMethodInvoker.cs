@@ -31,8 +31,9 @@ public interface IMethodInvoker<TProxy>
     /// Registers a pipe for reading by the nexus and associates it with the specified invocation.
     /// </summary>
     /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
-    /// <returns>Cancellation token source associated with a specific invocation.</returns>
-    NexusPipe RegisterPipe(int invocationId);
+    /// <param name="cancellationToken">cancellation token</param>
+    /// <returns>Registered pipe</returns>
+    NexusPipe RegisterPipe(int invocationId, CancellationToken? cancellationToken);
 
     /// <summary>
     /// Returns a the pipe associated with the specified invocation.

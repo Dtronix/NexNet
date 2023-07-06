@@ -15,6 +15,10 @@ public abstract class SessionContext<TProxy>
     internal SessionManager? SessionManager { get; }
     internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
 
+    /// <summary>
+    /// Logger.
+    /// </summary>
+    public INexusLogger? Logger => Session.Logger;
 
     /// <summary>
     /// Store for this session used to keep and pass variables for the lifetime of this session.

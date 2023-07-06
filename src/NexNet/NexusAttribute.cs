@@ -21,13 +21,13 @@ public enum NexusType
 /// <summary>
 /// Attribute to allow the generator to create the hub and proxy implementation.
 /// </summary>
-/// <typeparam name="THub">Hub interface.</typeparam>
-/// <typeparam name="TProxy">Proxy interface</typeparam>
+/// <typeparam name="TNexusInterface">Nexus interface.</typeparam>
+/// <typeparam name="TProxyInterface">Proxy interface</typeparam>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
 // ReSharper disable twice UnusedTypeParameter
-public class NexusAttribute<THub, TProxy> : Attribute
-    where THub : class
-    where TProxy : class
+public class NexusAttribute<TNexusInterface, TProxyInterface> : Attribute
+    where TNexusInterface : class
+    where TProxyInterface : class
 {
     /// <summary>
     /// Gets the type of hub this is implemented as.

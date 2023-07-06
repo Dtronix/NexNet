@@ -144,6 +144,8 @@ namespace {{Symbol.ContainingNamespace}}
         protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
             global::System.Threading.CancellationTokenSource? cts = null;
+            global::NexNet.NexusPipe? pipe = null;
+            var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
             try
             {
                 switch (message.MethodId)
@@ -170,8 +172,12 @@ namespace {{Symbol.ContainingNamespace}}
             {
                 if(cts!= null)
                 {
-                    var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
                     methodInvoker.ReturnCancellationToken(message.InvocationId);
+                }
+
+                if (pipe != null)
+                {
+                    methodInvoker.ReturnPipe(message.InvocationId);
                 }
             }
 
@@ -201,28 +207,40 @@ partial class MethodMeta
     {
         if (CancellationTokenParameter != null)
         {
-            sb.AppendLine($"                        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{nexus.Namespace}.{nexus.TypeName}.{proxyImplementation.ProxyImplName}>>(this);");
+            //sb.AppendLine($"                        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{nexus.Namespace}.{nexus.TypeName}.{proxyImplementation.ProxyImplName}>>(this);");
             sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
         }
-        if (ParametersLessCancellation.Length > 0)
+
+        if (PipeParameter != null)
+        {
+            sb.Append("                        pipe = methodInvoker.RegisterPipe(message.InvocationId, ");
+            sb.Append(CancellationTokenParameter != null ? "cts.Token" : "null");
+            sb.AppendLine(");");
+        }
+
+        if (SerializedParameters > 0)
         {
             sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
-            foreach (var methodParameterMeta in ParametersLessCancellation)
+            for (var i = 0; i < Parameters.Length; i++)
             {
-                sb.Append(methodParameterMeta.ParamType).Append(", ");
-            }
+                if (!Parameters[i].IsSerialized)
+                    continue;
 
+                sb.Append(Parameters[i].ParamType).Append(", ");
+            }
             sb.Remove(sb.Length - 2, 2);
+
             sb.AppendLine(">>();");
         }
         sb.Append("                        ");
+
         if (IsReturnVoid)
         {
             EmitNexusMethodInvocation(sb);
         }
         else if (IsAsync)
         {
-            if (ReturnType == null)
+            if (IsAsync && ReturnType == null)
             {
                 sb.Append("await ");
                 EmitNexusMethodInvocation(sb);
@@ -243,9 +261,20 @@ partial class MethodMeta
     {
         sb.Append(this.Name).Append("(");
 
-        for (int i = 0; i < ParametersLessCancellation.Length; i++)
+        var serializedParamNumber = 1;
+        bool addedParam = false;
+        foreach (var methodParameterMeta in Parameters)
         {
-            sb.Append("arguments.Item").Append(i+1).Append(", ");
+            if (methodParameterMeta.IsPipe)
+            {
+                sb.Append("pipe, ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.IsSerialized)
+            {
+                sb.Append("arguments.Item").Append(serializedParamNumber++).Append(", ");
+                addedParam = true;
+            }
         }
 
         if (CancellationTokenParameter != null)
@@ -254,10 +283,8 @@ partial class MethodMeta
         }
         else
         {
-            if (ParametersLessCancellation.Length > 0)
-            {
+            if(addedParam)
                 sb.Remove(sb.Length - 2, 2);
-            }
         }
 
 
@@ -286,6 +313,15 @@ partial class MethodMeta
 
         sb.Append(this.Name).Append("(");
 
+        foreach (var parameter in Parameters)
+        {
+            sb.Append(parameter.ParamType).Append(" ").Append(parameter.Name).Append(", ");
+        }
+
+        if(Parameters.Length > 0)
+            sb.Remove(sb.Length - 2, 2);
+
+        /*
         foreach (var p in ParametersLessCancellation)
         {
             sb.Append(p.ParamType).Append(" ").Append(p.Name).Append(", ");
@@ -301,36 +337,35 @@ partial class MethodMeta
             {
                 sb.Remove(sb.Length - 2, 2);
             }
-        }
+        }*/
 
         sb.AppendLine(")");
         sb.AppendLine("             {");
 
-
-        if (ParametersLessCancellation.Length > 0)
+        if (SerializedParameters > 0)
         {
             sb.Append("                 var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
             
-            foreach (var p in ParametersLessCancellation)
+            foreach (var p in Parameters)
             {
+                if(!p.IsSerialized)
+                    continue;
+
                 sb.Append(p.ParamType).Append(", ");
             }
 
-            if (ParametersLessCancellation.Length > 0)
-            {
-                sb.Remove(sb.Length - 2, 2);
-            }
+            sb.Remove(sb.Length - 2, 2);
 
             sb.Append(">>(new(");
-            foreach (var p in ParametersLessCancellation)
+            foreach (var p in Parameters)
             {
+                if (!p.IsSerialized)
+                    continue;
+
                 sb.Append(p.Name).Append(", ");
             }
 
-            if (ParametersLessCancellation.Length > 0)
-            {
-                sb.Remove(sb.Length - 2, 2);
-            }
+            sb.Remove(sb.Length - 2, 2);
 
             sb.AppendLine("));");
         }
@@ -340,7 +375,7 @@ partial class MethodMeta
         if (this.IsReturnVoid)
         {
             sb.Append("_ = ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
-            sb.AppendLine(ParametersLessCancellation.Length > 0 ? "arguments);" : "null);");
+            sb.AppendLine(SerializedParameters > 0 ? "arguments);" : "null);");
         }
         else if (this.IsAsync)
         {
@@ -350,10 +385,10 @@ partial class MethodMeta
                 sb.Append("<").Append(this.ReturnType).Append(">");
             }
 
-            sb.Append("(").Append(this.Id).Append(", ");
-            sb.Append(ParametersLessCancellation.Length > 0 ? "arguments, " : "null, ");
-            sb.Append("null, ");
-            sb.Append(this.CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
+            sb.Append("(").Append(this.Id).Append(", "); // methodId
+            sb.Append(SerializedParameters > 0 ? "arguments, " : "null, "); // arguments
+            sb.Append(PipeParameter != null ? PipeParameter.Name : "null").Append(", "); // pipe
+            sb.Append(CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
         }
 
         sb.AppendLine("             }");

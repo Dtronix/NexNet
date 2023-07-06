@@ -7,6 +7,7 @@ internal class CacheManager
 {
     public readonly CachedDeserializer<InvocationProxyResultMessage> InvocationProxyResultDeserializer = new();
     public readonly CachedDeserializer<InvocationCancellationRequestMessage> InvocationCancellationRequestDeserializer = new();
+    public readonly CachedDeserializer<PipeCompleteMessage> PipeCompleteMessageDeserializer = new();
     public readonly CachedDeserializer<InvocationRequestMessage> InvocationRequestDeserializer = new();
     public readonly CachedDeserializer<ClientGreetingMessage> ClientGreetingDeserializer = new();
     public readonly CachedDeserializer<ServerGreetingMessage> ServerGreetingDeserializer = new();

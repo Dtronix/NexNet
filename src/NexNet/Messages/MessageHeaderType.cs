@@ -105,10 +105,10 @@ public enum MessageType : byte
     /// <summary>
     /// Header for closing a specific channel.
     /// </summary>
-    PipeChannelWrite = 151,
+    PipeWrite = 151,
 
     /// <summary>
     /// Header for closing a specific channel.
     /// </summary>
-    PipeChannelClose = 152,
+    PipeComplete = 152,
 }

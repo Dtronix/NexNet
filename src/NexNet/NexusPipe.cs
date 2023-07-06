@@ -18,6 +18,7 @@ public class NexusPipe
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
 
+    internal CancellationTokenRegistration cancellationTokenRegistration;
     internal INexusLogger? Logger;
 
     public delegate Task WriterDelegate(PipeWriter writer, CancellationToken cancellationToken);
@@ -64,16 +65,43 @@ public class NexusPipe
         using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session, runArguments.Logger);
 
         await _writer!.Invoke(writer, runArguments.CancellationToken).ConfigureAwait(true);
+
+        await writer.CompleteAsync();
+        await writer.FlushAsync();
     }
 
-    internal async ValueTask WriteFromStream(ReadOnlySequence<byte> data)
+    internal void CompleteFromUpstream(PipeCompleteMessage.Flags completeFlags)
+    {
+        if (_pipe == null)
+            throw new InvalidOperationException("Can't write to a non-reading pipe.");
+
+        if (completeFlags.HasFlag(PipeCompleteMessage.Flags.Complete))
+            _pipe.Writer.Complete();
+
+        if(completeFlags.HasFlag(PipeCompleteMessage.Flags.Canceled))
+            _pipe.Writer.CancelPendingFlush();
+    }
+
+    internal async ValueTask WriteFromUpstream(ReadOnlySequence<byte> data)
     {
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
         var length = (int)data.Length;
         data.CopyTo(_pipe.Writer.GetSpan(length));
         _pipe.Writer.Advance(length);
-        await _pipe.Writer.FlushAsync().ConfigureAwait(true);
+        
+        await _pipe.Writer.FlushAsync(cancellationTokenRegistration.Token).ConfigureAwait(true);
+    }
+
+    internal void RegisterCancellationToken(CancellationToken token)
+    {
+        static void Cancel(object? pipeWriterObject)
+        {
+            var writer = Unsafe.As<PipeWriter>(pipeWriterObject);
+            writer!.Complete(new TaskCanceledException());
+        }
+
+        cancellationTokenRegistration = token.Register(Cancel, _pipe!.Writer);
     }
 
     internal record RunWriterArguments(
@@ -128,7 +156,6 @@ public class NexusPipe
         }
 
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void Complete(Exception? exception = null)
         {
             _isCompleted = true;
@@ -137,20 +164,43 @@ public class NexusPipe
         public override async ValueTask<FlushResult> FlushAsync(
             CancellationToken cancellationToken = new CancellationToken())
         {
+            async ValueTask SendCompleteMessage()
+            {
+                var completeMessage = _session.CacheManager.PipeCompleteMessageDeserializer.Rent();
+                completeMessage.InvocationId = _invocationId;
+                completeMessage.CompleteFlags = PipeCompleteMessage.Flags.Unset;
+
+                if(_isCompleted)
+                    completeMessage.CompleteFlags |= PipeCompleteMessage.Flags.Complete;
+
+                if (_isCanceled)
+                    completeMessage.CompleteFlags |= PipeCompleteMessage.Flags.Canceled;
+
+                // ReSharper disable once MethodSupportsCancellation
+                await _session.SendHeaderWithBody(completeMessage).ConfigureAwait(false);
+
+                _session.CacheManager.PipeCompleteMessageDeserializer.Return(completeMessage);
+            }
+
             static void CancelCallback(object? ctsObject)
             {
                 Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();
             }
 
-            var bufferLength = _bufferWriter.Length;
+            _flushCts ??= new CancellationTokenSource();
 
-            // Shortcut for empty buffer.
-            if (bufferLength == 0)
-                return new FlushResult(_isCanceled, _isCompleted);
+            var bufferLength = _bufferWriter.Length;
 
             BitConverter.TryWriteBytes(_invocationIdBytes.Span, _invocationId);
 
-            _flushCts ??= new CancellationTokenSource();
+            // Shortcut for empty buffer.
+            if (bufferLength == 0)
+            {
+                if (_isCompleted || _isCanceled)
+                    await SendCompleteMessage();
+
+                return new FlushResult(_isCanceled, _isCompleted);
+            }
 
             // ReSharper disable once UseAwaitUsing
             using var reg = cancellationToken.Register(CancelCallback, _flushCts);
@@ -167,10 +217,13 @@ public class NexusPipe
 
             while (true)
             {
+                if(_isCanceled)
+                    break;
+                
                 try
                 {
                     await _session.SendHeaderWithBody(
-                        MessageType.PipeChannelWrite,
+                        MessageType.PipeWrite,
                         _invocationIdBytes,
                         sendingBuffer,
                         _flushCts.Token).ConfigureAwait(true);
@@ -200,6 +253,9 @@ public class NexusPipe
             // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
             if (!_flushCts.TryReset())
                 _flushCts = null;
+
+            if (_isCompleted || _isCanceled)
+                await SendCompleteMessage();
 
             return new FlushResult(_isCanceled, _isCompleted);
         }

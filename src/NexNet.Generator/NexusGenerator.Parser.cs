@@ -308,18 +308,46 @@ internal partial class NexusMeta
                 nexusSet.Add(nexusInterfaceMethod.Id);
             }
 
-            if (nexusInterfaceMethod.ParametersLessCancellation.Any(p => p.IsCancellationToken))
+            if (nexusInterfaceMethod.CancellationTokenParameter != null)
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                if (!nexusInterfaceMethod.Parameters.Last().IsCancellationToken)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken,
+                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    return false;
+                }
+            }
+
+            if (nexusInterfaceMethod.MultipleCancellationTokenParameter)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyCancellationTokens,
+                    nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                 return false;
             }
 
-            if (nexusInterfaceMethod.IsReturnVoid && nexusInterfaceMethod.CancellationTokenParameter != null)
+            if (nexusInterfaceMethod.MultiplePipeParameters)
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyPipes,
+                    nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                 return false;
             }
 
+            if (nexusInterfaceMethod.IsReturnVoid)
+            {
+                if (nexusInterfaceMethod.CancellationTokenParameter != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid,
+                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    return false;
+                }
+
+                if (nexusInterfaceMethod.PipeParameter != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoid,
+                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    return false;
+                }
+            }
 
             // Validate return values.
             if (nexusInterfaceMethod.IsReturnVoid)
@@ -350,22 +378,30 @@ internal partial class MethodParameterMeta
     public IParameterSymbol Symbol { get; }
     public string Name { get; }
 
-    public string ParamType { get; set; }
+    public int Index { get; }
 
-    public bool IsParamsArray { get; set; }
+    public string ParamType { get; }
 
-    public bool IsArrayType { get; set; }
+    public bool IsParamsArray { get; }
 
-    public bool IsCancellationToken { get; set; }
+    public bool IsArrayType { get; }
+    public bool IsPipe { get; }
 
-    public MethodParameterMeta(IParameterSymbol symbol)
+    public bool IsCancellationToken { get; }
+
+    public bool IsSerialized { get; }
+
+    public MethodParameterMeta(IParameterSymbol symbol, int index)
     {
+        this.Index = index;
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
+        this.IsPipe = ParamType == "global::NexNet.NexusPipe";
+        this.IsSerialized = !IsPipe && !IsCancellationToken;
     }
 }
 
@@ -380,8 +416,16 @@ internal partial class MethodMeta
     public string? ReturnType { get; }
     public bool IsAsync { get; }
     public int ReturnArity { get; }
+
     public MethodParameterMeta? CancellationTokenParameter { get; }
-    public MethodParameterMeta[] ParametersLessCancellation { get; }
+    public MethodParameterMeta? PipeParameter { get; }
+
+    public bool MultiplePipeParameters { get; }
+    public bool MultipleCancellationTokenParameter { get; }
+
+    public int SerializedParameters { get; }
+
+    public MethodParameterMeta[] Parameters { get; }
     public ushort Id { get; set; }
     public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
@@ -393,18 +437,34 @@ internal partial class MethodMeta
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
         this.IsAsync = returnSymbol!.OriginalDefinition.Name == "ValueTask";
-        var parameters = symbol.Parameters.Select(p => new MethodParameterMeta(p)).ToList();
 
-        var lastParameter = parameters.LastOrDefault();
-        if (lastParameter != null && lastParameter.IsCancellationToken)
+        var serializedParameters = 0;
+        var paramsLength = symbol.Parameters.Length;
+        Parameters = new MethodParameterMeta[paramsLength];
+        for (var i = 0; i < symbol.Parameters.Length; i++)
         {
-            this.CancellationTokenParameter = lastParameter;
+            var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i);
 
-            // Remove this from the param list.
-            parameters.Remove(this.CancellationTokenParameter);
+            if (param.IsCancellationToken)
+            {
+                if (CancellationTokenParameter != null)
+                    MultipleCancellationTokenParameter = true;
+
+                CancellationTokenParameter = param;
+            }
+            else if (param.IsPipe)
+            {
+                if (PipeParameter != null)
+                    MultiplePipeParameters = true;
+
+                PipeParameter = param;
+            }
+
+            if (param.IsSerialized)
+                serializedParameters++;
         }
 
-        this.ParametersLessCancellation = parameters.ToArray();
+        this.SerializedParameters = serializedParameters;
         this.ReturnArity = returnSymbol.Arity;
         this.IsReturnVoid = returnSymbol.Name == "Void";
         this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
@@ -433,13 +493,10 @@ internal partial class MethodMeta
             hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(Name)));
         }
 
-        foreach (var param in ParametersLessCancellation)
+        foreach (var param in Parameters)
         {
             hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
         }
-
-        if(CancellationTokenParameter != null)
-            hash.Add(1);
 
         return hash.ToHashCode();
     }
