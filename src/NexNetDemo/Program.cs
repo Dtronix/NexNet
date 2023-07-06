@@ -120,12 +120,12 @@ partial class ClientNexus
                     randomData.Slice(0, length).CopyTo(writer.GetMemory(length));
                     writer.Advance(length);
                     await writer.FlushAsync(ct);
-                    await Task.Delay(10);
+                    //await Task.Delay(10);
 
-                    if (loopNumber++ == 200)
+                    /*if (loopNumber++ == 200)
                     {
                         return;
-                    }
+                    }*/
                     //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
             });
@@ -237,11 +237,11 @@ partial class ServerNexus : IServerNexus
 
             _readData += data.Buffer.Length;
 
-            Console.Write($"{sentBytes:D} Read from Pipe");
-            Console.SetCursorPosition(0, 0);
+            //Console.Write($"{sentBytes:D} Read from Pipe");
+            //Console.SetCursorPosition(0, 0);
 
             sentBytes += data.Buffer.Length;
-            /*if (loopNumber++ == 300)
+            if (loopNumber++ == 300)
             {
                 var ellapsedms = sw.ElapsedMilliseconds;
                 var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
@@ -252,7 +252,7 @@ partial class ServerNexus : IServerNexus
                 sw.Restart();
                 sentBytes = 0;
                 loopNumber = 0;
-            }*/
+            }
         }
     }
 }
