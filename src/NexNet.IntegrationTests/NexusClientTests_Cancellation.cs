@@ -15,7 +15,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(Type type)
     {
-        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             sNexus => sNexus.ServerTaskWithCancellationEvent = async (nexus, token) =>
             {
@@ -44,7 +44,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             sNexus => sNexus.ServerTaskWithValueAndCancellationEvent = async (nexus, value, token) =>
             {
@@ -74,7 +74,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             sNexus => sNexus.ServerTaskValueWithCancellationEvent = async (nexus, token) =>
             {
@@ -100,7 +100,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
-        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             sNexus => sNexus.ServerTaskValueWithValueAndCancellationEvent = async (nexus, value, token) =>
             {
@@ -125,7 +125,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
-        var tcs = await ClientSendsMessage<Messages.InvocationCancellationRequestMessage>(
+        var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
             type,
             sNexus => sNexus.ServerTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
@@ -141,7 +141,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
 
     private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerNexus> setup, Action<T, TaskCompletionSource> onMessage, Func<NexusClient<ClientNexus, ClientNexus.ServerProxy>, ValueTask> action)
-        where T : IMessageBodyBase
+        where T : IMessageBase
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource();

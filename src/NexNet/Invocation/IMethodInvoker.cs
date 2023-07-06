@@ -11,8 +11,8 @@ namespace NexNet.Invocation;
 public interface IMethodInvoker<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    internal ValueTask InvokeMethod(InvocationRequestMessage message);
-    internal void CancelInvocation(InvocationCancellationRequestMessage message);
+    internal ValueTask InvokeMethod(InvocationMessage message);
+    internal void CancelInvocation(InvocationCancellationMessage message);
 
     /// <summary>
     /// Registers a cancellation token with an invocation id.
@@ -33,7 +33,7 @@ public interface IMethodInvoker<TProxy>
     /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
     /// <param name="cancellationToken">cancellation token</param>
     /// <returns>Registered pipe</returns>
-    NexusPipe RegisterPipe(int invocationId, CancellationToken? cancellationToken);
+    ValueTask<NexusPipe> RegisterPipe(int invocationId, CancellationToken? cancellationToken);
 
     /// <summary>
     /// Returns a the pipe associated with the specified invocation.

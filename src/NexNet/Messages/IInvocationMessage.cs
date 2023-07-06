@@ -6,7 +6,7 @@ namespace NexNet.Messages;
 /// <summary>
 /// Message interface for invocations.
 /// </summary>
-public interface IInvocationRequestMessage
+public interface IInvocationMessage
 {
     /// <summary>
     /// Max length allowed: ushort.MaxValue - (Type:byte) - (InvocationId:int) - (MethodId:ushort) - (Flags:byte) = 65527;

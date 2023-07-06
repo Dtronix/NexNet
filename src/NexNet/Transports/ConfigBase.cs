@@ -47,6 +47,13 @@ public abstract class ConfigBase
         minimumSegmentSize: ushort.MaxValue);*/
 
     /// <summary>
+    /// The NexusPipe class will flush this maximum amount of data at once.
+    /// If the data surpasses this limit, it will be divided into chunks of this ize and sent until
+    /// the entire data is transmitted.
+    /// </summary>
+    public virtual int PipeFlushChunkSize { get; set; } = 1024 * 8;
+
+    /// <summary>
     /// Options to configure the receiving pipe with.
     /// </summary>
     public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;

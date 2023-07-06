@@ -141,7 +141,7 @@ namespace {{Symbol.ContainingNamespace}}
 
         sb.AppendLine($$"""
 
-        protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationRequestMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
+        protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
             global::System.Threading.CancellationTokenSource? cts = null;
             global::NexNet.NexusPipe? pipe = null;
@@ -213,7 +213,7 @@ partial class MethodMeta
 
         if (PipeParameter != null)
         {
-            sb.Append("                        pipe = methodInvoker.RegisterPipe(message.InvocationId, ");
+            sb.Append("                        pipe = await methodInvoker.RegisterPipe(message.InvocationId, ");
             sb.Append(CancellationTokenParameter != null ? "cts.Token" : "null");
             sb.AppendLine(");");
         }

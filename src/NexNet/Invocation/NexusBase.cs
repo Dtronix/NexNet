@@ -45,10 +45,10 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         }
     }
 
-    ValueTask IMethodInvoker<TProxy>.InvokeMethod(InvocationRequestMessage requestMessage)
+    ValueTask IMethodInvoker<TProxy>.InvokeMethod(InvocationMessage message)
     {
         var args = InvokeMethodCoreArgs.Get();
-        args.Message = requestMessage;
+        args.Message = message;
         args.SessionContext = SessionContext;
         args.InvokeMethodCore = InvokeMethodCore;
         return InvokeMethodCoreTask(args);
@@ -71,7 +71,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    NexusPipe IMethodInvoker<TProxy>.RegisterPipe(int invocationId, CancellationToken? cancellationToken)
+    async ValueTask<NexusPipe> IMethodInvoker<TProxy>.RegisterPipe(int invocationId, CancellationToken? cancellationToken)
     {
         var pipe = SessionContext.CacheManager.NexusPipeCache.Rent();
         if (!InvocationPipes.TryAdd(invocationId, pipe))
@@ -83,6 +83,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         if(cancellationToken != null)
             pipe.RegisterCancellationToken(cancellationToken.Value);
 
+        // Send the ready message.
+        var message = SessionContext.CacheManager.Rent<PipeReadyMessage>();
+        message.InvocationId = invocationId;
+        await SessionContext.Session.SendMessage(message);
+        SessionContext.CacheManager.Return(message);
+
         return pipe;
     }
 
@@ -93,7 +99,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     }
 
 
-    void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationRequestMessage message)
+    void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationMessage message)
     {
         if (!_cancellableInvocations.TryRemove(message.InvocationId, out var cts))
             return;
@@ -107,7 +113,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     /// <param name="message"></param>
     /// <param name="returnBuffer"></param>
     /// <returns></returns>
-    protected abstract ValueTask InvokeMethodCore(IInvocationRequestMessage message, IBufferWriter<byte>? returnBuffer);
+    protected abstract ValueTask InvokeMethodCore(IInvocationMessage message, IBufferWriter<byte>? returnBuffer);
    
     /// <summary>
     /// Invoked when a hub has it's connection established and ready for usage.
@@ -153,7 +159,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
             return;
         }
 
-        var message = context.CacheManager.InvocationProxyResultDeserializer.Rent();
+        var message = context.CacheManager.Rent<InvocationResultMessage>();
         message.InvocationId = requestArgs.Message.InvocationId;
 
         try
@@ -174,8 +180,8 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
                 message.Result = bufferResult.Value;
             }
 
-            message.State = InvocationProxyResultMessage.StateType.CompletedResult;
-            await context.Session.SendHeaderWithBody(message).ConfigureAwait(false);
+            message.State = InvocationResultMessage.StateType.CompletedResult;
+            await context.Session.SendMessage(message).ConfigureAwait(false);
             bufferResult?.Dispose();
             _bufferWriters.Add(bufferWriter);
         }
@@ -186,20 +192,20 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         catch (Exception)
         {
             message.Result = null;
-            message.State = InvocationProxyResultMessage.StateType.Exception;
-            await context.Session.SendHeaderWithBody(message).ConfigureAwait(false);
+            message.State = InvocationResultMessage.StateType.Exception;
+            await context.Session.SendMessage(message).ConfigureAwait(false);
         }
         finally
         {
             message.Result = null;
-            context.CacheManager.InvocationProxyResultDeserializer.Return(message);
+            context.CacheManager.Return(message);
             ReturnArgsToCache(context, requestArgs);
         }
 
         static void ReturnArgsToCache(SessionContext<TProxy> context, InvokeMethodCoreArgs args)
         {
             args.Message.Arguments = Memory<byte>.Empty;
-            context.CacheManager.InvocationRequestDeserializer.Return(args.Message);
+            context.CacheManager.Return(args.Message);
             InvokeMethodCoreArgs.Return(args);
         }
     }
@@ -207,9 +213,9 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
     private class InvokeMethodCoreArgs
     {
         private static readonly ConcurrentBag<InvokeMethodCoreArgs> _cache = new();
-        public InvocationRequestMessage Message = null!;
+        public InvocationMessage Message = null!;
         public SessionContext<TProxy> SessionContext = null!;
-        public Func<InvocationRequestMessage, IBufferWriter<byte>?, ValueTask> InvokeMethodCore = null!;
+        public Func<InvocationMessage, IBufferWriter<byte>?, ValueTask> InvokeMethodCore = null!;
 
         public static InvokeMethodCoreArgs Get() =>
             _cache.TryTake(out var result) ? result : new InvokeMethodCoreArgs();

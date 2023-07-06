@@ -14,12 +14,11 @@ namespace NexNet;
 /// </summary>
 public class NexusPipe
 {
-    private const int MaxFlushLength = 1 << 14;
+    //private const int MaxFlushLength = 1024 * 4;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
 
     private CancellationTokenRegistration _cancellationTokenRegistration;
-    internal INexusLogger? Logger;
 
     /// <summary>
     /// Delegate invoked when the nexus is ready to receive data.
@@ -135,12 +134,15 @@ public class NexusPipe
         private bool _isCompleted;
         private CancellationTokenSource? _flushCts;
         private Memory<byte> _invocationIdBytes = new byte[4];
+        private readonly int _chunkSize;
 
         public PipeWriterImpl(int invocationId, INexusSession session, INexusLogger? logger)
         {
             _invocationId = invocationId;
             _session = session;
             _logger = logger;
+            _chunkSize = session.Config.PipeFlushChunkSize;
+
         }
     
 
@@ -180,7 +182,7 @@ public class NexusPipe
         {
             async ValueTask SendCompleteMessage()
             {
-                var completeMessage = _session.CacheManager.PipeCompleteMessageDeserializer.Rent();
+                var completeMessage = _session.CacheManager.Rent<PipeCompleteMessage>();
                 completeMessage.InvocationId = _invocationId;
                 completeMessage.CompleteFlags = PipeCompleteMessage.Flags.Unset;
 
@@ -191,9 +193,9 @@ public class NexusPipe
                     completeMessage.CompleteFlags |= PipeCompleteMessage.Flags.Canceled;
 
                 // ReSharper disable once MethodSupportsCancellation
-                await _session.SendHeaderWithBody(completeMessage).ConfigureAwait(false);
+                await _session.SendMessage(completeMessage).ConfigureAwait(false);
 
-                _session.CacheManager.PipeCompleteMessageDeserializer.Return(completeMessage);
+                _session.CacheManager.Return(completeMessage);
             }
 
             static void CancelCallback(object? ctsObject)
@@ -221,10 +223,10 @@ public class NexusPipe
 
             var buffer = _bufferWriter.GetBuffer();
 
-            var multiPartSend = bufferLength > NexusPipe.MaxFlushLength;
+            var multiPartSend = bufferLength > _chunkSize;
 
             var sendingBuffer = multiPartSend
-                ? buffer.Slice(0, NexusPipe.MaxFlushLength) 
+                ? buffer.Slice(0, _chunkSize) 
                 : buffer;
             
             var flushPosition = 0;
@@ -253,13 +255,13 @@ public class NexusPipe
                     break;
                 }
 
-                bufferLength -= MaxFlushLength;
+                bufferLength -= _chunkSize;
                 if (bufferLength <= 0)
                     break;
 
-                flushPosition += MaxFlushLength;
+                flushPosition += _chunkSize;
 
-                sendingBuffer = buffer.Slice(flushPosition, Math.Min(bufferLength, MaxFlushLength));
+                sendingBuffer = buffer.Slice(flushPosition, Math.Min(bufferLength, _chunkSize));
             }
 
             _bufferWriter.Deallocate(buffer);

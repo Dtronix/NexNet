@@ -22,7 +22,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
 
-    public InvocationProxyResultMessage Result { get; set; } = null!;
+    public InvocationResultMessage Result { get; set; } = null!;
 
     /// <summary>
     /// Environment.Ticks when this state was instanced.

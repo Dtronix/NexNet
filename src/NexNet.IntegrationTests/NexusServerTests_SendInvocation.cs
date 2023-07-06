@@ -13,7 +13,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerVoid(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.IgnoreReturn,
@@ -28,7 +28,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerVoidWithParam(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.IgnoreReturn,
@@ -43,7 +43,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTask(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
@@ -58,7 +58,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskWithParam(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
@@ -73,7 +73,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskValue(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
@@ -88,7 +88,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithParam(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
@@ -104,7 +104,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskWithCancellation(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
@@ -119,7 +119,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskWithValueAndCancellation(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
@@ -134,7 +134,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithCancellation(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = Memory<byte>.Empty,
             Flags = InvocationFlags.None,
@@ -149,7 +149,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.TcpTls)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithValueAndCancellation(Type type)
     {
-        return InvokeFromServerAndVerifySent(type, new InvocationRequestMessage()
+        return InvokeFromServerAndVerifySent(type, new InvocationMessage()
         {
             Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
@@ -158,7 +158,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         }, nexus => nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(54321, CancellationToken.None));
     }
     
-    private async Task InvokeFromServerAndVerifySent(Type type, InvocationRequestMessage expectedMessage, Action<ServerNexus> action)
+    private async Task InvokeFromServerAndVerifySent(Type type, InvocationMessage expectedMessage, Action<ServerNexus> action)
     {
         var clientConfig = CreateClientConfig(type, false);
         var serverConfig = CreateServerConfig(type, false);
@@ -171,10 +171,10 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         {
             try
             {
-                if (bytes[0] != 101)
+                if (bytes[0] != (byte)MessageType.Invocation)
                     return;
 
-                var message = MemoryPackSerializer.Deserialize<InvocationRequestMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
+                var message = MemoryPackSerializer.Deserialize<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
                 Assert.NotNull(message);
 
                 if (message == null)

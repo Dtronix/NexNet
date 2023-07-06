@@ -8,9 +8,9 @@ namespace NexNet.Messages;
 /// Contains an invocation request message data.
 /// </summary>
 [MemoryPackable]
-internal partial class InvocationRequestMessage : IMessageBodyBase, IInvocationRequestMessage
+internal partial class InvocationMessage : IMessageBase, IInvocationMessage
 {
-    public static MessageType Type { get; } = MessageType.InvocationWithResponseRequest;
+    public static MessageType Type { get; } = MessageType.Invocation;
 
     public int InvocationId { get; set; }
 

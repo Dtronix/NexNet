@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
+using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet.Invocation;
 
@@ -15,11 +17,15 @@ internal class SessionInvocationStateManager
     private readonly INexusLogger? _logger;
     private int _invocationId = 0;
 
+    private record PendingNexusPipe(NexusPipe Pipe, NexusPipe.RunWriterArguments Args);
+
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
+    private readonly ConcurrentDictionary<int, PendingNexusPipe> _waitingPipes;
 
     public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger)
     {
         _invocationStates = new ConcurrentDictionary<int, RegisteredInvocationState>();
+        _waitingPipes = new ConcurrentDictionary<int, PendingNexusPipe>();
         _cacheManager = cacheManager;
         _logger = logger;
     }
@@ -33,8 +39,22 @@ internal class SessionInvocationStateManager
         return Interlocked.Increment(ref _invocationId);
     }
 
+    public bool TryStartPipe(int invocationId)
+    {
+        if (!_waitingPipes.TryRemove(invocationId, out var pendingPipe))
+            return false;
 
-    public void UpdateInvocationResult(InvocationProxyResultMessage message)
+        _ = Task.Factory.StartNew(
+            pendingPipe.Pipe.RunWriter,
+            pendingPipe.Args,
+            pendingPipe.Args.CancellationToken,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        return true;
+    }
+
+    public void UpdateInvocationResult(InvocationResultMessage message)
     {
         // If we can not remove the state any longer, then it has already been handled.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
@@ -46,10 +66,10 @@ internal class SessionInvocationStateManager
             //case InvocationProxyResultMessage.StateType.RequestCancel:
             //    state.TrySetCanceled();
             //    break;
-            case InvocationProxyResultMessage.StateType.CompletedResult:
+            case InvocationResultMessage.StateType.CompletedResult:
                 state.TrySetResult();
                 break;
-            case InvocationProxyResultMessage.StateType.Exception:
+            case InvocationResultMessage.StateType.Exception:
                 state.TrySetException(new InvocationException(message.InvocationId));
                 break;
 
@@ -70,7 +90,7 @@ internal class SessionInvocationStateManager
         if (cancellationToken?.IsCancellationRequested == true)
             return null;
 
-        var message = _cacheManager.InvocationRequestDeserializer.Rent();
+        var message = _cacheManager.Rent<InvocationMessage>();
 
         message.InvocationId = GetNextId();
         message.MethodId = methodId;
@@ -102,30 +122,27 @@ internal class SessionInvocationStateManager
         {
             _invocationStates.TryAdd(message.InvocationId, state);
 
-            await session.SendHeaderWithBody(message).ConfigureAwait(false);
+            await session.SendMessage(message).ConfigureAwait(false);
 
-            // Run the pipe writer if there is one.
+            // Set the pipe into a waiting state for the ready notification.
             if (pipe != null)
             {
                 var ct = cancellationToken ?? CancellationToken.None;
-                _ = Task.Factory.StartNew(
-                    pipe.RunWriter,
-                    new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct),
-                    ct,
-                    TaskCreationOptions.LongRunning,
-                    TaskScheduler.Default);
+                var pendingPipe = new PendingNexusPipe(
+                    pipe,
+                    new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct));
+                _waitingPipes.TryAdd(message.InvocationId, pendingPipe);
             }
-
         }
         else
         {
             _cacheManager.RegisteredInvocationStateCache.Return(state);
-            _cacheManager.InvocationRequestDeserializer.Return(message);
+            _cacheManager.Return(message);
             return null;
         }
 
         // Return the message to the cache
-        _cacheManager.InvocationRequestDeserializer.Return(message);
+        _cacheManager.Return(message);
         return state;
     }
 
@@ -135,5 +152,7 @@ internal class SessionInvocationStateManager
             invocationState.Value.TrySetCanceled(false);
 
         _invocationStates.Clear();
+
+        _waitingPipes.Clear();
     }
 }

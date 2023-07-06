@@ -1,9 +1,9 @@
 ﻿using System;
+using MemoryPack;
 
 namespace NexNet.Messages;
 
-internal interface IMessageBodyBase
+internal interface IMessageBase
 {
     public static abstract MessageType Type { get; }
-
 }

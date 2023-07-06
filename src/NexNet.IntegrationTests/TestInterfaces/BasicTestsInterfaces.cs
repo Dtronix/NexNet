@@ -19,12 +19,7 @@ public partial interface IClientNexus
     ValueTask ClientTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
-
-    ValueTask ClientTask(NexusPipe pipeTest);
-    ValueTask ClientTask(int test, NexusPipe pipeTest);
-    ValueTask ClientTask(int test, NexusPipe pipeTest, int test2);
-    ValueTask ClientTask(int test, NexusPipe pipeTest, int test2, CancellationToken cancellationToken);
-
+    ValueTask ClientTaskValueWithPipe(NexusPipe pipe);
 }
 
 
@@ -41,6 +36,7 @@ public partial interface IServerNexus
     ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    ValueTask ServerTaskValueWithPipe(NexusPipe pipe);
 
     void ServerData(byte[] data);
 }
@@ -58,6 +54,7 @@ public partial class ClientNexus
     public Func<ClientNexus, int, CancellationToken, ValueTask> ClientTaskWithValueAndCancellationEvent;
     public Func<ClientNexus, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
     public Func<ClientNexus, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
+    public Func<ClientNexus, NexusPipe, ValueTask> ClientTaskValueWithPipeEvent;
     public Func<ClientNexus, bool, ValueTask>? OnConnectedEvent;
     public Func<ClientNexus, ValueTask>? OnReconnectingEvent;
     public Func<ClientNexus, ValueTask>? OnDisconnectedEvent;
@@ -78,26 +75,6 @@ public partial class ClientNexus
     public ValueTask ClientTask()
     {
         return ClientTaskEvent.Invoke(this);
-    }
-
-    public ValueTask ClientTask(NexusPipe pipeTest)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ValueTask ClientTask(int test, NexusPipe pipeTest)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ValueTask ClientTask(int test, NexusPipe pipeTest, int test2)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ValueTask ClientTask(int test, NexusPipe pipeTest, int test2, CancellationToken cancellationToken)
-    {
-        throw new NotImplementedException();
     }
 
     public ValueTask ClientTaskWithParam(int data)
@@ -134,7 +111,12 @@ public partial class ClientNexus
     {
         return ClientTaskValueWithValueAndCancellationEvent.Invoke(this, value, cancellationToken);
     }
-    
+
+    public ValueTask ClientTaskValueWithPipe(NexusPipe pipe)
+    {
+        return ClientTaskValueWithPipeEvent.Invoke(this, pipe);
+    }
+
     protected override ValueTask OnConnected(bool isReconnected)
     {
         ConnectedTCS?.TrySetResult();
@@ -175,6 +157,8 @@ public partial class ServerNexus
     public Func<ServerNexus, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
     public Func<ServerNexus, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
     public Func<ServerNexus, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
+    public Func<ServerNexus, NexusPipe, ValueTask> ServerTaskValueWithPipeEvent;
+
     public Action<ServerNexus, byte[]> ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
@@ -231,6 +215,12 @@ public partial class ServerNexus
     {
         return ServerTaskValueWithValueAndCancellationEvent.Invoke(this, value, cancellationToken);
     }
+
+    public ValueTask ServerTaskValueWithPipe(NexusPipe pipe)
+    {
+        return ServerTaskValueWithPipeEvent.Invoke(this, pipe);
+    }
+
     public void ServerData(byte[] data)
     {
         ServerDataEvent.Invoke(this, data);

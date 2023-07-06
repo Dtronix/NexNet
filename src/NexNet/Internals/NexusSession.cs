@@ -69,6 +69,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public ConnectionState State { get; private set; }
 
+    public ConfigBase Config { get; }
+
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
         State = ConnectionState.Connecting;
@@ -76,7 +78,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
-        _config = configurations.Configs;
+        Config = _config = configurations.Configs;
         _cacheManager = configurations.Cache;
         _sessionManager = configurations.SessionManager;
         _isServer = configurations.IsServer;
@@ -121,7 +123,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     {
         _config.Logger?.LogTrace("NexNetSession.StartAsClient()");
         var clientConfig = Unsafe.As<ClientConfig>(_config);
-        var greetingMessage = _cacheManager.ClientGreetingDeserializer.Rent();
+        var greetingMessage = _cacheManager.Rent<ClientGreetingMessage>();
 
         greetingMessage.Version = 0;
         greetingMessage.ServerNexusMethodHash = TProxy.MethodHash;
@@ -130,9 +132,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         State = ConnectionState.Connected;
 
-        await SendHeaderWithBody(greetingMessage).ConfigureAwait(false);
+        await SendMessage(greetingMessage).ConfigureAwait(false);
 
-        _cacheManager.ClientGreetingDeserializer.Return(greetingMessage);
+        _cacheManager.Return(greetingMessage);
 
         // ReSharper disable once MethodSupportsCancellation
         _ = Task.Factory.StartNew(StartReadAsync, TaskCreationOptions.LongRunning);
@@ -272,7 +274,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private class InvocationTaskArguments
     {
-        public InvocationRequestMessage Message { get; set; } = null!;
+        public InvocationMessage Message { get; set; } = null!;
         public NexusSession<TNexus, TProxy> Session { get; set; } = null!;
     }
 }

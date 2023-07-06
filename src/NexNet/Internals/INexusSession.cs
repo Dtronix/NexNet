@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Messages;
+using NexNet.Transports;
 
 namespace NexNet.Internals;
 
@@ -59,14 +60,19 @@ internal interface INexusSession
     internal CacheManager CacheManager { get; }
 
     /// <summary>
-    /// Sends a header with a message body.
+    /// Configurations for the session.
+    /// </summary>
+    ConfigBase Config { get; }
+
+    /// <summary>
+    /// Sends a message.
     /// </summary>
     /// <typeparam name="TMessage">Type of message to send. Must implement IMessageBodyBase</typeparam>
     /// <param name="body">Message to send.</param>
     /// <param name="cancellationToken">Cancellation token to cancel sending.</param>
     /// <returns>Task which completes upon sending.</returns>
-    ValueTask SendHeaderWithBody<TMessage>(TMessage body, CancellationToken cancellationToken = default)
-        where TMessage : IMessageBodyBase;
+    ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase;
 
     /// <summary>
     /// Sends the passed sequence with prefixed header type and length.

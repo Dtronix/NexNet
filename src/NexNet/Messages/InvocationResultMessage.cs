@@ -5,7 +5,7 @@ using MemoryPack;
 namespace NexNet.Messages;
 
 [MemoryPackable]
-internal partial class InvocationProxyResultMessage : IMessageBodyBase
+internal partial class InvocationResultMessage : IMessageBase
 {
     public enum StateType : byte
     {
@@ -14,7 +14,7 @@ internal partial class InvocationProxyResultMessage : IMessageBodyBase
         Exception = 2
     }
 
-    public static MessageType Type { get; } = MessageType.InvocationProxyResult;
+    public static MessageType Type { get; } = MessageType.InvocationResult;
 
     public int InvocationId { get; set; }
 

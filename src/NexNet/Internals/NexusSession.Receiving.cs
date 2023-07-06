@@ -120,12 +120,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             break;
 
                         // HEADER + BODY
-                        case MessageType.GreetingClient:
-                        case MessageType.GreetingServer:
-                        case MessageType.InvocationWithResponseRequest:
-                        case MessageType.InvocationCancellationRequest:
-                        case MessageType.InvocationProxyResult:
+                        case MessageType.ClientGreeting:
+                        case MessageType.ServerGreeting:
+                        case MessageType.Invocation:
+                        case MessageType.InvocationCancellation:
+                        case MessageType.InvocationResult:
                         case MessageType.PipeComplete:
+                        case MessageType.PipeReady:
                             _config.Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
@@ -211,31 +212,17 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             position += _recMessageHeader.BodyLength;
             try
             {
-                IMessageBodyBase? messageBody = null;
+                IMessageBase? messageBody = null;
                 switch (_recMessageHeader.Type)
                 {
-                    case MessageType.GreetingClient:
-                        messageBody = _cacheManager.ClientGreetingDeserializer.Deserialize(bodySlice);
-                        break;
-
-                    case MessageType.GreetingServer:
-                        messageBody = _cacheManager.ServerGreetingDeserializer.Deserialize(bodySlice);
-                        break;
-
-                    case MessageType.InvocationWithResponseRequest:
-                        messageBody = _cacheManager.InvocationRequestDeserializer.Deserialize(bodySlice);
-                        break;
-
-                    case MessageType.InvocationProxyResult:
-                        messageBody = _cacheManager.InvocationProxyResultDeserializer.Deserialize(bodySlice);
-                        break;
-
-                    case MessageType.InvocationCancellationRequest:
-                        messageBody = _cacheManager.InvocationCancellationRequestDeserializer.Deserialize(bodySlice);
-                        break;
-
+                    case MessageType.ServerGreeting:
+                    case MessageType.ClientGreeting:
+                    case MessageType.Invocation:
+                    case MessageType.InvocationResult:
+                    case MessageType.InvocationCancellation:
                     case MessageType.PipeComplete:
-                        messageBody = _cacheManager.PipeCompleteMessageDeserializer.Deserialize(bodySlice);
+                    case MessageType.PipeReady:
+                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
                     case MessageType.PipeWrite:
@@ -260,7 +247,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 if (messageBody != null)
                 {
                     _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
-                    disconnect = await MessageHandler(messageBody!).ConfigureAwait(false);
+                    disconnect = await MessageHandler(messageBody!, _recMessageHeader.Type).ConfigureAwait(false);
                 }
 
                 if (disconnect != DisconnectReason.None)
@@ -293,7 +280,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
 
 
-    private async ValueTask<DisconnectReason> MessageHandler(IMessageBodyBase message)
+    private async ValueTask<DisconnectReason> MessageHandler(IMessageBase message, MessageType messageType)
     {
         static async void InvokeOnConnected(object? sessionObj)
         {
@@ -303,119 +290,148 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             // Reset the value;
             session._isReconnected = false;
         }
-        
-        if (message is ClientGreetingMessage cGreeting)
+
+        switch (messageType)
         {
-            // Verify that this is the server
-            if (!_isServer)
+            case MessageType.ClientGreeting:
+            {
+                var cGreeting = Unsafe.As<ClientGreetingMessage>(message);
+                // Verify that this is the server
+                if (!_isServer)
+                    return DisconnectReason.ProtocolError;
+
+                // Verify what the greeting method hashes matches this nexus's and proxy's
+                if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
+                {
+                    return DisconnectReason.ServerMismatch;
+                }
+
+                if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
+                {
+                    return DisconnectReason.ClientMismatch;
+                }
+
+                var serverConfig = Unsafe.As<ServerConfig>(_config);
+
+                // See if there is an authentication handler.
+                if (serverConfig.Authenticate)
+                {
+                    // Run the handler and verify that it is good.
+                    var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
+                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken);
+
+                    // Set the identity on the context.
+                    var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
+                    serverContext.Identity = Identity;
+
+                    // If the token is not good, disconnect.
+                    if (Identity == null)
+                        return DisconnectReason.Authentication;
+                }
+
+                var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
+                serverGreeting.Version = 0;
+
+                await SendMessage(serverGreeting).ConfigureAwait(false);
+
+                _cacheManager.Return(serverGreeting);
+                _sessionManager!.RegisterSession(this);
+
+                _ = Task.Factory.StartNew(InvokeOnConnected, this);
+                break;
+            }
+
+            case MessageType.ServerGreeting:
+            {
+                // Verify that this is the client
+                if (_isServer)
+                    return DisconnectReason.ProtocolError;
+
+                _ = Task.Factory.StartNew(InvokeOnConnected, this);
+                break;
+
+            }
+
+            case MessageType.Invocation:
+            {
+                var invocationRequestMessage = Unsafe.As<InvocationMessage>(message);
+                // Throttle invocations.
+                await _invocationSemaphore.WaitAsync().ConfigureAwait(false);
+
+                if (!_invocationTaskArgumentsPool.TryTake(out var args))
+                    args = new InvocationTaskArguments();
+
+                args.Message = invocationRequestMessage;
+                args.Session = this;
+
+                static async void InvocationTask(object? argumentsObj)
+                {
+                    var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
+
+                    var session = arguments.Session;
+                    var message = arguments.Message;
+                    try
+                    {
+                        await session._nexus.InvokeMethod(message).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
+                    }
+                    finally
+                    {
+                        session._invocationSemaphore.Release();
+
+                        // Clear out the references before returning to the pool.
+                        arguments.Session = null!;
+                        arguments.Message = null!;
+                        session._invocationTaskArgumentsPool.Add(arguments);
+                    }
+                }
+
+                _ = Task.Factory.StartNew(InvocationTask, args);
+                break;
+            }
+
+            case MessageType.InvocationResult:
+            {
+                var invocationProxyResultMessage = Unsafe.As<InvocationResultMessage>(message);
+                SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
+                break;
+            }
+
+            case MessageType.InvocationCancellation:
+            {
+                var invocationCancellationRequestMessage = Unsafe.As<InvocationCancellationMessage>(message);
+                _nexus.CancelInvocation(invocationCancellationRequestMessage);
+                break;
+            }
+
+            case MessageType.PipeComplete:
+            {
+                var pipeCompleteMessage = Unsafe.As<PipeCompleteMessage>(message);
+                if (_nexus.InvocationPipes.TryGetValue(pipeCompleteMessage.InvocationId, out var pipe))
+                    pipe.CompleteFromUpstream(pipeCompleteMessage.CompleteFlags);
+
+                break;
+            }
+
+            case MessageType.PipeReady:
+            {
+                var pipeReadyMessage = Unsafe.As<PipeReadyMessage>(message);
+
+                var startResult = SessionInvocationStateManager.TryStartPipe(pipeReadyMessage.InvocationId);
+                if (!startResult)
+                    return DisconnectReason.ProtocolError;
+
+                break;
+            }
+            default:
+                // If we don't know what the message is, then disconnect the connection
+                // as we have received invalid/unexpected data.
                 return DisconnectReason.ProtocolError;
-
-            // Verify what the greeting method hashes matches this nexus's and proxy's
-            if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
-            {
-                return DisconnectReason.ServerMismatch;
-            }
-
-            if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
-            {
-                return DisconnectReason.ClientMismatch;
-            }
-
-            var serverConfig = Unsafe.As<ServerConfig>(_config);
-
-            // See if there is an authentication handler.
-            if (serverConfig.Authenticate)
-            {
-                // Run the handler and verify that it is good.
-                var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
-                Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken);
-
-                // Set the identity on the context.
-                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
-                serverContext.Identity = Identity;
-
-                // If the token is not good, disconnect.
-                if (Identity == null)
-                    return DisconnectReason.Authentication;
-            }
-
-            var serverGreeting = _cacheManager.ServerGreetingDeserializer.Rent();
-            serverGreeting.Version = 0;
-
-            await SendHeaderWithBody(serverGreeting).ConfigureAwait(false);
-
-            _cacheManager.ServerGreetingDeserializer.Return(serverGreeting);
-            _sessionManager!.RegisterSession(this);
-
-            _ = Task.Factory.StartNew(InvokeOnConnected, this);
+                break;
         }
-        else if (message is ServerGreetingMessage)
-        {
-            // Verify that this is the client
-            if (_isServer)
-                return DisconnectReason.ProtocolError;
-
-            _ = Task.Factory.StartNew(InvokeOnConnected, this);
-
-        }
-        else if (message is InvocationRequestMessage invocationRequestMessage)
-        {
-            // Throttle invocations.
-            await _invocationSemaphore.WaitAsync().ConfigureAwait(false);
-
-            if (!_invocationTaskArgumentsPool.TryTake(out var args))
-                args = new InvocationTaskArguments();
-
-            args.Message = invocationRequestMessage;
-            args.Session = this;
-
-            static async void InvocationTask(object? argumentsObj)
-            {
-                var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
-
-                var session = arguments.Session;
-                var message = arguments.Message;
-                try
-                {
-                    await session._nexus.InvokeMethod(message).ConfigureAwait(false);
-                }
-                catch (Exception e)
-                {
-                    session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
-                }
-                finally
-                {
-                    session._invocationSemaphore.Release();
-
-                    // Clear out the references before returning to the pool.
-                    arguments.Session = null!;
-                    arguments.Message = null!;
-                    session._invocationTaskArgumentsPool.Add(arguments);
-                }
-            }
-            _ = Task.Factory.StartNew(InvocationTask, args);
-
-        }
-        else if (message is InvocationProxyResultMessage invocationProxyResultMessage)
-        {
-            SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
-        }
-        else if (message is InvocationCancellationRequestMessage invocationCancellationRequestMessage)
-        {
-            _nexus.CancelInvocation(invocationCancellationRequestMessage);
-        }
-        else if (message is PipeCompleteMessage pipeCloseMessage)
-        {
-            if (_nexus.InvocationPipes.TryGetValue(pipeCloseMessage.InvocationId, out var pipe))
-                pipe.CompleteFromUpstream(pipeCloseMessage.CompleteFlags);
-        }
-        else
-        {
-            // If we don't know what the message is, then disconnect the connection
-            // as we have received invalid/unexpected data.
-            return DisconnectReason.ProtocolError;
-        }
-
         return DisconnectReason.None;
     }
 }

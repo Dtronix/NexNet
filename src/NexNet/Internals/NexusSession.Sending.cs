@@ -14,8 +14,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
    
-    public async ValueTask SendHeaderWithBody<TMessage>(TMessage body, CancellationToken cancellationToken = default)
-        where TMessage : IMessageBodyBase
+    public async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase
     {
         // | MessageType | Body Length | Body   |
         // |-------------|-------------|--------|
