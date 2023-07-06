@@ -19,6 +19,7 @@ jobs:
       uses: actions/checkout@v3
       with:
         fetch-depth: 0
+        submodules: 'recursive'
 
     - name: Install .NET
       uses: actions/setup-dotnet@v3
