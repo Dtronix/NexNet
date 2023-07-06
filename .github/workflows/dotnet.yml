@@ -32,8 +32,11 @@ jobs:
     - name: Build
       run: dotnet build src -c Release
       
-    - name: Execute unit tests
+    - name: Execute integration tests
       run: dotnet test src/NexNet.IntegrationTests -c Release
+
+    - name: Execute generator tests
+      run: dotnet test src/NexNet.Generator.Tests -c Release
       
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts
