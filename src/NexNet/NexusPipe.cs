@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -10,20 +9,29 @@ using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
-
+/// <summary>
+/// Pipe used for transmission of binary data from a one nexus to another.
+/// </summary>
 public class NexusPipe
 {
-
     private const int MaxFlushLength = 1 << 14;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
 
-    internal CancellationTokenRegistration cancellationTokenRegistration;
+    private CancellationTokenRegistration _cancellationTokenRegistration;
     internal INexusLogger? Logger;
 
-    public delegate Task WriterDelegate(PipeWriter writer, CancellationToken cancellationToken);
+    /// <summary>
+    /// Delegate invoked when the nexus is ready to receive data.
+    /// </summary>
+    /// <param name="writer">Pipe writer for to fill with data to send to the remote nexus.</param>
+    /// <param name="cancellationToken">Cancellation token invoked when writing is to complete.</param>
+    /// <returns></returns>
+    public delegate ValueTask WriterDelegate(PipeWriter writer, CancellationToken cancellationToken);
 
-
+    /// <summary>
+    /// Reader used by the nexus to read the data sent.
+    /// </summary>
     public PipeReader Reader
     {
         get
@@ -44,6 +52,12 @@ public class NexusPipe
         _writer = writer;
     }
 
+    /// <summary>
+    /// Creates an instance of the NexusPipe class in writing mode.
+    /// </summary>
+    /// <param name="writer">Writer used to transmit the data to the nexus.</param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentNullException">Thrown when the writer delegate was not passed.</exception>
     public static NexusPipe Create(WriterDelegate writer)
     {
         if (writer == null)
@@ -55,7 +69,7 @@ public class NexusPipe
     internal void Reset()
     {
         _pipe?.Reset();
-
+        _cancellationTokenRegistration.Dispose();
         // No need to reset anything with the writer as it is use once and dispose.
     }
     internal async Task RunWriter(object? arguments)
@@ -90,7 +104,7 @@ public class NexusPipe
         data.CopyTo(_pipe.Writer.GetSpan(length));
         _pipe.Writer.Advance(length);
         
-        await _pipe.Writer.FlushAsync(cancellationTokenRegistration.Token).ConfigureAwait(true);
+        await _pipe.Writer.FlushAsync(_cancellationTokenRegistration.Token).ConfigureAwait(true);
     }
 
     internal void RegisterCancellationToken(CancellationToken token)
@@ -101,7 +115,7 @@ public class NexusPipe
             writer!.Complete(new TaskCanceledException());
         }
 
-        cancellationTokenRegistration = token.Register(Cancel, _pipe!.Writer);
+        _cancellationTokenRegistration = token.Register(Cancel, _pipe!.Writer);
     }
 
     internal record RunWriterArguments(

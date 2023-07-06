@@ -20,7 +20,6 @@ internal sealed class ResetAwaiterSource : IManualResetAwaiterSource
     /// <summary>
     /// Attempts to transition the completion state.
     /// </summary>
-    /// <param name="result">Result to have the awaited task return.</param>
     /// <returns>True on success, false otherwise.</returns>
     public bool TrySetResult()
     {
@@ -84,7 +83,6 @@ internal sealed class ResetAwaiterSource : IManualResetAwaiterSource
         /// <summary>
         /// Attempts to transition the completion state.
         /// </summary>
-        /// <param name="result">Result to have the awaited task return.</param>
         /// <returns>True on success, false otherwise.</returns>
         public bool TrySetResult()
         {

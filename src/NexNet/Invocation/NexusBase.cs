@@ -139,11 +139,6 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         OnDisconnected(reason);
     }
 
-    public static async ValueTask PushChannelData(byte[] data)
-    {
-
-    }
-
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)
     {
         var context = requestArgs.SessionContext;

@@ -277,6 +277,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="pipe">Optional pipe for binary data transmission.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
@@ -311,6 +312,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <typeparam name="TReturn">Expected type to be returned by the remote invocation proxy.</typeparam>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="pipe">Optional pipe for binary data transmission.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
