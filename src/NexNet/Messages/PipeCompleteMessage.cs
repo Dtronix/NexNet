@@ -6,8 +6,10 @@ namespace NexNet.Messages;
 [MemoryPackable]
 internal partial class PipeCompleteMessage : IMessageBase
 {
+    [Flags]
     public enum Flags : byte
     {
+        Unset = 0,
         Writer = 1 << 0,
         Reader = 1 << 1
     }

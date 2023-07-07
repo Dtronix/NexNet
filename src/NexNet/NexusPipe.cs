@@ -17,8 +17,9 @@ public class NexusPipe
     //private const int MaxFlushLength = 1024 * 4;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
-    private bool _issuedCompleted = false;
     private PipeWriterImpl? _pipeWriter = null;
+
+    private PipeCompleteMessage.Flags _closed = PipeCompleteMessage.Flags.Unset;
 
     internal INexusSession? Session;
     internal int InvocationId;
@@ -73,6 +74,7 @@ public class NexusPipe
     internal void Reset()
     {
         UpstreamComplete();
+        _closed = PipeCompleteMessage.Flags.Unset;
         _pipe?.Reset();
         _cancellationTokenRegistration.Dispose();
         // No need to reset anything with the writer as it is use once and dispose.
@@ -88,7 +90,7 @@ public class NexusPipe
 
         await writer.CompleteAsync().ConfigureAwait(false);
         await writer.FlushAsync().ConfigureAwait(false);
-        _pipeWriter = nwull;
+        _pipeWriter = null;
     }
 
     internal void UpstreamComplete()
@@ -96,12 +98,20 @@ public class NexusPipe
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
 
+        if (_closed.HasFlag(PipeCompleteMessage.Flags.Writer))
+            return;
+
+        _closed |= PipeCompleteMessage.Flags.Writer;
+
         _pipe.Writer.Complete();
         _pipe.Reader.Complete();
     }
 
     internal async ValueTask UpstreamWrite(ReadOnlySequence<byte> data)
     {
+        if (_closed.HasFlag(PipeCompleteMessage.Flags.Writer))
+            return;
+
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
         var length = (int)data.Length;
@@ -117,11 +127,14 @@ public class NexusPipe
 
     internal async ValueTask ReaderCompleted()
     {
-        if (Session == null || _issuedCompleted)
+        if (Session == null)
             return;
 
-        _issuedCompleted = true;
-        
+        if (_closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+            return;
+
+        _closed |= PipeCompleteMessage.Flags.Reader;
+
         var message = Session.CacheManager.Rent<PipeCompleteMessage>();
         message.CompleteFlags = PipeCompleteMessage.Flags.Reader;
         message.InvocationId = InvocationId;
@@ -129,9 +142,14 @@ public class NexusPipe
         Session.CacheManager.Return(message);
     }
 
-    public void DownstreamCompleted()
+    internal void DownstreamCompleted()
     {
-        _writer
+        if (_closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+            return;
+
+        _closed |= PipeCompleteMessage.Flags.Reader;
+        _pipeWriter!.Complete();
+        _pipeWriter!.CancelPendingFlush();
     }
 
 
@@ -211,16 +229,13 @@ public class NexusPipe
         {
             async ValueTask SendCompleteMessage()
             {
+                if (_session.State != ConnectionState.Connected)
+                    return;
+
                 var completeMessage = _session.CacheManager.Rent<PipeCompleteMessage>();
                 completeMessage.InvocationId = _invocationId;
-                completeMessage.CompleteFlags = PipeCompleteMessage.Flags.Unset;
-
-                if(_isCompleted)
-                    completeMessage.CompleteFlags |= PipeCompleteMessage.Flags.Complete;
-
-                if (_isCanceled)
-                    completeMessage.CompleteFlags |= PipeCompleteMessage.Flags.Canceled;
-
+                completeMessage.CompleteFlags = PipeCompleteMessage.Flags.Writer;
+                
                 // ReSharper disable once MethodSupportsCancellation
                 await _session.SendMessage(completeMessage).ConfigureAwait(false);
 
@@ -232,6 +247,9 @@ public class NexusPipe
                 Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();
             }
 
+            if (_flushCts?.IsCancellationRequested == true)
+                return new FlushResult(_isCanceled, _isCompleted);
+
             _flushCts ??= new CancellationTokenSource();
 
             var bufferLength = _bufferWriter.Length;
@@ -241,7 +259,7 @@ public class NexusPipe
             // Shortcut for empty buffer.
             if (bufferLength == 0)
             {
-                if (_isCompleted || _isCanceled)
+                if (_isCompleted)
                     await SendCompleteMessage();
 
                 return new FlushResult(_isCanceled, _isCompleted);
@@ -272,6 +290,12 @@ public class NexusPipe
                         _invocationIdBytes,
                         sendingBuffer,
                         _flushCts.Token).ConfigureAwait(true);
+                }
+                catch (InvalidOperationException)
+                {
+                    Complete();
+                    Console.WriteLine("-------------------------");
+                    break;
                 }
                 catch (TaskCanceledException)
                 {

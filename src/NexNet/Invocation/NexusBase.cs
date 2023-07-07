@@ -21,8 +21,6 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
 
-
-
     // ReSharper disable once StaticMemberInGenericType
     private static readonly ConcurrentBag<BufferWriter<byte>> _bufferWriters = new ConcurrentBag<BufferWriter<byte>>();
 
@@ -52,7 +50,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    async ValueTask<NexusPipe> IMethodInvoker<TProxy>.RegisterPipe(int invocationId, CancellationToken? cancellationToken)
+    async ValueTask<NexusPipe> IMethodInvoker<TProxy>.RegisterPipeReader(int invocationId, CancellationToken? cancellationToken)
     {
         var pipe = SessionContext.CacheManager.NexusPipeCache.Rent(SessionContext.Session, invocationId);
         if (!InvocationPipes.TryAdd(invocationId, pipe))
@@ -73,7 +71,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         return pipe;
     }
 
-    async ValueTask IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
+    async ValueTask IMethodInvoker<TProxy>.ReturnPipeReader(int invocationId)
     {
         if (InvocationPipes.TryRemove(invocationId, out var pipe))
         {

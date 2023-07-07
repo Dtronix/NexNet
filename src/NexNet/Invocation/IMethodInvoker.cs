@@ -33,11 +33,11 @@ public interface IMethodInvoker<TProxy>
     /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
     /// <param name="cancellationToken">cancellation token</param>
     /// <returns>Registered pipe</returns>
-    ValueTask<NexusPipe> RegisterPipe(int invocationId, CancellationToken? cancellationToken);
+    ValueTask<NexusPipe> RegisterPipeReader(int invocationId, CancellationToken? cancellationToken);
 
     /// <summary>
     /// Returns a the pipe associated with the specified invocation.
     /// </summary>
     /// <param name="invocationId">invocation if to return the cancellation token for.</param>
-    ValueTask ReturnPipe(int invocationId);
+    ValueTask ReturnPipeReader(int invocationId);
 }

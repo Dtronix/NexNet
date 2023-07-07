@@ -55,6 +55,18 @@ internal class SessionInvocationStateManager
         return true;
     }
 
+    public bool TrySetPipeReaderClosed(int invocationId)
+    {
+        if (!_invocationStates.TryGetValue(invocationId, out var invocationState))
+            return false;
+
+        if (invocationState.Pipe == null)
+            return false;
+
+        invocationState.Pipe.DownstreamCompleted();
+        return true;
+    }
+
     public void UpdateInvocationResult(InvocationResultMessage message)
     {
         // If we can not remove the state any longer, then it has already been handled.

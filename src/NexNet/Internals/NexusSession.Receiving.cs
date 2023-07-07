@@ -410,8 +410,21 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             case MessageType.PipeComplete:
             {
                 var pipeCompleteMessage = Unsafe.As<PipeCompleteMessage>(message);
-                if (_nexus.InvocationPipes.TryGetValue(pipeCompleteMessage.InvocationId, out var pipe))
-                    pipe.UpstreamComplete();
+
+                switch (pipeCompleteMessage.CompleteFlags)
+                {
+                    case PipeCompleteMessage.Flags.Writer:
+                        if (_nexus.InvocationPipes.TryGetValue(pipeCompleteMessage.InvocationId, out var pipe))
+                            pipe.UpstreamComplete();
+                        break;
+                    
+                    case PipeCompleteMessage.Flags.Reader:
+                        SessionInvocationStateManager.TrySetPipeReaderClosed(pipeCompleteMessage.InvocationId);
+                        break;
+
+                    default:
+                        return DisconnectReason.ProtocolError;
+                }
 
                 break;
             }

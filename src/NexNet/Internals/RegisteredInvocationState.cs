@@ -67,7 +67,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
             return false;
         IsComplete = true;
         IsCanceled = true;
-        Pipe?.DownstreamComplete();
+        Pipe?.DownstreamCompleted();
         NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;

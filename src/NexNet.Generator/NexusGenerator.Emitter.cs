@@ -177,7 +177,7 @@ namespace {{Symbol.ContainingNamespace}}
 
                 if (pipe != null)
                 {
-                    await methodInvoker.ReturnPipe(message.InvocationId);
+                    await methodInvoker.ReturnPipeReader(message.InvocationId);
                 }
             }
 
@@ -213,7 +213,7 @@ partial class MethodMeta
 
         if (PipeParameter != null)
         {
-            sb.Append("                        pipe = await methodInvoker.RegisterPipe(message.InvocationId, ");
+            sb.Append("                        pipe = await methodInvoker.RegisterPipeReader(message.InvocationId, ");
             sb.Append(CancellationTokenParameter != null ? "cts.Token" : "null");
             sb.AppendLine(");");
         }

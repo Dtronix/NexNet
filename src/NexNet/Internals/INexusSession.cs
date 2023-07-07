@@ -64,6 +64,8 @@ internal interface INexusSession
     /// </summary>
     ConfigBase Config { get; }
 
+    ConnectionState State { get; }
+
     /// <summary>
     /// Sends a message.
     /// </summary>
