@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO.Pipelines;
 using System.Threading.Tasks.Sources;
 using NexNet.Cache;
 using NexNet.Messages;
@@ -23,6 +24,10 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     public Exception? Exception { get; set; }
 
     public InvocationResultMessage Result { get; set; } = null!;
+
+    public NexusPipe? Pipe { get; set; }
+
+    public NexusPipe.RunWriterArguments? PipeArguments { get; set; }
 
     /// <summary>
     /// Environment.Ticks when this state was instanced.
@@ -62,6 +67,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
             return false;
         IsComplete = true;
         IsCanceled = true;
+        Pipe?.DownstreamComplete();
         NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;

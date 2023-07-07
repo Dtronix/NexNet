@@ -17,15 +17,13 @@ internal class SessionInvocationStateManager
     private readonly INexusLogger? _logger;
     private int _invocationId = 0;
 
-    private record PendingNexusPipe(NexusPipe Pipe, NexusPipe.RunWriterArguments Args);
-
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
-    private readonly ConcurrentDictionary<int, PendingNexusPipe> _waitingPipes;
+    //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
 
     public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger)
     {
         _invocationStates = new ConcurrentDictionary<int, RegisteredInvocationState>();
-        _waitingPipes = new ConcurrentDictionary<int, PendingNexusPipe>();
+        //_waitingPipes = new ConcurrentDictionary<int, RegisteredNexusPipe>();
         _cacheManager = cacheManager;
         _logger = logger;
     }
@@ -41,13 +39,16 @@ internal class SessionInvocationStateManager
 
     public bool TryStartPipe(int invocationId)
     {
-        if (!_waitingPipes.TryRemove(invocationId, out var pendingPipe))
+        if (!_invocationStates.TryGetValue(invocationId, out var invocationState))
+            return false;
+
+        if(invocationState.Pipe == null)
             return false;
 
         _ = Task.Factory.StartNew(
-            pendingPipe.Pipe.RunWriter,
-            pendingPipe.Args,
-            pendingPipe.Args.CancellationToken,
+            invocationState.Pipe.RunWriter,
+            invocationState.PipeArguments,
+            invocationState.PipeArguments!.CancellationToken,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
 
@@ -128,10 +129,9 @@ internal class SessionInvocationStateManager
             if (pipe != null)
             {
                 var ct = cancellationToken ?? CancellationToken.None;
-                var pendingPipe = new PendingNexusPipe(
-                    pipe,
-                    new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct));
-                _waitingPipes.TryAdd(message.InvocationId, pendingPipe);
+
+                state.PipeArguments = new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct);
+                state.Pipe = pipe;
             }
         }
         else
@@ -153,6 +153,7 @@ internal class SessionInvocationStateManager
 
         _invocationStates.Clear();
 
-        _waitingPipes.Clear();
+        //foreach (var invocationState in _waitingPipes)
+        //    invocationState.Value.Pipe.UpstreamComplete(PipeCompleteMessage.Flags.Canceled);
     }
 }

@@ -48,7 +48,6 @@ partial class ClientNexus
         {
             var pipe = NexusPipe.Create(async (writer, ct) =>
             {
-                return;
                 Memory<byte> randomData = data;
                 var length = 1024 * 32;
 
@@ -153,12 +152,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path), 
-            Logger = new Logger("SV")
+            //Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new Logger("CL")
+            //Logger = new Logger("CL")
         };
         /*
         var serverConfig = new TcpServerConfig()
@@ -172,7 +171,7 @@ internal class Program
             //Logger = new Logger("CL")
         };
         
-        /*
+        
         var serverConfig = new TcpTlsServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),

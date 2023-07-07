@@ -177,7 +177,7 @@ namespace {{Symbol.ContainingNamespace}}
 
                 if (pipe != null)
                 {
-                    methodInvoker.ReturnPipe(message.InvocationId);
+                    await methodInvoker.ReturnPipe(message.InvocationId);
                 }
             }
 

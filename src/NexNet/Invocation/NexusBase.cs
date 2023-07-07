@@ -13,7 +13,7 @@ namespace NexNet.Invocation;
 /// Base hub with common methods used between server and client.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
+public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
@@ -25,25 +25,6 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
 
     // ReSharper disable once StaticMemberInGenericType
     private static readonly ConcurrentBag<BufferWriter<byte>> _bufferWriters = new ConcurrentBag<BufferWriter<byte>>();
-
-    /// <summary>
-    /// Disposes the hub and releases all the resources associated with it.
-    /// </summary>
-    void IDisposable.Dispose()
-    {
-        foreach (var cancellationTokenSource in _cancellableInvocations)
-        {
-            _cancellableInvocations.TryRemove(cancellationTokenSource);
-            cancellationTokenSource.Value.Dispose();
-        }
-
-        // Close any open pipes.
-        foreach (var pipe in InvocationPipes)
-        {
-            InvocationPipes.TryRemove(pipe);
-            pipe.Value.Reader.Complete(new Exception("Session closed"));
-        }
-    }
 
     ValueTask IMethodInvoker<TProxy>.InvokeMethod(InvocationMessage message)
     {
@@ -73,7 +54,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
 
     async ValueTask<NexusPipe> IMethodInvoker<TProxy>.RegisterPipe(int invocationId, CancellationToken? cancellationToken)
     {
-        var pipe = SessionContext.CacheManager.NexusPipeCache.Rent();
+        var pipe = SessionContext.CacheManager.NexusPipeCache.Rent(SessionContext.Session, invocationId);
         if (!InvocationPipes.TryAdd(invocationId, pipe))
         {
             throw new InvalidOperationException(
@@ -92,10 +73,13 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         return pipe;
     }
 
-    void IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
+    async ValueTask IMethodInvoker<TProxy>.ReturnPipe(int invocationId)
     {
-        if (!InvocationPipes.TryRemove(invocationId, out var pipe))
+        if (InvocationPipes.TryRemove(invocationId, out var pipe))
+        {
+            await pipe.ReaderCompleted();
             SessionContext.CacheManager.NexusPipeCache.Return(pipe!);
+        }
     }
 
 
@@ -140,9 +124,23 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>, IDisposable
         return OnConnected(isReconnected);
     }
 
+    /// <summary>
+    /// Disconnects the hub and releases all the resources associated with it.
+    /// </summary>
     internal void Disconnected(DisconnectReason reason)
     {
         OnDisconnected(reason);
+
+        foreach (var cancellationTokenSource in _cancellableInvocations)
+            cancellationTokenSource.Value.Dispose();
+
+        _cancellableInvocations.Clear();
+
+        // Close any open pipes.
+        foreach (var pipe in InvocationPipes)
+            pipe.Value.UpstreamComplete();
+
+        InvocationPipes.Clear();
     }
 
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)

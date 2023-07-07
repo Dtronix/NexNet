@@ -228,7 +228,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     case MessageType.PipeWrite:
                     {
                         if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
-                            await pipe.WriteFromUpstream(bodySlice);
+                            await pipe.UpstreamWrite(bodySlice);
                         break;
                     }
 
@@ -411,7 +411,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 var pipeCompleteMessage = Unsafe.As<PipeCompleteMessage>(message);
                 if (_nexus.InvocationPipes.TryGetValue(pipeCompleteMessage.InvocationId, out var pipe))
-                    pipe.CompleteFromUpstream(pipeCompleteMessage.CompleteFlags);
+                    pipe.UpstreamComplete();
 
                 break;
             }

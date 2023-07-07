@@ -39,5 +39,5 @@ public interface IMethodInvoker<TProxy>
     /// Returns a the pipe associated with the specified invocation.
     /// </summary>
     /// <param name="invocationId">invocation if to return the cancellation token for.</param>
-    void ReturnPipe(int invocationId);
+    ValueTask ReturnPipe(int invocationId);
 }

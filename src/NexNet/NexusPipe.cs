@@ -17,6 +17,11 @@ public class NexusPipe
     //private const int MaxFlushLength = 1024 * 4;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
+    private bool _issuedCompleted = false;
+    private PipeWriterImpl? _pipeWriter = null;
+
+    internal INexusSession? Session;
+    internal int InvocationId;
 
     private CancellationTokenRegistration _cancellationTokenRegistration;
 
@@ -67,6 +72,7 @@ public class NexusPipe
 
     internal void Reset()
     {
+        UpstreamComplete();
         _pipe?.Reset();
         _cancellationTokenRegistration.Dispose();
         // No need to reset anything with the writer as it is use once and dispose.
@@ -76,26 +82,25 @@ public class NexusPipe
         var runArguments = Unsafe.As<RunWriterArguments>(arguments)!;
 
         using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session, runArguments.Logger);
-
+        _pipeWriter = writer;
+        
         await _writer!.Invoke(writer, runArguments.CancellationToken).ConfigureAwait(true);
 
-        await writer.CompleteAsync();
-        await writer.FlushAsync();
+        await writer.CompleteAsync().ConfigureAwait(false);
+        await writer.FlushAsync().ConfigureAwait(false);
+        _pipeWriter = nwull;
     }
 
-    internal void CompleteFromUpstream(PipeCompleteMessage.Flags completeFlags)
+    internal void UpstreamComplete()
     {
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
 
-        if (completeFlags.HasFlag(PipeCompleteMessage.Flags.Complete))
-            _pipe.Writer.Complete();
-
-        if(completeFlags.HasFlag(PipeCompleteMessage.Flags.Canceled))
-            _pipe.Writer.CancelPendingFlush();
+        _pipe.Writer.Complete();
+        _pipe.Reader.Complete();
     }
 
-    internal async ValueTask WriteFromUpstream(ReadOnlySequence<byte> data)
+    internal async ValueTask UpstreamWrite(ReadOnlySequence<byte> data)
     {
         if (_pipe == null)
             throw new InvalidOperationException("Can't write to a non-reading pipe.");
@@ -103,8 +108,32 @@ public class NexusPipe
         data.CopyTo(_pipe.Writer.GetSpan(length));
         _pipe.Writer.Advance(length);
         
-        await _pipe.Writer.FlushAsync(_cancellationTokenRegistration.Token).ConfigureAwait(true);
+        var result = await _pipe.Writer.FlushAsync(_cancellationTokenRegistration.Token).ConfigureAwait(true);
+
+        // Notify that the reader is completed.
+        if (result.IsCompleted)
+            await ReaderCompleted().ConfigureAwait(false);
     }
+
+    internal async ValueTask ReaderCompleted()
+    {
+        if (Session == null || _issuedCompleted)
+            return;
+
+        _issuedCompleted = true;
+        
+        var message = Session.CacheManager.Rent<PipeCompleteMessage>();
+        message.CompleteFlags = PipeCompleteMessage.Flags.Reader;
+        message.InvocationId = InvocationId;
+        await Session.SendMessage(message).ConfigureAwait(true);
+        Session.CacheManager.Return(message);
+    }
+
+    public void DownstreamCompleted()
+    {
+        _writer
+    }
+
 
     internal void RegisterCancellationToken(CancellationToken token)
     {

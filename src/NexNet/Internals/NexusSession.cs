@@ -46,7 +46,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
-
     public long Id { get; }
 
     public SessionManager? SessionManager => _sessionManager;
