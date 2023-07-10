@@ -147,8 +147,8 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
     }
 
     [TestCase(Type.Uds)]
-    //[TestCase(Type.Tcp)]
-    //[TestCase(Type.TcpTls)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
     public async Task ClientWriterPipeCancelsUponClientDisconnection(Type type)
     {
         var tcs = new TaskCompletionSource();

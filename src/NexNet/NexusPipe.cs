@@ -148,8 +148,8 @@ public class NexusPipe
             return;
 
         _closed |= PipeCompleteMessage.Flags.Reader;
-        _pipeWriter!.Complete();
-        _pipeWriter!.CancelPendingFlush();
+        _pipeWriter?.Complete();
+        _pipeWriter?.CancelPendingFlush();
     }
 
 
