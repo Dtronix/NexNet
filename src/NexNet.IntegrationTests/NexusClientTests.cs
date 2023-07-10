@@ -189,8 +189,9 @@ internal partial class NexusClientTests : BaseTests
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
         await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
-        await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
+        await client.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.DisconnectedTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {
