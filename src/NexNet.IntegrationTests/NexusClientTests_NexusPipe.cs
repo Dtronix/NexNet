@@ -154,8 +154,8 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         var tcs = new TaskCompletionSource();
         var data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var (server, sNexus, client, cNexus) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
 
         server.Start();
 

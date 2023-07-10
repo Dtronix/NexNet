@@ -277,6 +277,7 @@ internal partial class NexusClientTests : BaseTests
         var tcs = new TaskCompletionSource();
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientNexus.OnReconnectingEvent = _ =>
