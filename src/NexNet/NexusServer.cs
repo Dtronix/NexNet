@@ -26,6 +26,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
     private ITransportListener? _listener;
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
+    private TaskCompletionSource? _stoppedTcs;
 
     /// <summary>
     /// Cache for all the server nexus contexts.
@@ -34,7 +35,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _serverNexusContextCache;
 
     // ReSharper disable once StaticMemberInGenericType
-    private static int _sessionIdIncrementor;
+    private static int _sessionIdIncrementer;
 
     /// <summary>
     /// True if the server is running, false otherwise.
@@ -45,6 +46,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// Configurations the server us currently using.
     /// </summary>
     public ServerConfig Config => _config;
+
+    /// <summary>
+    /// Task completion source which completes upon the server stopping.
+    /// </summary>
+    public Task? StoppedTcs => _stoppedTcs?.Task;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
@@ -81,6 +87,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public void Start()
     {
         if (_listener != null) throw new InvalidOperationException("Server is already running");
+        _stoppedTcs?.TrySetResult();
+        _stoppedTcs = new TaskCompletionSource();
         _listener = _config.CreateServerListener();
 
         StartOnScheduler(_config.ReceivePipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
@@ -93,7 +101,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     public void Stop()
     {
-
         var listener = _listener;
         _listener = null;
         if (listener != null)
@@ -116,6 +123,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             }
         }
 
+        _stoppedTcs?.TrySetResult();
     }
 
     /// <summary>
@@ -137,6 +145,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Input.Complete();
             }
             catch
@@ -146,6 +155,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Output.Complete();
             }
             catch
@@ -157,6 +167,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         {
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Input.Complete(ex);
             }
             catch
@@ -166,6 +177,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             try
             {
+                // ReSharper disable once MethodHasAsyncOverload
                 arguments.Transport.Output.Complete(ex);
             }
             catch
@@ -175,7 +187,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             //OnClientFaulted(in client, ex);
         }
-        finally
+        /*finally
         {
             if (arguments.Transport is IDisposable d)
             {
@@ -188,7 +200,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                     // ignored
                 }
             }
-        }
+        }*/
     }
 
 
@@ -215,7 +227,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
-                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementor);
+                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
                 // boxed, but only once per client
                 StartOnScheduler(

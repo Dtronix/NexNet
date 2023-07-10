@@ -58,8 +58,6 @@ public partial class ClientNexus
     public Func<ClientNexus, bool, ValueTask>? OnConnectedEvent;
     public Func<ClientNexus, ValueTask>? OnReconnectingEvent;
     public Func<ClientNexus, ValueTask>? OnDisconnectedEvent;
-    public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
-    public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
 
     public void ClientVoid()
     {
@@ -119,7 +117,6 @@ public partial class ClientNexus
 
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        ConnectedTCS?.TrySetResult();
         if (OnConnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -128,7 +125,6 @@ public partial class ClientNexus
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
-        DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -162,8 +158,6 @@ public partial class ServerNexus
     public Action<ServerNexus, byte[]> ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
-    public TaskCompletionSource ConnectedTCS = new TaskCompletionSource();
-    public TaskCompletionSource DisconnectedTCS = new TaskCompletionSource();
 
     public void ServerVoid()
     {
@@ -228,7 +222,6 @@ public partial class ServerNexus
 
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        ConnectedTCS?.TrySetResult();
         if (OnConnectedEvent == null)
             return ValueTask.CompletedTask;
 
@@ -237,10 +230,14 @@ public partial class ServerNexus
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
-        DisconnectedTCS?.TrySetResult();
         if (OnDisconnectedEvent == null)
             return ValueTask.CompletedTask;
 
         return OnDisconnectedEvent.Invoke(this);
+    }
+
+    protected override ValueTask<IIdentity?> OnAuthenticate(byte[]? authenticationToken)
+    {
+        return OnAuthenticateEvent!.Invoke(this);
     }
 }

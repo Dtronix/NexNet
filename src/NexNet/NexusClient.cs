@@ -23,6 +23,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
     private readonly TClientNexus _nexus;
     private NexusSession<TClientNexus, TServerProxy>? _session;
+    private TaskCompletionSource? _disconnectedTaskCompletionSource;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
 
@@ -40,6 +41,17 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
     /// Configurations used for this session.  Should not be changed once connection has been established.
     /// </summary>
     public ClientConfig Config => _config;
+
+    /// <summary>
+    /// Task which completes upon the completed connection and optional authentication of the client.
+    /// Null when the client is has not started connection or after disconnection.
+    /// </summary>
+    public Task? ReadyTask { get; private set; }
+
+    /// <summary>
+    /// Task which completes upon the disconnection of the client.
+    /// </summary>
+    public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
 
     /// <summary>
     /// Creates a NexNet client for communication with a matching NexNet server.
@@ -68,6 +80,14 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
 
+        // Set the ready task completion source now and get the task since the ConnectTransport
+        // call below can/will await and cause any usages of the ReadyTask used outside this function call
+        // to be null.
+        var readyTaskCompletionSource = new TaskCompletionSource();
+        var disconnectedTaskCompletionSource = new TaskCompletionSource();
+        ReadyTask = readyTaskCompletionSource.Task;
+        _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
+
         var client = await _config.ConnectTransport().ConfigureAwait(false);
 
         _config.InternalOnClientConnect?.Invoke();
@@ -93,7 +113,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
 
         await _session.StartAsClient().ConfigureAwait(false);
     }
-
 
     /// <summary>
     /// Disconnects from the server.

@@ -391,12 +391,15 @@ internal partial class MethodParameterMeta
 
     public bool IsSerialized { get; }
 
+    public string ParamTypeSource { get; }
+
     public MethodParameterMeta(IParameterSymbol symbol, int index)
     {
         this.Index = index;
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
+        this.ParamTypeSource = symbol.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
@@ -414,6 +417,7 @@ internal partial class MethodMeta
 
     public bool IsReturnVoid { get; }
     public string? ReturnType { get; }
+    public string ReturnTypeSource { get; }
     public bool IsAsync { get; }
     public int ReturnArity { get; }
 
@@ -470,8 +474,12 @@ internal partial class MethodMeta
         this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
 
         if (ReturnArity > 0)
+        {
             this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
+            this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        }
     }
+
 
 
     public int GetHash()
@@ -499,6 +507,59 @@ internal partial class MethodMeta
         }
 
         return hash.ToHashCode();
+    }
+
+    public override string ToString()
+    {
+        var sb = SymbolUtilities.GetStringBuilder();
+
+        if (IsReturnVoid)
+        {
+            sb.Append("void");
+        }
+        else if(IsAsync)
+        {
+            sb.Append("ValueTask");
+
+            if (this.ReturnArity > 0)
+            {
+                sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+            }
+        }
+
+        sb.Append(" ");
+
+        sb.Append(this.Name).Append("(");
+
+        var paramsLength = this.ParametersLessCancellation.Length;
+        if (paramsLength > 0)
+        {
+            for (int i = 0; i < paramsLength; i++)
+            {
+                sb.Append(ParametersLessCancellation[i].ParamTypeSource);
+                sb.Append(" ");
+                sb.Append(ParametersLessCancellation[i].Name);
+
+                if (i + 1 < paramsLength)
+                {
+                    sb.Append(", ");
+                }
+            }
+        }
+
+        if (this.CancellationTokenParameter != null)
+        {
+            sb.Append("CancellationToken ").Append(this.CancellationTokenParameter.Name);
+        }
+
+
+        sb.Append(")");
+
+        var stringMethod = sb.ToString();
+
+        SymbolUtilities.ReturnStringBuilder(sb);
+
+        return stringMethod;
     }
 
     public Location GetLocation(TypeDeclarationSyntax fallback)

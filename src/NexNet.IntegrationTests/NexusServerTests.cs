@@ -69,8 +69,7 @@ internal partial class NexusServerTests : BaseTests
             server.Start();
             await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
-            await clientNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientNexus.ConnectedTCS = new TaskCompletionSource();
+            await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
             server.Stop();
 
@@ -81,5 +80,24 @@ internal partial class NexusServerTests : BaseTests
             // Wait for the client to process the disconnect.
 
         }
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task StopsAndReleasesStoppedTcs(Type type)
+    {
+        var (server, _, client, clientHub) = CreateServerClient(
+            CreateServerConfig(type, false),
+            CreateClientConfig(type, false));
+
+        
+        Assert.IsNull(server.StoppedTcs);
+        server.Start();
+        Assert.IsFalse(server.StoppedTcs!.IsCompleted);
+
+        server.Stop();
+
+        await server.StoppedTcs!.WaitAsync(TimeSpan.FromSeconds(1));
     }
 }

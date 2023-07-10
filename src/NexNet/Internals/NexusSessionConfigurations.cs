@@ -1,4 +1,5 @@
-﻿using NexNet.Cache;
+﻿using System.Threading.Tasks;
+using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Transports;
 
