@@ -56,9 +56,12 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
+
+        var clientConfig = CreateClientConfig(type, true);
+        clientConfig.ReconnectionPolicy = null;
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type, true),
+            clientConfig);
 
 
         for (int i = 0; i < 3; i++)
@@ -71,8 +74,10 @@ internal partial class NexusServerTests : BaseTests
 
             server.Stop();
 
-            await Task.Delay(100);
+            await clientNexus.DisconnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            clientNexus.DisconnectedTCS = new TaskCompletionSource();
 
+            await Task.Delay(100);
             // Wait for the client to process the disconnect.
 
         }

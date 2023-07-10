@@ -209,7 +209,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
-            await SendHeader((MessageType)reason).ConfigureAwait(false);
+            await SendHeaderCore((MessageType)reason, false).ConfigureAwait(false);
 
             if (_config.DisconnectDelay > 0)
             {

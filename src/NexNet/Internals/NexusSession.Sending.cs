@@ -24,7 +24,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
-        if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
+        if (State != ConnectionState.Connected)
             return;
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
@@ -73,7 +73,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
-        if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
+        if (State != ConnectionState.Connected)
             return;
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
@@ -123,7 +123,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
 
-    public async ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
+    public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
+    {
+        return SendHeaderCore(type, false, cancellationToken);
+    }
+
+    private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
     {
         // | MessageType |
         // |-------------|
@@ -132,7 +137,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
-        if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
+        //if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
+        if (State != ConnectionState.Connected && !force)
             return;
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);

@@ -75,7 +75,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         var disconnect = DisconnectReason.None;
         var issueDisconnectMessage = true;
         var breakLoop = false;
-        while (true)
+        while (State == ConnectionState.Connected)
         {
             if (_recMessageHeader.IsHeaderComplete == false)
             {
