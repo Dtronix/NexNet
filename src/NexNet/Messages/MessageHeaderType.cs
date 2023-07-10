@@ -69,6 +69,11 @@ public enum MessageType : byte
     /// </summary>
     PipeWrite = 50,
 
+    /// <summary>
+    /// Header for data sent to a pipe.
+    /// </summary>
+    DuplexPipeWrite = 51,
+
     // Messages
 
     /// <summary>
@@ -106,4 +111,15 @@ public enum MessageType : byte
     /// Header for <see cref="PipeCompleteMessage"/>.
     /// </summary>
     PipeComplete = 121,
+
+    // Pipe Channels
+    /// <summary>   
+    /// Header for <see cref="PipeReadyMessage"/>
+    /// </summary>   
+    DuplexPipeReady = 130,
+
+    /// <summary>
+    /// Header for <see cref="PipeCompleteMessage"/>.
+    /// </summary>
+    DuplexPipeUpdateState = 131,
 }

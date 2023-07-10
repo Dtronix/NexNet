@@ -127,13 +127,20 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                         case MessageType.InvocationResult:
                         case MessageType.PipeComplete:
                         case MessageType.PipeReady:
+                        case MessageType.DuplexPipeReady:
+                        case MessageType.DuplexPipeUpdateState:
                             _config.Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
                         case MessageType.PipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(int), true);
-                            _config.Logger?.LogTrace($"PipeChannel received data.");
+                            _config.Logger?.LogTrace($"NexusPipe received data.");
+                            break;
+
+                        case MessageType.DuplexPipeWrite:
+                            _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
+                            _config.Logger?.LogTrace($"DuplexNexusPipe received data.");
                             break;
 
                         default:
@@ -186,6 +193,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
                             break;
 
+                        case MessageType.DuplexPipeWrite:
+                            _recMessageHeader.DuplexStreamId = sequence.Slice(position, 1).FirstSpan[0];
+                            position++;
+
+                            _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexStreamId} for {_recMessageHeader.Type}.");
+                            break;
                         default:
                             _config.Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
                             // If we are outside of the acceptable messages, disconnect the connection.
@@ -227,6 +240,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                     case MessageType.PipeWrite:
                     {
+                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
+                            await pipe.UpstreamWrite(bodySlice);
+                        break;
+                    }
+
+                    case MessageType.DuplexPipeWrite:
+                    {
+                        _pipeManager.BufferIncomingData()
                         if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
                             await pipe.UpstreamWrite(bodySlice);
                         break;

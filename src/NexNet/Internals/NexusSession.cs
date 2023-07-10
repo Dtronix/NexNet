@@ -42,12 +42,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
 
     private readonly SemaphoreSlim _invocationSemaphore;
-    private readonly bool _isServer;
     private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
+
+    private readonly NexusPipeManager _pipeManager;
 
     public long Id { get; }
 
@@ -72,6 +73,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public ConnectionState State { get; private set; }
 
     public ConfigBase Config { get; }
+    public bool IsServer { get; }
 
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
@@ -85,11 +87,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
         _cacheManager = configurations.Cache;
         _sessionManager = configurations.SessionManager;
-        _isServer = configurations.IsServer;
+        IsServer = configurations.IsServer;
         _nexus = configurations.Nexus;
         _nexus.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
+
+        _pipeManager = new NexusPipeManager(this);
+
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
         SessionStore = new SessionStore();
@@ -148,7 +153,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private async ValueTask<bool> TryReconnectAsClient()
     {
         _config.Logger?.LogTrace("NexNetSession.TryReconnectAsClient()");
-        if (_isServer)
+        if (IsServer)
             return false;
 
         var clientConfig = Unsafe.As<ClientConfig>(_config);
@@ -254,7 +259,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client
-        if (_isServer == false
+        if (IsServer == false
             && reason == DisconnectReason.SocketError
             || reason == DisconnectReason.Timeout
             || reason == DisconnectReason.ServerRestarting)

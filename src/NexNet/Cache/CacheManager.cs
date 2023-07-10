@@ -26,26 +26,32 @@ internal class CacheManager
 
     public CacheManager()
     {
-        _cachedMessageDeserializers[((int)ClientGreetingMessage.Type - 100)] =
+        // This is an integer modifier to reduce the maximum array needed.
+        const int modifier = 100;
+
+        _cachedMessageDeserializers[((int)ClientGreetingMessage.Type - modifier)] =
             new CachedDeserializer<ClientGreetingMessage>();
 
-        _cachedMessageDeserializers[((int)ServerGreetingMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)ServerGreetingMessage.Type - modifier)] =
             new CachedDeserializer<ServerGreetingMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)InvocationMessage.Type - modifier)] =
             new CachedDeserializer<InvocationMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationCancellationMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)InvocationCancellationMessage.Type - modifier)] =
             new CachedDeserializer<InvocationCancellationMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationResultMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)InvocationResultMessage.Type - modifier)] =
             new CachedDeserializer<InvocationResultMessage>();
 
-        _cachedMessageDeserializers[((int)PipeReadyMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)PipeReadyMessage.Type - modifier)] =
             new CachedDeserializer<PipeReadyMessage>();
 
-        _cachedMessageDeserializers[((int)PipeCompleteMessage.Type - 100)] =
+        _cachedMessageDeserializers[((int)PipeCompleteMessage.Type - modifier)] =
             new CachedDeserializer<PipeCompleteMessage>();
+
+        _cachedMessageDeserializers[((int)DuplexPipeUpdateStateMessage.Type - modifier)] =
+            new CachedDeserializer<DuplexPipeUpdateStateMessage>();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -54,24 +60,6 @@ internal class CacheManager
     {
         // Offset the messages -100 for a smaller array.
         return Unsafe.As<CachedDeserializer<T>>(_cachedMessageDeserializers[((int)T.Type) - 100])!;
-
-        /*
-        // If the cache is null, then we need to create a cache.
-        if (cache == null)
-        {
-            cache = new CachedDeserializer<T>();
-
-            // Switch the values in teh array if it is null.
-            var originalValue = Interlocked.CompareExchange(ref _cachedMessageDeserializers[typeIndex], cache, null);
-            
-            // If the original value was not null, then a cache was already assigned to the array
-            // and we need to return that one instead of the newly created cache.
-            if(originalValue != null)
-                cache = originalValue;
-
-        }
-
-        return Unsafe.As<CachedDeserializer<T>>(cache)!;*/
     }
 
     public ICachedDeserializer Cache(MessageType type)

@@ -34,6 +34,11 @@ internal struct MessageHeader
     /// </summary>
     public int InvocationId = 0;
 
+    /// <summary>
+    /// Invocation Id used for pipes.
+    /// </summary>
+    public ushort DuplexStreamId = 0;
+
     public void SetTotalHeaderSize(int postHeaderSize, bool hasBody)
     {
         PostHeaderLength = postHeaderSize;
@@ -63,5 +68,6 @@ internal struct MessageHeader
         TotalHeaderLength= -1;
         IsHeaderComplete = false;
         InvocationId = 0;
+        DuplexStreamId = 0;
     }
 }
