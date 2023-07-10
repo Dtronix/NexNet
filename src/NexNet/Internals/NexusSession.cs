@@ -95,7 +95,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _pipeManager = new NexusPipeManager(this);
 
-
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
         SessionStore = new SessionStore();
         _invocationSemaphore = new SemaphoreSlim(configurations.Configs.MaxConcurrentConnectionInvocations,

@@ -35,14 +35,14 @@ internal class NexusPipeManager
         if (!_activePipes.TryAdd(id, pipe))
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
 
-        await pipe.PipeReady(_session, id)).ConfigureAwait(false);
+        await pipe.PipeReady(_session, id).ConfigureAwait(false);
 
         return pipe;
     }
 
     public async ValueTask<NexusDuplexPipe> DeregisterPipe(NexusDuplexPipe pipe)
     {
-        pipe.UpstreamUpdateState(_session.IsServer
+        pipe.UpdateState(_session.IsServer
             ? NexusDuplexPipeState.ServerReaderComplete | NexusDuplexPipeState.ServerWriterComplete
             : NexusDuplexPipeState.ClientReaderComplete | NexusDuplexPipeState.ClientWriterComplete);
 
@@ -50,9 +50,8 @@ internal class NexusPipeManager
 
         if (!_activePipes.TryRemove(pipe.Id, out _))
             throw new Exception("Could not remove NexusDuplexPipe to the list of current pipes.");
-        
 
-        _session.CacheManager.Return(message);
+        _pipeCache.Add(pipe);
 
         return pipe;
     }

@@ -98,7 +98,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             _recMessageHeader.Reset();
 
                             // If we are the server, send back a ping message to help the client know if it is still connected.
-                            if (_isServer)
+                            if (IsServer)
                                 await SendHeader(MessageType.Ping).ConfigureAwait(false);
 
                             continue;
@@ -194,7 +194,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             break;
 
                         case MessageType.DuplexPipeWrite:
-                            _recMessageHeader.DuplexStreamId = sequence.Slice(position, 1).FirstSpan[0];
+                            if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexStreamId))
+                            {
+                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
+                                disconnect = DisconnectReason.ProtocolError;
+                                break;
+                            }
                             position++;
 
                             _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexStreamId} for {_recMessageHeader.Type}.");
@@ -318,7 +323,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 var cGreeting = Unsafe.As<ClientGreetingMessage>(message);
                 // Verify that this is the server
-                if (!_isServer)
+                if (!IsServer)
                     return DisconnectReason.ProtocolError;
 
                 // Verify what the greeting method hashes matches this nexus's and proxy's
@@ -369,7 +374,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             case MessageType.ServerGreeting:
             {
                 // Verify that this is the client
-                if (_isServer)
+                if (IsServer)
                     return DisconnectReason.ProtocolError;
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
