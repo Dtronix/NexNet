@@ -21,8 +21,6 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        server.Start();
-
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Reader.ReadAsync();
@@ -30,14 +28,16 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             tcs.SetResult();
         };
 
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
-
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
             await writer.WriteAsync(data, token);
             await Task.Delay(10000);
         });
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+
         await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe);
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -54,8 +54,6 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        server.Start();
-
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Reader.ReadAsync();
@@ -63,6 +61,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             tcs.SetResult();
         };
 
+        server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
         await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
@@ -85,22 +84,20 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        server.Start();
-
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Reader.ReadAsync();
             Assert.IsTrue(result.IsCompleted);
             tcs.SetResult();
         };
-
-
+        
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
             await client.DisconnectAsync();
             await Task.Delay(10000);
         });
 
+        server.Start();
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
         await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
@@ -123,16 +120,11 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         var (server, sNexus, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
-
-        server.Start();
-
+        
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Reader.ReadAsync();
         };
-
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -145,6 +137,11 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             Assert.IsTrue(result.Value.IsCompleted);
             tcs.SetResult();
         });
+
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+
         await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe);
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
@@ -161,15 +158,11 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        server.Start();
-
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
             
             await Task.Delay(10000);
         };
-
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -186,11 +179,10 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             Assert.IsTrue(result.Value.IsCompleted);
             tcs.SetResult();
         });
+        server.Start();
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
-        //await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
-
-        
-        
         await AssertThrows<TaskCanceledException>(async () =>
         {
             await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe).AsTask().WaitAsync(TimeSpan.FromSeconds(1));
