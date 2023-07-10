@@ -57,10 +57,10 @@ internal partial class NexusServerTests : BaseTests
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         clientConfig.ReconnectionPolicy = null;
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type, false),
             clientConfig);
 
 
