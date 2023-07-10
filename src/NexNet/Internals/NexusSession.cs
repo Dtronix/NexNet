@@ -254,8 +254,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             || reason == DisconnectReason.Timeout
             || reason == DisconnectReason.ServerRestarting)
         {
-            // If we reconnect, stop the disconnection process.
-            if (await TryReconnectAsClient().ConfigureAwait(false))
+            var clientConfig = Unsafe.As<ClientConfig>(_config);
+
+            // If we have a reconnection policy and succeed in reconnecting, stop the disconnection process.
+            if (clientConfig.ReconnectionPolicy != null
+                && await TryReconnectAsClient().ConfigureAwait(false))
                 return;
         }
 

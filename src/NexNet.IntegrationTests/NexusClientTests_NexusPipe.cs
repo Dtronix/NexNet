@@ -161,6 +161,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
 
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
+            await Task.Delay(10);
             sNexus.Context.Disconnect();
             await Task.Delay(10000);
         };
@@ -179,7 +180,6 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
                     break;
             }
 
-            Console.WriteLine(result.Value.IsCanceled);
             Assert.IsTrue(result.Value.IsCompleted);
             tcs.SetResult();
         });
