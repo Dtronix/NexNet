@@ -161,8 +161,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
 
         cNexus.ClientTaskValueWithPipeEvent = async (nexus, pipe) =>
         {
-            await Task.Delay(10);
-            sNexus.Context.Disconnect();
+            
             await Task.Delay(10000);
         };
 
@@ -171,6 +170,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
+            sNexus.Context.Disconnect();
             FlushResult? result = null;
             while (result == null || !result.Value.IsCompleted)
             {
