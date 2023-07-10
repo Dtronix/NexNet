@@ -3,23 +3,23 @@
 namespace NexNet;
 
 /// <summary>
-/// Mode of the hub.
+/// Mode of the nexus.
 /// </summary>
 public enum NexusType
 {
     /// <summary>
-    /// Hub is operating in client mode.
+    /// Nexus is operating in client mode.
     /// </summary>
     Client = 0,
 
     /// <summary>
-    /// Hub is operating in server mode.
+    /// Nexus is operating in server mode.
     /// </summary>
     Server = 1
 }
 
 /// <summary>
-/// Attribute to allow the generator to create the hub and proxy implementation.
+/// Attribute to allow the generator to create the nexus and proxy implementation.
 /// </summary>
 /// <typeparam name="TNexusInterface">Nexus interface.</typeparam>
 /// <typeparam name="TProxyInterface">Proxy interface</typeparam>

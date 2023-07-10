@@ -13,7 +13,7 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
-public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
+public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 
@@ -100,7 +100,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : IAsyncDisposable
             SessionManager = null,
             IsServer = false,
             Id = 0,
-            Nexus = _nexus
+            Nexus = _nexus,
+            ReadyTaskCompletionSource = readyTaskCompletionSource,
+            DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource
         };
 
         _session = new NexusSession<TClientNexus, TServerProxy>(config)

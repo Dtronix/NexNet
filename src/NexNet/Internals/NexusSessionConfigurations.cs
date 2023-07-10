@@ -22,4 +22,7 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     public required long Id { get; init; }
 
     public required TNexus Nexus { get; init; }
+
+    public TaskCompletionSource? ReadyTaskCompletionSource { get; init; }
+    public TaskCompletionSource? DisconnectedTaskCompletionSource { get; init; }
 }

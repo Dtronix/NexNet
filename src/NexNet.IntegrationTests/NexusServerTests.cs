@@ -58,7 +58,6 @@ internal partial class NexusServerTests : BaseTests
     {
 
         var clientConfig = CreateClientConfig(type, false);
-        clientConfig.ReconnectionPolicy = null;
         var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type, false),
             clientConfig);
@@ -73,10 +72,8 @@ internal partial class NexusServerTests : BaseTests
 
             server.Stop();
 
-            await clientNexus.DisconnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
-            clientNexus.DisconnectedTCS = new TaskCompletionSource();
+            await client.DisconnectedTask.WaitAsync(TimeSpan.FromSeconds(1));
 
-            await Task.Delay(100);
             // Wait for the client to process the disconnect.
 
         }

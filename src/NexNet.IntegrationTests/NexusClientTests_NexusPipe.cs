@@ -31,7 +31,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         };
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await sNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -64,7 +64,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         };
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await sNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -82,8 +82,8 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         var tcs = new TaskCompletionSource();
         var data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var (server, sNexus, client, cNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
 
         server.Start();
 
@@ -94,18 +94,23 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             tcs.SetResult();
         };
 
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await sNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
-            client.DisconnectAsync();
+            await client.DisconnectAsync();
             await Task.Delay(10000);
         });
 
-        Assert.ThrowsAsync<TaskCanceledException>(async() =>await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe));
+        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(100));
+        await AssertThrows<TaskCanceledException>(async () =>
+        {
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe).AsTask()
+                .WaitAsync(TimeSpan.FromSeconds(1));
+        });
+
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [TestCase(Type.Uds)]
@@ -127,7 +132,7 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         };
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await sNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -153,8 +158,8 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         var tcs = new TaskCompletionSource();
         var data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var (server, sNexus, client, cNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
 
         server.Start();
 
@@ -165,7 +170,6 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         };
 
         await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await sNexus.ConnectedTCS.Task.WaitAsync(TimeSpan.FromSeconds(1));
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
@@ -183,14 +187,15 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
             tcs.SetResult();
         });
 
-        Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        //await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+
+        
+        
+        await AssertThrows<TaskCanceledException>(async () =>
         {
             await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe).AsTask().WaitAsync(TimeSpan.FromSeconds(1));
         });
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
-
-
-
 }

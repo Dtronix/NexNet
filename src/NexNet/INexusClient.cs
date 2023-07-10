@@ -7,7 +7,7 @@ namespace NexNet;
 /// <summary>
 /// Main interface for NexNetClient
 /// </summary>
-public interface INexNetClient : IAsyncDisposable
+public interface INexusClient : IAsyncDisposable
 {
     /// <summary>
     /// Current state of the connection

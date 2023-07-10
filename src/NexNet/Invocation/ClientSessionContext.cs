@@ -4,7 +4,7 @@ namespace NexNet.Invocation;
 
 
 /// <summary>
-/// Base context for client hubs to use.
+/// Base context for client nexuses to use.
 /// </summary>
 /// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
 public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>

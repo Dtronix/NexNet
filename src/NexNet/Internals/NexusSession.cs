@@ -46,6 +46,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
+    private readonly TaskCompletionSource? _readyTaskCompletionSource;
+    private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
+
     public long Id { get; }
 
     public SessionManager? SessionManager => _sessionManager;
@@ -78,6 +81,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
         Config = _config = configurations.Configs;
+        _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
+        _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
         _cacheManager = configurations.Cache;
         _sessionManager = configurations.SessionManager;
         _isServer = configurations.IsServer;
@@ -272,6 +277,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _sessionManager?.UnregisterSession(this);
         ((IDisposable)SessionStore).Dispose();
         _invocationTaskArgumentsPool.Clear();
+
+        _disconnectedTaskCompletionSource?.TrySetResult();
+
+        _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in DisconnectCore");
+        _readyTaskCompletionSource?.TrySetResult();
     }
 
     private class InvocationTaskArguments

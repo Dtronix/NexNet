@@ -156,12 +156,12 @@ public class BaseTests
     }
 
     protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
-        CreateServer(ServerConfig sConfig, Action<ServerNexus>? hubCreated)
+        CreateServer(ServerConfig sConfig, Action<ServerNexus>? nexusCreated)
     {
         var server = ServerNexus.CreateServer(sConfig, () =>
         {
             var nexus = new ServerNexus();
-            hubCreated?.Invoke(nexus);
+            nexusCreated?.Invoke(nexus);
             return nexus;
         });
         return server;
@@ -183,5 +183,21 @@ public class BaseTests
         int port = ((IPEndPoint)l.LocalEndpoint).Port;
         l.Stop();
         return port;
+    }
+
+    protected async Task AssertThrows<T>(Func<Task> task)
+        where T : Exception
+    {
+        Exception? thrown = null;
+        try
+        {
+            await task.Invoke();
+        }
+        catch (Exception e)
+        {
+            thrown = e;
+        }
+
+        Assert.AreEqual(typeof(T), thrown?.GetType());
     }
 }

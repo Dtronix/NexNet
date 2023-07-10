@@ -159,7 +159,7 @@ namespace {{Symbol.ContainingNamespace}}
             sb.Append($$"""
                     case {{NexusInterface.Methods[i].Id}}:
                     {
-                        // {{HubInterface.Methods[i].ToString()}}
+                        // {{NexusInterface.Methods[i].ToString()}}
 
 """);
             NexusInterface.Methods[i].EmitNexusInvocation(sb, this.ProxyInterface, this);

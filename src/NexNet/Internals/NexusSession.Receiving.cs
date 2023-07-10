@@ -338,6 +338,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 _sessionManager!.RegisterSession(this);
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
+
+                _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in server.");
+                _readyTaskCompletionSource?.TrySetResult();
+
                 break;
             }
 
@@ -348,6 +352,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     return DisconnectReason.ProtocolError;
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
+
+                _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in client.");
+                _readyTaskCompletionSource?.TrySetResult();
                 break;
 
             }

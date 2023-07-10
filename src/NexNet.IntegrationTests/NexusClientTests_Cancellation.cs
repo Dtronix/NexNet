@@ -135,7 +135,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(200).Token));
 
-        Assert.ThrowsAsync<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
+        await AssertThrows<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
 

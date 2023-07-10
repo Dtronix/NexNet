@@ -158,6 +158,7 @@ public partial class ServerNexus
     public Action<ServerNexus, byte[]> ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
+    public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
 
     public void ServerVoid()
     {

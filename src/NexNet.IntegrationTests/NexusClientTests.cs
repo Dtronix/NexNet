@@ -56,7 +56,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public void ClientFailsGracefullyWithNoServer(Type type)
+    public async Task ClientFailsGracefullyWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
         var (_, _, client, _) = CreateServerClient(
@@ -65,13 +65,13 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.ConnectionTimeout = 100;
 
-        Assert.ThrowsAsync<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        await AssertThrows<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public void ClientTimesOutWithNoServer(Type type)
+    public async Task ClientTimesOutWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
         var (_, _, client, _) = CreateServerClient(
@@ -80,7 +80,7 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.ConnectionTimeout = 50;
 
-        Assert.ThrowsAsync<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        await AssertThrows<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
     }
 
     [TestCase(Type.Uds)]
@@ -107,13 +107,13 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public void ConnectTimesOutWithNoServer(Type type)
+    public async Task ConnectTimesOutWithNoServer(Type type)
     {
         var (_, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        Assert.ThrowsAsync<SocketException>(async () => await client.ConnectAsync());
+        await AssertThrows<SocketException>(async () => await client.ConnectAsync());
     }
 
     [TestCase(Type.Uds)]

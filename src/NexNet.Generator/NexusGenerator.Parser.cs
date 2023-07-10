@@ -531,14 +531,14 @@ internal partial class MethodMeta
 
         sb.Append(this.Name).Append("(");
 
-        var paramsLength = this.ParametersLessCancellation.Length;
+        var paramsLength = this.Parameters.Length;
         if (paramsLength > 0)
         {
             for (int i = 0; i < paramsLength; i++)
             {
-                sb.Append(ParametersLessCancellation[i].ParamTypeSource);
+                sb.Append(Parameters[i].ParamTypeSource);
                 sb.Append(" ");
-                sb.Append(ParametersLessCancellation[i].Name);
+                sb.Append(Parameters[i].Name);
 
                 if (i + 1 < paramsLength)
                 {
@@ -546,13 +546,7 @@ internal partial class MethodMeta
                 }
             }
         }
-
-        if (this.CancellationTokenParameter != null)
-        {
-            sb.Append("CancellationToken ").Append(this.CancellationTokenParameter.Name);
-        }
-
-
+        
         sb.Append(")");
 
         var stringMethod = sb.ToString();
