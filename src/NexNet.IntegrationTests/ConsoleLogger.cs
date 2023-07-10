@@ -1,6 +1,6 @@
 ﻿namespace NexNet.IntegrationTests;
 
-public class ConsoleLogger : INexNetLogger
+public class ConsoleLogger : INexusLogger
 {
     private readonly string _prefix;
     private DateTime _startTime = DateTime.Now;
@@ -9,7 +9,7 @@ public class ConsoleLogger : INexNetLogger
     {
         _prefix = prefix;
     }
-    public void Log(INexNetLogger.LogLevel logLevel, Exception? exception, string message)
+    public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
         Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix}: {message} {exception}");
     }

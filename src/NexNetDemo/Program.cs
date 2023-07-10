@@ -1,4 +1,6 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.IO.Pipelines;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Reflection.Metadata.Ecma335;
@@ -6,231 +8,136 @@ using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.Extensions.Logging;
 using NexNet;
 using NexNet.Transports;
 
 namespace NexNetDemo;
 
-partial interface IClientHub
+partial interface IClientNexus
 {
-    void Update();
-    ValueTask<int> GetTask();
-    ValueTask<int> GetTaskAgain();
 }
 
-partial interface IServerHub
+partial interface IServerNexus
 {
-    void ServerVoid();
-
-    void ServerVoidWithParam(int id);
-
-    ValueTask ServerTask();
-    ValueTask ServerTaskWithParam(int data);
-    ValueTask<int> ServerTaskValue();
-    ValueTask<int> ServerTaskValueWithParam(int data);
-    ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken);
-    ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
-    ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
-    ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    ValueTask ServerTaskWithParam(int id, NexusPipe pipe, string myValue);
 }
 
-
-
-
-
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
-partial class ClientHub
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus
 {
-    private int i = 0;
-    public void Update()
-    {
-        Console.WriteLine("ClientHub Update called and invoked properly.");
-    }
-
-    public ValueTask<int> GetTask()
-    {
-        //Console.WriteLine(i++);
-        return ValueTask.FromResult(i);
-    }
-    public ValueTask<int> GetTaskAgain()
-    {
-        Console.WriteLine("GetTaskAgain");
-        return ValueTask.FromResult(Interlocked.Increment(ref i));
-    }
-
-    protected override async ValueTask OnConnected(bool isReconnected)
-    {
-        for (int j = 0; j < 1000000; j++)
-        {
-  
-            switch (Random.Shared.Next(0, 5))
-            {
-                case 0:
-                    //Console.WriteLine("ServerVoid()");
-                    Context.Proxy.ServerVoid();
-                    break;
-                case 1:
-                    //Console.WriteLine("ServerVoidWithParam(10)");
-                    Context.Proxy.ServerVoidWithParam(10);
-                    break;
-                case 2:
-                    //Console.WriteLine("ServerTaskWithParam(20)");
-                    await Context.Proxy.ServerTaskWithParam(20);
-                    break;
-                case 3:
-                    //Console.WriteLine("ServerTaskValue()");
-                    await Context.Proxy.ServerTaskValue();
-                    break;    
-                case 4:
-                    // Problem
-                    //Console.WriteLine("ServerTaskValueWithParam(30)");
-                    await Context.Proxy.ServerTaskValueWithParam(30);
-                    break;
-                case 5:
-                    //Console.WriteLine("ServerTaskWithCancellation(CancellationToken.None)");
-                    await Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
-                    break;
-                case 6:
-                    //Console.WriteLine("ServerTaskWithValueAndCancellation(40, CancellationToken.None)");
-                    await Context.Proxy.ServerTaskWithValueAndCancellation(40, CancellationToken.None);
-                    break;
-                case 7:
-                    //Console.WriteLine("ServerTaskValueWithCancellation(CancellationToken.None)");
-                    await Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-                    break;
-                case 8:
-                    //Console.WriteLine("ServerTaskValueWithValueAndCancellation(40, CancellationToken.None)");
-                    await Context.Proxy.ServerTaskValueWithValueAndCancellation(40, CancellationToken.None);
-                    break;
-            }
-
-        }
-
-    }
-
-}
-
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
-partial class ServerHub : IServerHub
-{
-    private int i = 0;
-    public void ServerVoid()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + ") ServerVoid()");
-    }
-
-    public void ServerVoidWithParam(int id)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerVoidWithParam({id})");
-    }
-
-    public ValueTask ServerTask()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTask()");
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask ServerTaskWithParam(int data)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithParam({data})");
-        return ValueTask.CompletedTask;
-    }
-
-    public ValueTask<int> ServerTaskValue()
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskValue()");
-        return ValueTask.FromResult(i);
-    }
-
-    public ValueTask<int> ServerTaskValueWithParam(int data)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskValueWithParam({data})");
-        return ValueTask.FromResult(i);
-    }
-
-    public async ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-    }
-
-    public async ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-    }
-
-    public async ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithCancellation(CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-
-        return i2;
-    }
-
-    public async ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        Console.WriteLine(i2 + $") ServerTaskWithValueAndCancellation({value}, CancellationToken)");
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-        return i2;
-    }
-
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        return ValueTask.CompletedTask;
+        var data = new byte[1 << 15];
+        var number = 0;
+        var direction = 1;
+        for (int i = 0; i < data.Length; i++)
+        {
+            var delta = number += direction;
+            if (direction > 0 && delta == 256)
+            {
+                direction = -1;
+            }
+            else if(direction < 0 && delta == 0)
+            {
+                direction = -1;
+            }
+            data[i] = (byte)delta;
+        }
+
+        Task.Run(async () =>
+        {
+            var pipe = NexusPipe.Create(async (writer, ct) =>
+            {
+                Memory<byte> randomData = data;
+                var length = 1024 * 32;
+
+                var loopNumber = 0;
+                while (true)
+                {
+                    //var size = Random.Shared.Next(1, 1024 * 32);
+                    randomData.Slice(0, length).CopyTo(writer.GetMemory(length));
+                    writer.Advance(length);
+                    await writer.FlushAsync(ct);
+                    //await Task.Delay(10);
+
+                    /*if (loopNumber++ == 200)
+                    {
+                        return;
+                    }*/
+                    //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
+                }
+            });
+
+            await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
+        });
+
+        return base.OnConnected(isReconnected);
     }
 }
 
-class LoggerAdapter : INexNetLogger
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus
 {
-    private readonly ILogger _logger;
+    private long _readData = 0;
 
-    public LoggerAdapter(ILogger logger)
+    double ApproxRollingAverage(double avg, double new_sample)
     {
-        _logger = logger;
+
+        avg -= avg / 100;
+        avg += new_sample / 100;
+
+        return avg;
     }
-    public void Log(INexNetLogger.LogLevel logLevel, Exception? exception, string message)
+    public async ValueTask ServerTaskWithParam(int id, NexusPipe pipe, string myValue)
     {
-        _logger.Log((LogLevel)logLevel, exception, message);
+        long sentBytes = 0;
+        int loopNumber = 0;
+        double average = 0;
+        var sw = new Stopwatch();
+        while (true)
+        {
+            sw.Start();
+            var data = await pipe.Reader.ReadAsync();
+
+
+            if (data.IsCanceled || data.IsCompleted)
+                return;
+
+            pipe.Reader.AdvanceTo(data.Buffer.End);
+
+            _readData += data.Buffer.Length;
+
+            //Console.Write($"{sentBytes:D} Read from Pipe");
+            //Console.SetCursorPosition(0, 0);
+
+            sentBytes += data.Buffer.Length;
+            if (loopNumber++ == 800)
+            {
+                var ellapsedms = sw.ElapsedMilliseconds;
+                var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
+
+                average = ApproxRollingAverage(average, value);
+                Console.Write($"{average:F} MBps");
+                Console.SetCursorPosition(0,0);
+                sw.Restart();
+                sentBytes = 0;
+                loopNumber = 0;
+            }
+        }
+    }
+}
+
+class Logger : INexusLogger
+{
+    private readonly string _prefix;
+
+    public Logger(string prefix)
+    {
+        _prefix = prefix;
+    }
+    public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
+    {
+        Console.WriteLine($"{_prefix} {logLevel}: {message} {exception}");
     }
 }
 
@@ -238,43 +145,37 @@ internal class Program
 {
   static async Task Main(string[] args)
   {
-
-      var type = typeof(NexNetHubAttribute<,>);
-        var path = "test.sock";
+      var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
-
-        var loggerFactory = LoggerFactory.Create(builder =>
-        {
-            builder.AddFilter(level => true).AddConsole();
-        });
         
         var serverConfig = new UdsServerConfig()
         {
-            EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV"))
+            EndPoint = new UnixDomainSocketEndPoint(path), 
+            //Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL"))
+            //Logger = new Logger("CL")
         };
         /*
         var serverConfig = new TcpServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-            //Logger = loggerFactory.CreateLogger("SV")
+            //Logger = new Logger("SV")
         };
         var clientConfig = new TcpClientConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-            //Logger = loggerFactory.CreateLogger("CL")
+            //Logger = new Logger("CL")
         };
-        *//*
+        
+        
         var serverConfig = new TcpTlsServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("SV")),
+            //Logger = new Logger("SV"),
             SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
             {
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -287,7 +188,7 @@ internal class Program
         var clientConfig = new TcpTlsClientConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-            //Logger = new LoggerAdapter(loggerFactory.CreateLogger("CL")),
+            //Logger = new Logger("CL"),
             SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
             {
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
@@ -298,11 +199,11 @@ internal class Program
         };
         */
 
-        var server = ServerHub.CreateServer(serverConfig, () => new ServerHub());
+        var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
 
         server.Start();
 
-        var client = ClientHub.CreateClient(clientConfig, new ClientHub());
+        var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 
         try
         {
@@ -313,7 +214,7 @@ internal class Program
             //Console.WriteLine(e);
             throw;
         }
-        
+
         Console.ReadLine();
         
     }

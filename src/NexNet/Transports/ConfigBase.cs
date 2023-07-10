@@ -12,7 +12,7 @@ public abstract class ConfigBase
     /// <summary>
     /// Logger for the server/client.
     /// </summary>
-    public INexNetLogger? Logger { get; set; }
+    public INexusLogger? Logger { get; set; }
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
@@ -41,15 +41,25 @@ public abstract class ConfigBase
     /// <summary>
     /// Options to configure the sending pipe with.
     /// </summary>
-    public PipeOptions SendPipeOptions { get; set; } = PipeOptions.Default;
+    public PipeOptions SendPipeOptions { get; set; }  = PipeOptions.Default;/*= new PipeOptions(
+        pauseWriterThreshold: ushort.MaxValue,
+        resumeWriterThreshold: ushort.MaxValue / 2,
+        minimumSegmentSize: ushort.MaxValue);*/
+
+    /// <summary>
+    /// The NexusPipe class will flush this maximum amount of data at once.
+    /// If the data surpasses this limit, it will be divided into chunks of this ize and sent until
+    /// the entire data is transmitted.
+    /// </summary>
+    public virtual int PipeFlushChunkSize { get; set; } = 1024 * 8;
 
     /// <summary>
     /// Options to configure the receiving pipe with.
     /// </summary>
     public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;
 
-    internal Action<INexNetSession, byte[]>? InternalOnSend;
-    internal Action<INexNetSession>? InternalOnSessionSetup;
+    internal Action<INexusSession, byte[]>? InternalOnSend;
+    internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
 }

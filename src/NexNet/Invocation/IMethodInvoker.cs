@@ -5,14 +5,14 @@ using NexNet.Messages;
 namespace NexNet.Invocation;
 
 /// <summary>
-/// Interface to be used by sessions to invoke method on local hubs.
+/// Interface to be used by sessions to invoke method on local nexus.
 /// </summary>
 /// <typeparam name="TProxy"></typeparam>
 public interface IMethodInvoker<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    internal ValueTask InvokeMethod(InvocationRequestMessage message);
-    internal void CancelInvocation(InvocationCancellationRequestMessage message);
+    internal ValueTask InvokeMethod(InvocationMessage message);
+    internal void CancelInvocation(InvocationCancellationMessage message);
 
     /// <summary>
     /// Registers a cancellation token with an invocation id.
@@ -26,4 +26,18 @@ public interface IMethodInvoker<TProxy>
     /// </summary>
     /// <param name="invocationId">invocation if to return the cancellation token for.</param>
     void ReturnCancellationToken(int invocationId);
+
+    /// <summary>
+    /// Registers a pipe for reading by the nexus and associates it with the specified invocation.
+    /// </summary>
+    /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
+    /// <param name="cancellationToken">cancellation token</param>
+    /// <returns>Registered pipe</returns>
+    ValueTask<NexusPipe> RegisterPipeReader(int invocationId, CancellationToken? cancellationToken);
+
+    /// <summary>
+    /// Returns a the pipe associated with the specified invocation.
+    /// </summary>
+    /// <param name="invocationId">invocation if to return the cancellation token for.</param>
+    ValueTask ReturnPipeReader(int invocationId);
 }

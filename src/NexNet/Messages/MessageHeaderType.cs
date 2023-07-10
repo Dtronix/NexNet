@@ -14,17 +14,7 @@ public enum MessageType : byte
     /// Ping header. No Body.
     /// </summary>
     Ping = 1,
-
-    /// <summary>
-    /// Ping Client greeting message.  Sent from client.
-    /// </summary>
-    GreetingClient = 10,
-
-    /// <summary>
-    /// Server greeting message. Sent from server.
-    /// </summary>
-    GreetingServer = 11,
-
+    
     // Disconnects 20 - 39
 
     /// <summary>
@@ -50,12 +40,12 @@ public enum MessageType : byte
     /// <summary>
     /// Client hub does not match server's version. No body.
     /// </summary>
-    DisconnectClientHubMismatch = 24,
+    DisconnectClientMismatch = 24,
 
     /// <summary>
     /// Server's hub does not match client's version. No body.
     /// </summary>
-    DisconnectServerHubMismatch = 25,
+    DisconnectServerMismatch = 25,
     //DisconnectMessageParsingError = 26,
     //DisconnectFromHub = 27,
 
@@ -74,25 +64,46 @@ public enum MessageType : byte
     /// </summary>
     DisconnectServerRestarting = 30,
 
+    /// <summary>
+    /// Header for data sent to a pipe.
+    /// </summary>
+    PipeWrite = 50,
 
-    // Requests
-    //Invocation = 100,
+    // Messages
 
     /// <summary>
-    /// Header for InvocationRequestMessage.
+    /// Header for <see cref="ClientGreetingMessage"/>.
     /// </summary>
-    InvocationWithResponseRequest = 101,
-    //InvocationWithResponseAndTimeout = 102,
+    ClientGreeting = 100,
 
     /// <summary>
-    /// Header for InvocationCancellationRequestMessage.
+    /// Header for <see cref="ServerGreetingMessage"/>.
     /// </summary>
-    InvocationCancellationRequest = 103,
-
-    // Responses
+    ServerGreeting = 101,
 
     /// <summary>
-    /// Header for InvocationProxyResultMessage
+    /// Header for <see cref="InvocationMessage"/>.
     /// </summary>
-    InvocationProxyResult = 110,
+    Invocation = 110,
+
+    /// <summary>
+    /// Header for <see cref="InvocationCancellationMessage"/>.
+    /// </summary>
+    InvocationCancellation = 111,
+
+    /// <summary>
+    /// Header for <see cref="InvocationResultMessage"/>
+    /// </summary>
+    InvocationResult = 112,
+
+    // Pipe Channels
+    /// <summary>   
+    /// Header for <see cref="PipeReadyMessage"/>
+    /// </summary>   
+    PipeReady = 120,
+
+    /// <summary>
+    /// Header for <see cref="PipeCompleteMessage"/>.
+    /// </summary>
+    PipeComplete = 121,
 }
