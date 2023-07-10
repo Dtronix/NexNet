@@ -51,8 +51,8 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
         var tcs = new TaskCompletionSource();
         var data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var (server, sNexus, client, cNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
 
         server.Start();
 
@@ -68,7 +68,6 @@ internal partial class NexusClientTests_NexusPipe : BaseTests
 
         var pipe = NexusPipe.Create(async (writer, token) =>
         {
-            
         });
         await sNexus.Context.Clients.Caller.ClientTaskValueWithPipe(pipe);
 

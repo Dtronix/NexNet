@@ -17,6 +17,7 @@ public class NexusPipe
     //private const int MaxFlushLength = 1024 * 4;
     private readonly Pipe? _pipe;
     private readonly WriterDelegate? _writer;
+    private readonly PipeReaderWrapper _pipeReader;
     private PipeWriterImpl? _pipeWriter = null;
 
     private PipeCompleteMessage.Flags _closed = PipeCompleteMessage.Flags.Unset;
@@ -43,13 +44,14 @@ public class NexusPipe
         {
             if (_pipe == null)
                 throw new InvalidOperationException("Can't access the input from a writer.");
-            return _pipe.Reader;
+            return _pipeReader;
         }
     }
 
     internal NexusPipe()
     {
         _pipe = new Pipe();
+        _pipeReader = new PipeReaderWrapper(this, _pipe.Reader);
     }
 
     private NexusPipe(WriterDelegate writer)
@@ -74,6 +76,8 @@ public class NexusPipe
     internal void Reset()
     {
         UpstreamComplete();
+        _pipe?.Writer.CancelPendingFlush();
+        _pipe?.Reader.CancelPendingRead();
         _closed = PipeCompleteMessage.Flags.Unset;
         _pipe?.Reset();
         _cancellationTokenRegistration.Dispose();
@@ -105,6 +109,7 @@ public class NexusPipe
 
         _pipe.Writer.Complete();
         _pipe.Reader.Complete();
+
     }
 
     internal async ValueTask UpstreamWrite(ReadOnlySequence<byte> data)
@@ -162,6 +167,76 @@ public class NexusPipe
         }
 
         _cancellationTokenRegistration = token.Register(Cancel, _pipe!.Writer);
+    }
+
+    private class PipeReaderWrapper : PipeReader
+    {
+        private readonly NexusPipe _nexusPipe;
+        private readonly PipeReader _basePipe;
+
+        public PipeReaderWrapper(NexusPipe nexusPipe, PipeReader basePipe)
+        {
+            _nexusPipe = nexusPipe;
+            _basePipe = basePipe;
+        }
+        public override bool TryRead(out ReadResult result)
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
+                return false;
+            }
+
+            return _basePipe.TryRead(out result);
+        }
+
+        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+                return new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
+
+            try
+            {
+                return await _basePipe.ReadAsync(cancellationToken);
+            }
+            catch(Exception e)
+            {
+                _nexusPipe.Session?.Logger?.LogError(e, "NexusPipe Reading failure.");
+                return new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
+            }
+        }
+
+        public override void AdvanceTo(SequencePosition consumed)
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+                return;
+
+            _basePipe.AdvanceTo(consumed);
+        }
+
+        public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+                return;
+
+            _basePipe.AdvanceTo(consumed, examined);
+        }
+
+        public override void CancelPendingRead()
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+                return;
+
+            _basePipe.CancelPendingRead();
+        }
+
+        public override void Complete(Exception? exception = null)
+        {
+            if (_nexusPipe._closed.HasFlag(PipeCompleteMessage.Flags.Reader))
+                return;
+
+            _basePipe.Complete(exception);
+        }
     }
 
     internal record RunWriterArguments(

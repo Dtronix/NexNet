@@ -183,10 +183,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         }
         catch (TaskCanceledException)
         {
+            context.Session.Logger?.LogTrace("Invocation canceled.");
             // noop
         }
-        catch (Exception)
+        catch (Exception e)
         {
+            context.Session.Logger?.LogError(e, "Exception occurred while running the method.");
             message.Result = null;
             message.State = InvocationResultMessage.StateType.Exception;
             await context.Session.SendMessage(message).ConfigureAwait(false);
