@@ -347,6 +347,13 @@ internal partial class NexusMeta
                         nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                     return false;
                 }
+
+                if (nexusInterfaceMethod.DuplexPipeParameter != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoid,
+                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    return false;
+                }
             }
 
             // Validate return values.
@@ -381,17 +388,22 @@ internal partial class MethodParameterMeta
     public int Index { get; }
 
     public string ParamType { get; }
+    public string? SerializedType { get; }
+
+    public string? SerializedValue { get; }
+    //public string? DeserializedParameterValue { get; }
 
     public bool IsParamsArray { get; }
 
     public bool IsArrayType { get; }
     public bool IsPipe { get; }
+    public bool IsDuplexPipe { get; }
 
     public bool IsCancellationToken { get; }
 
-    public bool IsSerialized { get; }
 
     public string ParamTypeSource { get; }
+    public int SerializedId { get; set; }
 
     public MethodParameterMeta(IParameterSymbol symbol, int index)
     {
@@ -404,7 +416,27 @@ internal partial class MethodParameterMeta
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
         this.IsPipe = ParamType == "global::NexNet.NexusPipe";
-        this.IsSerialized = !IsPipe && !IsCancellationToken;
+        this.IsDuplexPipe = ParamType == "global::NexNet.NexusDuplexPipe";
+
+        if (IsDuplexPipe)
+        {
+            // Duplex Pipe is serialized as a byte.
+            SerializedType = "global::System.Byte";
+            SerializedValue = $"ProxyGetDuplexPipeInitialId({Name})";
+        }
+        else if(IsPipe || IsCancellationToken)
+        {
+            // Type is not serialized.
+            SerializedType = null;
+            SerializedValue = null;
+        }
+        else
+        {
+            // Normal serialized type.
+            SerializedType = ParamType;
+            SerializedValue = Name;
+        }
+
     }
 }
 
@@ -423,6 +455,7 @@ internal partial class MethodMeta
 
     public MethodParameterMeta? CancellationTokenParameter { get; }
     public MethodParameterMeta? PipeParameter { get; }
+    public MethodParameterMeta? DuplexPipeParameter { get; }
 
     public bool MultiplePipeParameters { get; }
     public bool MultipleCancellationTokenParameter { get; }
@@ -445,9 +478,14 @@ internal partial class MethodMeta
         var serializedParameters = 0;
         var paramsLength = symbol.Parameters.Length;
         Parameters = new MethodParameterMeta[paramsLength];
+
+        var seralizedParamId = 1;
         for (var i = 0; i < symbol.Parameters.Length; i++)
         {
             var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i);
+
+            if (param.SerializedType != null)
+                param.SerializedId = seralizedParamId++;
 
             if (param.IsCancellationToken)
             {
@@ -463,8 +501,15 @@ internal partial class MethodMeta
 
                 PipeParameter = param;
             }
+            else if (param.IsDuplexPipe)
+            {
+                if (DuplexPipeParameter != null)
+                    MultiplePipeParameters = true;
 
-            if (param.IsSerialized)
+                DuplexPipeParameter = param;
+            }
+
+            if (param.SerializedType != null)
                 serializedParameters++;
         }
 

@@ -148,6 +148,7 @@ namespace {{Symbol.ContainingNamespace}}
         {
             global::System.Threading.CancellationTokenSource? cts = null;
             global::NexNet.NexusPipe? pipe = null;
+            global::NexNet.NexusDuplexPipe? duplexPipe = null;
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
             try
             {
@@ -182,6 +183,11 @@ namespace {{Symbol.ContainingNamespace}}
                 if (pipe != null)
                 {
                     await methodInvoker.ReturnPipeReader(message.InvocationId);
+                }
+
+                if (duplexPipe != null)
+                {
+                    await methodInvoker.ReturnDuplexPipe(duplexPipe);
                 }
             }
 
@@ -227,15 +233,23 @@ partial class MethodMeta
             sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
             for (var i = 0; i < Parameters.Length; i++)
             {
-                if (!Parameters[i].IsSerialized)
+                if (Parameters[i].SerializedType == null)
                     continue;
 
-                sb.Append(Parameters[i].ParamType).Append(", ");
+                sb.Append(Parameters[i].SerializedType).Append(", ");
             }
             sb.Remove(sb.Length - 2, 2);
 
             sb.AppendLine(">>();");
         }
+
+        if (DuplexPipeParameter != null)
+        {
+            sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
+            sb.Append(DuplexPipeParameter.SerializedId);
+            sb.AppendLine(");");
+        }
+
         sb.Append("                        ");
 
         if (IsReturnVoid)
@@ -265,7 +279,6 @@ partial class MethodMeta
     {
         sb.Append(this.Name).Append("(");
 
-        var serializedParamNumber = 1;
         bool addedParam = false;
         foreach (var methodParameterMeta in Parameters)
         {
@@ -274,9 +287,14 @@ partial class MethodMeta
                 sb.Append("pipe, ");
                 addedParam = true;
             }
-            else if (methodParameterMeta.IsSerialized)
+            else if (methodParameterMeta.IsDuplexPipe)
             {
-                sb.Append("arguments.Item").Append(serializedParamNumber++).Append(", ");
+                sb.Append("duplexPipe, ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.SerializedValue != null)
+            {
+                sb.Append("arguments.Item").Append(methodParameterMeta.SerializedId).Append(", ");
                 addedParam = true;
             }
         }
@@ -324,25 +342,7 @@ partial class MethodMeta
 
         if(Parameters.Length > 0)
             sb.Remove(sb.Length - 2, 2);
-
-        /*
-        foreach (var p in ParametersLessCancellation)
-        {
-            sb.Append(p.ParamType).Append(" ").Append(p.Name).Append(", ");
-        }
-
-        if (this.CancellationTokenParameter != null)
-        {
-            sb.Append(this.CancellationTokenParameter.ParamType).Append(" ").Append(this.CancellationTokenParameter.Name);
-        }
-        else
-        {
-            if (ParametersLessCancellation.Length > 0)
-            {
-                sb.Remove(sb.Length - 2, 2);
-            }
-        }*/
-
+        
         sb.AppendLine(")");
         sb.AppendLine("             {");
 
@@ -352,10 +352,10 @@ partial class MethodMeta
             
             foreach (var p in Parameters)
             {
-                if(!p.IsSerialized)
+                if(p.SerializedType == null)
                     continue;
 
-                sb.Append(p.ParamType).Append(", ");
+                sb.Append(p.SerializedType).Append(", ");
             }
 
             sb.Remove(sb.Length - 2, 2);
@@ -363,10 +363,10 @@ partial class MethodMeta
             sb.Append(">>(new(");
             foreach (var p in Parameters)
             {
-                if (!p.IsSerialized)
+                if (p.SerializedValue == null)
                     continue;
 
-                sb.Append(p.Name).Append(", ");
+                sb.Append(p.SerializedValue).Append(", ");
             }
 
             sb.Remove(sb.Length - 2, 2);

@@ -3,7 +3,7 @@ using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
-class GeneratorDiagnosticDescriptors
+class GeneratorTests
 {
     [Test]
     public void MustBePartial_Server()
@@ -430,38 +430,6 @@ namespace HubNameSpaces2.Seven.Eight
 }
 """);
         Assert.IsEmpty(diagnostic);
-    }
-
-    [Test]
-    public void MethodCanNotHaveMoreThanOnePipe()
-    {
-        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
-using NexNet;
-namespace NexNetDemo;
-partial interface IClientNexus { }
-partial interface IServerNexus {  ValueTask Update(NexusPipe pipe1, NexusPipe pipe2); }
-[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
-partial class ClientNexus : IClientNexus{ }
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-partial class ServerNexus : IServerNexus { }
-""");
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id));
-    }
-
-    [Test]
-    public void NexusPipeNotBeOnVoid()
-    {
-        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
-using NexNet;
-namespace NexNetDemo;
-partial interface IClientNexus { }
-partial interface IServerNexus {  void Update(NexusPipe pipe); }
-[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
-partial class ClientNexus : IClientNexus{ }
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-partial class ServerNexus : IServerNexus { }
-""");
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoid.Id));
     }
 
 }

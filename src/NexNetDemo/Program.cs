@@ -22,155 +22,8 @@ partial interface IServerNexus
     ValueTask ServerTaskWithParam(int id, NexusDuplexPipe pipe, string myValue);
 }
 
-/// <summary>
-/// Nexus used for handling all Client communications.
-/// </summary>
-partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::NexNetDemo.ClientNexus.ServerProxy>, global::NexNetDemo.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash
-{
-    /// <summary>
-    /// Creates an instance of the client for this nexus and matching server.
-    /// </summary>
-    /// <param name="config">Configurations for this instance.</param>
-    /// <param name="nexus">Nexus used for this client while communicating with the server. Useful to pass parameters to the nexus.</param>
-    /// <returns>NexusClient for connecting to the matched NexusServer.</returns>
-    public static global::NexNet.NexusClient<global::NexNetDemo.ClientNexus, global::NexNetDemo.ClientNexus.ServerProxy> CreateClient(global::NexNet.Transports.ClientConfig config, ClientNexus nexus)
-    {
-        return new global::NexNet.NexusClient<global::NexNetDemo.ClientNexus, global::NexNetDemo.ClientNexus.ServerProxy>(config, nexus);
-    }
 
-    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
-    {
-        global::System.Threading.CancellationTokenSource? cts = null;
-        global::NexNet.NexusPipe? pipe = null;
-        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ClientNexus.ServerProxy>>(this);
-        try
-        {
-            switch (message.MethodId)
-            {
-            }
-        }
-        finally
-        {
-            if (cts != null)
-            {
-                methodInvoker.ReturnCancellationToken(message.InvocationId);
-            }
-
-            if (pipe != null)
-            {
-                await methodInvoker.ReturnPipeReader(message.InvocationId);
-            }
-        }
-
-    }
-
-    /// <summary>
-    /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
-    /// </summary>
-    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
-
-    /// <summary>
-    /// Proxy invocation implementation for the matching nexus.
-    /// </summary>
-    public class ServerProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash
-    {
-        public ValueTask ServerTaskWithParam(int id, NexusDuplexPipe pipe, string myValue)
-        {
-            
-            var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::System.Int32, global::System.Byte, global::System.String>>(new(id, ProxyGetDuplexPipeInitialId(pipe), myValue));
-            return ProxyInvokeAndWaitForResultCore(0, arguments, null, null);
-        }
-
-        /// <summary>
-        /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
-        /// </summary>
-        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 142967179; }
-    }
-}
-
-
-
-/// <summary>
-/// Nexus used for handling all Server communications.
-/// </summary>
-partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::NexNetDemo.ServerNexus.ClientProxy>, global::NexNetDemo.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash
-{
-    /// <summary>
-    /// Creates an instance of the server for this nexus and matching client.
-    /// </summary>
-    /// <param name="config">Configurations for this instance.</param>
-    /// <param name="nexusFactory">Factory used to instance nexuses for the server on each client connection. Useful to pass parameters to the nexus.</param>
-    /// <returns>NexusServer for handling incoming connections.</returns>
-    public static global::NexNet.NexusServer<global::NexNetDemo.ServerNexus, global::NexNetDemo.ServerNexus.ClientProxy> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<global::NexNetDemo.ServerNexus> nexusFactory)
-    {
-        return new global::NexNet.NexusServer<global::NexNetDemo.ServerNexus, global::NexNetDemo.ServerNexus.ClientProxy>(config, nexusFactory);
-    }
-
-    protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
-    {
-        global::System.Threading.CancellationTokenSource? cts = null;
-        global::NexNet.NexusDuplexPipe? pipe = null;
-        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerNexus.ClientProxy>>(this);
-        try
-        {
-            switch (message.MethodId)
-            {
-                case 0:
-                    {
-                        var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Int32, global::System.Byte, global::System.String>>();
-
-                        pipe = await methodInvoker.RegisterDuplexPipe(arguments.Item2);
-                        await ServerTaskWithParam(arguments.Item1, pipe, arguments.Item3);
-                        break;
-                    }
-            }
-        }
-        finally
-        {
-            if (cts != null)
-            {
-                methodInvoker.ReturnCancellationToken(message.InvocationId);
-            }
-
-            if (pipe != null)
-            {
-                await methodInvoker.ReturnDuplexPipe(pipe);
-            }
-        }
-
-    }
-
-    /// <summary>
-    /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
-    /// </summary>
-    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 142967179; }
-
-    /// <summary>
-    /// Proxy invocation implementation for the matching nexus.
-    /// </summary>
-    public class ClientProxy : global::NexNet.Invocation.ProxyInvocationBase, global::NexNetDemo.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash
-    {
-
-        /// <summary>
-        /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
-        /// </summary>
-        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
-    }
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-//[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus
 {
     protected override ValueTask OnConnected(bool isReconnected)
@@ -197,10 +50,8 @@ partial class ClientNexus
 
             var pipe = this.Context.GetPipe();
 
-            _ = Task.Run(async () =>
+            pipe.OnReady = async duplexPipe =>
             {
-                await pipe.Ready;
-
                 Memory<byte> randomData = data;
                 var length = 1024 * 32;
 
@@ -213,15 +64,15 @@ partial class ClientNexus
                     await pipe.Output.FlushAsync();
                     //await Task.Delay(10);
 
-                    if (loopNumber++ == 100000)
+                    if (loopNumber == 100000)
                     {
                         await pipe.Output.CompleteAsync();
                         return;
                     }
                     //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
-            });
-            
+            };
+
 
             await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
         });
@@ -230,7 +81,7 @@ partial class ClientNexus
     }
 }
 
-//[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;
@@ -353,8 +204,8 @@ internal class Program
                 AllowRenegotiation = false,
                 RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
             }
-        };
-        */
+        };*/
+
 
         var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
 
