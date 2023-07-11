@@ -147,17 +147,22 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     private static async ValueTask FireOnReady(NexusDuplexPipe pipe)
     {
+        var session = pipe._session;
+
+        if (session == null)
+            return;
+
         try
         {
             await pipe._onReady!(pipe);
         }
         catch (Exception e)
         {
-            pipe._session?.Logger?.LogError(e, "Pipe did not successfully complete");
+            session.Logger?.LogError(e, "Pipe did not successfully complete");
         }
         finally
         {
-            pipe._session?.PipeManager.ReturnPipe(pipe);
+            await session.PipeManager.ReturnPipe(pipe);
         }
     }
 
@@ -256,7 +261,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
             if (!CanRead())
+            {
+                _nexusPipe._session?.Logger.LogTrace("PipeReaderWrapper.ReadAsync can't read any data.");
                 return _completeTask;
+            }
 
             return _basePipe.ReadAsync(cancellationToken);
         }

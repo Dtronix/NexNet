@@ -136,7 +136,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         await DisconnectAsync().ConfigureAwait(false);
     }
 
-    public INexusDuplexPipe? GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
+    public INexusDuplexPipe? CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
     {
         return _session?.PipeManager.GetPipe(onReady);
     }

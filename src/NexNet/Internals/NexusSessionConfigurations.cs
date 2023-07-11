@@ -25,4 +25,5 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
 
     public TaskCompletionSource? ReadyTaskCompletionSource { get; init; }
     public TaskCompletionSource? DisconnectedTaskCompletionSource { get; init; }
+
 }

@@ -93,7 +93,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        PipeManager = new NexusPipeManager(this);
+        PipeManager = _cacheManager.PipeManagerCache.Rent(this);
+        PipeManager.Setup(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
         SessionStore = new SessionStore();
@@ -207,7 +208,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private async Task DisconnectCore(DisconnectReason reason, bool sendDisconnect)
     {
         // If we are already disconnecting, don't do anything
-        if (State == ConnectionState.Disconnecting || State == ConnectionState.Disconnecting)
+        if (State == ConnectionState.Disconnecting || State == ConnectionState.Disconnected)
             return;
 
         State = ConnectionState.Disconnecting;
@@ -272,6 +273,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
 
         State = ConnectionState.Disconnected;
+
+        // Cancel all pipe manager pipes and return to the cache.
+        PipeManager.CancelAll();
+        _cacheManager.PipeManagerCache.Return(PipeManager);
 
         _nexus.Disconnected(reason);
         OnDisconnected?.Invoke();

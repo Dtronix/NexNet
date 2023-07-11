@@ -195,7 +195,7 @@ partial class ClientNexus
         Task.Run(async () =>
         {
 
-            var pipe = this.Context.GetPipe(async pipe =>
+            var pipe = this.Context.CreatePipe(async pipe =>
             {
                 Memory<byte> randomData = data;
                 var length = 1024 * 32;

@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using MemoryPack;
+using Pipelines.Sockets.Unofficial.Arenas;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Internals;
 
@@ -40,12 +42,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
 
         var length = (int)_bufferWriter.Length;
-
-        using var buffer = _bufferWriter.Flush();
-
-        _config.InternalOnSend?.Invoke(this, buffer.Value.ToArray());
-
-        buffer.Value.CopyTo(_pipeOutput.GetSpan(length));
+        var buffer = _bufferWriter.GetBuffer();
+        _config.InternalOnSend?.Invoke(this, buffer.ToArray());
+        buffer.CopyTo(_pipeOutput.GetSpan(length));
+        _bufferWriter.Deallocate(buffer);
         _pipeOutput.Advance(length);
 
         _config.Logger?.LogTrace($"Sending {TMessage.Type} message & body with {length} bytes.");

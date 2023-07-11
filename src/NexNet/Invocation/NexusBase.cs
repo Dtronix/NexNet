@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
+using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Invocation;
@@ -173,7 +174,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
                 bufferWriter = BufferWriter<byte>.Create();
 
             await requestArgs.InvokeMethodCore(requestArgs.Message, bufferWriter).ConfigureAwait(false);
-            Owned<ReadOnlySequence<byte>>? bufferResult = null;
+            Sequence<byte>? bufferResult = null;
             // If the length is zero, there is no return value.
             if (bufferWriter.Length == 0)
             {
@@ -181,13 +182,16 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
             }
             else
             {
-                bufferResult = bufferWriter.Flush();
+                bufferResult = bufferWriter.GetBuffer();
                 message.Result = bufferResult.Value;
             }
 
             message.State = InvocationResultMessage.StateType.CompletedResult;
             await context.Session.SendMessage(message).ConfigureAwait(false);
-            bufferResult?.Dispose();
+
+            if(bufferResult != null)
+                bufferWriter.Deallocate(bufferResult.Value);
+
             _bufferWriters.Add(bufferWriter);
         }
         catch (TaskCanceledException)

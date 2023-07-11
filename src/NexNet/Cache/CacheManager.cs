@@ -11,14 +11,8 @@ namespace NexNet.Cache;
 
 internal class CacheManager
 {
-    //public readonly CachedDeserializer<InvocationResultMessage> InvocationProxyResultDeserializer = new();
-    //public readonly CachedDeserializer<InvocationCancellationMessage> InvocationCancellationRequestDeserializer = new();
-    //public readonly CachedDeserializer<PipeCompleteMessage> PipeCompleteMessageDeserializer = new();
-    //public readonly CachedDeserializer<PipeReadyMessage> PipeReadyMessageDeserializer = new();
-    //public readonly CachedDeserializer<InvocationMessage> InvocationRequestDeserializer = new();
-    //public readonly CachedDeserializer<ClientGreetingMessage> ClientGreetingDeserializer = new();
-    //public readonly CachedDeserializer<ServerGreetingMessage> ServerGreetingDeserializer = new();
     public readonly CachedResettableItem<RegisteredInvocationState> RegisteredInvocationStateCache = new();
+    public readonly CachedPipeManager PipeManagerCache = new();
     public readonly CachedCts CancellationTokenSourceCache = new();
     public readonly CachedPipe NexusPipeCache = new();
     public readonly CachedDuplexPipe NexusDuplexPipeCache = new();
@@ -88,12 +82,11 @@ internal class CacheManager
     public virtual void Clear()
     {
         for (int i = 0; i < _cachedMessageDeserializers.Length; i++)
-        {
             _cachedMessageDeserializers[i]?.Clear();
-        }
 
         RegisteredInvocationStateCache.Clear();
         CancellationTokenSourceCache.Clear();
         NexusPipeCache.Clear();
+        PipeManagerCache.Clear();
     }
 }

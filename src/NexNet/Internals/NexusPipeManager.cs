@@ -2,19 +2,14 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO.Pipelines;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Tasks;
-using NexNet.Messages;
-using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet.Internals;
 
 internal class NexusPipeManager
 {
-    private readonly INexusSession _session;
+    private INexusSession _session = null!;
     private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
     private readonly ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
 
@@ -22,13 +17,19 @@ internal class NexusPipeManager
 
     private int _currentId;
 
-    public NexusPipeManager(INexusSession session)
+    private bool _isCanceled = false;
+
+    public void Setup(INexusSession session)
     {
+        _isCanceled = false;
         _session = session;
     }
 
-    public INexusDuplexPipe GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
+    public INexusDuplexPipe? GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
     {
+        if (_isCanceled)
+            return null;
+
         var id = GetPartialId();
         var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id, onReady);
         _initializingPipes.TryAdd(id, pipe);
@@ -36,23 +37,32 @@ internal class NexusPipeManager
         return pipe;
     }
 
-    public ValueTask ReturnPipe(INexusDuplexPipe pipe)
+    public async ValueTask ReturnPipe(INexusDuplexPipe pipe)
     {
+        _session?.Logger?.LogTrace($"NexusPipeManager.ReturnPipe({pipe.Id});");
+        if (_isCanceled)
+            return;
+
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
         {
             _session.Logger?.LogError($"Could not remove pipe {pipe.Id} from the active pipes.");
-            return ValueTask.CompletedTask;
+            return;
         }
 
         // If the state is not already set to complete, then notify the other side of the connection.
         if (nexusPipe.UpdateState(NexusDuplexPipe.State.Complete))
-            return nexusPipe.NotifyState();
+            await nexusPipe.NotifyState();
 
-        return ValueTask.CompletedTask;
+        // Return back to the cache.
+        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
     }
 
-    public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
+    public async ValueTask<INexusDuplexPipe?> RegisterPipe(byte otherId)
     {
+        _session?.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
+        if (_isCanceled)
+            return null;
+
         var id = GetCompleteId(otherId, out var thisId);
 
         var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId, null);
@@ -68,6 +78,10 @@ internal class NexusPipeManager
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
+        _session?.Logger?.LogTrace($"NexusPipeManager.DeregisterPipe({pipe.Id});");
+        if (_isCanceled)
+            return;
+
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             throw new Exception("Could not remove NexusDuplexPipe to the list of current pipes.");
 
@@ -82,6 +96,9 @@ internal class NexusPipeManager
 
     public ValueTask BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
     {
+        if (_isCanceled)
+            return ValueTask.CompletedTask;
+
         if (_activePipes.TryGetValue(id, out var pipe))
             return pipe.WriteFromUpstream(data);
 
@@ -91,6 +108,9 @@ internal class NexusPipeManager
 
     public void UpdateState(ushort id, NexusDuplexPipe.State state)
     {
+        if (_isCanceled)
+            return;
+
         if (state == NexusDuplexPipe.State.Ready)
         {
             var (clientId, serverId) = GetClientAndServerId(id);
@@ -108,6 +128,29 @@ internal class NexusPipeManager
         
         if (_activePipes.TryGetValue(id, out var pipe))
             pipe.UpdateState(state);
+    }
+
+    public void CancelAll()
+    {
+        _session.Logger?.LogTrace($"NexusPipeManager.CancelAll();");
+        _isCanceled = true;
+
+        // Update all the states of the pipes to complete.
+        foreach (var pipe in _initializingPipes)
+        {
+            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
+            _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
+        }
+
+        _initializingPipes.Clear();
+
+        foreach (var pipe in _activePipes)
+        {
+            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
+            _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
+        }
+
+        _activePipes.Clear();
     }
 
     private ushort GetCompleteId(byte otherId, out byte thisId)
