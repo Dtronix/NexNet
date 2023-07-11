@@ -10,54 +10,82 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
 
+internal interface ISetupNexusDuplexPipe
+{
+    public byte InitialId { get; }
+}
 /// <summary>
 /// Pipe used for transmission of binary data from a one nexus to another.
 /// </summary>
-public class NexusDuplexPipe : IDuplexPipe
+public class NexusDuplexPipe : ISetupNexusDuplexPipe, IDuplexPipe
 {
+    [Flags]
+    internal enum State : byte
+    {
+        Unset = 0,
+        ClientWriterComplete = 1 << 0,
+        ClientReaderComplete = 1 << 1,
+        ServerWriterComplete = 1 << 2,
+        ServerReaderComplete = 1 << 3,
+        ClientReady = 1 << 4,
+        ServerReady = 1 << 5
+    }
+
     private readonly Pipe _inputPipe = new Pipe();
     private readonly PipeReaderWrapper _inputPipeReader;
     private readonly PipeWriterImpl _outputPipeWriter;
 
     private TaskCompletionSource? _readyTaskCompletionSource;
 
-    private NexusDuplexPipeState _state = NexusDuplexPipeState.Unset;
+    private State _state = State.Unset;
 
-    internal INexusSession? Session;
+    private INexusSession? _session;
 
     internal ushort Id { get; private set; }
 
-    private CancellationTokenRegistration _cancellationTokenRegistration;
+    private byte _initialId;
 
     public PipeReader Input => _inputPipeReader;
     public PipeWriter Output => _outputPipeWriter;
+
+    byte ISetupNexusDuplexPipe.InitialId => _initialId;
 
     /// <summary>
     /// Task which completes upon the duplex pipe ready state;
     /// </summary>
     public Task Ready => _readyTaskCompletionSource.Task;
 
-    public NexusDuplexPipe()
+    internal NexusDuplexPipe()
     {
         _inputPipeReader = new PipeReaderWrapper(this, _inputPipe.Reader);
         _outputPipeWriter = new PipeWriterImpl(this);
+    }
+
+    internal void Setup(byte initialId, INexusSession session)
+    {
+        if (_state != State.Unset)
+            throw new InvalidOperationException("Can't setup a pipe that is already in use.");
+
         _readyTaskCompletionSource = new TaskCompletionSource();
+        _session = session;
+        _initialId = initialId;
+        _outputPipeWriter.Setup();
     }
 
     internal async ValueTask PipeReady(INexusSession session, ushort id)
     {
-        if (Session == null)
+        if (_session == null)
             return;
 
         Id = id;
 
-        UpdateState(Session.IsServer
-            ? NexusDuplexPipeState.ServerReady
-            : NexusDuplexPipeState.ClientReady);
+        UpdateState(_session.IsServer
+            ? State.ServerReady
+            : State.ClientReady);
 
         await NotifyState().ConfigureAwait(false);
 
-        _outputPipeWriter.Setup(session, id);
+        _outputPipeWriter.Setup();
         _readyTaskCompletionSource?.SetResult();
     }
     
@@ -65,14 +93,14 @@ public class NexusDuplexPipe : IDuplexPipe
     internal void Reset()
     {
         // Close everything.
-        UpdateState(NexusDuplexPipeState.ClientWriterComplete
-                            | NexusDuplexPipeState.ClientReaderComplete
-                            | NexusDuplexPipeState.ServerReaderComplete
-                            | NexusDuplexPipeState.ServerWriterComplete);
+        UpdateState(State.ClientWriterComplete
+                            | State.ClientReaderComplete
+                            | State.ServerReaderComplete
+                            | State.ServerWriterComplete);
 
-        _state = NexusDuplexPipeState.Unset;
+        _initialId = 0;
+        _state = State.Unset;
         _inputPipe.Reset();
-        _cancellationTokenRegistration.Dispose();
         // No need to reset anything with the writer as it is use once and dispose.
     }
 
@@ -81,7 +109,7 @@ public class NexusDuplexPipe : IDuplexPipe
     {
         var runArguments = Unsafe.As<RunWriterArguments>(arguments)!;
 
-        using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments.Session, runArguments.Logger);
+        using var writer = new PipeWriterImpl(runArguments.InvocationId, runArguments._session, runArguments.Logger);
         _pipeWriter = writer;
         
         await _writer!.Invoke(writer, runArguments.CancellationToken).ConfigureAwait(true);
@@ -94,26 +122,26 @@ public class NexusDuplexPipe : IDuplexPipe
 
     internal async ValueTask WriteFromUpstream(ReadOnlySequence<byte> data)
     {
-        if (Session == null)
+        if (_session == null)
             return;
 
         // See if this pipe is accepting data.
-        if ((Session.IsServer && _state.HasFlag(NexusDuplexPipeState.ServerReaderComplete))
-            || (!Session.IsServer && _state.HasFlag(NexusDuplexPipeState.ClientReaderComplete)))
+        if ((_session.IsServer && _state.HasFlag(State.ServerReaderComplete))
+            || (!_session.IsServer && _state.HasFlag(State.ClientReaderComplete)))
             return;
 
         var length = (int)data.Length;
         data.CopyTo(_inputPipe.Writer.GetSpan(length));
         _inputPipe.Writer.Advance(length);
         
-        var result = await _inputPipe.Writer.FlushAsync(_cancellationTokenRegistration.Token).ConfigureAwait(true);
+        var result = await _inputPipe.Writer.FlushAsync().ConfigureAwait(true);
 
         // Notify that the reader is completed.
         if (result.IsCompleted)
         {
-            _state = Session.IsServer
-                ? NexusDuplexPipeState.ServerReaderComplete
-                : NexusDuplexPipeState.ClientReaderComplete;
+            _state = _session.IsServer
+                ? State.ServerReaderComplete
+                : State.ClientReaderComplete;
 
             await NotifyState().ConfigureAwait(false);
         }
@@ -121,37 +149,42 @@ public class NexusDuplexPipe : IDuplexPipe
 
     internal async ValueTask NotifyState()
     {
-        if (Session == null)
+        if (_session == null)
             return;
 
-        var message = Session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
+        var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
         message.PipeId = Id;
-        message.StateFlags = _state;
-        await Session.SendMessage(message).ConfigureAwait(false);
-        Session.CacheManager.Return(message);
+        message.State = _state;
+        await _session.SendMessage(message).ConfigureAwait(false);
+        _session.CacheManager.Return(message);
     }
 
-    internal void UpdateState(NexusDuplexPipeState updatedState)
+    internal void UpdateState(State updatedState)
     {
-        if (Session == null)
+        if (_session == null)
             return;
 
-        if (Session.IsServer)
+        if (_session.IsServer)
         {
-            
-            if (updatedState.HasFlag(NexusDuplexPipeState.ClientReaderComplete)
-                && !_state.HasFlag(NexusDuplexPipeState.ClientReaderComplete))
+            if (updatedState == State.ClientReady)
             {
-                _state |= NexusDuplexPipeState.ClientReaderComplete | NexusDuplexPipeState.ServerWriterComplete;
+                _readyTaskCompletionSource?.TrySetResult();
+                return;
+            }
+
+            if (updatedState.HasFlag(State.ClientReaderComplete)
+                && !_state.HasFlag(State.ClientReaderComplete))
+            {
+                _state |= State.ClientReaderComplete | State.ServerWriterComplete;
 
                 _outputPipeWriter.Complete();
                 _outputPipeWriter.CancelPendingFlush();
             }
 
-            if (updatedState.HasFlag(NexusDuplexPipeState.ClientWriterComplete)
-                && !_state.HasFlag(NexusDuplexPipeState.ClientWriterComplete))
+            if (updatedState.HasFlag(State.ClientWriterComplete)
+                && !_state.HasFlag(State.ClientWriterComplete))
             {
-                _state |= NexusDuplexPipeState.ClientWriterComplete | NexusDuplexPipeState.ServerReaderComplete;
+                _state |= State.ClientWriterComplete | State.ServerReaderComplete;
 
                 // ReSharper disable once MethodHasAsyncOverload
                 _inputPipe.Writer.Complete();
@@ -160,26 +193,35 @@ public class NexusDuplexPipe : IDuplexPipe
         }
         else
         {
-            if (updatedState.HasFlag(NexusDuplexPipeState.ServerReaderComplete)
-                && !_state.HasFlag(NexusDuplexPipeState.ServerReaderComplete))
+
+            if (updatedState == State.ServerReady)
             {
-                _state |= NexusDuplexPipeState.ServerReaderComplete | NexusDuplexPipeState.ClientWriterComplete;
+                _readyTaskCompletionSource?.TrySetResult();
+                return;
+            }
+
+            if (updatedState.HasFlag(State.ServerReaderComplete)
+                && !_state.HasFlag(State.ServerReaderComplete))
+            {
+                _state |= State.ServerReaderComplete | State.ClientWriterComplete;
 
                 // ReSharper disable once MethodHasAsyncOverload
                 _inputPipe.Writer.Complete();
                 _inputPipe.Writer.CancelPendingFlush();
             }
 
-            if (updatedState.HasFlag(NexusDuplexPipeState.ServerWriterComplete)
-                && !_state.HasFlag(NexusDuplexPipeState.ServerWriterComplete))
+            if (updatedState.HasFlag(State.ServerWriterComplete)
+                && !_state.HasFlag(State.ServerWriterComplete))
             {
-                _state |= NexusDuplexPipeState.ServerWriterComplete | NexusDuplexPipeState.ClientReaderComplete;
+                _state |= State.ServerWriterComplete | State.ClientReaderComplete;
 
                 // ReSharper disable once MethodHasAsyncOverload
                 _outputPipeWriter.Complete();
                 _outputPipeWriter.CancelPendingFlush();
             }
         }
+
+        _state |= updatedState;
     }
     /*
     internal void RegisterCancellationToken(CancellationToken token)
@@ -187,11 +229,11 @@ public class NexusDuplexPipe : IDuplexPipe
         static void Cancel(object? pipeWriterObject)
         {
             var nexusPipe = Unsafe.As<NexusDuplexPipe>(pipeWriterObject)!;
-            if (nexusPipe.Session == null)
+            if (nexusPipe._session == null)
                 return;
 
-            if(nexusPipe.Session.IsServer)
-                nexusPipe.UpstreamUpdateState(NexusDuplexPipeState.ClientWriterComplete | );
+            if(nexusPipe._session.IsServer)
+                nexusPipe.UpstreamUpdateState(State.ClientWriterComplete | );
         }
 
         _cancellationTokenRegistration = token.Register(Cancel, this);
@@ -209,7 +251,7 @@ public class NexusDuplexPipe : IDuplexPipe
         }
         public override bool TryRead(out ReadResult result)
         {
-            if (CanRead())
+            if (!CanRead())
             {
                 result = new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
                 return false;
@@ -220,7 +262,7 @@ public class NexusDuplexPipe : IDuplexPipe
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
-            if (CanRead())
+            if (!CanRead())
                 return new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
 
             try
@@ -229,14 +271,14 @@ public class NexusDuplexPipe : IDuplexPipe
             }
             catch(Exception e)
             {
-                _nexusPipe.Session?.Logger?.LogError(e, "NexusPipe Reading failure.");
+                _nexusPipe._session?.Logger?.LogError(e, "NexusPipe Reading failure.");
                 return new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
             }
         }
 
         public override void AdvanceTo(SequencePosition consumed)
         {
-            if (CanRead())
+            if (!CanRead())
                 return;
 
             _basePipe.AdvanceTo(consumed);
@@ -244,7 +286,7 @@ public class NexusDuplexPipe : IDuplexPipe
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
-            if (CanRead())
+            if (!CanRead())
                 return;
 
             _basePipe.AdvanceTo(consumed, examined);
@@ -252,7 +294,7 @@ public class NexusDuplexPipe : IDuplexPipe
 
         public override void CancelPendingRead()
         {
-            if (CanRead())
+            if (!CanRead())
                 return;
 
             _basePipe.CancelPendingRead();
@@ -260,7 +302,7 @@ public class NexusDuplexPipe : IDuplexPipe
 
         public override void Complete(Exception? exception = null)
         {
-            if (CanRead())
+            if (!CanRead())
                 return;
 
             _basePipe.Complete(exception);
@@ -269,9 +311,9 @@ public class NexusDuplexPipe : IDuplexPipe
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool CanRead()
         {
-            return _nexusPipe.Session.IsServer
-                ? !_nexusPipe._state.HasFlag(NexusDuplexPipeState.ServerReaderComplete)
-                : !_nexusPipe._state.HasFlag(NexusDuplexPipeState.ClientReaderComplete);
+            return _nexusPipe._session.IsServer
+                ? !_nexusPipe._state.HasFlag(State.ServerReaderComplete)
+                : !_nexusPipe._state.HasFlag(State.ClientReaderComplete);
         }
     }
 
@@ -284,8 +326,6 @@ public class NexusDuplexPipe : IDuplexPipe
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
         private readonly NexusDuplexPipe _nexusDuplexPipe;
-        private ushort _pipeId;
-        private INexusSession _session;
 
         private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
         private bool _isCanceled;
@@ -299,12 +339,9 @@ public class NexusDuplexPipe : IDuplexPipe
             _nexusDuplexPipe = nexusDuplexPipe;
         }
 
-        public void Setup(INexusSession session, ushort pipeId)
+        public void Setup()
         {
-            _pipeId = pipeId;
-            _session = session;
-            _chunkSize = session.Config.PipeFlushChunkSize;
-
+            _chunkSize = _nexusDuplexPipe._session!.Config.PipeFlushChunkSize;
         }
 
 
@@ -354,7 +391,7 @@ public class NexusDuplexPipe : IDuplexPipe
 
             var bufferLength = _bufferWriter.Length;
 
-            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _pipeId);
+            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _nexusDuplexPipe.Id);
 
             // Shortcut for empty buffer.
             if (bufferLength == 0)
@@ -372,7 +409,7 @@ public class NexusDuplexPipe : IDuplexPipe
                 : buffer;
             
             var flushPosition = 0;
-
+            var session = _nexusDuplexPipe._session;
             while (true)
             {
                 if(_isCanceled)
@@ -380,7 +417,7 @@ public class NexusDuplexPipe : IDuplexPipe
                 
                 try
                 {
-                    await _session.SendHeaderWithBody(
+                    await session.SendHeaderWithBody(
                         MessageType.PipeWrite,
                         _invocationIdBytes,
                         sendingBuffer,
@@ -397,8 +434,8 @@ public class NexusDuplexPipe : IDuplexPipe
                 }
                 catch (Exception e)
                 {
-                    _session.Logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_pipeId}.");
-                    await _session.DisconnectAsync(DisconnectReason.ProtocolError);
+                    session!.Logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_nexusDuplexPipe.Id}.");
+                    await session.DisconnectAsync(DisconnectReason.ProtocolError);
                     break;
                 }
 
@@ -419,9 +456,9 @@ public class NexusDuplexPipe : IDuplexPipe
 
             if (_isCompleted)
             {
-                _nexusDuplexPipe.UpdateState(_session.IsServer
-                    ? NexusDuplexPipeState.ServerWriterComplete
-                    : NexusDuplexPipeState.ClientWriterComplete);
+                _nexusDuplexPipe.UpdateState(session.IsServer
+                    ? State.ServerWriterComplete
+                    : State.ClientWriterComplete);
 
                 await _nexusDuplexPipe.NotifyState();
             }

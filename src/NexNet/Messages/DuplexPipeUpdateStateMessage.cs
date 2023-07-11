@@ -11,13 +11,6 @@ internal partial class DuplexPipeUpdateStateMessage : IMessageBase
 
     public ushort PipeId { get; set; }
 
-    public State StateFlags { get; set; }
-
-    public (byte ClientId, byte ServerId) GetClientAndServerId()
-    {
-        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
-        Unsafe.As<byte, ushort>(ref bytes[0]) = PipeId;
-        return (bytes[0], bytes[1]);
-    }
-
+    public NexusDuplexPipe.State State { get; set; }
+    
 }

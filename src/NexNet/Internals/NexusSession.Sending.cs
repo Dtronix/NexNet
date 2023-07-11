@@ -128,6 +128,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         return SendHeaderCore(type, false, cancellationToken);
     }
 
+    /// <summary>
+    /// Sends the the specified message header over the transport.
+    /// </summary>
+    /// <param name="type">Type of header to send.</param>
+    /// <param name="force">Will the header even when the state set to Connected.</param>
+    /// <param name="cancellationToken">Cancels the sending.</param>
+    /// <returns>Task which competes upon successful sending.</returns>
+    /// <exception cref="InvalidOperationException">Failed to acquire write lock.</exception>
     private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
     {
         // | MessageType |

@@ -40,4 +40,15 @@ public interface IMethodInvoker<TProxy>
     /// </summary>
     /// <param name="invocationId">invocation if to return the cancellation token for.</param>
     ValueTask ReturnPipeReader(int invocationId);
+
+    /// <summary>
+    /// Registers a duplex pipe for usage associates it with the specified invocation.
+    /// </summary>
+    /// <returns>Registered pipe</returns>
+    ValueTask<NexusDuplexPipe> RegisterDuplexPipe(byte startId);
+
+    /// <summary>
+    /// Returns a the pipe associated with the specified invocation.
+    /// </summary>
+    ValueTask ReturnDuplexPipe(NexusDuplexPipe pipe);
 }

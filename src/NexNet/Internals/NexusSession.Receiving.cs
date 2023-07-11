@@ -127,7 +127,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                         case MessageType.InvocationResult:
                         case MessageType.PipeComplete:
                         case MessageType.PipeReady:
-                        case MessageType.DuplexPipeReady:
                         case MessageType.DuplexPipeUpdateState:
                             _config.Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
@@ -240,6 +239,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     case MessageType.InvocationCancellation:
                     case MessageType.PipeComplete:
                     case MessageType.PipeReady:
+                    case MessageType.DuplexPipeUpdateState:
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
@@ -252,9 +252,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        _pipeManager.BufferIncomingData()
-                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
-                            await pipe.UpstreamWrite(bodySlice);
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexStreamId, bodySlice);
                         break;
                     }
 
@@ -472,6 +470,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 break;
             }
+
+            case MessageType.DuplexPipeUpdateState:
+            {
+                var updateStateMessage = Unsafe.As<DuplexPipeUpdateStateMessage>(message);
+                PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
+                _cacheManager.Return(updateStateMessage);
+                break;
+            }
+
             default:
                 // If we don't know what the message is, then disconnect the connection
                 // as we have received invalid/unexpected data.

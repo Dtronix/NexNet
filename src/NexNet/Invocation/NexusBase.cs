@@ -80,6 +80,15 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         }
     }
 
+    ValueTask<NexusDuplexPipe> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
+    {
+        return SessionContext.Session.PipeManager.RegisterPipe(startId);
+    }
+
+    ValueTask IMethodInvoker<TProxy>.ReturnDuplexPipe(NexusDuplexPipe pipe)
+    {
+        return SessionContext.Session.PipeManager.DeregisterPipe(pipe);
+    }
 
     void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationMessage message)
     {

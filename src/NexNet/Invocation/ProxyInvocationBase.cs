@@ -272,6 +272,18 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <summary>
+    /// Gets the Initial Id of the duplex pipe.
+    /// </summary>
+    /// <param name="pipe">Pipe to retrieve the Id of.</param>
+    /// <returns>Initial id of the pipe.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    protected static byte ProxyGetDuplexPipeInitialId(NexusDuplexPipe pipe)
+    {
+        var setupPipe = Unsafe.As<ISetupNexusDuplexPipe>(pipe);
+        return setupPipe.InitialId;
+    }
+
+    /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
     /// and waits the the completion of the invocation.
     /// </summary>

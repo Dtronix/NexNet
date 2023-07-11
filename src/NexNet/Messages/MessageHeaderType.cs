@@ -111,15 +111,9 @@ public enum MessageType : byte
     /// Header for <see cref="PipeCompleteMessage"/>.
     /// </summary>
     PipeComplete = 121,
-
-    // Pipe Channels
-    /// <summary>   
-    /// Header for <see cref="PipeReadyMessage"/>
-    /// </summary>   
-    DuplexPipeReady = 130,
-
+    
     /// <summary>
     /// Header for <see cref="PipeCompleteMessage"/>.
     /// </summary>
-    DuplexPipeUpdateState = 131,
+    DuplexPipeUpdateState = 130,
 }

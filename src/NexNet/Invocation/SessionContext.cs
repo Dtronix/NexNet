@@ -36,6 +36,11 @@ public abstract class SessionContext<TProxy>
         SessionManager = sessionManager;
     }
 
+    public NexusDuplexPipe GetPipe()
+    {
+        return Session.PipeManager.GetPipe();
+    }
+
     /// <summary>
     /// Disconnect the current connection.
     /// </summary>

@@ -66,6 +66,7 @@ internal interface INexusSession
 
     ConnectionState State { get; }
     bool IsServer { get; }
+    NexusPipeManager PipeManager { get; }
 
     /// <summary>
     /// Sends a message.

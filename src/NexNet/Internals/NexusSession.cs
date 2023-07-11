@@ -48,7 +48,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
 
-    private readonly NexusPipeManager _pipeManager;
+    public NexusPipeManager PipeManager { get; }
 
     public long Id { get; }
 
@@ -93,7 +93,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        _pipeManager = new NexusPipeManager(this);
+        PipeManager = new NexusPipeManager(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
         SessionStore = new SessionStore();
