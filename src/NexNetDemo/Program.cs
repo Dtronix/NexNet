@@ -213,10 +213,11 @@ partial class ClientNexus
                     await pipe.Output.FlushAsync();
                     //await Task.Delay(10);
 
-                    /*if (loopNumber++ == 200)
+                    if (loopNumber++ == 100000)
                     {
+                        await pipe.Output.CompleteAsync();
                         return;
-                    }*/
+                    }
                     //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
                 }
             });
@@ -252,7 +253,6 @@ partial class ServerNexus : IServerNexus
         {
             sw.Start();
             var data = await pipe.Input.ReadAsync();
-
 
             if (data.IsCanceled || data.IsCompleted)
                 return;
@@ -291,6 +291,9 @@ class Logger : INexusLogger
     }
     public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
+        if (logLevel < INexusLogger.LogLevel.Trace)
+            return;
+
         Console.WriteLine($"{_prefix} {logLevel}: {message} {exception}");
     }
 }
