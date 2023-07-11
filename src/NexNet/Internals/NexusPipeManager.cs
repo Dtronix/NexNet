@@ -97,6 +97,7 @@ internal class NexusPipeManager
         {
             // Move the pipe to the main active pipes.
             _activePipes.TryAdd(id, initialPipe);
+            initialPipe.Id = id;
             initialPipe.UpdateState(state);
 
             return;

@@ -41,7 +41,7 @@ public class NexusDuplexPipe : ISetupNexusDuplexPipe, IDuplexPipe
 
     private INexusSession? _session;
 
-    internal ushort Id { get; private set; }
+    internal ushort Id;
 
     private byte _initialId;
 
@@ -331,7 +331,7 @@ public class NexusDuplexPipe : ISetupNexusDuplexPipe, IDuplexPipe
         private bool _isCanceled;
         private bool _isCompleted;
         private CancellationTokenSource? _flushCts;
-        private Memory<byte> _invocationIdBytes = new byte[4];
+        private Memory<byte> _invocationIdBytes = new byte[sizeof(ushort)];
         private int _chunkSize;
 
         public PipeWriterImpl(NexusDuplexPipe nexusDuplexPipe)
@@ -418,7 +418,7 @@ public class NexusDuplexPipe : ISetupNexusDuplexPipe, IDuplexPipe
                 try
                 {
                     await session.SendHeaderWithBody(
-                        MessageType.PipeWrite,
+                        MessageType.DuplexPipeWrite,
                         _invocationIdBytes,
                         sendingBuffer,
                         _flushCts.Token).ConfigureAwait(true);

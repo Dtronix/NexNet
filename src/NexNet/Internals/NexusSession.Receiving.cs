@@ -199,7 +199,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                                 disconnect = DisconnectReason.ProtocolError;
                                 break;
                             }
-                            position++;
 
                             _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexStreamId} for {_recMessageHeader.Type}.");
                             break;
