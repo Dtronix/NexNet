@@ -148,7 +148,7 @@ namespace {{Symbol.ContainingNamespace}}
         {
             global::System.Threading.CancellationTokenSource? cts = null;
             global::NexNet.NexusPipe? pipe = null;
-            global::NexNet.NexusDuplexPipe? duplexPipe = null;
+            global::NexNet.INexusDuplexPipe? duplexPipe = null;
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
             try
             {

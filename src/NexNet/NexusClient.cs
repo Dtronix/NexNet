@@ -16,7 +16,6 @@ namespace NexNet;
 public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
-
 {
     private readonly Timer _pingTimer;
     private readonly ClientConfig _config;
@@ -63,11 +62,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
         _cacheManager = new SessionCacheManager<TServerProxy>();
-        
+
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
         _nexus = nexus;
         _pingTimer = new Timer(PingTimer);
-        
     }
 
     /// <summary>
@@ -136,6 +134,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public async ValueTask DisposeAsync()
     {
         await DisconnectAsync().ConfigureAwait(false);
+    }
+
+    public INexusDuplexPipe? GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
+    {
+        return _session?.PipeManager.GetPipe(onReady);
     }
 
     private void PingTimer(object? state)

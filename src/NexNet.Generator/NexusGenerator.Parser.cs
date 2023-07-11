@@ -416,7 +416,7 @@ internal partial class MethodParameterMeta
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
         this.IsPipe = ParamType == "global::NexNet.NexusPipe";
-        this.IsDuplexPipe = ParamType == "global::NexNet.NexusDuplexPipe";
+        this.IsDuplexPipe = ParamType == "global::NexNet.INexusDuplexPipe";
 
         if (IsDuplexPipe)
         {

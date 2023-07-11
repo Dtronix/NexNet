@@ -15,8 +15,8 @@ namespace NexNet.Internals;
 internal class NexusPipeManager
 {
     private readonly INexusSession _session;
-    private ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
-    private ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
+    private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
+    private readonly ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
 
     private readonly Stack<byte> _availableIds = new Stack<byte>();
 
@@ -27,20 +27,35 @@ internal class NexusPipeManager
         _session = session;
     }
 
-    public NexusDuplexPipe GetPipe()
+    public INexusDuplexPipe GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
     {
         var id = GetPartialId();
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id);
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id, onReady);
         _initializingPipes.TryAdd(id, pipe);
 
         return pipe;
     }
 
-    public async ValueTask<NexusDuplexPipe> RegisterPipe(byte otherId)
+    public ValueTask ReturnPipe(INexusDuplexPipe pipe)
+    {
+        if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
+        {
+            _session.Logger?.LogError($"Could not remove pipe {pipe.Id} from the active pipes.");
+            return ValueTask.CompletedTask;
+        }
+
+        // If the state is not already set to complete, then notify the other side of the connection.
+        if (nexusPipe.UpdateState(NexusDuplexPipe.State.Complete))
+            return nexusPipe.NotifyState();
+
+        return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
         var id = GetCompleteId(otherId, out var thisId);
 
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId);
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId, null);
 
 
         if (!_activePipes.TryAdd(id, pipe))
@@ -51,21 +66,18 @@ internal class NexusPipeManager
         return pipe;
     }
 
-    public async ValueTask DeregisterPipe(NexusDuplexPipe pipe)
+    public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        pipe.UpdateState(_session.IsServer
-            ? NexusDuplexPipe.State.ServerReaderComplete | NexusDuplexPipe.State.ServerWriterComplete
-            : NexusDuplexPipe.State.ClientReaderComplete | NexusDuplexPipe.State.ClientWriterComplete);
-
-        await pipe.NotifyState();
-
-        if (!_activePipes.TryRemove(pipe.Id, out _))
+        if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             throw new Exception("Could not remove NexusDuplexPipe to the list of current pipes.");
+
+        if(nexusPipe.UpdateState(NexusDuplexPipe.State.Complete))
+            await nexusPipe.NotifyState();
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
         _availableIds.Push(_session.IsServer ? serverId : clientId);
 
-        _session.CacheManager.NexusDuplexPipeCache.Return(pipe);
+        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
     }
 
     public ValueTask BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
@@ -79,22 +91,13 @@ internal class NexusPipeManager
 
     public void UpdateState(ushort id, NexusDuplexPipe.State state)
     {
-        NexusDuplexPipe? initialPipe = null;
-        if (_session.IsServer && state == NexusDuplexPipe.State.ClientReady)
+        if (state == NexusDuplexPipe.State.Ready)
         {
-            var (_, serverId) = GetClientAndServerId(id);
-            if (!_initializingPipes.TryRemove(serverId, out initialPipe))
-                throw new Exception($"Could not find pipe with initial ID of {serverId}");
-        }
-        else if(!_session.IsServer && state == NexusDuplexPipe.State.ServerReady)
-        {
-            var (clientId, _) = GetClientAndServerId(id);
-            if (!_initializingPipes.TryRemove(clientId, out initialPipe))
-                throw new Exception($"Could not find pipe with initial ID of {clientId}");
-        }
+            var (clientId, serverId) = GetClientAndServerId(id);
+            var thisId = _session.IsServer ? serverId : clientId;
+            if (!_initializingPipes.TryRemove(thisId, out var initialPipe))
+                throw new Exception($"Could not find pipe with initial ID of {thisId}");
 
-        if (initialPipe != null)
-        {
             // Move the pipe to the main active pipes.
             _activePipes.TryAdd(id, initialPipe);
             initialPipe.Id = id;
@@ -102,7 +105,7 @@ internal class NexusPipeManager
 
             return;
         }
-
+        
         if (_activePipes.TryGetValue(id, out var pipe))
             pipe.UpdateState(state);
     }

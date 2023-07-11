@@ -1,4 +1,7 @@
-﻿using NexNet.Cache;
+﻿using System.IO.Pipelines;
+using System.Threading.Tasks;
+using System;
+using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
 
@@ -36,9 +39,9 @@ public abstract class SessionContext<TProxy>
         SessionManager = sessionManager;
     }
 
-    public NexusDuplexPipe GetPipe()
+    public INexusDuplexPipe GetPipe(Func<IDuplexPipe, ValueTask> onReady)
     {
-        return Session.PipeManager.GetPipe();
+        return Session.PipeManager.GetPipe(onReady);
     }
 
     /// <summary>

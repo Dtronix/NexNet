@@ -20,6 +20,7 @@ public partial interface IClientNexus
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask ClientTaskValueWithPipe(NexusPipe pipe);
+    ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
 
@@ -37,6 +38,7 @@ public partial interface IServerNexus
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask ServerTaskValueWithPipe(NexusPipe pipe);
+    ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 
     void ServerData(byte[] data);
 }
@@ -55,6 +57,7 @@ public partial class ClientNexus
     public Func<ClientNexus, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
     public Func<ClientNexus, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
     public Func<ClientNexus, NexusPipe, ValueTask> ClientTaskValueWithPipeEvent;
+    public Func<ClientNexus, INexusDuplexPipe, ValueTask> ClientTaskValueWithDuplexPipeEvent;
     public Func<ClientNexus, bool, ValueTask>? OnConnectedEvent;
     public Func<ClientNexus, ValueTask>? OnReconnectingEvent;
     public Func<ClientNexus, ValueTask>? OnDisconnectedEvent;
@@ -115,6 +118,11 @@ public partial class ClientNexus
         return ClientTaskValueWithPipeEvent.Invoke(this, pipe);
     }
 
+    public ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
+    {
+        return ClientTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+    }
+
     protected override ValueTask OnConnected(bool isReconnected)
     {
         if (OnConnectedEvent == null)
@@ -154,6 +162,7 @@ public partial class ServerNexus
     public Func<ServerNexus, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
     public Func<ServerNexus, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
     public Func<ServerNexus, NexusPipe, ValueTask> ServerTaskValueWithPipeEvent;
+    public Func<ServerNexus, INexusDuplexPipe, ValueTask> ServerTaskValueWithDuplexPipeEvent;
 
     public Action<ServerNexus, byte[]> ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
@@ -214,6 +223,11 @@ public partial class ServerNexus
     public ValueTask ServerTaskValueWithPipe(NexusPipe pipe)
     {
         return ServerTaskValueWithPipeEvent.Invoke(this, pipe);
+    }
+
+    public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
+    {
+        return ServerTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
     }
 
     public void ServerData(byte[] data)

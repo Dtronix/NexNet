@@ -277,9 +277,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <param name="pipe">Pipe to retrieve the Id of.</param>
     /// <returns>Initial id of the pipe.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static byte ProxyGetDuplexPipeInitialId(NexusDuplexPipe pipe)
+    protected static byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
     {
-        var setupPipe = Unsafe.As<ISetupNexusDuplexPipe>(pipe);
+        var setupPipe = Unsafe.As<NexusDuplexPipe>(pipe);
         return setupPipe.InitialId;
     }
 

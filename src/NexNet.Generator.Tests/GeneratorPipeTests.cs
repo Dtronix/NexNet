@@ -44,7 +44,7 @@ partial class ServerNexus : IServerNexus { }
 using NexNet;
 namespace NexNetDemo;
 partial interface IClientNexus { }
-partial interface IServerNexus {  ValueTask Update(NexusDuplexPipe pipe1, NexusDuplexPipe pipe2); }
+partial interface IServerNexus {  ValueTask Update(INexusDuplexPipe pipe1, INexusDuplexPipe pipe2); }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
@@ -60,7 +60,7 @@ partial class ServerNexus : IServerNexus { }
 using NexNet;
 namespace NexNetDemo;
 partial interface IClientNexus { }
-partial interface IServerNexus {  void Update(NexusDuplexPipe pipe); }
+partial interface IServerNexus {  void Update(INexusDuplexPipe pipe); }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
@@ -77,12 +77,12 @@ using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
 partial interface IClientNexus { }
-partial interface IServerNexus {  ValueTask Update(NexusDuplexPipe pipe); }
+partial interface IServerNexus {  ValueTask Update(INexusDuplexPipe pipe); }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus {
-    public ValueTask Update(NexusDuplexPipe pipe) => ValueTask.CompletedTask;
+    public ValueTask Update(INexusDuplexPipe pipe) => ValueTask.CompletedTask;
 }
 """);
         Assert.IsEmpty(diagnostic);

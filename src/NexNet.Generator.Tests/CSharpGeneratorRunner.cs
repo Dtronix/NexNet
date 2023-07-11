@@ -27,6 +27,7 @@ public static class CSharpGeneratorRunner
         var references = systemAssemblies
             .Append(typeof(NexusAttribute<,>).Assembly.Location) // System Assemblies 
             .Append(typeof(MemoryPackableAttribute).Assembly.Location) // System Assemblies 
+            .Append(typeof(System.IO.Pipelines.IDuplexPipe).Assembly.Location) // System Assemblies 
             .Select(x => MetadataReference.CreateFromFile(x))
             .ToArray();
 
