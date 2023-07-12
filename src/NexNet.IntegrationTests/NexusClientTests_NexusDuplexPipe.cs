@@ -98,6 +98,7 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
             }
             catch (Exception e)
             {
+                Console.WriteLine(e);
                 // ignored
             }
 

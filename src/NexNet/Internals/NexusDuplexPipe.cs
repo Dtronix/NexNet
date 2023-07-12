@@ -39,6 +39,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     private INexusSession? _session;
 
+    /// <summary>
+    /// Id which changes based upon completion of the pipe. Used to make sure the
+    /// Pipe is in the same state upon completion of writing/reading.
+    /// </summary>
+    internal int StateId = 0;
+
     public ushort Id { get; set; }
 
     public byte InitialId { get; set; }
@@ -58,6 +64,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     /// </summary>
     private Func<INexusDuplexPipe, ValueTask>? _onReady;
 
+    private INexusLogger? _logger;
+
     internal NexusDuplexPipe()
     {
         _inputPipeReader = new PipeReaderWrapper(this, _inputPipe.Reader);
@@ -71,13 +79,14 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         _onReady = onReady;
         _session = session;
+        _logger = session?.Logger;
         InitialId = initialId;
         _outputPipeWriter.Setup();
     }
 
     record class OnPipeReadyArguments(IDuplexPipe Pipe, Action<IDuplexPipe> InvokeAction);
 
-    internal async ValueTask PipeReady(INexusSession session, ushort id)
+    internal async ValueTask PipeReady(ushort id)
     {
         if (_session == null)
             return;
@@ -93,6 +102,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     internal void Reset()
     {
+        StateId++;
         // Close everything.
         UpdateState(State.ClientWriterComplete
                             | State.ClientReaderComplete
@@ -147,7 +157,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     private static async ValueTask FireOnReady(NexusDuplexPipe pipe)
     {
+        var state = pipe.StateId;
         var session = pipe._session;
+        var logger = pipe._logger;
 
         if (session == null)
             return;
@@ -158,17 +170,24 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         }
         catch (Exception e)
         {
-            session.Logger?.LogError(e, "Pipe did not successfully complete");
+            logger?.LogError(e, "Pipe did not successfully complete");
         }
         finally
         {
-            await session.PipeManager.ReturnPipe(pipe);
+            if (pipe.StateId != state)
+            {
+                logger?.LogError("Could not return pipe to the PipeManager due to the state changing.  This is normally due to the manager cancellation process. Original state: New State:");
+            }
+            else
+            {
+                await session.PipeManager.ReturnPipe(pipe);
+            }
         }
     }
 
     internal bool UpdateState(State updatedState)
     {
-        _session?.Logger?.LogTrace($"Current State: {_state}; Update State: {updatedState}");
+        _logger?.LogTrace($"Current State: {_state}; Update State: {updatedState}");
         if (_session == null || _state.HasFlag(updatedState))
             return false;
 
@@ -262,7 +281,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             if (!CanRead())
             {
-                _nexusPipe._session?.Logger.LogTrace("PipeReaderWrapper.ReadAsync can't read any data.");
+                _nexusPipe._logger?.LogTrace("PipeReaderWrapper.ReadAsync can't read any data.");
                 return _completeTask;
             }
 
@@ -309,12 +328,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 : !_nexusPipe._state.HasFlag(State.ClientReaderComplete);
         }
     }
-
-    internal record RunWriterArguments(
-        int InvocationId, 
-        INexusSession Session, 
-        INexusLogger? Logger,
-        CancellationToken CancellationToken);
 
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
@@ -438,7 +451,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 }
                 catch (Exception e)
                 {
-                    session!.Logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_nexusDuplexPipe.Id}.");
+                    _nexusDuplexPipe._logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_nexusDuplexPipe.Id}.");
                     await session.DisconnectAsync(DisconnectReason.ProtocolError);
                     break;
                 }
