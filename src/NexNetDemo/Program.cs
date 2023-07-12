@@ -8,8 +8,10 @@ using System.Runtime.CompilerServices;
 using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using NexNet;
 using NexNet.Transports;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNetDemo;
 
@@ -295,15 +297,22 @@ class Logger : INexusLogger
 
 internal class Program
 {
-  static async Task Main(string[] args)
-  {
-      var path = "test.sock";
+    static void RunTest(string testName, Action action)
+    {
+        var sw = Stopwatch.StartNew();
+        action();
+        Console.WriteLine($"Completed {testName} in {sw.ElapsedMilliseconds}");
+    }
+
+    static async Task Main(string[] args)
+    {
+        var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
-        
+
         var serverConfig = new UdsServerConfig()
         {
-            EndPoint = new UnixDomainSocketEndPoint(path), 
+            EndPoint = new UnixDomainSocketEndPoint(path),
             //Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
@@ -367,7 +376,116 @@ internal class Program
             throw;
         }
 
-        Console.ReadLine();
-        
+        //Console.ReadLine();
+
+    }
+
+    static void RoughBenchmark()
+    {
+        var runs = 100000000;
+
+        RunTest("New", () =>
+        {
+            var bufferWriter = BufferWriter<byte>.Create(128);
+            var bufferSize = 0;
+
+            var increaseSize = 201;
+            var decreaseSize = 67;
+
+            for (int i = 0; i < runs; i++)
+            {
+                bufferSize += increaseSize;
+                var span = bufferWriter.GetSpan(increaseSize).Slice(0, increaseSize);
+                bufferWriter.Advance(increaseSize);
+
+                var addBufferLen = bufferWriter.GetBuffer().Length;
+                if (bufferSize != addBufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
+
+                bufferWriter.ReleaseTo(decreaseSize);
+
+                bufferSize -= decreaseSize;
+
+                var bufferLen = bufferWriter.GetBuffer().Length;
+
+                if (bufferSize != bufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
+
+                if (bufferLen > 1024 * 32)
+                    decreaseSize = 529;
+                else if (bufferLen < 1024 * 16)
+                    decreaseSize = 67;
+            }
+        });
+
+        RunTest("Old", () =>
+        {
+            var bufferWriter = BufferWriter<byte>.Create(128);
+            var bufferSize = 0;
+
+            var increaseSize = 201;
+            var decreaseSize = 67;
+
+            for (int i = 0; i < runs; i++)
+            {
+                bufferSize += increaseSize;
+                var span = bufferWriter.GetSpan(increaseSize).Slice(0, increaseSize);
+                bufferWriter.Advance(increaseSize);
+
+                var addBuffer = bufferWriter.GetBuffer();
+                var addBufferLen = addBuffer.Length;
+                if (bufferSize != addBufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
+
+                bufferWriter.Deallocate(addBuffer.Slice(0, decreaseSize));
+
+                bufferSize -= decreaseSize;
+
+                var bufferLen = bufferWriter.GetBuffer().Length;
+
+                if (bufferSize != bufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
+
+                if (bufferLen > 1024 * 32)
+                    decreaseSize = 529;
+                else if (bufferLen < 1024 * 16)
+                    decreaseSize = 67;
+            }
+        });
+
+        RunTest("Original", () =>
+        {
+            var bufferWriter = BufferWriter<byte>.Create(128);
+            var bufferSize = 0;
+
+            var increaseSize = 201;
+            var decreaseSize = 67;
+
+            for (int i = 0; i < runs; i++)
+            {
+                bufferSize += increaseSize;
+                var span = bufferWriter.GetSpan(increaseSize).Slice(0, increaseSize);
+                bufferWriter.Advance(increaseSize);
+
+                var addBuffer = bufferWriter.GetBuffer();
+                var addBufferLen = addBuffer.Length;
+                if (bufferSize != addBufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
+
+                bufferWriter.Flush(decreaseSize).Dispose();
+
+                bufferSize -= decreaseSize;
+
+                var bufferLen = bufferWriter.GetBuffer().Length;
+
+                if (bufferSize != bufferLen)
+                    Console.WriteLine($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
+
+                if (bufferLen > 1024 * 32)
+                    decreaseSize = 529;
+                else if (bufferLen < 1024 * 16)
+                    decreaseSize = 67;
+            }
+        });
     }
 }
