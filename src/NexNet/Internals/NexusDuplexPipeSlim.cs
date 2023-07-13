@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
+using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
 using Pipelines.Sockets.Unofficial.Threading;
 
@@ -67,9 +68,9 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
     private INexusLogger? _logger;
 
-    internal NexusDuplexPipe()
+    internal NexusDuplexPipeSlim()
     {
-        _inputPipeReader = new PipeReaderImpl(this, _inputPipe.Reader);
+        _inputPipeReader = new PipeReaderImpl(this);
         _outputPipeWriter = new PipeWriterImpl(this);
     }
 
@@ -112,7 +113,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         InitialId = 0;
         _state = State.Unset;
-        _inputPipe.Reset();
         _onReady = null;
         // No need to reset anything with the writer as it is use once and dispose.
     }
@@ -156,7 +156,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         _session.CacheManager.Return(message);
     }
 
-    private static async ValueTask FireOnReady(NexusDuplexPipe pipe)
+    private static async ValueTask FireOnReady(NexusDuplexPipeSlim pipe)
     {
         var state = pipe.StateId;
         var session = pipe._session;
@@ -196,7 +196,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         {
             _state = State.Ready;
             if (_onReady != null)
-                TaskUtilities.StartTask<NexusDuplexPipe>(new(FireOnReady, this));
+                TaskUtilities.StartTask<NexusDuplexPipeSlim>(new(FireOnReady, this));
             return true;
         }
 
@@ -256,24 +256,34 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         return changed;
     }
 
-    private class PipeReaderImpl : PipeReader
+    internal class PipeReaderImpl : PipeReader
     {
-        private readonly NexusDuplexPipe _nexusPipe;
+        private readonly NexusDuplexPipeSlim _nexusPipe;
 
         public readonly BufferWriter<byte> Buffer;
 
         private MutexSlim _readLock = new MutexSlim(0);
+        private SemaphoreSlim _newDataSemaphore = new SemaphoreSlim(0, 1);
+        private CancellationTokenSource _cancelReadingCts = new CancellationTokenSource();
+
+        private BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
 
         private bool _isComplete;
         private bool _isCanceled;
 
         private static readonly ValueTask<ReadResult> _completeTask = ValueTask.FromResult(new ReadResult(ReadOnlySequence<byte>.Empty, false, true));
-        private static readonly ValueTask<ReadResult> _completeTask = ValueTask.FromResult(new ReadResult(ReadOnlySequence<byte>.Empty, false, true));
-        
-        public PipeReaderImpl(NexusDuplexPipe nexusPipe, PipeReader basePipe)
+ 
+        public PipeReaderImpl(NexusDuplexPipeSlim nexusPipe)
         {
             _nexusPipe = nexusPipe;
         }
+
+        public void BufferData(ReadOnlySequence<byte> data)
+        {
+            data.CopyTo(_buffer.GetSpan((int)data.Length));
+            _newDataSemaphore.Release(1);
+        }
+
         public override bool TryRead(out ReadResult result)
         {
             if (!CanRead())
@@ -282,6 +292,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 return false;
             }
 
+
             using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
             if (!lockToken.Success)
             {
@@ -289,26 +300,52 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 return false;
             }
 
-            Buffer.Deallocate();
+            // TODO: Complete
+            //_newDataLock.TryWait(MutexSlim.WaitOptions.DisableAsyncContext);
 
-            return _basePipe.TryRead(out result);
+
+              
+            result = new ReadResult(Buffer.GetBuffer().AsReadOnly(), _isCanceled, _isComplete);
+
+
+            return false;
         }
 
-        public override ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
+        private static void CancellationCallback(object? argsObject)
+        {
+            var args = Unsafe.As<CancellationCallbackArgs>(argsObject);
+
+            args.
+        }
+
+        private record CancellationCallbackArgs();
+
+        public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
             if (!CanRead())
             {
                 _nexusPipe._logger?.LogTrace("PipeReaderWrapper.ReadAsync can't read any data.");
-                return _completeTask;
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
             }
 
-            return _basePipe.ReadAsync(cancellationToken);
+            using var lockToken = await _readLock.TryWaitAsync(cancellationToken, MutexSlim.WaitOptions.NoDelay);
+            if (!lockToken.Success)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+
+            if (cancellationToken.CanBeCanceled)
+                cancellationToken.Register(CancellationCallback, new CancellationCallbackArgs(), false);
+
+            await _newDataSemaphore.WaitAsync(_cancelReadingCts.Token);
+
+            return new ReadResult(_buffer.GetBuffer(), _isCanceled, _isComplete);
         }
 
         public override void AdvanceTo(SequencePosition consumed)
         {
             if (!CanRead())
                 return;
+
+
 
             _basePipe.AdvanceTo(consumed);
         }
@@ -348,7 +385,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
     private class PipeWriterImpl : PipeWriter, IDisposable
     {
-        private readonly NexusDuplexPipe _nexusDuplexPipe;
+        private readonly NexusDuplexPipeSlim _nexusDuplexPipe;
 
         private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
         private bool _isCanceled;
@@ -357,7 +394,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         private Memory<byte> _invocationIdBytes = new byte[sizeof(ushort)];
         private int _chunkSize;
 
-        public PipeWriterImpl(NexusDuplexPipe nexusDuplexPipe)
+        public PipeWriterImpl(NexusDuplexPipeSlim nexusDuplexPipe)
         {
             _nexusDuplexPipe = nexusDuplexPipe;
         }

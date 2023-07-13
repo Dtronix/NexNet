@@ -299,6 +299,7 @@ internal class Program
 {
     static void RunTest(string testName, Action action)
     {
+        Console.WriteLine($"Running {testName}");
         var sw = Stopwatch.StartNew();
         action();
         Console.WriteLine($"Completed {testName} in {sw.ElapsedMilliseconds}");
@@ -306,6 +307,10 @@ internal class Program
 
     static async Task Main(string[] args)
     {
+
+        RoughBenchmark();
+        Console.ReadLine();
+        return;
         var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
@@ -376,13 +381,13 @@ internal class Program
             throw;
         }
 
-        //Console.ReadLine();
+        Console.ReadLine();
 
     }
 
     static void RoughBenchmark()
     {
-        var runs = 100000000;
+        var runs = 10000000;
 
         RunTest("New", () =>
         {
