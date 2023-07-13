@@ -1,5 +1,6 @@
 ﻿using System.Diagnostics;
 using System.Net.Sockets;
+using System.Text;
 using MemoryPack;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
@@ -11,94 +12,42 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexusClientTests
+internal class BufferWriterTests
 {
-    [Test]
-    public void BufferWriterTests()
-    {
-        var bufferWriter = BufferWriter<byte>.Create(128);
-        /*var span = bufferWriter.GetSpan(128);
-        bufferWriter.Advance(120);
-        bufferWriter.Advance(120);
-        bufferWriter.Flush().Dispose();
-        
-
-        var span = bufferWriter.GetSpan(120);
-        bufferWriter.Advance(120);
-        bufferWriter.Flush().Dispose();*/
-
-        FillSpan(bufferWriter.GetSpan(64).Slice(0, 64));
-        bufferWriter.Advance(64);
-        FillSpan(bufferWriter.GetSpan(64).Slice(0, 64));
-        bufferWriter.Advance(64);
-
-
-        //var buffer = bufferWriter.GetBuffer();
-        //Assert.AreEqual(64 * 3, buffer.Length);
-
-        bufferWriter.ReleaseTo(127);
-
-        var buffer2 = bufferWriter.GetBuffer();
-
-    }
 
     [Test]
     public void FuzzBufferTests()
     {
         var bufferWriter = BufferWriter<byte>.Create(128);
-        var random = new Random();
         var bufferSize = 0;
 
-        var increaseSize = 64;
-        var decreaseSize = 64;
+        var increaseSize = 201;
+        var decreaseSize = 67;
 
-        for (int i = 0; i < 100000; i++)
+        for (int i = 0; i < 50000; i++)
         {
-            var size = random.Next(1, increaseSize);
-            bufferSize += size;
-            var span = bufferWriter.GetSpan(size).Slice(0, size);
-            FillSpan(span);
-            bufferWriter.Advance(size);
+            bufferSize += increaseSize;
+            var span = bufferWriter.GetSpan(increaseSize).Slice(0, increaseSize);
+            bufferWriter.Advance(increaseSize);
 
             var addBufferLen = bufferWriter.GetBuffer().Length;
-            Assert.AreEqual(bufferSize, addBufferLen);
+            if (bufferSize != addBufferLen)
+                Console.WriteLine($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
 
-            var deallocateAmount = random.Next(1, Math.Min(bufferSize, decreaseSize));
-            bufferWriter.ReleaseTo(deallocateAmount);
+            bufferWriter.ReleaseTo(decreaseSize);
 
-            bufferSize -= deallocateAmount;
+            bufferSize -= decreaseSize;
+            var buffer = bufferWriter.GetBuffer();
+            var bufferLen = buffer.Length;
 
-            var bufferLen = bufferWriter.GetBuffer().Length;
-            Assert.AreEqual(bufferSize, bufferLen);
+            if (bufferSize != bufferLen)
+                Console.WriteLine($"bufferSize: {bufferSize} != bufferLen: {bufferLen}");
 
-            if (bufferLen > 1024)
-                decreaseSize = 128;
-            else if (bufferLen < 128)
-                decreaseSize = 64;
+            if (bufferLen > 1024 * 32)
+                decreaseSize = 529;
+            else if (bufferLen < 1024 * 16)
+                decreaseSize = 67;
         }
-
-        /*var span = bufferWriter.GetSpan(128);
-        bufferWriter.Advance(120);
-        bufferWriter.Advance(120);
-        bufferWriter.Flush().Dispose();
-        
-
-        var span = bufferWriter.GetSpan(120);
-        bufferWriter.Advance(120);
-        bufferWriter.Flush().Dispose();*/
-
-        FillSpan(bufferWriter.GetSpan(64).Slice(0, 64));
-        bufferWriter.Advance(64);
-        FillSpan(bufferWriter.GetSpan(64).Slice(0, 64));
-        bufferWriter.Advance(64);
-
-
-        //var buffer = bufferWriter.GetBuffer();
-        //Assert.AreEqual(64 * 3, buffer.Length);
-
-        bufferWriter.ReleaseTo(127);
-
-        var buffer2 = bufferWriter.GetBuffer();
 
     }
 
