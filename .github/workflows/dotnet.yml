@@ -33,10 +33,10 @@ jobs:
       run: dotnet build src -c Release
       
     - name: Execute integration tests
-      run: dotnet test src/NexNet.IntegrationTests -c Release
+      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
 
     - name: Execute generator tests
-      run: dotnet test src/NexNet.Generator.Tests -c Release
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
       
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts
