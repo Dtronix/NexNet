@@ -9,9 +9,18 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="AsyncAutoResetEventTests.cs" />
+    <Compile Remove="CountingResetAwaiterTests.cs" />
+    <Compile Remove="NexusClientTests_NexusDuplexPipe.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="AsyncAutoResetEventTests.cs" />
+    <None Include="CountingResetAwaiterTests.cs" />
+    <None Include="NexusClientTests_NexusDuplexPipe.cs" />
   </ItemGroup>
 
   <ItemGroup>

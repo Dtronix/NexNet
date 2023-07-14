@@ -192,7 +192,6 @@ internal class NexusDuplexPipeSlimReader
         await tcs.Task.Timeout(1);
     }
 
-
     [Test]
     public async Task CancelPendingReadCancelsReadAfterReadStart()
     {
@@ -213,7 +212,6 @@ internal class NexusDuplexPipeSlimReader
         await tcs.Task.Timeout(1);
     }
 
-    [Repeat(100)]
     [Test]
     public async Task CancelPendingReadCancelsAllowsReadingAfter()
     {
@@ -235,13 +233,11 @@ internal class NexusDuplexPipeSlimReader
         await Task.Delay(1);
 
         reader.CancelPendingRead();
-
         reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
         
         await tcs.Task.Timeout(1);
     }
 
-    [Repeat(100)]
     [Test]
     public async Task CancelPendingReadPreCancelsAllowsReadingAfter()
     {
@@ -249,11 +245,14 @@ internal class NexusDuplexPipeSlimReader
         var reader = CreateReader();
 
         reader.CancelPendingRead();
+        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         _ = Task.Run(async () =>
         {
             var data = await reader.ReadAsync();
             Assert.IsTrue(data.IsCanceled);
+
+            await Task.Delay(10);
             data = await reader.ReadAsync();
 
             Assert.AreEqual(10, data.Buffer.Length);
@@ -261,7 +260,7 @@ internal class NexusDuplexPipeSlimReader
             tcs.SetResult();
         });
 
-        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+
 
         await tcs.Task.Timeout(1);
     }

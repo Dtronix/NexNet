@@ -265,19 +265,26 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         public readonly BufferWriter<byte> Buffer;
 
         private MutexSlim _readLock = new MutexSlim(0);
-        //private CancellationTokenSource _cancelReadingCts = new CancellationTokenSource();
+        private SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
+        //private CancellationTokenSource _cancelReadingCts;
+        private readonly CancellationRegistrationArgs _cancelReadingArgs;
 
-        private readonly AsyncAutoResetEvent _readResetEvent = new AsyncAutoResetEvent(false);
+        private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
+
+        // private readonly AsyncAutoResetEvent _readResetEvent = new AsyncAutoResetEvent(false);
 
         private BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
 
         private bool _isComplete;
         private bool _isCanceled;
-
-
-
+        
         private static readonly ValueTask<ReadResult> _completeTask = ValueTask.FromResult(new ReadResult(ReadOnlySequence<byte>.Empty, false, true));
- 
+
+        public PipeReaderImpl()
+        {
+            //_cancelReadingCts = new CancellationTokenSource();
+            _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
+        }
         public void Setup(INexusSession session)
         {
             _session = session;
@@ -292,7 +299,8 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         {
             data.CopyTo(_buffer.GetSpan((int)data.Length));
             _buffer.Advance((int)data.Length);
-            _readResetEvent.Set();
+
+            ReleaseSemaphore(_readSemaphore);
         }
 
         public override bool TryRead(out ReadResult result)
@@ -329,10 +337,22 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
             }
 
+            CancellationTokenRegistration? cts = null;
+
+            if (cancellationToken.CanBeCanceled)
+            {
+                cts = cancellationToken.UnsafeRegister(static (object? argsObj) =>
+                {
+                    var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
+                    ReleaseSemaphore(args.Semaphore);
+
+                }, _cancelReadingArgs);
+            }
+
             //Console.WriteLine("ReadAsync normal path");
 
-
-            await _readResetEvent.WaitAsync(cancellationToken);
+            await _readSemaphore.WaitAsync(cancellationToken);
+            //await _readResetEvent.WaitAsync(cancellationToken);
 
             //Console.WriteLine("passed read lock");
             bool isCanceled = _isCanceled;
@@ -357,12 +377,34 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         public override void CancelPendingRead()
         {
             _isCanceled = true;
-            _readResetEvent.Set();
+            ReleaseSemaphore(_readSemaphore);
+            /*try
+            {
+                if(_readSemaphore.CurrentCount == 0)
+                    _readSemaphore.Release();
+            }
+            catch
+            {
+                // ignore.
+            }*/
         }
 
         public override void Complete(Exception? exception = null)
         {
 
+        }
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ReleaseSemaphore(SemaphoreSlim semaphore)
+        {
+            try
+            {
+                if (semaphore.CurrentCount == 0)
+                    semaphore.Release();
+            }
+            catch
+            {
+                // ignore.
+            }
         }
 
     }
