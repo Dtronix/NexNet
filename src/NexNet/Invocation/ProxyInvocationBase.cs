@@ -279,7 +279,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
     {
-        var setupPipe = Unsafe.As<NexusDuplexPipe>(pipe);
+        var setupPipe = Unsafe.As<NexusDuplexPipeSlim>(pipe);
         return setupPipe.InitialId;
     }
 

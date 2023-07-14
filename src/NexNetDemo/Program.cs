@@ -308,9 +308,9 @@ internal class Program
     static async Task Main(string[] args)
     {
 
-        RoughBenchmark();
-        Console.ReadLine();
-        return;
+        //RoughBenchmark();
+        //Console.ReadLine();
+        //return;
         var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
@@ -318,12 +318,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new Logger("SV")
+            Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new Logger("CL")
+            Logger = new Logger("CL")
         };
         /*
         var serverConfig = new TcpServerConfig()

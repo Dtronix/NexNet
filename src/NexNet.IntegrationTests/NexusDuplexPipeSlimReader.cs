@@ -15,7 +15,7 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusDuplexPipeSlimReader
 {
-    private class SessionStub : INexusSession
+    /*private class SessionStub : INexusSession
     {
         private class ConsoleLogger : INexusLogger
         {
@@ -71,11 +71,10 @@ internal class NexusDuplexPipeSlimReader
         {
             return ValueTask.CompletedTask;
         }
-    }
+    }*/
     private NexusDuplexPipeSlim.PipeReaderImpl CreateReader()
     {
         var reader = new NexusDuplexPipeSlim.PipeReaderImpl();
-        reader.Setup(new SessionStub());
 
         return reader;
     }
@@ -338,6 +337,24 @@ internal class NexusDuplexPipeSlimReader
         result = await reader.ReadAsync();
         Assert.IsFalse(result.IsCanceled);
         Assert.AreEqual(10, result.Buffer.Length);
+    }
+
+    [Test]
+    public async Task ReadAdvance()
+    {
+        var reader = CreateReader();
+        for (int i = 0; i < 9000; i++)
+        {
+            reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        }
+        var result = await reader.ReadAsync();
+
+        var position = result.Buffer.GetPosition(3000 * 16);
+
+        reader.AdvanceTo(position);
+
+
+
     }
 
 }

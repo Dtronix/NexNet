@@ -251,7 +251,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexStreamId, bodySlice);
+                        PipeManager.BufferIncomingData(_recMessageHeader.DuplexStreamId, bodySlice);
                         break;
                     }
 

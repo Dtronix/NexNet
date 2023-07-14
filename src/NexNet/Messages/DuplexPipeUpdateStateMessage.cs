@@ -12,6 +12,6 @@ internal partial class DuplexPipeUpdateStateMessage : IMessageBase
 
     public ushort PipeId { get; set; }
 
-    public NexusDuplexPipe.State State { get; set; }
+    public NexusDuplexPipeSlim.State State { get; set; }
     
 }

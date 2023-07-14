@@ -10,8 +10,8 @@ namespace NexNet.Internals;
 internal class NexusPipeManager
 {
     private INexusSession _session = null!;
-    private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
-    private readonly ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
+    private readonly ConcurrentDictionary<ushort, NexusDuplexPipeSlim> _activePipes = new();
+    private readonly ConcurrentDictionary<byte, NexusDuplexPipeSlim> _initializingPipes = new();
 
     private readonly Stack<byte> _availableIds = new Stack<byte>();
 
@@ -50,7 +50,7 @@ internal class NexusPipeManager
         }
 
         // If the state is not already set to complete, then notify the other side of the connection.
-        if (nexusPipe.UpdateState(NexusDuplexPipe.State.Complete))
+        if (nexusPipe.UpdateState(NexusDuplexPipeSlim.State.Complete))
             await nexusPipe.NotifyState();
 
         // Return back to the cache.
@@ -83,7 +83,7 @@ internal class NexusPipeManager
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;
 
-        if(nexusPipe.UpdateState(NexusDuplexPipe.State.Complete) && !_isCanceled)
+        if(nexusPipe.UpdateState(NexusDuplexPipeSlim.State.Complete) && !_isCanceled)
             await nexusPipe.NotifyState();
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
@@ -92,24 +92,27 @@ internal class NexusPipeManager
         _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
     }
 
-    public ValueTask BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
+    public void BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
     {
         if (_isCanceled)
-            return ValueTask.CompletedTask;
+            return;
 
         if (_activePipes.TryGetValue(id, out var pipe))
-            return pipe.WriteFromUpstream(data);
+        {
+            pipe.WriteFromUpstream(data);
+            return;
+        }
 
         _session.Logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
         throw new InvalidOperationException($"No pipe exists for id: {id}.");
     }
 
-    public void UpdateState(ushort id, NexusDuplexPipe.State state)
+    public void UpdateState(ushort id, NexusDuplexPipeSlim.State state)
     {
         if (_isCanceled)
             return;
 
-        if (state == NexusDuplexPipe.State.Ready)
+        if (state == NexusDuplexPipeSlim.State.Ready)
         {
             var (clientId, serverId) = GetClientAndServerId(id);
             var thisId = _session.IsServer ? serverId : clientId;
@@ -136,7 +139,7 @@ internal class NexusPipeManager
         // Update all the states of the pipes to complete.
         foreach (var pipe in _initializingPipes)
         {
-            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
+            pipe.Value.UpdateState(NexusDuplexPipeSlim.State.Complete);
             _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
         }
 
@@ -144,7 +147,7 @@ internal class NexusPipeManager
 
         foreach (var pipe in _activePipes)
         {
-            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
+            pipe.Value.UpdateState(NexusDuplexPipeSlim.State.Complete);
             _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
         }
 

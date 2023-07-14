@@ -79,7 +79,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         if (_state != State.Unset)
             throw new InvalidOperationException("Can't setup a pipe that is already in use.");
 
-        _inputPipeReader.Setup(session);
         _onReady = onReady;
         _session = session;
         _logger = session?.Logger;
@@ -88,7 +87,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
     }
 
     record class OnPipeReadyArguments(IDuplexPipe Pipe, Action<IDuplexPipe> InvokeAction);
-    /*
+    
     internal async ValueTask PipeReady(ushort id)
     {
         if (_session == null)
@@ -102,7 +101,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         _outputPipeWriter.Setup();
     }
-    */
+    
     internal void Reset()
     {
         StateId++;
@@ -117,8 +116,8 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         _onReady = null;
         // No need to reset anything with the writer as it is use once and dispose.
     }
-    /*
-    internal async ValueTask WriteFromUpstream(ReadOnlySequence<byte> data)
+    
+    internal void WriteFromUpstream(ReadOnlySequence<byte> data)
     {
         if (_session == null)
             return;
@@ -129,23 +128,10 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             return;
 
         var length = (int)data.Length;
-        data.CopyTo(_inputPipe.Writer.GetSpan(length));
-        _inputPipe.Writer.Advance(length);
-        
-        var result = await _inputPipe.Writer.FlushAsync().ConfigureAwait(true);
+        _inputPipeReader.BufferData(data);
+    }
 
-        // Notify that the reader is completed.
-        if (result.IsCompleted)
-        {
-            _state = _session.IsServer
-                ? State.ServerReaderComplete
-                : State.ClientReaderComplete;
-
-            await NotifyState().ConfigureAwait(false);
-        }
-    }*/
-
-    /*
+    
     internal async ValueTask NotifyState()
     {
         if (_session == null)
@@ -157,7 +143,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         await _session.SendMessage(message).ConfigureAwait(false);
         _session.CacheManager.Return(message);
     }
-    */
+    
     private static async ValueTask FireOnReady(NexusDuplexPipeSlim pipe)
     {
         var state = pipe.StateId;
@@ -260,41 +246,41 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
     internal class PipeReaderImpl : PipeReader
     {
-        private INexusSession _session;
+        //private INexusSession? _session;
         
         private MutexSlim _readLock = new MutexSlim(0);
-        private SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
-        //private CancellationTokenSource _cancelReadingCts;
+        private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         private readonly CancellationRegistrationArgs _cancelReadingArgs;
 
         private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
-        // private readonly AsyncAutoResetEvent _readResetEvent = new AsyncAutoResetEvent(false);
-
-        private BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
+        private readonly BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
 
         private bool _isComplete;
         private bool _isCanceled;
         
-        private static readonly ValueTask<ReadResult> _completeTask = ValueTask.FromResult(new ReadResult(ReadOnlySequence<byte>.Empty, false, true));
-
         public PipeReaderImpl()
         {
-            //_cancelReadingCts = new CancellationTokenSource();
             _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         }
-        public void Setup(INexusSession session)
-        {
-            _session = session;
-        }
-
         public void Reset()
         {
-            _session = null;
+            _isComplete = false;
+            _isCanceled = false;
+            _buffer.Dispose();
+
+            if (!_readLock.IsAvailable)
+                throw new InvalidOperationException("ReadLock is still pending and can not reset.");
+
+            // Reset the semaphore to it's original state.
+            if (_readSemaphore.CurrentCount == 1)
+                _readSemaphore.Wait();
         }
 
         public void BufferData(ReadOnlySequence<byte> data)
         {
+            using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
+
             data.CopyTo(_buffer.GetSpan((int)data.Length));
             _buffer.Advance((int)data.Length);
 
@@ -303,22 +289,38 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         public override bool TryRead(out ReadResult result)
         {
+            if (_isComplete)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                return false;
+            }
+
             using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
+
             if (!lockToken.Success)
             {
                 result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
                 return false;
             }
 
-            // TODO: Complete
-            //_newDataLock.TryWait(MutexSlim.WaitOptions.DisableAsyncContext);
+            if (_isComplete)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                return false;
+            }
 
+            if (_isCanceled)
+            {
+                _isCanceled = false;
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return false;
+            }
 
-              
-            result = new ReadResult(_buffer.GetBuffer().AsReadOnly(), _isCanceled, _isComplete);
-
-
-            return false;
+            _readSemaphore.Wait();
+            bool isCanceled = _isCanceled;
+            _isCanceled = false;
+            result = new ReadResult(_buffer.GetBuffer(), isCanceled, _isComplete);
+            return true;
         }
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
@@ -340,8 +342,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             if (_isComplete)
                 return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
 
-            Console.WriteLine("1");
-
             if (_isCanceled)
             {
                 _isCanceled = false;
@@ -362,16 +362,13 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
             try
             {
-                Console.WriteLine("2");
                 await _readSemaphore.WaitAsync(cancellationToken);
                 bool isCanceled = _isCanceled;
                 _isCanceled = false;
-                Console.WriteLine("3");
                 return new ReadResult(_buffer.GetBuffer(), isCanceled || cancellationToken.IsCancellationRequested, _isComplete);
             }
             catch (OperationCanceledException)
             {
-                Console.WriteLine("4");
                 return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
             }
             finally
@@ -383,35 +380,29 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         public override void AdvanceTo(SequencePosition consumed)
         {
-
-
-
+            using var lockToken = _readLock.TryWait();
+            _buffer.ReleaseTo(consumed);
         }
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
-
+            using var lockToken = _readLock.TryWait();
+            _buffer.ReleaseTo(consumed);
+            // Ignore the examined as we don't have any provisions for that section of the data.
         }
 
         public override void CancelPendingRead()
         {
             _isCanceled = true;
             ReleaseSemaphore(_readSemaphore);
-            /*try
-            {
-                if(_readSemaphore.CurrentCount == 0)
-                    _readSemaphore.Release();
-            }
-            catch
-            {
-                // ignore.
-            }*/
         }
 
         public override void Complete(Exception? exception = null)
         {
-
+            _isComplete = true;
+            ReleaseSemaphore(_readSemaphore);
         }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ReleaseSemaphore(SemaphoreSlim semaphore)
         {
