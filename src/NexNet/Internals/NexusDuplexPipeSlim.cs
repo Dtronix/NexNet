@@ -248,9 +248,11 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
     {
         //private INexusSession? _session;
         
-        private MutexSlim _readLock = new MutexSlim(0);
+        //private MutexSlim _readLock = new MutexSlim(0);
         private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         private readonly CancellationRegistrationArgs _cancelReadingArgs;
+        private int _stateId = 0;
+        private int _lastReadStateId;
 
         private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
@@ -267,10 +269,15 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         {
             _isComplete = false;
             _isCanceled = false;
-            _buffer.Dispose();
 
-            if (!_readLock.IsAvailable)
-                throw new InvalidOperationException("ReadLock is still pending and can not reset.");
+            lock (_buffer)
+            {
+                _buffer.Dispose();
+            }
+            
+
+            //if (!_readLock.IsAvailable)
+            //    throw new InvalidOperationException("ReadLock is still pending and can not reset.");
 
             // Reset the semaphore to it's original state.
             if (_readSemaphore.CurrentCount == 1)
@@ -279,49 +286,24 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         public void BufferData(ReadOnlySequence<byte> data)
         {
-            using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
-
-            data.CopyTo(_buffer.GetSpan((int)data.Length));
-            _buffer.Advance((int)data.Length);
-
+            //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
+            lock (_buffer)
+            {
+                var length = (int)data.Length;
+                data.CopyTo(_buffer.GetSpan(length));
+                _buffer.Advance(length);
+            }
+            Interlocked.Increment(ref _stateId);
             ReleaseSemaphore(_readSemaphore);
+
         }
 
         public override bool TryRead(out ReadResult result)
         {
-            if (_isComplete)
-            {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
-                return false;
-            }
-
-            using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
-
-            if (!lockToken.Success)
-            {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
-                return false;
-            }
-
-            if (_isComplete)
-            {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
-                return false;
-            }
-
-            if (_isCanceled)
-            {
-                _isCanceled = false;
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
-                return false;
-            }
-
-            _readSemaphore.Wait();
-            bool isCanceled = _isCanceled;
-            _isCanceled = false;
-            result = new ReadResult(_buffer.GetBuffer(), isCanceled, _isComplete);
-            return true;
+            result = default;
+            return false;
         }
+
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
@@ -334,25 +316,35 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 return result;
             }
 
-            using var lockToken = await _readLock.TryWaitAsync(cancellationToken, MutexSlim.WaitOptions.NoDelay);
-
-            if (!lockToken.Success)
-                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
-
-            if (_isComplete)
-                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
-
             if (_isCanceled)
             {
                 _isCanceled = false;
-                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return result;
+            }
+
+            ReadOnlySequence<byte> readOnlySequence;
+
+            if (_stateId != Interlocked.Exchange(ref _lastReadStateId, _stateId))
+            {
+
+                // Consume the writer.
+                if (_readSemaphore.CurrentCount > 0)
+                    _readSemaphore.Wait();
+
+
+                lock (_buffer)
+                {
+                    readOnlySequence = _buffer.GetBuffer();
+                }
+                return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
             }
 
             CancellationTokenRegistration? cts = null;
 
             if (cancellationToken.CanBeCanceled)
             {
-                cts = cancellationToken.UnsafeRegister(static (object? argsObj) =>
+                cts = cancellationToken.UnsafeRegister(static argsObj =>
                 {
                     var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
                     ReleaseSemaphore(args.Semaphore);
@@ -363,9 +355,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             try
             {
                 await _readSemaphore.WaitAsync(cancellationToken);
-                bool isCanceled = _isCanceled;
-                _isCanceled = false;
-                return new ReadResult(_buffer.GetBuffer(), isCanceled || cancellationToken.IsCancellationRequested, _isComplete);
             }
             catch (OperationCanceledException)
             {
@@ -376,18 +365,49 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 if (cts != null)
                     await cts.Value.DisposeAsync();
             }
+
+            //using var lockToken = await _readLock.TryWaitAsync(cancellationToken, MutexSlim.WaitOptions.NoDelay);
+
+            //if (!lockToken.Success)
+            //    return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+
+            if (_isComplete)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+
+            if (_isCanceled)
+            {
+                _isCanceled = false;
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+            }
+
+            // Update the state Id;
+            _lastReadStateId = _stateId;
+
+            lock (_buffer)
+            {
+                readOnlySequence = _buffer.GetBuffer();
+            }
+
+            return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
         }
 
         public override void AdvanceTo(SequencePosition consumed)
         {
-            using var lockToken = _readLock.TryWait();
-            _buffer.ReleaseTo(consumed);
+            //using var lockToken = _readLock.TryWait();
+            lock (_buffer)
+            {
+                _buffer.ReleaseTo(consumed);
+            }
+
         }
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
-            using var lockToken = _readLock.TryWait();
-            _buffer.ReleaseTo(consumed);
+            //using var lockToken = _readLock.TryWait();
+            lock (_buffer)
+            {
+                _buffer.ReleaseTo(consumed);
+            }
             // Ignore the examined as we don't have any provisions for that section of the data.
         }
 

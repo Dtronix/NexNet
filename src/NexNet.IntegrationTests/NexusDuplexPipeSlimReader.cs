@@ -127,17 +127,20 @@ internal class NexusDuplexPipeSlimReader
         _ = Task.Run(async () =>
         {
             var readData = await reader.ReadAsync();
+            reader.AdvanceTo(readData.Buffer.Start, readData.Buffer.End);
             Assert.AreEqual(10, readData.Buffer.Length);
 
             await reader.ReadAsync().AsTask().AssertTimeout(0.1);
             tcs.SetResult();
         });
 
+
         reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         await tcs.Task.Timeout(1);
     }
 
+    [Repeat(100)]
     [Test]
     public async Task ReadAsyncReadsOnEachNewReceive()
     {
@@ -149,6 +152,7 @@ internal class NexusDuplexPipeSlimReader
         {
             for (int i = 0; i < 100; i++)
             {
+                //Console.WriteLine("Writer");
                 reader.BufferData(new ReadOnlySequence<byte>(new byte[] { (byte)i }));
                 await bufferSemaphore.WaitAsync();
             }
@@ -159,9 +163,11 @@ internal class NexusDuplexPipeSlimReader
         {
             for (int i = 0; i < 100; i++)
             {
+                //Console.WriteLine("Reader");
                 var data = await reader.ReadAsync();
                 Assert.AreEqual(i + 1, data.Buffer.Length);
                 bufferSemaphore.Release(1);
+                //Console.WriteLine("Writer Released");
             }
 
             tcs.SetResult();
