@@ -261,9 +261,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
     internal class PipeReaderImpl : PipeReader
     {
         private INexusSession _session;
-
-        public readonly BufferWriter<byte> Buffer;
-
+        
         private MutexSlim _readLock = new MutexSlim(0);
         private SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         //private CancellationTokenSource _cancelReadingCts;
@@ -317,7 +315,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
 
               
-            result = new ReadResult(Buffer.GetBuffer().AsReadOnly(), _isCanceled, _isComplete);
+            result = new ReadResult(_buffer.GetBuffer().AsReadOnly(), _isCanceled, _isComplete);
 
 
             return false;
@@ -325,14 +323,27 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
+            if (_isComplete)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return result;
+            }
+
             using var lockToken = await _readLock.TryWaitAsync(cancellationToken, MutexSlim.WaitOptions.NoDelay);
 
             if (!lockToken.Success)
                 return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
 
+            if (_isComplete)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+
+            Console.WriteLine("1");
+
             if (_isCanceled)
             {
-                //Console.WriteLine("ReadAsync Canceled hotpath");
                 _isCanceled = false;
                 return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
             }
@@ -349,17 +360,25 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 }, _cancelReadingArgs);
             }
 
-            //Console.WriteLine("ReadAsync normal path");
-
-            await _readSemaphore.WaitAsync(cancellationToken);
-            //await _readResetEvent.WaitAsync(cancellationToken);
-
-            //Console.WriteLine("passed read lock");
-            bool isCanceled = _isCanceled;
-            //Console.WriteLine($"IsCanceled: {isCanceled}");
-            _isCanceled = false;
-            return new ReadResult(_buffer.GetBuffer(), isCanceled, _isComplete);
-
+            try
+            {
+                Console.WriteLine("2");
+                await _readSemaphore.WaitAsync(cancellationToken);
+                bool isCanceled = _isCanceled;
+                _isCanceled = false;
+                Console.WriteLine("3");
+                return new ReadResult(_buffer.GetBuffer(), isCanceled || cancellationToken.IsCancellationRequested, _isComplete);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("4");
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+            }
+            finally
+            {
+                if (cts != null)
+                    await cts.Value.DisposeAsync();
+            }
         }
 
         public override void AdvanceTo(SequencePosition consumed)

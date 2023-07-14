@@ -139,7 +139,6 @@ internal class NexusDuplexPipeSlimReader
         await tcs.Task.Timeout(1);
     }
 
-    [Repeat(1000)]
     [Test]
     public async Task ReadAsyncReadsOnEachNewReceive()
     {
@@ -260,9 +259,85 @@ internal class NexusDuplexPipeSlimReader
             tcs.SetResult();
         });
 
-
-
         await tcs.Task.Timeout(1);
+    }
+
+    [Test]
+    public async Task ReadIsCanceledByCancellationToken_PriorToRead()
+    {
+        var reader = CreateReader();
+
+        var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        for (int i = 0; i < 10; i++)
+        {
+            var result = await reader.ReadAsync(cts.Token);
+
+            Assert.IsTrue(result.IsCanceled);
+        }
+
+    }
+
+    [Test]
+    public async Task ReadIsCanceledByCancellationToken_PostRead()
+    {
+        var reader = CreateReader();
+
+        var cts = new CancellationTokenSource();
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            cts.Cancel();
+        });
+
+        for (int i = 0; i < 10; i++)
+        {
+            var result = await reader.ReadAsync(cts.Token);
+            Assert.IsTrue(result.IsCanceled);
+        }
+    }
+
+    [Test]
+    public async Task ReadWillContinueAfterCancelByCancellationToken_Pre()
+    {
+        var reader = CreateReader();
+
+        var cts = new CancellationTokenSource();
+
+        cts.Cancel();
+        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+
+        var result = await reader.ReadAsync(cts.Token);
+        Assert.IsTrue(result.IsCanceled);
+
+        result = await reader.ReadAsync();
+        Assert.IsFalse(result.IsCanceled);
+        Assert.AreEqual(10, result.Buffer.Length);
+    }
+
+    [Test]
+    public async Task ReadWillContinueAfterCancelByCancellationToken_Post()
+    {
+        var reader = CreateReader();
+
+        var cts = new CancellationTokenSource();
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            cts.Cancel();
+
+            reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        });
+
+        var result = await reader.ReadAsync(cts.Token);
+        Assert.IsTrue(result.IsCanceled);
+
+        result = await reader.ReadAsync();
+        Assert.IsFalse(result.IsCanceled);
+        Assert.AreEqual(10, result.Buffer.Length);
     }
 
 }

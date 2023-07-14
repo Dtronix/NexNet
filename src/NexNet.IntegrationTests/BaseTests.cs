@@ -185,7 +185,7 @@ public class BaseTests
         return port;
     }
 
-    protected async Task AssertThrows<T>(Func<Task> task)
+    public static async Task AssertThrows<T>(Func<Task> task)
         where T : Exception
     {
         Exception? thrown = null;
