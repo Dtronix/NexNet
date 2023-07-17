@@ -107,6 +107,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _config.InternalOnSessionSetup?.Invoke(this);
     }
 
+
     public Task DisconnectAsync(DisconnectReason reason)
     {
         return DisconnectCore(reason, true);

@@ -251,8 +251,8 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         //private MutexSlim _readLock = new MutexSlim(0);
         private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         private readonly CancellationRegistrationArgs _cancelReadingArgs;
-        private int _stateId = 0;
-        private int _lastReadStateId;
+        //private volatile int _stateId = 0;
+        //private volatile int _lastReadStateId;
 
         private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
@@ -287,14 +287,18 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         public void BufferData(ReadOnlySequence<byte> data)
         {
             //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
+            int oiriginalLength;
             lock (_buffer)
             {
-                var length = (int)data.Length;
-                data.CopyTo(_buffer.GetSpan(length));
-                _buffer.Advance(length);
+                oiriginalLength = (int)data.Length;
+                data.CopyTo(_buffer.GetSpan(oiriginalLength));
+                _buffer.Advance(oiriginalLength);
             }
-            Interlocked.Increment(ref _stateId);
-            ReleaseSemaphore(_readSemaphore);
+            //Thread.Sleep(1);
+           //// Console.WriteLine($"Buffered {oiriginalLength} bytes. new Length: {_buffer.Length}");
+
+            //Interlocked.Increment(ref _stateId);
+            ReleaseSemaphore(_readSemaphore, 1);
 
         }
 
@@ -325,12 +329,19 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
             ReadOnlySequence<byte> readOnlySequence;
 
-            if (_stateId != Interlocked.Exchange(ref _lastReadStateId, _stateId))
+            // Compare the state id to the last read state id. If they are different, then the state has changed
+            // and we need to return the current buffer.
+            // TODO: Investigate this hotpath.
+            /*if (_lastReadStateId != _stateId)
             {
 
+               // Console.WriteLine("State Changed Hotpath");
                 // Consume the writer.
                 if (_readSemaphore.CurrentCount > 0)
+                { 
                     _readSemaphore.Wait();
+                    _lastReadStateId = _stateId;
+                }
 
 
                 lock (_buffer)
@@ -338,7 +349,7 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                     readOnlySequence = _buffer.GetBuffer();
                 }
                 return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
-            }
+            }*/
 
             CancellationTokenRegistration? cts = null;
 
@@ -347,14 +358,23 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 cts = cancellationToken.UnsafeRegister(static argsObj =>
                 {
                     var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
-                    ReleaseSemaphore(args.Semaphore);
+                    ReleaseSemaphore(args.Semaphore, 2);
 
                 }, _cancelReadingArgs);
             }
 
             try
             {
+               // Console.WriteLine("Waiting");
+
                 await _readSemaphore.WaitAsync(cancellationToken);
+                //// Console.WriteLine("Read Semaphore Passed");
+                //// Console.WriteLine(_stateId == _lastReadStateId);
+                //SpinWait.SpinUntil(() => _stateId != _lastReadStateId);
+
+
+                // Console.WriteLine($"_lastReadStateId{_lastReadStateId} = _stateId{_stateId};");
+                 //_lastReadStateId = _stateId;
             }
             catch (OperationCanceledException)
             {
@@ -381,11 +401,12 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             }
 
             // Update the state Id;
-            _lastReadStateId = _stateId;
+            //_lastReadStateId = _stateId;
 
             lock (_buffer)
             {
                 readOnlySequence = _buffer.GetBuffer();
+               // Console.WriteLine($"Read {readOnlySequence.Length} bytes.");
             }
 
             return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
@@ -414,22 +435,31 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         public override void CancelPendingRead()
         {
             _isCanceled = true;
-            ReleaseSemaphore(_readSemaphore);
+            ReleaseSemaphore(_readSemaphore, 3);
         }
 
         public override void Complete(Exception? exception = null)
         {
             _isComplete = true;
-            ReleaseSemaphore(_readSemaphore);
+            ReleaseSemaphore(_readSemaphore, 4);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ReleaseSemaphore(SemaphoreSlim semaphore)
+        private static void ReleaseSemaphore(SemaphoreSlim semaphore, int source)
         {
             try
             {
                 if (semaphore.CurrentCount == 0)
+                {
+                   // Console.WriteLine($"Releasing {source}");
                     semaphore.Release();
+                   // Console.WriteLine($"Released {source}");
+
+                }
+                else
+                {
+                   // Console.WriteLine($"Already released {source}");
+                }
             }
             catch
             {
