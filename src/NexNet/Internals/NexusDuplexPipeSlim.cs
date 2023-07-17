@@ -246,9 +246,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
     internal class PipeReaderImpl : PipeReader
     {
-        //private INexusSession? _session;
-        
-        //private MutexSlim _readLock = new MutexSlim(0);
         private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         private readonly CancellationRegistrationArgs _cancelReadingArgs;
         //private volatile int _stateId = 0;
@@ -274,10 +271,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             {
                 _buffer.Dispose();
             }
-            
-
-            //if (!_readLock.IsAvailable)
-            //    throw new InvalidOperationException("ReadLock is still pending and can not reset.");
 
             // Reset the semaphore to it's original state.
             if (_readSemaphore.CurrentCount == 1)
@@ -287,18 +280,15 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
         public void BufferData(ReadOnlySequence<byte> data)
         {
             //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
-            int oiriginalLength;
             lock (_buffer)
             {
-                oiriginalLength = (int)data.Length;
-                data.CopyTo(_buffer.GetSpan(oiriginalLength));
-                _buffer.Advance(oiriginalLength);
+                var length = (int)data.Length;
+                data.CopyTo(_buffer.GetSpan(length));
+                _buffer.Advance(length);
             }
-            //Thread.Sleep(1);
-           //// Console.WriteLine($"Buffered {oiriginalLength} bytes. new Length: {_buffer.Length}");
 
             //Interlocked.Increment(ref _stateId);
-            ReleaseSemaphore(_readSemaphore, 1);
+            ReleaseSemaphore(_readSemaphore);
 
         }
 
@@ -358,23 +348,15 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
                 cts = cancellationToken.UnsafeRegister(static argsObj =>
                 {
                     var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
-                    ReleaseSemaphore(args.Semaphore, 2);
+                    ReleaseSemaphore(args.Semaphore);
 
                 }, _cancelReadingArgs);
             }
 
             try
             {
-               // Console.WriteLine("Waiting");
-
                 await _readSemaphore.WaitAsync(cancellationToken);
-                //// Console.WriteLine("Read Semaphore Passed");
-                //// Console.WriteLine(_stateId == _lastReadStateId);
-                //SpinWait.SpinUntil(() => _stateId != _lastReadStateId);
-
-
-                // Console.WriteLine($"_lastReadStateId{_lastReadStateId} = _stateId{_stateId};");
-                 //_lastReadStateId = _stateId;
+                //_lastReadStateId = _stateId;
             }
             catch (OperationCanceledException)
             {
@@ -406,7 +388,6 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
             lock (_buffer)
             {
                 readOnlySequence = _buffer.GetBuffer();
-               // Console.WriteLine($"Read {readOnlySequence.Length} bytes.");
             }
 
             return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
@@ -424,28 +405,26 @@ internal class NexusDuplexPipeSlim : INexusDuplexPipe
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
         {
-            //using var lockToken = _readLock.TryWait();
             lock (_buffer)
             {
                 _buffer.ReleaseTo(consumed);
             }
-            // Ignore the examined as we don't have any provisions for that section of the data.
         }
 
         public override void CancelPendingRead()
         {
             _isCanceled = true;
-            ReleaseSemaphore(_readSemaphore, 3);
+            ReleaseSemaphore(_readSemaphore);
         }
 
         public override void Complete(Exception? exception = null)
         {
             _isComplete = true;
-            ReleaseSemaphore(_readSemaphore, 4);
+            ReleaseSemaphore(_readSemaphore);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ReleaseSemaphore(SemaphoreSlim semaphore, int source)
+        private static void ReleaseSemaphore(SemaphoreSlim semaphore)
         {
             try
             {

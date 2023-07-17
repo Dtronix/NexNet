@@ -318,12 +318,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new Logger("SV")
+            //Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new Logger("CL")
+            //Logger = new Logger("CL")
         };
         /*
         var serverConfig = new TcpServerConfig()

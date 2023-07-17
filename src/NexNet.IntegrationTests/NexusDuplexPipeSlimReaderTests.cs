@@ -13,7 +13,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal class NexusDuplexPipeSlimReader
+internal class NexusDuplexPipeSlimReaderTests
 {
     /*private class SessionStub : INexusSession
     {
@@ -359,9 +359,6 @@ internal class NexusDuplexPipeSlimReader
         var position = result.Buffer.GetPosition(3000 * 16);
 
         reader.AdvanceTo(position);
-
-
-
     }
 
 }
