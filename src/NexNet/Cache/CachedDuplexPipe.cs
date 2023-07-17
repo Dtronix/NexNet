@@ -9,19 +9,19 @@ namespace NexNet.Cache;
 
 internal class CachedDuplexPipe
 {
-    private readonly ConcurrentBag<NexusDuplexPipeSlim> _cache = new();
+    private readonly ConcurrentBag<NexusDuplexPipe> _cache = new();
 
-    public NexusDuplexPipeSlim Rent(INexusSession session, byte initialId, Func<INexusDuplexPipe, ValueTask>? onReady)
+    public NexusDuplexPipe Rent(INexusSession session, byte initialId, Func<INexusDuplexPipe, ValueTask>? onReady)
     {
         if (!_cache.TryTake(out var cachedPipe))
-            cachedPipe = new NexusDuplexPipeSlim();
+            cachedPipe = new NexusDuplexPipe();
 
         cachedPipe.Setup(initialId, session, onReady);
 
         return cachedPipe;
     }
 
-    public void Return(NexusDuplexPipeSlim pipe)
+    public void Return(NexusDuplexPipe pipe)
     {
         pipe.Reset();
         _cache.Add(pipe);

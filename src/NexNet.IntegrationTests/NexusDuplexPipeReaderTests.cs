@@ -13,7 +13,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal class NexusDuplexPipeSlimReaderTests
+internal class NexusDuplexPipeReaderTests
 {
     /*private class SessionStub : INexusSession
     {
@@ -72,9 +72,9 @@ internal class NexusDuplexPipeSlimReaderTests
             return ValueTask.CompletedTask;
         }
     }*/
-    private NexusDuplexPipeSlim.PipeReaderImpl CreateReader()
+    private NexusDuplexPipe.PipeReaderImpl CreateReader()
     {
-        var reader = new NexusDuplexPipeSlim.PipeReaderImpl();
+        var reader = new NexusDuplexPipe.PipeReaderImpl();
 
         return reader;
     }

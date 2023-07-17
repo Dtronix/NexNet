@@ -29,10 +29,4 @@
       <Link>Pipelines.Sockets.Unofficial/%(RecursiveDir)/%(Filename)%(Extension)</Link>
     </Compile>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="Internals\NexusDuplexPipe.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Internals\NexusDuplexPipe.cs" />
-  </ItemGroup>
 </Project>

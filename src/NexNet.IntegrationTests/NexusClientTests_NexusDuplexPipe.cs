@@ -73,7 +73,7 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
         });
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
 
     [TestCase(Type.Uds)]
