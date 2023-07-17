@@ -10,6 +10,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using NexNet;
+using NexNet.Messages;
 using NexNet.Transports;
 using Pipelines.Sockets.Unofficial.Buffers;
 
@@ -24,7 +25,6 @@ interface IServerNexus
     ValueTask ServerTaskWithParam(int id, INexusDuplexPipe pipe, string myValue);
 }
 
-/*
 /// <summary>
 /// Nexus used for handling all Client communications.
 /// </summary>
@@ -44,7 +44,6 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
     protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
     {
         global::System.Threading.CancellationTokenSource? cts = null;
-        global::NexNet.NexusPipe? pipe = null;
         global::NexNet.INexusDuplexPipe? duplexPipe = null;
         var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ClientNexus.ServerProxy>>(this);
         try
@@ -58,11 +57,6 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
             if (cts != null)
             {
                 methodInvoker.ReturnCancellationToken(message.InvocationId);
-            }
-
-            if (pipe != null)
-            {
-                await methodInvoker.ReturnPipeReader(message.InvocationId);
             }
 
             if (duplexPipe != null)
@@ -86,16 +80,15 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
         public global::System.Threading.Tasks.ValueTask ServerTaskWithParam(global::System.Int32 id, global::NexNet.INexusDuplexPipe pipe, global::System.String myValue)
         {
             var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::System.Int32, global::System.Byte, global::System.String>>(new(id, ProxyGetDuplexPipeInitialId(pipe), myValue));
-            return ProxyInvokeAndWaitForResultCore(0, arguments, null, null);
+            return base.ProxyInvokeMethodCore(0, arguments, InvocationFlags.DuplexPipe);
         }
 
         /// <summary>
         /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
         /// </summary>
-        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => -1285947807; }
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 1140668220; }
     }
 }
-
 
 /// <summary>
 /// Nexus used for handling all Server communications.
@@ -116,7 +109,6 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
     protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
     {
         global::System.Threading.CancellationTokenSource? cts = null;
-        global::NexNet.NexusPipe? pipe = null;
         global::NexNet.INexusDuplexPipe? duplexPipe = null;
         var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<global::NexNetDemo.ServerNexus.ClientProxy>>(this);
         try
@@ -125,7 +117,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
             {
                 case 0:
                     {
-                        // ValueTask ServerTaskWithParam(int id, NexusDuplexPipe pipe, string myValue)
+                        // ValueTask ServerTaskWithParam(int id, INexusDuplexPipe pipe, string myValue)
                         var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Int32, global::System.Byte, global::System.String>>();
                         duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item2);
                         await ServerTaskWithParam(arguments.Item1, duplexPipe, arguments.Item3);
@@ -140,11 +132,6 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
                 methodInvoker.ReturnCancellationToken(message.InvocationId);
             }
 
-            if (pipe != null)
-            {
-                await methodInvoker.ReturnPipeReader(message.InvocationId);
-            }
-
             if (duplexPipe != null)
             {
                 await methodInvoker.ReturnDuplexPipe(duplexPipe);
@@ -156,7 +143,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
     /// <summary>
     /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
     /// </summary>
-    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => -1285947807; }
+    static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 1140668220; }
 
     /// <summary>
     /// Proxy invocation implementation for the matching nexus.
@@ -169,13 +156,13 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
         /// </summary>
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
     }
-}*/
+}
 
 
-[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+//[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus
 {
-    protected override ValueTask OnConnected(bool isReconnected)
+    protected override async ValueTask OnConnected(bool isReconnected)
     {
         var data = new byte[1 << 15];
         var number = 0;
@@ -194,40 +181,34 @@ partial class ClientNexus
             data[i] = (byte)delta;
         }
 
-        Task.Run(async () =>
+        var pipe = this.Context.CreatePipe(async pipe =>
         {
+            Memory<byte> randomData = data;
+            var length = 1024 * 32;
 
-            var pipe = this.Context.CreatePipe(async pipe =>
+            var loopNumber = 0;
+            while (true)
             {
-                Memory<byte> randomData = data;
-                var length = 1024 * 32;
+                //var size = Random.Shared.Next(1, 1024 * 32);
+                randomData.Slice(0, length).CopyTo(pipe.Output.GetMemory(length));
+                pipe.Output.Advance(length);
+                await pipe.Output.FlushAsync();
+                //await Task.Delay(10);
 
-                var loopNumber = 0;
-                while (true)
+                if (loopNumber++ == 1000000)
                 {
-                    //var size = Random.Shared.Next(1, 1024 * 32);
-                    randomData.Slice(0, length).CopyTo(pipe.Output.GetMemory(length));
-                    pipe.Output.Advance(length);
-                    await pipe.Output.FlushAsync();
-                    //await Task.Delay(10);
-
-                    if (loopNumber == 100000)
-                    {
-                        await pipe.Output.CompleteAsync();
-                        return;
-                    }
-                    //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
+                    await pipe.Output.CompleteAsync();
+                    return;
                 }
-            });
-
-            await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
+                //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
+            }
         });
 
-        return base.OnConnected(isReconnected);
+        await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
     }
 }
 
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+//[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;

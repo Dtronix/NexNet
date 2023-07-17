@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Pipelines.Sockets.Unofficial.Internal;
 
 namespace NexNet.Internals;
 
@@ -57,11 +58,11 @@ internal class NexusPipeManager
         _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
     }
 
-    public async ValueTask<INexusDuplexPipe?> RegisterPipe(byte otherId)
+    public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
         _session?.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
         if (_isCanceled)
-            return null;
+            throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
         var id = GetCompleteId(otherId, out var thisId);
 
@@ -104,7 +105,7 @@ internal class NexusPipeManager
         }
 
         _session.Logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
-        throw new InvalidOperationException($"No pipe exists for id: {id}.");
+        //throw new InvalidOperationException($"No pipe exists for id: {id}.");
     }
 
     public void UpdateState(ushort id, NexusDuplexPipe.State state)
@@ -148,7 +149,9 @@ internal class NexusPipeManager
         foreach (var pipe in _activePipes)
         {
             pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
-            _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
+            // Todo: Return the pipe to the cache. Can't in this flow here since it will reset the 
+            // result to not completed while a reading process is still ongoing.
+            //_session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
         }
 
         _activePipes.Clear();

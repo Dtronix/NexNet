@@ -38,12 +38,6 @@ internal class CacheManager
         _cachedMessageDeserializers[((int)InvocationResultMessage.Type - modifier)] =
             new CachedDeserializer<InvocationResultMessage>();
 
-        _cachedMessageDeserializers[((int)PipeReadyMessage.Type - modifier)] =
-            new CachedDeserializer<PipeReadyMessage>();
-
-        _cachedMessageDeserializers[((int)PipeCompleteMessage.Type - modifier)] =
-            new CachedDeserializer<PipeCompleteMessage>();
-
         _cachedMessageDeserializers[((int)DuplexPipeUpdateStateMessage.Type - modifier)] =
             new CachedDeserializer<DuplexPipeUpdateStateMessage>();
     }

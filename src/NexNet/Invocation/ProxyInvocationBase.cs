@@ -14,6 +14,8 @@ namespace NexNet.Invocation;
 /// </summary>
 public abstract class ProxyInvocationBase : IProxyInvoker
 {
+    private const string CanNotInvokeDuplexPipeMessage = $"Can not invoke method with {nameof(INexusDuplexPipe)} on multiple connections";
+    private const string SessionManagerNullMessage = "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.";
 
     private CacheManager _cacheManager = null!;
     private ProxyInvocationMode _mode;
@@ -104,14 +106,15 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
+    /// <param name="flags">Special flags for the invocation of this method.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    protected async ValueTask ProxyInvokeMethodCore(ushort methodId, byte[]? arguments)
+    protected async ValueTask ProxyInvokeMethodCore(ushort methodId, byte[]? arguments, InvocationFlags flags)
     {
         var message = _cacheManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
         message.Arguments = arguments;
-        message.Flags = InvocationFlags.IgnoreReturn;
+        message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
 
         switch (_mode)
@@ -123,9 +126,12 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.All:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 foreach (var (_, session) in _sessionManager.Sessions)
                 {
@@ -145,9 +151,12 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Others:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
@@ -170,9 +179,12 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
             case ProxyInvocationMode.Clients:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 for (int i = 0; i < _modeClientArguments!.Length; i++)
                 {
@@ -193,7 +205,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             {
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 if (_sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out var session))
                 {
@@ -211,9 +223,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.AllExcept:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                    throw new ArgumentNullException(nameof(_sessionManager), SessionManagerNullMessage);
 
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
@@ -240,9 +254,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    break;
             case ProxyInvocationMode.Groups:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(
+                        $"Can't invoke method with {nameof(INexusDuplexPipe)} on multiple connections");
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
@@ -373,8 +391,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
         {
-            // TODO: Throw here 
-            await ProxyInvokeMethodCore(methodId, arguments).ConfigureAwait(false);
+            await ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None).ConfigureAwait(false);
             return null;
         }
 
@@ -385,7 +402,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             if (_sessionManager == null)
                 throw new ArgumentNullException(nameof(_sessionManager),
-                    "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                    SessionManagerNullMessage);
 
             _sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out session);
 

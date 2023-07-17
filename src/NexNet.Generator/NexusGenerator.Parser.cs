@@ -341,13 +341,6 @@ internal partial class NexusMeta
                     return false;
                 }
 
-                if (nexusInterfaceMethod.PipeParameter != null)
-                {
-                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoid,
-                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
-                    return false;
-                }
-
                 if (nexusInterfaceMethod.DuplexPipeParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoid,
@@ -396,7 +389,6 @@ internal partial class MethodParameterMeta
     public bool IsParamsArray { get; }
 
     public bool IsArrayType { get; }
-    public bool IsPipe { get; }
     public bool IsDuplexPipe { get; }
 
     public bool IsCancellationToken { get; }
@@ -415,7 +407,6 @@ internal partial class MethodParameterMeta
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
-        this.IsPipe = ParamType == "global::NexNet.NexusPipe";
         this.IsDuplexPipe = ParamType == "global::NexNet.INexusDuplexPipe";
 
         if (IsDuplexPipe)
@@ -424,7 +415,7 @@ internal partial class MethodParameterMeta
             SerializedType = "global::System.Byte";
             SerializedValue = $"ProxyGetDuplexPipeInitialId({Name})";
         }
-        else if(IsPipe || IsCancellationToken)
+        else if(IsCancellationToken)
         {
             // Type is not serialized.
             SerializedType = null;
@@ -454,7 +445,6 @@ internal partial class MethodMeta
     public int ReturnArity { get; }
 
     public MethodParameterMeta? CancellationTokenParameter { get; }
-    public MethodParameterMeta? PipeParameter { get; }
     public MethodParameterMeta? DuplexPipeParameter { get; }
 
     public bool MultiplePipeParameters { get; }
@@ -494,13 +484,6 @@ internal partial class MethodMeta
 
                 CancellationTokenParameter = param;
             }
-            else if (param.IsPipe)
-            {
-                if (PipeParameter != null)
-                    MultiplePipeParameters = true;
-
-                PipeParameter = param;
-            }
             else if (param.IsDuplexPipe)
             {
                 if (DuplexPipeParameter != null)
@@ -516,6 +499,7 @@ internal partial class MethodMeta
         this.SerializedParameters = serializedParameters;
         this.ReturnArity = returnSymbol.Arity;
         this.IsReturnVoid = returnSymbol.Name == "Void";
+
         this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
 
         if (ReturnArity > 0)

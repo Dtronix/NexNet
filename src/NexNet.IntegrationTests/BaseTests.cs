@@ -48,9 +48,9 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
     }
-    protected ServerConfig CreateServerConfig(Type type, bool log = false)
+
+    protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
     {
-        var logger = log ? new ConsoleLogger("SV") : null;
         if (type == Type.Uds)
         {
             CurrentPath ??=
@@ -97,9 +97,14 @@ public class BaseTests
         throw new InvalidOperationException();
     }
 
-    protected ClientConfig CreateClientConfig(Type type, bool log = false)
+    protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("CL") : null;
+        var logger = log ? new ConsoleLogger("SV") : null;
+        return CreateServerConfigWithLog(type, logger);
+    }
+
+    protected ClientConfig CreateClientConfigWithLog(Type type, INexusLogger? logger = null)
+    {
         if (type == Type.Uds)
         {
             CurrentPath ??=
@@ -141,6 +146,12 @@ public class BaseTests
         }
 
         throw new InvalidOperationException();
+    }
+
+    protected ClientConfig CreateClientConfig(Type type, bool log = false)
+    {
+        var logger = log ? new ConsoleLogger("CL") : null;
+        return CreateClientConfigWithLog(type, logger);
     }
 
 

@@ -64,17 +64,12 @@ public enum MessageType : byte
     /// </summary>
     DisconnectServerRestarting = 30,
 
-    // <summary>
-    // Header for data sent to a pipe.
-    // </summary>
-    //PipeWrite = 50,
-
     /// <summary>
     /// Header for data sent to a pipe.
     /// </summary>
-    DuplexPipeWrite = 51,
+    DuplexPipeWrite = 50,
 
-    // Messages
+    // Messages 100 - 109 are reserved for handshake messages.
 
     /// <summary>
     /// Header for <see cref="ClientGreetingMessage"/>.
@@ -85,6 +80,8 @@ public enum MessageType : byte
     /// Header for <see cref="ServerGreetingMessage"/>.
     /// </summary>
     ServerGreeting = 101,
+
+    // Messages 110 - 119 are reserved for invocation messages.
 
     /// <summary>
     /// Header for <see cref="InvocationMessage"/>.
@@ -101,19 +98,10 @@ public enum MessageType : byte
     /// </summary>
     InvocationResult = 112,
 
-    // Pipe Channels
-    /// <summary>   
-    /// Header for <see cref="PipeReadyMessage"/>
-    /// </summary>   
-    PipeReady = 120,
-
-    /// <summary>
-    /// Header for <see cref="PipeCompleteMessage"/>.
-    /// </summary>
-    PipeComplete = 121,
+    // Messages 120 - 129 are reserved for duplex pipe messages.
     
     /// <summary>
-    /// Header for <see cref="PipeCompleteMessage"/>.
+    /// Header for <see cref="DuplexPipeUpdateStateMessage"/>.
     /// </summary>
-    DuplexPipeUpdateState = 130,
+    DuplexPipeUpdateState = 120,
 }

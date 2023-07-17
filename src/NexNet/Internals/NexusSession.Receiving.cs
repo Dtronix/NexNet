@@ -125,8 +125,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                         case MessageType.Invocation:
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
-                        case MessageType.PipeComplete:
-                        case MessageType.PipeReady:
                         case MessageType.DuplexPipeUpdateState:
                             _config.Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
@@ -220,8 +218,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     case MessageType.Invocation:
                     case MessageType.InvocationResult:
                     case MessageType.InvocationCancellation:
-                    case MessageType.PipeComplete:
-                    case MessageType.PipeReady:
                     case MessageType.DuplexPipeUpdateState:
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;

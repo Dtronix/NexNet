@@ -50,7 +50,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    ValueTask<INexusDuplexPipe?> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
+    ValueTask<INexusDuplexPipe> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
     {
         return SessionContext.Session.PipeManager.RegisterPipe(startId);
     }
@@ -121,7 +121,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
 
         // If we have the flag to ignore the return value, then all we have to do is invoke and then
         // return the rest args to the cache.
-        if (requestArgs.Message.Flags == InvocationFlags.IgnoreReturn)
+        if (requestArgs.Message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
         {
             await requestArgs.InvokeMethodCore(requestArgs.Message, null).ConfigureAwait(false);
             ReturnArgsToCache(context, requestArgs);

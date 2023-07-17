@@ -147,7 +147,6 @@ namespace {{Symbol.ContainingNamespace}}
         protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
             global::System.Threading.CancellationTokenSource? cts = null;
-            global::NexNet.NexusPipe? pipe = null;
             global::NexNet.INexusDuplexPipe? duplexPipe = null;
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
             try
@@ -180,11 +179,6 @@ namespace {{Symbol.ContainingNamespace}}
                     methodInvoker.ReturnCancellationToken(message.InvocationId);
                 }
 
-                if (pipe != null)
-                {
-                    await methodInvoker.ReturnPipeReader(message.InvocationId);
-                }
-
                 if (duplexPipe != null)
                 {
                     await methodInvoker.ReturnDuplexPipe(duplexPipe);
@@ -211,23 +205,25 @@ namespace {{Symbol.ContainingNamespace}}
 }
 
 
+///
 partial class MethodMeta
 {
+    /// <summary>
+    /// Emit the code for the the nexus.
+    /// </summary>
+    /// <param name="sb"></param>
+    /// <param name="proxyImplementation"></param>
+    /// <param name="nexus"></param>
     public void EmitNexusInvocation(StringBuilder sb, InvocationInterfaceMeta proxyImplementation, NexusMeta nexus)
     {
+        // Create the cancellation token parameter.
         if (CancellationTokenParameter != null)
         {
             //sb.AppendLine($"                        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{nexus.Namespace}.{nexus.TypeName}.{proxyImplementation.ProxyImplName}>>(this);");
             sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
         }
 
-        if (PipeParameter != null)
-        {
-            sb.Append("                        pipe = await methodInvoker.RegisterPipeReader(message.InvocationId, ");
-            sb.Append(CancellationTokenParameter != null ? "cts.Token" : "null");
-            sb.AppendLine(");");
-        }
-
+        // Deserialize the arguments.
         if (SerializedParameters > 0)
         {
             sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
@@ -243,6 +239,7 @@ partial class MethodMeta
             sb.AppendLine(">>();");
         }
 
+        // Register the duplex pipe if we have one.
         if (DuplexPipeParameter != null)
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
@@ -252,12 +249,15 @@ partial class MethodMeta
 
         sb.Append("                        ");
 
-        if (IsReturnVoid)
+        // Ignore the return value if we are a void method or a duplex pipe method
+        if (IsReturnVoid || this.DuplexPipeParameter != null)
         {
             EmitNexusMethodInvocation(sb);
         }
         else if (IsAsync)
         {
+            // If we are async, we need to await the method invocation and then serialize the return value otherwise
+            // we can just invoke the method and serialize the return value
             if (IsAsync && ReturnType == null)
             {
                 sb.Append("await ");
@@ -275,19 +275,21 @@ partial class MethodMeta
         }
     }
 
+    /// <summary>
+    /// Emits the invocation of the method on the nexus.
+    /// </summary>
+    /// <param name="sb"></param>
     public void EmitNexusMethodInvocation(StringBuilder sb)
     {
         sb.Append(this.Name).Append("(");
 
+        
         bool addedParam = false;
         foreach (var methodParameterMeta in Parameters)
         {
-            if (methodParameterMeta.IsPipe)
-            {
-                sb.Append("pipe, ");
-                addedParam = true;
-            }
-            else if (methodParameterMeta.IsDuplexPipe)
+            // If we have a duplex pipe, we need to pass it in the correct parameter position,
+            // otherwise we need to pass the serialized value.
+            if (methodParameterMeta.IsDuplexPipe)
             {
                 sb.Append("duplexPipe, ");
                 addedParam = true;
@@ -376,10 +378,18 @@ partial class MethodMeta
 
         sb.Append("                 ");
 
-        if (this.IsReturnVoid)
+
+        if (this.IsReturnVoid || this.DuplexPipeParameter != null)
         {
-            sb.Append("_ = ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
-            sb.AppendLine(SerializedParameters > 0 ? "arguments);" : "null);");
+            // If we are a void method, we need to invoke the method and then ignore the return
+            // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
+            sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
+
+            sb.Append("ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
+            sb.Append(SerializedParameters > 0 ? "arguments, " : "null, ");
+
+            // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
+            sb.Append("global::NexNet.Messages.InvocationFlags.").Append(this.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
         }
         else if (this.IsAsync)
         {
@@ -391,7 +401,6 @@ partial class MethodMeta
 
             sb.Append("(").Append(this.Id).Append(", "); // methodId
             sb.Append(SerializedParameters > 0 ? "arguments, " : "null, "); // arguments
-            sb.Append(PipeParameter != null ? PipeParameter.Name : "null").Append(", "); // pipe
             sb.Append(CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
         }
 
