@@ -25,10 +25,6 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public InvocationResultMessage Result { get; set; } = null!;
 
-    public NexusPipe? Pipe { get; set; }
-
-    public NexusPipe.RunWriterArguments? PipeArguments { get; set; }
-
     /// <summary>
     /// Environment.Ticks when this state was instanced.
     /// </summary>
@@ -67,7 +63,6 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
             return false;
         IsComplete = true;
         IsCanceled = true;
-        Pipe?.DownstreamCompleted();
         NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;

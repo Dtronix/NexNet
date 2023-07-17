@@ -26,26 +26,12 @@ public interface IMethodInvoker<TProxy>
     /// </summary>
     /// <param name="invocationId">invocation if to return the cancellation token for.</param>
     void ReturnCancellationToken(int invocationId);
-
-    /// <summary>
-    /// Registers a pipe for reading by the nexus and associates it with the specified invocation.
-    /// </summary>
-    /// <param name="invocationId">Invocation id to associate with this cancellation token.</param>
-    /// <param name="cancellationToken">cancellation token</param>
-    /// <returns>Registered pipe</returns>
-    ValueTask<NexusPipe> RegisterPipeReader(int invocationId, CancellationToken? cancellationToken);
-
-    /// <summary>
-    /// Returns a the pipe associated with the specified invocation.
-    /// </summary>
-    /// <param name="invocationId">invocation if to return the cancellation token for.</param>
-    ValueTask ReturnPipeReader(int invocationId);
-
+    
     /// <summary>
     /// Registers a duplex pipe for usage associates it with the specified invocation.
     /// </summary>
     /// <returns>Registered pipe</returns>
-    ValueTask<INexusDuplexPipe> RegisterDuplexPipe(byte startId);
+    ValueTask<INexusDuplexPipe?> RegisterDuplexPipe(byte startId);
 
     /// <summary>
     /// Returns a the pipe associated with the specified invocation.

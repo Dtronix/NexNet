@@ -37,36 +37,6 @@ internal class SessionInvocationStateManager
         return Interlocked.Increment(ref _invocationId);
     }
 
-    public bool TryStartPipe(int invocationId)
-    {
-        if (!_invocationStates.TryGetValue(invocationId, out var invocationState))
-            return false;
-
-        if(invocationState.Pipe == null)
-            return false;
-
-        _ = Task.Factory.StartNew(
-            invocationState.Pipe.RunWriter,
-            invocationState.PipeArguments,
-            invocationState.PipeArguments!.CancellationToken,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default);
-
-        return true;
-    }
-
-    public bool TrySetPipeReaderClosed(int invocationId)
-    {
-        if (!_invocationStates.TryGetValue(invocationId, out var invocationState))
-            return false;
-
-        if (invocationState.Pipe == null)
-            return false;
-
-        invocationState.Pipe.DownstreamCompleted();
-        return true;
-    }
-
     public void UpdateInvocationResult(InvocationResultMessage message)
     {
         // If we can not remove the state any longer, then it has already been handled.
@@ -95,7 +65,6 @@ internal class SessionInvocationStateManager
 
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        NexusPipe? pipe,
         byte[]? arguments,
         INexusSession session,
         CancellationToken? cancellationToken = null)
@@ -136,15 +105,6 @@ internal class SessionInvocationStateManager
             _invocationStates.TryAdd(message.InvocationId, state);
 
             await session.SendMessage(message).ConfigureAwait(false);
-
-            // Set the pipe into a waiting state for the ready notification.
-            if (pipe != null)
-            {
-                var ct = cancellationToken ?? CancellationToken.None;
-
-                state.PipeArguments = new NexusPipe.RunWriterArguments(message.InvocationId, session, _logger, ct);
-                state.Pipe = pipe;
-            }
         }
         else
         {

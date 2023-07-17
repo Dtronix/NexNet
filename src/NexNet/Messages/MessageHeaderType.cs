@@ -64,10 +64,10 @@ public enum MessageType : byte
     /// </summary>
     DisconnectServerRestarting = 30,
 
-    /// <summary>
-    /// Header for data sent to a pipe.
-    /// </summary>
-    PipeWrite = 50,
+    // <summary>
+    // Header for data sent to a pipe.
+    // </summary>
+    //PipeWrite = 50,
 
     /// <summary>
     /// Header for data sent to a pipe.

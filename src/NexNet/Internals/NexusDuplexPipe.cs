@@ -106,14 +106,14 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     {
         StateId++;
         // Close everything.
-        UpdateState(State.ClientWriterComplete
-                            | State.ClientReaderComplete
-                            | State.ServerReaderComplete
-                            | State.ServerWriterComplete);
+        UpdateState(State.Complete);
 
         InitialId = 0;
         _state = State.Unset;
         _onReady = null;
+
+        _inputPipeReader.Reset();
+        _outputPipeWriter.Reset();
         // No need to reset anything with the writer as it is use once and dispose.
     }
     
@@ -262,8 +262,53 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         public override bool TryRead(out ReadResult result)
         {
-            result = default;
-            return false;
+            if (_isComplete)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                return false;
+            }
+
+            if (_isCanceled)
+            {
+                _isCanceled = false;
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return false;
+            }
+
+            try
+            {
+                _readSemaphore.Wait();
+            }
+            catch (OperationCanceledException)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return false;
+            }
+
+            if (_isComplete)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                return false;
+            }
+
+            if (_isCanceled)
+            {
+                _isCanceled = false;
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return false;
+            }
+
+            // Update the state Id;
+            //_lastReadStateId = _stateId;
+
+            ReadOnlySequence<byte> readOnlySequence;
+            lock (_buffer)
+            {
+                readOnlySequence = _buffer.GetBuffer();
+            }
+
+            result = new ReadResult(readOnlySequence, false, _isComplete);
+            return true;
         }
 
 
@@ -273,10 +318,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
 
             if (cancellationToken.IsCancellationRequested)
-            {
-                var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
-                return result;
-            }
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
 
             if (_isCanceled)
             {
@@ -284,9 +326,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
                 return result;
             }
-
-            ReadOnlySequence<byte> readOnlySequence;
-
+            
             // Compare the state id to the last read state id. If they are different, then the state has changed
             // and we need to return the current buffer.
             // TODO: Investigate this hotpath.
@@ -353,6 +393,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             // Update the state Id;
             //_lastReadStateId = _stateId;
 
+            ReadOnlySequence<byte> readOnlySequence;
             lock (_buffer)
             {
                 readOnlySequence = _buffer.GetBuffer();
@@ -416,7 +457,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     }
 
-    private class PipeWriterImpl : PipeWriter, IDisposable
+    private class PipeWriterImpl : PipeWriter
     {
         private readonly NexusDuplexPipe _nexusDuplexPipe;
 
@@ -424,9 +465,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         private bool _isCanceled;
         private bool _isCompleted;
         private CancellationTokenSource? _flushCts;
-        private Memory<byte> _invocationIdBytes = new byte[sizeof(ushort)];
+        private Memory<byte> _pipeId = new byte[sizeof(ushort)];
         private int _chunkSize;
-
+        
         public PipeWriterImpl(NexusDuplexPipe nexusDuplexPipe)
         {
             _nexusDuplexPipe = nexusDuplexPipe;
@@ -435,6 +476,15 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         public void Setup()
         {
             _chunkSize = _nexusDuplexPipe._session!.Config.PipeFlushChunkSize;
+        }
+
+        public void Reset()
+        {
+            _bufferWriter.Dispose();
+            _isCanceled = false;
+            _isCompleted = false;
+            _flushCts?.Dispose();
+            _flushCts = null;
         }
 
 
@@ -496,7 +546,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
             var bufferLength = _bufferWriter.Length;
 
-            BitConverter.TryWriteBytes(_invocationIdBytes.Span, _nexusDuplexPipe.Id);
+            BitConverter.TryWriteBytes(_pipeId.Span, _nexusDuplexPipe.Id);
 
             // Shortcut for empty buffer.
             if (bufferLength == 0)
@@ -524,7 +574,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 {
                     await session.SendHeaderWithBody(
                         MessageType.DuplexPipeWrite,
-                        _invocationIdBytes,
+                        _pipeId,
                         sendingBuffer,
                         _flushCts.Token).ConfigureAwait(true);
                 }
@@ -574,7 +624,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         public void Dispose()
         {
             _bufferWriter.Dispose();
-            _invocationIdBytes = null!;
+            _pipeId = null!;
         }
     }
 }

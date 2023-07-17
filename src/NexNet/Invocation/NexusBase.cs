@@ -18,7 +18,6 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
-    internal readonly ConcurrentDictionary<int, NexusPipe> InvocationPipes = new();
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
 
@@ -51,37 +50,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    async ValueTask<NexusPipe> IMethodInvoker<TProxy>.RegisterPipeReader(int invocationId, CancellationToken? cancellationToken)
-    {
-        var pipe = SessionContext.CacheManager.NexusPipeCache.Rent(SessionContext.Session, invocationId);
-        if (!InvocationPipes.TryAdd(invocationId, pipe))
-        {
-            throw new InvalidOperationException(
-                "Tried to create a pipe for a invocation which already has an active pipe.");
-        }
-
-        if(cancellationToken != null)
-            pipe.RegisterCancellationToken(cancellationToken.Value);
-
-        // Send the ready message.
-        var message = SessionContext.CacheManager.Rent<PipeReadyMessage>();
-        message.InvocationId = invocationId;
-        await SessionContext.Session.SendMessage(message);
-        SessionContext.CacheManager.Return(message);
-
-        return pipe;
-    }
-
-    async ValueTask IMethodInvoker<TProxy>.ReturnPipeReader(int invocationId)
-    {
-        if (InvocationPipes.TryRemove(invocationId, out var pipe))
-        {
-            await pipe.ReaderCompleted();
-            SessionContext.CacheManager.NexusPipeCache.Return(pipe!);
-        }
-    }
-
-    ValueTask<INexusDuplexPipe> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
+    ValueTask<INexusDuplexPipe?> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
     {
         return SessionContext.Session.PipeManager.RegisterPipe(startId);
     }
@@ -143,12 +112,6 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
             cancellationTokenSource.Value.Dispose();
 
         _cancellableInvocations.Clear();
-
-        // Close any open pipes.
-        foreach (var pipe in InvocationPipes)
-            pipe.Value.UpstreamComplete();
-
-        InvocationPipes.Clear();
     }
 
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)

@@ -132,11 +132,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
-                        case MessageType.PipeWrite:
-                            _recMessageHeader.SetTotalHeaderSize(sizeof(int), true);
-                            _config.Logger?.LogTrace($"NexusPipe received data.");
-                            break;
-
                         case MessageType.DuplexPipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
                             _config.Logger?.LogTrace($"DuplexNexusPipe received data.");
@@ -180,18 +175,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 if (_recMessageHeader.PostHeaderLength > 0)
                 {
                     switch (_recMessageHeader.Type)
-                    {
-                        case MessageType.PipeWrite:
-                            if (!ReadingHelpers.TryReadInt(sequence, _readBuffer, ref position, out _recMessageHeader.InvocationId))
-                            {
-                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
-                                disconnect = DisconnectReason.ProtocolError;
-                                break;
-                            }
-
-                            _config.Logger?.LogTrace($"Parsed invocation id of {_recMessageHeader.InvocationId} for {_recMessageHeader.Type}.");
-                            break;
-
+                    { 
                         case MessageType.DuplexPipeWrite:
                             if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexStreamId))
                             {
@@ -241,13 +225,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     case MessageType.DuplexPipeUpdateState:
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
-
-                    case MessageType.PipeWrite:
-                    {
-                        if (_nexus.InvocationPipes.TryGetValue(_recMessageHeader.InvocationId, out var pipe))
-                            await pipe.UpstreamWrite(bodySlice);
-                        break;
-                    }
 
                     case MessageType.DuplexPipeWrite:
                     {
@@ -434,39 +411,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 var invocationCancellationRequestMessage = Unsafe.As<InvocationCancellationMessage>(message);
                 _nexus.CancelInvocation(invocationCancellationRequestMessage);
-                break;
-            }
-
-            case MessageType.PipeComplete:
-            {
-                var pipeCompleteMessage = Unsafe.As<PipeCompleteMessage>(message);
-
-                switch (pipeCompleteMessage.CompleteFlags)
-                {
-                    case PipeCompleteMessage.Flags.Writer:
-                        if (_nexus.InvocationPipes.TryGetValue(pipeCompleteMessage.InvocationId, out var pipe))
-                            pipe.UpstreamComplete();
-                        break;
-                    
-                    case PipeCompleteMessage.Flags.Reader:
-                        SessionInvocationStateManager.TrySetPipeReaderClosed(pipeCompleteMessage.InvocationId);
-                        break;
-
-                    default:
-                        return DisconnectReason.ProtocolError;
-                }
-
-                break;
-            }
-
-            case MessageType.PipeReady:
-            {
-                var pipeReadyMessage = Unsafe.As<PipeReadyMessage>(message);
-
-                var startResult = SessionInvocationStateManager.TryStartPipe(pipeReadyMessage.InvocationId);
-                if (!startResult)
-                    return DisconnectReason.ProtocolError;
-
                 break;
             }
 

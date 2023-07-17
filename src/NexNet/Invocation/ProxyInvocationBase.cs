@@ -294,9 +294,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, NexusPipe? pipe, CancellationToken? cancellationToken = null)
+    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, pipe, cancellationToken).ConfigureAwait(false);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return;
@@ -329,9 +329,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, NexusPipe? pipe, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
     {
-        var state = await InvokeWaitForResultCore(methodId, arguments, pipe, cancellationToken).ConfigureAwait(false);
+        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return default;
@@ -363,7 +363,6 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
         ushort methodId,
         byte[]? arguments,
-        NexusPipe? nexNetPipe,
         CancellationToken? cancellationToken = null)
     {
         // If we are invoking on multiple sessions, then we are not going to wait
@@ -397,7 +396,6 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
         var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
             methodId,
-            nexNetPipe,
             arguments, 
             session, 
             cancellationToken).ConfigureAwait(false);
