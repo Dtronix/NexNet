@@ -34,7 +34,39 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoid.Id));
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
+    }
+
+    [Test]
+    public void NexusDuplexPipeNotAllowedOnReturnTask()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientNexus { }
+partial interface IServerNexus {  ValueTask<int> Update(INexusDuplexPipe pipe); }
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus : IClientNexus{ }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
+    }
+
+    [Test]
+    public void NexusDuplexPipeNotAllowedOnMethodWithCancellationToken()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+namespace NexNetDemo;
+partial interface IClientNexus { }
+partial interface IServerNexus {  ValueTask<int> Update(INexusDuplexPipe pipe, System.Threading.CancellationToken ct); }
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus : IClientNexus{ }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { }
+""");
+        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
     }
 
     [Test]

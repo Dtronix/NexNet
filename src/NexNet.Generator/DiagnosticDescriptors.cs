@@ -96,16 +96,24 @@ internal static class DiagnosticDescriptors
 
     public static readonly DiagnosticDescriptor TooManyPipes = new(
         id: "NEXNET012",
-        title: "Nexus method only supports one NexusPipe.",
-        messageFormat: "The Nexus method '{0}' has multiple NexusPipe parameters when only one is allowed.",
+        title: "Nexus method only supports one INexusDuplexPipe.",
+        messageFormat: "The Nexus method '{0}' has multiple INexusDuplexPipe parameters when only one is allowed.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    public static readonly DiagnosticDescriptor PipeOnVoid = new(
+    public static readonly DiagnosticDescriptor PipeOnVoidOrReturnTask = new(
         id: "NEXNET013",
-        title: "Nexus method can't be void and support NexusPipe transportation.",
-        messageFormat: "The Nexus method '{0}' can't be void and have a NexusPipe parameter.  Must return ValueTask or ValueTask<T> to use NexusPipe.",
+        title: "Nexus method can't be void nor ValueTask<T> and support INexusDuplexPipe transportation.",
+        messageFormat: "The Nexus method '{0}' can't be void nor ValueTask<T> and have a INexusDuplexPipe parameter.  Must return ValueTask to use INexusDuplexPipe.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor PipeOnMethodWithCancellationToken = new(
+        id: "NEXNET014",
+        title: "Nexus method support INexusDuplexPipe and CancellationToken on the same method.",
+        messageFormat: "The Nexus method '{0}' can't contain a INexusDuplexPipe and CancellationToken parameters on the same method.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

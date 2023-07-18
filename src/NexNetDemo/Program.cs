@@ -18,6 +18,7 @@ namespace NexNetDemo;
 
 interface IClientNexus
 {
+    CancellationToken
 }
 
 interface IServerNexus

@@ -308,6 +308,7 @@ internal partial class NexusMeta
                 nexusSet.Add(nexusInterfaceMethod.Id);
             }
 
+            // Confirm the cancellation token parameter is the last parameter.
             if (nexusInterfaceMethod.CancellationTokenParameter != null)
             {
                 if (!nexusInterfaceMethod.Parameters.Last().IsCancellationToken)
@@ -318,6 +319,7 @@ internal partial class NexusMeta
                 }
             }
 
+            // Confirm there is only one cancellation token parameter.
             if (nexusInterfaceMethod.MultipleCancellationTokenParameter)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyCancellationTokens,
@@ -325,6 +327,7 @@ internal partial class NexusMeta
                 return false;
             }
 
+            // Confirm there is only one pipe parameter.
             if (nexusInterfaceMethod.MultiplePipeParameters)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyPipes,
@@ -332,6 +335,7 @@ internal partial class NexusMeta
                 return false;
             }
 
+            // Null return types.
             if (nexusInterfaceMethod.IsReturnVoid)
             {
                 if (nexusInterfaceMethod.CancellationTokenParameter != null)
@@ -340,26 +344,40 @@ internal partial class NexusMeta
                         nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                     return false;
                 }
+            }
 
-                if (nexusInterfaceMethod.DuplexPipeParameter != null)
+            // Duplex pipe parameters.
+            if (nexusInterfaceMethod.DuplexPipeParameter != null)
+            {
+                // Validates the return type of the Nexus Interface method and returns a valueless
+                // response if the method is async and has only one type argument or if the method has no
+                // return type at all.
+                if (nexusInterfaceMethod.IsReturnVoid
+                    || (nexusInterfaceMethod.IsAsync && nexusInterfaceMethod.ReturnArity == 1))
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoid,
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoidOrReturnTask,
+                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    return false;
+                }
+
+                // This code block checks if a method has both a duplex pipe parameter and a cancellation token parameter.
+                // This ensures that the method doesn't consume both a pipe and a cancellation token at the same time.
+                if (nexusInterfaceMethod.CancellationTokenParameter != null)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnMethodWithCancellationToken,
                         nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
                     return false;
                 }
             }
 
-            // Validate return values.
-            if (nexusInterfaceMethod.IsReturnVoid)
-                continue;
-
-
-            if (nexusInterfaceMethod.IsAsync
-                && nexusInterfaceMethod.ReturnArity <= 1)
-                continue;
-
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
-            return false;
+            
+            // Validate the return values.
+            if (!nexusInterfaceMethod.IsReturnVoid &&
+                !(nexusInterfaceMethod.IsAsync && nexusInterfaceMethod.ReturnArity <= 1))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name)); 
+                return false;
+            }
         }
 
         // Validate method nexuses
