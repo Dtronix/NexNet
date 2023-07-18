@@ -62,6 +62,23 @@ partial class ServerHub : IServerHub
 
 ```
 
+## Method Invocation Table
+Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
+
+|                    | CancellationToken | NexusDuplexPipe | Args |
+|--------------------|-------------------|-----------------|------|
+| void               |                   |                 | X    |
+| ValueTask          | X                 |                 | X    |
+| ValueTask          |                   | X               | X    |
+| ValueTask&lt;T&gt; | X                 |                 | X    |
+
+Notes:
+- `CancellationToken`s can't be combined with `NexusDuplexPipe` due to pipes having built-in cancellation/completion notifications.
+- `CancellationToken` must be at the end of the argument list like standard conventions.
+
+## Duplex Pipe Usage
+NexNet has built in handling of duplex pipes for sending and receiving of byte arrays.  This is useful when you want to stream data for long periods of time or have a large amount of data you want to transmit such as a file.  NexNet has a limitation of combined arguments passed at 65,535 bytes and when you want to send larger data, the NexusDuplexPipe is the method to facilitate this transmission.
+
 ## Lifetimes
 
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
