@@ -39,6 +39,11 @@ internal struct MessageHeader
     /// </summary>
     public ushort DuplexStreamId = 0;
 
+    /// <summary>
+    /// Sets the total header size.
+    /// </summary>
+    /// <param name="postHeaderSize">Number of bytes required to read the post header.</param>
+    /// <param name="hasBody">True if there is a body attached to the message.</param>
     public void SetTotalHeaderSize(int postHeaderSize, bool hasBody)
     {
         PostHeaderLength = postHeaderSize;

@@ -5,9 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
-using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
-using Pipelines.Sockets.Unofficial.Threading;
 
 namespace NexNet.Internals;
 
@@ -16,18 +14,47 @@ namespace NexNet.Internals;
 /// </summary>
 internal class NexusDuplexPipe : INexusDuplexPipe
 {
+    /// <summary>
+    /// Represents the state of a duplex pipe.
+    /// </summary>
     [Flags]
     internal enum State : byte
     {
+        /// <summary>
+        /// Unset state.
+        /// </summary>
+        /// 
         Unset = 0,
+        /// <summary>
+        /// Client writer has completed its operation.
+        /// </summary>
         ClientWriterComplete = 1 << 0,
+
+        /// <summary>
+        /// Client reader has completed its operation.
+        /// </summary>
         ClientReaderComplete = 1 << 1,
+
+        /// <summary>
+        /// Server writer has completed its operation.
+        /// </summary>
         ServerWriterComplete = 1 << 2,
+
+        /// <summary>
+        /// Server reader has completed its operation.
+        /// </summary>
         ServerReaderComplete = 1 << 3,
+
+        /// <summary>
+        /// The connection is ready.
+        /// </summary>
         Ready = 1 << 4,
 
-        Complete = ClientWriterComplete 
-                   | ClientReaderComplete 
+        /// <summary>
+        /// Marks the state to indicate that the communication session has completed its operation.
+        /// </summary>
+        Complete = ClientWriterComplete
+                   | ClientReaderComplete
                    | ServerWriterComplete
                    | ServerReaderComplete
                    | Ready
@@ -45,10 +72,16 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     /// Id which changes based upon completion of the pipe. Used to make sure the
     /// Pipe is in the same state upon completion of writing/reading.
     /// </summary>
-    internal int StateId = 0;
+    internal int StateId;
 
+    /// <summary>
+    /// Complete compiled ID containing the client bit and the server bit.
+    /// </summary>
     public ushort Id { get; set; }
 
+    /// <summary>
+    /// Initial ID of this side of the connection.
+    /// </summary>
     public byte InitialId { get; set; }
 
     /// <summary>
@@ -66,6 +99,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     /// </summary>
     private Func<INexusDuplexPipe, ValueTask>? _onReady;
 
+    /// <summary>
+    /// Logger.
+    /// </summary>
     private INexusLogger? _logger;
 
     internal NexusDuplexPipe()
@@ -74,6 +110,13 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         _outputPipeWriter = new PipeWriterImpl(this);
     }
 
+    /// <summary>
+    /// Sets up the duplex pipe with the given parameters.
+    /// </summary>
+    /// <param name="initialId">The partial initial identifier.</param>
+    /// <param name="session">The Nexus session.</param>
+    /// <param name="onReady">The callback when the pipe is ready.</param>
+
     internal void Setup(byte initialId, INexusSession session, Func<INexusDuplexPipe, ValueTask>? onReady)
     {
         if (_state != State.Unset)
@@ -81,13 +124,16 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         _onReady = onReady;
         _session = session;
-        _logger = session?.Logger;
+        _logger = session.Logger;
         InitialId = initialId;
         _outputPipeWriter.Setup();
     }
 
-    record class OnPipeReadyArguments(IDuplexPipe Pipe, Action<IDuplexPipe> InvokeAction);
-    
+
+    /// <summary>
+    /// Signals that the pipe is ready to receive and send messages.
+    /// </summary>
+    /// <param name="id">The ID of the pipe.</param>
     internal async ValueTask PipeReady(ushort id)
     {
         if (_session == null)
@@ -102,6 +148,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         _outputPipeWriter.Setup();
     }
     
+    /// <summary>
+    /// Resets the pipe to its initial state while incrementing the StateId to indicate that the pipe has been reset.
+    /// </summary>
     internal void Reset()
     {
         StateId++;
@@ -116,7 +165,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         _outputPipeWriter.Reset();
         // No need to reset anything with the writer as it is use once and dispose.
     }
-    
+
+    /// <summary>
+    /// Writes data from upstream reader into the input pipe
+    /// </summary>
+    /// <param name="data">The data to write from upstream reader</param>
     internal void WriteFromUpstream(ReadOnlySequence<byte> data)
     {
         if (_session == null)
@@ -127,11 +180,14 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             || (!_session.IsServer && _state.HasFlag(State.ClientReaderComplete)))
             return;
 
-        var length = (int)data.Length;
         _inputPipeReader.BufferData(data);
     }
 
-    
+
+    /// <summary>
+    /// Notifies the upstream session of the current state of the pipe.
+    /// </summary>
+    /// <returns>Completes upon sending to the wire.</returns>
     internal async ValueTask NotifyState()
     {
         if (_session == null)
@@ -144,6 +200,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         _session.CacheManager.Return(message);
     }
     
+    /// <summary>
+    /// Internal method to run the pipe on a new thread.
+    /// </summary>
+    /// <param name="pipe">Pipe to run.</param>
+    /// <returns>Upon completion of the pipe.</returns>
     private static async ValueTask FireOnReady(NexusDuplexPipe pipe)
     {
         var state = pipe.StateId;
@@ -173,6 +234,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
         }
     }
+
+    /// <summary>
+    /// Updates the state of the NexusDuplexPipe .
+    /// </summary>
+    /// <param name="updatedState">The state to update to.</param>
+    /// <returns>True if the state changed, false if it did not change.</returns>
 
     internal bool UpdateState(State updatedState)
     {
@@ -230,6 +297,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         }
+
+        /// <summary>
+        /// Resets the reader to it's initial state for reuse.
+        /// </summary>
         public void Reset()
         {
             _isComplete = false;
@@ -245,6 +316,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 _readSemaphore.Wait();
         }
 
+        /// <summary>
+        /// Buffers incoming data to the reader and notifies the reader that data is available.
+        /// </summary>
+        /// <param name="data">The incoming data as a ReadOnlySequence of bytes.</param>
         public void BufferData(ReadOnlySequence<byte> data)
         {
             //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
@@ -260,6 +335,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         }
 
+        
         public override bool TryRead(out ReadResult result)
         {
             if (_isComplete)
@@ -404,12 +480,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         public override void AdvanceTo(SequencePosition consumed)
         {
-            //using var lockToken = _readLock.TryWait();
             lock (_buffer)
             {
                 _buffer.ReleaseTo(consumed);
             }
-
         }
 
         public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
@@ -432,6 +506,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             ReleaseSemaphore(_readSemaphore);
         }
 
+        /// <summary>
+        /// Releases the semaphore if it is currently held.
+        /// </summary>
+        /// <param name="semaphore"></param>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void ReleaseSemaphore(SemaphoreSlim semaphore)
         {
@@ -439,14 +517,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             {
                 if (semaphore.CurrentCount == 0)
                 {
-                   // Console.WriteLine($"Releasing {source}");
                     semaphore.Release();
-                   // Console.WriteLine($"Released {source}");
 
                 }
                 else
                 {
-                   // Console.WriteLine($"Already released {source}");
                 }
             }
             catch
@@ -473,11 +548,17 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             _nexusDuplexPipe = nexusDuplexPipe;
         }
 
+        /// <summary>
+        /// Sets up the pipe writer for use.
+        /// </summary>
         public void Setup()
         {
             _chunkSize = _nexusDuplexPipe._session!.Config.PipeFlushChunkSize;
         }
 
+        /// <summary>
+        /// Resets the pipe writer for reuse.
+        /// </summary>
         public void Reset()
         {
             _bufferWriter.Dispose();
@@ -565,6 +646,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             
             var flushPosition = 0;
             var session = _nexusDuplexPipe._session;
+
+            if (session == null)
+                throw new InvalidOperationException("Session is null.");
+
             while (true)
             {
                 if(_isCanceled)
@@ -619,12 +704,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
 
             return new FlushResult(_isCanceled, _isCompleted);
-        }
-
-        public void Dispose()
-        {
-            _bufferWriter.Dispose();
-            _pipeId = null!;
         }
     }
 }

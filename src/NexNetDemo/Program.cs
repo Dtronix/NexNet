@@ -127,6 +127,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
         }
         finally
         {
+            
             if (cts != null)
             {
                 methodInvoker.ReturnCancellationToken(message.InvocationId);

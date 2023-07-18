@@ -180,12 +180,12 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
     {
         public void ServerVoid()
         {
-            _ = ProxyInvokeMethodCore(0, null);
+            _ = ProxyInvokeMethodCore(0, null, InvocationFlags.None);
         }
         public void ServerVoidWithParam(global::System.Int32 id)
         {
             var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::System.Int32>>(new(id));
-            _ = ProxyInvokeMethodCore(1, arguments);
+            _ = ProxyInvokeMethodCore(1, arguments, InvocationFlags.None);
         }
         public global::System.Threading.Tasks.ValueTask ServerTask()
         {
@@ -231,7 +231,7 @@ partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::Ne
         public void ServerData(global::System.Byte[] data)
         {
             var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<global::System.Byte[]>>(new(data));
-            _ = ProxyInvokeMethodCore(11, arguments);
+            _ = ProxyInvokeMethodCore(11, arguments, InvocationFlags.None);
         }
 
         /// <summary>
