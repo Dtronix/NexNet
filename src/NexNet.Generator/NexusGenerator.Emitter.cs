@@ -250,7 +250,7 @@ partial class MethodMeta
         sb.Append("                        ");
 
         // Ignore the return value if we are a void method or a duplex pipe method
-        if (IsReturnVoid || this.DuplexPipeParameter != null)
+        if (IsReturnVoid)
         {
             EmitNexusMethodInvocation(sb);
         }

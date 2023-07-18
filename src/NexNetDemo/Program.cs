@@ -24,7 +24,7 @@ interface IServerNexus
 {
     ValueTask ServerTaskWithParam(int id, INexusDuplexPipe pipe, string myValue);
 }
-
+/*
 /// <summary>
 /// Nexus used for handling all Client communications.
 /// </summary>
@@ -158,9 +158,9 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => 0; }
     }
 }
+*/
 
-
-//[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus
 {
     protected override async ValueTask OnConnected(bool isReconnected)
@@ -209,7 +209,7 @@ partial class ClientNexus
     }
 }
 
-//[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;
