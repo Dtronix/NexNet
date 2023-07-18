@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
+using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet.Internals;
 
@@ -148,9 +149,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         Id = id;
 
-        UpdateState(State.Ready);
-
-        await NotifyState().ConfigureAwait(false);
+        await UpdateState(State.Ready).ConfigureAwait(false);
 
         _outputPipeWriter.Setup();
     }
@@ -194,80 +193,28 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         _inputPipeReader.BufferData(data);
     }
 
-
-    /// <summary>
-    /// Notifies the upstream session of the current state of the pipe.
-    /// </summary>
-    /// <returns>Completes upon sending to the wire.</returns>
-    internal async ValueTask NotifyState()
-    {
-        if (_session == null)
-            return;
-        
-        var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
-        message.PipeId = Id;
-        message.State = _state;
-        await _session.SendMessage(message).ConfigureAwait(false);
-        _session.CacheManager.Return(message);
-    }
-    
-    /// <summary>
-    /// Internal method to run the pipe on a new thread.
-    /// </summary>
-    /// <param name="pipe">Pipe to run.</param>
-    /// <returns>Upon completion of the pipe.</returns>
-    private static async ValueTask FireOnReady(NexusDuplexPipe pipe)
-    {
-        var state = pipe.StateId;
-        var session = pipe._session;
-        var logger = pipe._logger;
-
-        if (session == null)
-            return;
-
-        try
-        {
-            await pipe._onReady!(pipe);
-        }
-        catch (Exception e)
-        {
-            logger?.LogError(e, "Pipe did not successfully complete");
-        }
-        finally
-        {
-            if (pipe.StateId != state)
-            {
-                logger?.LogError("Could not return pipe to the PipeManager due to the state changing.  This is normally due to the manager cancellation process. Original state: New State:");
-            }
-            else
-            {
-                await session.PipeManager.ReturnPipe(pipe);
-            }
-        }
-    }
-
     /// <summary>
     /// Updates the state of the NexusDuplexPipe .
     /// </summary>
     /// <param name="updatedState">The state to update to.</param>
     /// <returns>True if the state changed, false if it did not change.</returns>
 
-    internal bool UpdateState(State updatedState)
+    internal async ValueTask UpdateState(State updatedState)
     {
         _logger?.LogTrace($"Current State: {_state}; Update State: {updatedState}");
         if (_session == null || _state.HasFlag(updatedState))
-            return false;
+            return;
 
         if (updatedState == State.Ready)
         {
             _state = State.Ready;
             if (_onReady != null)
-                TaskUtilities.StartTask<NexusDuplexPipe>(new(FireOnReady, this));
+                TaskUtilities.StartTask<NexusDuplexPipe>(new(_onReady, this));
 
             // Set the ready task.
             _readyTcs?.TrySetResult();
 
-            return true;
+            return;
         }
 
         bool changed = false;
@@ -319,7 +266,17 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
         }
 
-        return changed;
+        if(changed)
+        {
+            var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
+            message.PipeId = Id;
+            message.State = _state;
+            await _session.SendMessage(message).ConfigureAwait(false);
+            _session.CacheManager.Return(message);
+
+            if (_state == State.Complete)
+                _session.CacheManager.NexusDuplexPipeCache.Return(this);
+        }
     }
 
     internal class PipeReaderImpl : PipeReader
@@ -380,20 +337,17 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         }
 
-        public override ValueTask CompleteAsync(Exception? exception = null)
+        public override async ValueTask CompleteAsync(Exception? exception = null)
         {
             _isCompleted = true;
 
             var session = _nexusDuplexPipe._session;
             if (session == null)
-                return default;
+                return;
 
-            if (_nexusDuplexPipe.UpdateState(session.IsServer
-                    ? State.ServerReaderComplete
-                    : State.ClientReaderComplete))
-                return _nexusDuplexPipe.NotifyState();
-
-            return default;
+            await _nexusDuplexPipe.UpdateState(session.IsServer
+                ? State.ServerReaderComplete
+                : State.ClientReaderComplete);
         }
 
 
@@ -664,11 +618,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             if (session == null)
                 return default;
 
-            _nexusDuplexPipe.UpdateState(session.IsServer
+            return _nexusDuplexPipe.UpdateState(session.IsServer
                 ? State.ServerWriterComplete
                 : State.ClientWriterComplete);
-
-            return _nexusDuplexPipe.NotifyState();
         }
 
         public override void Complete(Exception? exception = null)

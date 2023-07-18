@@ -50,26 +50,6 @@ internal class NexusPipeManager
         return pipe;
     }
 
-    public async ValueTask ReturnPipe(INexusDuplexPipe pipe)
-    {
-        _session?.Logger?.LogTrace($"NexusPipeManager.ReturnPipe({pipe.Id});");
-        if (_isCanceled)
-            return;
-
-        if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
-        {
-            _session.Logger?.LogError($"Could not remove pipe {pipe.Id} from the active pipes.");
-            return;
-        }
-
-        // If the state is not already set to complete, then notify the other side of the connection.
-        if (nexusPipe.UpdateState(NexusDuplexPipe.State.Complete))
-            await nexusPipe.NotifyState();
-
-        // Return back to the cache.
-        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
-    }
-
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
         _session?.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
@@ -96,8 +76,7 @@ internal class NexusPipeManager
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;
 
-        if(nexusPipe.UpdateState(NexusDuplexPipe.State.Complete) && !_isCanceled)
-            await nexusPipe.NotifyState();
+        await nexusPipe.UpdateState(NexusDuplexPipe.State.Complete);
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
         _availableIds.Push(_session.IsServer ? serverId : clientId);
