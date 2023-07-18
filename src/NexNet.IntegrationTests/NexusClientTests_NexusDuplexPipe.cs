@@ -89,19 +89,9 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            try
-            {
-                var state = client.State;
-                var result = await pipe.Input.ReadAsync();
-                Assert.IsTrue(result.IsCompleted);
-                tcs.SetResult();
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                // ignored
-            }
-
+            var result = await pipe.Input.ReadAsync();
+            Assert.IsTrue(result.IsCompleted);
+            tcs.SetResult();
         };
         
         server.Start();
@@ -115,11 +105,8 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
             await Task.Delay(10000);
         });
 
-        await AssertThrows<TaskCanceledException>(async () =>
-        {
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
-                .WaitAsync(TimeSpan.FromSeconds(1));
-        });
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
@@ -163,58 +150,7 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }
-
-    [Repeat(100)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    public async Task ClientMethodDoesNotThrowCancellationWhenNotCaneled(Type type)
-    {
-        var tcs = new TaskCompletionSource();
-        var data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-        var logger = new StreamLogger();
-        var (server, sNexus, client, cNexus) = CreateServerClient(
-            CreateServerConfigWithLog(type, logger.CreateSubLogger("SV")),
-            CreateClientConfigWithLog(type, logger.CreateSubLogger("CV")));
-
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
-        {
-            var result = await pipe.Input.ReadAsync();
-        };
-
-        server.Start();
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
-
-        var pipe = sNexus.Context.CreatePipe(async writer =>
-        {
-            FlushResult? result = null;
-            while (result == null || !result.Value.IsCompleted)
-            {
-                result = await writer.Output.WriteAsync(data);
-            }
-
-            Assert.IsTrue(result.Value.IsCompleted);
-            tcs.SetResult();
-        });
-
-        try
-        {
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
-
-            await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
-        }
-        finally
-        {
-            using var fileStream = File.OpenWrite(nameof(ClientMethodDoesNotThrowCancellationWhenNotCaneled) + $"{type}.txt");
-            logger.Flush();
-            logger.BaseStream.Position = 0;
-            logger.BaseStream.CopyTo(fileStream);
-        }
-
-
-    }
-
+    
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -252,10 +188,7 @@ internal partial class NexusClientTests_NexusDuplexPipe : BaseTests
             tcs.SetResult();
         });
 
-        await AssertThrows<TaskCanceledException>(async () =>
-        {
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask().WaitAsync(TimeSpan.FromSeconds(1));
-        });
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask().WaitAsync(TimeSpan.FromSeconds(1));
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
     }

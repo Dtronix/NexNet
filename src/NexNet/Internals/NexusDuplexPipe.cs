@@ -261,6 +261,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             _state |= State.ClientReaderComplete | State.ServerWriterComplete;
 
+            _logger?.LogTrace($"NexusDuplexPipe Writer Closed ----------------");
             _outputPipeWriter.Complete();
             _outputPipeWriter.CancelPendingFlush();
             changed = true;
@@ -271,6 +272,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             _state |= State.ClientWriterComplete | State.ServerReaderComplete;
 
+            _logger?.LogTrace($"NexusDuplexPipe Reader Closed ----------------");
             // Close input pipe.
             _inputPipeReader.Complete();
             changed = true;
