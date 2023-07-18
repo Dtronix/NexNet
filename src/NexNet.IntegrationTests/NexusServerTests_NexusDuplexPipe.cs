@@ -284,4 +284,43 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [Test]
+    public async Task PipesThrowWhenInvokingOnMultipleConnections()
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(Type.Uds);
+        await AssertThrows<InvalidOperationException>(async () =>
+        {
+            await sNexus.Context.Clients.All.ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        });
+
+        await AssertThrows<InvalidOperationException>(async () =>
+        {
+            await sNexus.Context.Clients.Others.ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        });
+
+        await AssertThrows<InvalidOperationException>(async () =>
+        {
+            await sNexus.Context.Clients.Clients(new long[]{1}).ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        });
+
+        await AssertThrows<InvalidOperationException>(async () =>
+        {
+            await sNexus.Context.Clients.Group("").ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        });
+
+        await AssertThrows<InvalidOperationException>(async () =>
+        {
+            await sNexus.Context.Clients.Groups(new string[]{ ""}).ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        });
+    }
+
+    [Test]
+    public async Task PipesAllowInvocationOnSingleConnections()
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(Type.Uds);
+
+        await sNexus.Context.Clients.Client(1).ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
+    }
+
 }

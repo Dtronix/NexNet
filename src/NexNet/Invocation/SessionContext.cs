@@ -39,6 +39,11 @@ public abstract class SessionContext<TProxy>
         SessionManager = sessionManager;
     }
 
+    public INexusDuplexPipe CreatePipe()
+    {
+        return Session.PipeManager.GetPipe();
+    }
+
     public INexusDuplexPipe CreatePipe(Func<IDuplexPipe, ValueTask> onReady)
     {
         return Session.PipeManager.GetPipe(onReady);

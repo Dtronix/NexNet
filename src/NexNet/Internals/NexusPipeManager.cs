@@ -26,6 +26,18 @@ internal class NexusPipeManager
         _session = session;
     }
 
+    public INexusDuplexPipe? GetPipe()
+    {
+        if (_isCanceled)
+            return null;
+
+        var id = GetPartialId();
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id, null);
+        _initializingPipes.TryAdd(id, pipe);
+
+        return pipe;
+    }
+
     public INexusDuplexPipe? GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
     {
         if (_isCanceled)

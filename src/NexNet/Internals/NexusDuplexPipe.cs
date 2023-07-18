@@ -63,6 +63,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     //private readonly Pipe _inputPipe = new Pipe();
     private readonly PipeReaderImpl _inputPipeReader;
     private readonly PipeWriterImpl _outputPipeWriter;
+    private TaskCompletionSource? _readyTcs;
 
     private State _state = State.Unset;
 
@@ -100,6 +101,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     private Func<INexusDuplexPipe, ValueTask>? _onReady;
 
     /// <summary>
+    /// Task which completes when the pipe is ready for usage on the invoking side.
+    /// </summary>
+    public Task ReadyTask => _readyTcs!.Task;
+
+    /// <summary>
     /// Logger.
     /// </summary>
     private INexusLogger? _logger;
@@ -122,6 +128,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         if (_state != State.Unset)
             throw new InvalidOperationException("Can't setup a pipe that is already in use.");
 
+        _readyTcs = new TaskCompletionSource();
         _onReady = onReady;
         _session = session;
         _logger = session.Logger;
@@ -160,6 +167,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         InitialId = 0;
         _state = State.Unset;
         _onReady = null;
+
+        // Set the task to canceled in case the pipe was reset before it was ready.
+        _readyTcs?.TrySetCanceled();
+        _readyTcs = null;
 
         _inputPipeReader.Reset();
         _outputPipeWriter.Reset();
@@ -252,6 +263,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             _state = State.Ready;
             if (_onReady != null)
                 TaskUtilities.StartTask<NexusDuplexPipe>(new(FireOnReady, this));
+
+            // Set the ready task.
+            _readyTcs?.TrySetResult();
+
             return true;
         }
 
