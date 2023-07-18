@@ -14,6 +14,11 @@ internal static class TaskExtensions
         return task.WaitAsync(TimeSpan.FromSeconds(seconds));
     }
 
+    public static Task<T> Timeout<T>(this Task<T> task, double seconds)
+    {
+        return task.WaitAsync(TimeSpan.FromSeconds(seconds));
+    }
+
     public static async Task AssertTimeout(this Task task, double seconds)
     {
         try
@@ -29,7 +34,7 @@ internal static class TaskExtensions
         {
             Assert.Fail($"Task threw exception when one was not expected. {e}");
         }
-
-
     }
+
+
 }

@@ -20,9 +20,9 @@ internal partial class NexusServerTests : BaseTests
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
         server.Start();
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ConnectAsync().Timeout(1);
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Task.Timeout(1);
     }
 
 
@@ -44,9 +44,9 @@ internal partial class NexusServerTests : BaseTests
 
         server.Start();
 
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ConnectAsync().Timeout(1);
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Task.Timeout(1);
     }
 
 
@@ -66,13 +66,13 @@ internal partial class NexusServerTests : BaseTests
         for (int i = 0; i < 3; i++)
         {
             server.Start();
-            await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+            await client.ConnectAsync().Timeout(1);
 
-            await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+            await client.ReadyTask.Timeout(1);
 
             server.Stop();
 
-            await client.DisconnectedTask.WaitAsync(TimeSpan.FromSeconds(1));
+            await client.DisconnectedTask.Timeout(1);
 
             // Wait for the client to process the disconnect.
 
@@ -95,6 +95,6 @@ internal partial class NexusServerTests : BaseTests
 
         server.Stop();
 
-        await server.StoppedTcs!.WaitAsync(TimeSpan.FromSeconds(1));
+        await server.StoppedTcs!.Timeout(1);
     }
 }

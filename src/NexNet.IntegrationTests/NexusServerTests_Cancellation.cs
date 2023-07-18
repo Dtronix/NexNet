@@ -33,9 +33,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
                     await nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(100).Token);
                 });
                 return ValueTask.CompletedTask;
-            }).WaitAsync(TimeSpan.FromSeconds(1));
+            }).Timeout(1);
 
-        await tcs.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Timeout(1);
     }
 
 
@@ -63,9 +63,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
                 });
 
                 return default;
-            }).WaitAsync(TimeSpan.FromSeconds(1));
+            }).Timeout(1);
 
-        await tcs.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Timeout(1);
     }
 
 
@@ -89,9 +89,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             async nexus =>
             {
                 Assert.ThrowsAsync<TaskCanceledException>(async() => await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(new CancellationTokenSource(100).Token));
-            }).WaitAsync(TimeSpan.FromSeconds(1));
+            }).Timeout(1);
 
-        await tcs.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Timeout(1);
     }
 
 
@@ -115,9 +115,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             async nexus =>
             {
                 Assert.ThrowsAsync<TaskCanceledException>(async () => await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
-            }).WaitAsync(TimeSpan.FromSeconds(1));
+            }).Timeout(1);
 
-        await tcs.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Timeout(1);
     }
 
     [TestCase(Type.Uds)]
@@ -177,7 +177,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         };
 
 
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ConnectAsync().Timeout(1);
 
         return tcs.Task;
     }

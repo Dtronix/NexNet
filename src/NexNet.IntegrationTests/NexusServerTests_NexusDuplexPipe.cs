@@ -32,7 +32,7 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
         
         server.Start();
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.Timeout(1);
 
 
         var pipe = cNexus.Context.CreatePipe(async pipe =>
@@ -66,7 +66,7 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
 
         server.Start();
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.Timeout(1);
 
         var pipe = cNexus.Context.CreatePipe(async writer =>
         {
@@ -96,7 +96,7 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
         
         server.Start();
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.Timeout(1);
 
         var pipe = cNexus.Context.CreatePipe(async writer =>
         {
@@ -130,7 +130,7 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
 
         server.Start();
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.Timeout(1);
 
         var pipe = cNexus.Context.CreatePipe(async writer =>
         {
@@ -167,7 +167,7 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
 
         server.Start();
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ReadyTask.Timeout(1);
 
         var pipe = cNexus.Context.CreatePipe(async writer =>
         {
@@ -187,6 +187,6 @@ internal partial class NexusServerTests_NexusDuplexPipe : BaseTests
 
         await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).AsTask().Timeout(1);
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Task.Timeout(1);
     }
 }

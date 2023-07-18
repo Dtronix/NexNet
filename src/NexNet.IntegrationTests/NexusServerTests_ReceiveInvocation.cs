@@ -302,9 +302,9 @@ internal partial class NexusServerTests_ReceiveInvocation : BaseTests
 
         action(serverNexus, clientNexus, tcs);
 
-        await client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await client.ConnectAsync().Timeout(1);
 
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await tcs.Task.Timeout(1);
     }
     
 }
