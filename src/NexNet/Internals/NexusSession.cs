@@ -294,6 +294,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _readyTaskCompletionSource?.TrySetResult();
     }
 
+    public override string ToString() => $"NexNetSession({Id}) IsServer:{IsServer}";
+
     private class InvocationTaskArguments
     {
         public InvocationMessage Message { get; set; } = null!;

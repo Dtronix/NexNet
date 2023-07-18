@@ -29,46 +29,64 @@ interface IServerNexus
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus
 {
+    public static double AverageRate;
     protected override async ValueTask OnConnected(bool isReconnected)
     {
-        var data = new byte[1 << 15];
-        var number = 0;
-        var direction = 1;
-        for (int i = 0; i < data.Length; i++)
-        {
-            var delta = number += direction;
-            if (direction > 0 && delta == 256)
-            {
-                direction = -1;
-            }
-            else if (direction < 0 && delta == 0)
-            {
-                direction = -1;
-            }
-            data[i] = (byte)delta;
-        }
+
 
         var pipe = this.Context.CreatePipe(async pipe =>
         {
-            Memory<byte> randomData = data;
+            Memory<byte> randomData = Program.Data;
             var length = 1024 * 32;
+
+            Task.Run(async () =>
+            {
+                var sw = Stopwatch.StartNew();
+                var sentBytes = 0L;
+                var loopNumber = 0;
+
+                while (true)
+                {
+                    var data = await pipe.Input.ReadAsync();
+
+                    if (data.IsCanceled || data.IsCompleted)
+                        return;
+
+                    pipe.Input.AdvanceTo(data.Buffer.End);
+
+                    //Console.Write($"{sentBytes:D} Read from Pipe");
+                    //Console.SetCursorPosition(0, 0);
+
+                    sentBytes += data.Buffer.Length;
+
+                    if (loopNumber++ == 800)
+                    {
+                        var value = ((sentBytes / 1024d / 1024d) / (sw.ElapsedMilliseconds / 1000d));
+                        AverageRate = Program.ApproxRollingAverage(AverageRate, value);
+                        sw.Restart();
+                        sentBytes = 0;
+                        loopNumber = 0;
+                    }
+                }
+            });
 
             var loopNumber = 0;
             while (true)
             {
-                //var size = Random.Shared.Next(1, 1024 * 32);
-                randomData.Slice(0, length).CopyTo(pipe.Output.GetMemory(length));
-                pipe.Output.Advance(length);
-                await pipe.Output.FlushAsync();
-                //await Task.Delay(10);
+                var result = await pipe.Output.WriteAsync(Program.Data);
 
-                if (loopNumber++ == 1000000)
+                if (result.IsCanceled || result.IsCompleted)
+                    return;
+
+                if (loopNumber == 1000000)
                 {
                     await pipe.Output.CompleteAsync();
                     return;
                 }
                 //await writer.WriteAsync(randomData.Slice(0, 1024 * 60), ct);
             }
+
+            
         });
 
         await this.Context.Proxy.ServerTaskWithParam(214, pipe, "Vl");
@@ -80,20 +98,26 @@ partial class ServerNexus : IServerNexus
 {
     private long _readData = 0;
 
-    double ApproxRollingAverage(double avg, double newSample)
-    {
+    public static double AverageRate;
 
-        avg -= avg / 100;
-        avg += newSample / 100;
-
-        return avg;
-    }
     public async ValueTask ServerTaskWithParam(int id, INexusDuplexPipe pipe, string myValue)
     {
         long sentBytes = 0;
         int loopNumber = 0;
-        double average = 0;
+        AverageRate = 0;
         var sw = new Stopwatch();
+
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                var result = await pipe.Output.WriteAsync(Program.Data);
+
+                if(result.IsCanceled || result.IsCompleted)
+                    return;
+            }
+        });
+
         while (true)
         {
             sw.Start();
@@ -112,15 +136,14 @@ partial class ServerNexus : IServerNexus
             sentBytes += data.Buffer.Length;
             if (loopNumber++ == 800)
             {
-                var ellapsedms = sw.ElapsedMilliseconds;
-                var value = ((sentBytes / 1024d / 1024d) / (ellapsedms / 1000d));
-
-                average = ApproxRollingAverage(average, value);
-                Console.Write($"{average:F} MBps");
-                Console.SetCursorPosition(0,0);
+                var value = ((sentBytes / 1024d / 1024d) / (sw.ElapsedMilliseconds / 1000d));
+                AverageRate = Program.ApproxRollingAverage(AverageRate, value);
                 sw.Restart();
                 sentBytes = 0;
                 loopNumber = 0;
+
+                Console.Write($"Server Rec:{ServerNexus.AverageRate:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
+                Console.SetCursorPosition(0, 0);
             }
         }
     }
@@ -145,6 +168,37 @@ class Logger : INexusLogger
 
 internal class Program
 {
+    public static byte[] Data;
+
+    public static double ApproxRollingAverage(double avg, double newSample)
+    {
+
+        avg -= avg / 100;
+        avg += newSample / 100;
+
+        return avg;
+    }
+
+    static Program()
+    {
+        Data = new byte[1 << 15];
+        var number = 0;
+        var direction = 1;
+        for (int i = 0; i < Data.Length; i++)
+        {
+            var delta = number += direction;
+            if (direction > 0 && delta == 256)
+            {
+                direction = -1;
+            }
+            else if (direction < 0 && delta == 0)
+            {
+                direction = -1;
+            }
+            Data[i] = (byte)delta;
+        }
+
+    }
     static void RunTest(string testName, Action action)
     {
         Console.WriteLine($"Running {testName}");

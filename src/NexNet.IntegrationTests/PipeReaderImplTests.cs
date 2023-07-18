@@ -11,7 +11,7 @@ namespace NexNet.IntegrationTests
         [SetUp]
         public void SetUp()
         {
-            _pipeReader = new NexusDuplexPipe.PipeReaderImpl();
+            _pipeReader = new NexusDuplexPipe.PipeReaderImpl(null!);
         }
 
         [Test]

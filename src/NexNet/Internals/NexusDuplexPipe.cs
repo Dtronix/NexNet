@@ -106,7 +106,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     internal NexusDuplexPipe()
     {
-        _inputPipeReader = new PipeReaderImpl();
+        _inputPipeReader = new PipeReaderImpl(this);
         _outputPipeWriter = new PipeWriterImpl(this);
     }
 
@@ -256,26 +256,52 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         }
 
         bool changed = false;
-        if ((updatedState.HasFlag(State.ClientReaderComplete) && !_state.HasFlag(State.ClientReaderComplete))
-            || (updatedState.HasFlag(State.ServerWriterComplete) && !_state.HasFlag(State.ServerWriterComplete)))
-        {
-            _state |= State.ClientReaderComplete | State.ServerWriterComplete;
 
-            _logger?.LogTrace($"NexusDuplexPipe Writer Closed ----------------");
-            _outputPipeWriter.Complete();
-            _outputPipeWriter.CancelPendingFlush();
-            changed = true;
+        if (_session.IsServer)
+        {
+            if ((updatedState.HasFlag(State.ClientReaderComplete) && !_state.HasFlag(State.ClientReaderComplete))
+                || (updatedState.HasFlag(State.ServerWriterComplete) && !_state.HasFlag(State.ServerWriterComplete)))
+            {
+                _state |= State.ClientReaderComplete | State.ServerWriterComplete;
+
+                //_logger?.LogTrace($"NexusDuplexPipe Writer Closed ----------------");
+                _outputPipeWriter.Complete();
+                _outputPipeWriter.CancelPendingFlush();
+                changed = true;
+            }
+
+            if ((updatedState.HasFlag(State.ClientWriterComplete) && !_state.HasFlag(State.ClientWriterComplete))
+                || (updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete)))
+            {
+                _state |= State.ClientWriterComplete | State.ServerReaderComplete;
+
+                // Close input pipe.
+                _inputPipeReader.Complete();
+                changed = true;
+            }
         }
-
-        if ((updatedState.HasFlag(State.ClientWriterComplete) && !_state.HasFlag(State.ClientWriterComplete))
-            || (updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete)))
+        else
         {
-            _state |= State.ClientWriterComplete | State.ServerReaderComplete;
+            if ((updatedState.HasFlag(State.ClientReaderComplete) && !_state.HasFlag(State.ClientReaderComplete))
+                || (updatedState.HasFlag(State.ServerWriterComplete) && !_state.HasFlag(State.ServerWriterComplete)))
+            {
+                _state |= State.ClientReaderComplete | State.ServerWriterComplete;
+                // Close input pipe.
+                _inputPipeReader.Complete();
+                changed = true;
 
-            _logger?.LogTrace($"NexusDuplexPipe Reader Closed ----------------");
-            // Close input pipe.
-            _inputPipeReader.Complete();
-            changed = true;
+            }
+
+            if ((updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete))
+                || (updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete)))
+            {
+                _state |= State.ClientWriterComplete | State.ServerReaderComplete;
+
+                // Close output pipe.
+                _outputPipeWriter.Complete();
+                _outputPipeWriter.CancelPendingFlush();
+                changed = true;
+            }
         }
 
         return changed;
@@ -283,6 +309,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     internal class PipeReaderImpl : PipeReader
     {
+        private readonly NexusDuplexPipe _nexusDuplexPipe;
         private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
         private readonly CancellationRegistrationArgs _cancelReadingArgs;
         //private volatile int _stateId = 0;
@@ -292,11 +319,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         private readonly BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
 
-        private bool _isComplete;
+        private bool _isCompleted;
         private bool _isCanceled;
         
-        public PipeReaderImpl()
+        public PipeReaderImpl(NexusDuplexPipe nexusDuplexPipe)
         {
+            _nexusDuplexPipe = nexusDuplexPipe;
             _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         }
 
@@ -305,7 +333,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         /// </summary>
         public void Reset()
         {
-            _isComplete = false;
+            _isCompleted = false;
             _isCanceled = false;
 
             lock (_buffer)
@@ -337,19 +365,35 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         }
 
-        
+        public override ValueTask CompleteAsync(Exception? exception = null)
+        {
+            _isCompleted = true;
+
+            var session = _nexusDuplexPipe._session;
+            if (session == null)
+                return default;
+
+            if (_nexusDuplexPipe.UpdateState(session.IsServer
+                    ? State.ServerReaderComplete
+                    : State.ClientReaderComplete))
+                return _nexusDuplexPipe.NotifyState();
+
+            return default;
+        }
+
+
         public override bool TryRead(out ReadResult result)
         {
-            if (_isComplete)
+            if (_isCompleted)
             {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isCompleted);
                 return false;
             }
 
             if (_isCanceled)
             {
                 _isCanceled = false;
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
                 return false;
             }
 
@@ -359,20 +403,20 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
             catch (OperationCanceledException)
             {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
                 return false;
             }
 
-            if (_isComplete)
+            if (_isCompleted)
             {
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isCompleted);
                 return false;
             }
 
             if (_isCanceled)
             {
                 _isCanceled = false;
-                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
                 return false;
             }
 
@@ -385,23 +429,23 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 readOnlySequence = _buffer.GetBuffer();
             }
 
-            result = new ReadResult(readOnlySequence, false, _isComplete);
+            result = new ReadResult(readOnlySequence, false, _isCompleted);
             return true;
         }
 
 
         public override async ValueTask<ReadResult> ReadAsync(CancellationToken cancellationToken = new CancellationToken())
         {
-            if (_isComplete)
-                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+            if (_isCompleted)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isCompleted);
 
             if (cancellationToken.IsCancellationRequested)
-                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
 
             if (_isCanceled)
             {
                 _isCanceled = false;
-                var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                var result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
                 return result;
             }
             
@@ -446,7 +490,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
             catch (OperationCanceledException)
             {
-                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
             }
             finally
             {
@@ -459,13 +503,13 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             //if (!lockToken.Success)
             //    return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
 
-            if (_isComplete)
-                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isComplete);
+            if (_isCompleted)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, _isCanceled, _isCompleted);
 
             if (_isCanceled)
             {
                 _isCanceled = false;
-                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isComplete);
+                return new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
             }
 
             // Update the state Id;
@@ -477,7 +521,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 readOnlySequence = _buffer.GetBuffer();
             }
 
-            return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isComplete);
+            return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isCompleted);
         }
 
         public override void AdvanceTo(SequencePosition consumed)
@@ -504,7 +548,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         public override void Complete(Exception? exception = null)
         {
-            _isComplete = true;
+            _isCompleted = true;
             ReleaseSemaphore(_readSemaphore);
         }
 
@@ -596,18 +640,21 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             _flushCts?.Cancel();
         }
 
-        /*
+        
         public override ValueTask CompleteAsync(Exception? exception = null)
         {
             _isCompleted = true;
 
-            _nexusDuplexPipe.UpdateState(_nexusDuplexPipe._session.IsServer
+            var session = _nexusDuplexPipe._session;
+            if (session == null)
+                return default;
+
+            _nexusDuplexPipe.UpdateState(session.IsServer
                 ? State.ServerWriterComplete
                 : State.ClientWriterComplete);
 
             return _nexusDuplexPipe.NotifyState();
-
-        }*/
+        }
 
         public override void Complete(Exception? exception = null)
         {

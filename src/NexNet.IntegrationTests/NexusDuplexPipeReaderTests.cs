@@ -74,7 +74,7 @@ internal class NexusDuplexPipeReaderTests
     }*/
     private NexusDuplexPipe.PipeReaderImpl CreateReader()
     {
-        var reader = new NexusDuplexPipe.PipeReaderImpl();
+        var reader = new NexusDuplexPipe.PipeReaderImpl(null!);
 
         return reader;
     }
