@@ -293,7 +293,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             }
 
             if ((updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete))
-                || (updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete)))
+                || (updatedState.HasFlag(State.ClientWriterComplete) && !_state.HasFlag(State.ClientWriterComplete)))
             {
                 _state |= State.ClientWriterComplete | State.ServerReaderComplete;
 

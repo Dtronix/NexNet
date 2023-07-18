@@ -47,9 +47,9 @@ public abstract class SessionContext<TProxy>
     /// <summary>
     /// Disconnect the current connection.
     /// </summary>
-    public void Disconnect()
+    public Task DisconnectAsync()
     {
-        Session.DisconnectAsync(DisconnectReason.Graceful);
+        return Session.DisconnectAsync(DisconnectReason.Graceful);
     }
 
     internal abstract void Reset();

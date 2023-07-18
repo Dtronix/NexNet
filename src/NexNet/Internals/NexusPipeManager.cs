@@ -174,6 +174,7 @@ internal class NexusPipeManager
         return BitConverter.ToUInt16(idBytes);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static (byte ClientId, byte ServerId) GetClientAndServerId(ushort id)
     {
         Span<byte> bytes = stackalloc byte[sizeof(ushort)];
