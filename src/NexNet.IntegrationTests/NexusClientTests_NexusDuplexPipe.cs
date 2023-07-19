@@ -286,4 +286,29 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task PipeNotifiesWhenReady(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            await Task.Delay(10000);
+        };
+
+        var pipe = sNexus.Context.CreatePipe();
+
+        _ = Task.Run(async () =>
+        {
+            await pipe.ReadyTask.Timeout(1);
+            tcs.SetResult();
+        });
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        await tcs.Task.Timeout(1);
+    }
+
 }
