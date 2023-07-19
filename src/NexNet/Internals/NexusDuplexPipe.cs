@@ -30,35 +30,23 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         /// <summary>
         /// Client writer has completed its operation.
         /// </summary>
-        ClientWriterComplete = 1 << 0,
+        ClientWriterServerReaderComplete = 1 << 0,
 
         /// <summary>
         /// Client reader has completed its operation.
         /// </summary>
-        ClientReaderComplete = 1 << 1,
-
-        /// <summary>
-        /// Server writer has completed its operation.
-        /// </summary>
-        ServerWriterComplete = 1 << 2,
-
-        /// <summary>
-        /// Server reader has completed its operation.
-        /// </summary>
-        ServerReaderComplete = 1 << 3,
+        ClientReaderServerWriterComplete = 1 << 1,
 
         /// <summary>
         /// The connection is ready.
         /// </summary>
-        Ready = 1 << 4,
+        Ready = 1 << 2,
 
         /// <summary>
         /// Marks the state to indicate that the communication session has completed its operation.
         /// </summary>
-        Complete = ClientWriterComplete
-                   | ClientReaderComplete
-                   | ServerWriterComplete
-                   | ServerReaderComplete
+        Complete = ClientWriterServerReaderComplete
+                   | ClientReaderServerWriterComplete
                    | Ready
     }
 
@@ -204,8 +192,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             return;
 
         // See if this pipe is accepting data.
-        if ((_session.IsServer && _state.HasFlag(State.ServerReaderComplete))
-            || (!_session.IsServer && _state.HasFlag(State.ClientReaderComplete)))
+        if ((_session.IsServer && _state.HasFlag(State.ClientWriterServerReaderComplete))
+            || (!_session.IsServer && _state.HasFlag(State.ClientReaderServerWriterComplete)))
             return;
 
         _inputPipeReader.BufferData(data);
@@ -238,7 +226,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         if (_session == null || _state.HasFlag(updatedState))
             return false;
 
- 
+
         if (updatedState == State.Ready)
         {
             _state = State.Ready;
@@ -249,56 +237,51 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             _readyTcs?.TrySetResult();
 
             return true;
-        } 
+        }
 
         bool changed = false;
 
-        if (_session.IsServer)
+        if (updatedState.HasFlag(State.ClientReaderServerWriterComplete)
+            && !_state.HasFlag(State.ClientReaderServerWriterComplete))
         {
-            if ((updatedState.HasFlag(State.ClientReaderComplete) && !_state.HasFlag(State.ClientReaderComplete))
-                || (updatedState.HasFlag(State.ServerWriterComplete) && !_state.HasFlag(State.ServerWriterComplete)))
-            {
-                _state |= State.ClientReaderComplete | State.ServerWriterComplete;
+            _state |= State.ClientReaderServerWriterComplete;
 
-                //_logger?.LogTrace($"NexusDuplexPipe Writer Closed ----------------");
+            if (_session.IsServer)
+            {
                 _outputPipeWriter.Complete();
                 _outputPipeWriter.CancelPendingFlush();
-                changed = true;
             }
-
-            if ((updatedState.HasFlag(State.ClientWriterComplete) && !_state.HasFlag(State.ClientWriterComplete))
-                || (updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete)))
+            else
             {
-                _state |= State.ClientWriterComplete | State.ServerReaderComplete;
-
                 // Close input pipe.
                 _inputPipeReader.Complete();
-                changed = true;
             }
+
+            changed = true;
         }
-        else
+
+        if (updatedState.HasFlag(State.ClientWriterServerReaderComplete)
+            && !_state.HasFlag(State.ClientWriterServerReaderComplete))
         {
-            if ((updatedState.HasFlag(State.ClientReaderComplete) && !_state.HasFlag(State.ClientReaderComplete))
-                || (updatedState.HasFlag(State.ServerWriterComplete) && !_state.HasFlag(State.ServerWriterComplete)))
+            _state |= State.ClientWriterServerReaderComplete;
+
+            if (_session.IsServer)
             {
-                _state |= State.ClientReaderComplete | State.ServerWriterComplete;
                 // Close input pipe.
                 _inputPipeReader.Complete();
-                changed = true;
 
             }
-
-            if ((updatedState.HasFlag(State.ServerReaderComplete) && !_state.HasFlag(State.ServerReaderComplete))
-                || (updatedState.HasFlag(State.ClientWriterComplete) && !_state.HasFlag(State.ClientWriterComplete)))
+            else
             {
-                _state |= State.ClientWriterComplete | State.ServerReaderComplete;
-
                 // Close output pipe.
                 _outputPipeWriter.Complete();
                 _outputPipeWriter.CancelPendingFlush();
                 changed = true;
             }
+
+            changed = true;
         }
+
         return changed;
     }
 
@@ -369,8 +352,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 return default;
 
             if (_nexusDuplexPipe.UpdateState(session.IsServer
-                    ? State.ServerReaderComplete
-                    : State.ClientReaderComplete))
+                    ? State.ClientWriterServerReaderComplete
+                    : State.ClientReaderServerWriterComplete))
                 return _nexusDuplexPipe.NotifyState();
 
             return default;
@@ -645,8 +628,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 return default;
 
             if(_nexusDuplexPipe.UpdateState(session.IsServer
-                ? State.ServerWriterComplete
-                : State.ClientWriterComplete))
+                ? State.ClientReaderServerWriterComplete
+                : State.ClientWriterServerReaderComplete))
                 return _nexusDuplexPipe.NotifyState();
 
             return default;
@@ -742,8 +725,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             if (_isCompleted)
             {
                 if(_nexusDuplexPipe.UpdateState(session.IsServer
-                    ? State.ServerWriterComplete
-                    : State.ClientWriterComplete))
+                    ? State.ClientReaderServerWriterComplete
+                    : State.ClientWriterServerReaderComplete))
                     await _nexusDuplexPipe.NotifyState();
 
                 //-------------------------- await _nexusDuplexPipe.NotifyState();
