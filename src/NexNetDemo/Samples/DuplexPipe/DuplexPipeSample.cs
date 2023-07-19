@@ -24,7 +24,7 @@ public class DuplexPipeSample : SampleBase
         await pipe.ReadyTask;
 
         // 25 Mb of data.  Substitute with a file or your own stream.
-        var stream = new MemoryStream(new byte[1024 * 1024]);
+        var stream = new MemoryStream(new byte[1024 * 1024 * 25]);
 
         await stream.CopyToAsync(pipe.Output);
         await pipe.Output.FlushAsync();
@@ -57,6 +57,7 @@ public class DuplexPipeSample : SampleBase
 
             // Use the buffer to save the file to the stream.
             result.Buffer.CopyTo(stream);
+            pipe.Input.AdvanceTo(result.Buffer.End);
         }
 
     }

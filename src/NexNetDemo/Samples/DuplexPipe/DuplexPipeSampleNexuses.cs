@@ -37,11 +37,12 @@ partial class DuplexPipeSampleServerNexus
             if (result.IsCompleted)
                 break;
 
-            pipe.Input.AdvanceTo(result.Buffer.End);
+
             length += result.Buffer.Length;
 
             // Use the buffer to save the file to the stream.
             result.Buffer.CopyTo(stream);
+            pipe.Input.AdvanceTo(result.Buffer.End);
         }
 
         // Process the data in the stream.
@@ -50,7 +51,7 @@ partial class DuplexPipeSampleServerNexus
     public async ValueTask DownloadFile(INexusDuplexPipe pipe)
     {
         // 25 Mb of data.  Substitute with a file or your own stream.
-        var stream = new MemoryStream(new byte[1024 * 1024]);
+        var stream = new MemoryStream(new byte[1024 * 1024 * 25]);
         await stream.CopyToAsync(pipe.Output);
     }
 }
