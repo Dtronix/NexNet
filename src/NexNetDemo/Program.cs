@@ -12,6 +12,7 @@ using System.Text;
 using NexNet;
 using NexNet.Messages;
 using NexNet.Transports;
+using NexNetDemo.Samples.DuplexPipe;
 using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNetDemo;
@@ -209,7 +210,9 @@ internal class Program
 
     static async Task Main(string[] args)
     {
-
+        await new DuplexPipeSample().UploadSample();
+        Console.ReadLine();
+        return;
         //RoughBenchmark();
         //Console.ReadLine();
         //return;

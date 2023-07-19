@@ -3,7 +3,6 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
@@ -218,7 +217,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe
     /// Updates the state of the NexusDuplexPipe .
     /// </summary>
     /// <param name="updatedState">The state to update to.</param>
-    /// <param name="notify">Notifies the other side of the connection.</param>
     /// <returns>True if the state changed, false if it did not change.</returns>
     internal bool UpdateState(State updatedState)
     {
@@ -276,7 +274,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 // Close output pipe.
                 _outputPipeWriter.Complete();
                 _outputPipeWriter.CancelPendingFlush();
-                changed = true;
             }
 
             changed = true;
@@ -463,7 +460,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
             try
             {
-                await _readSemaphore.WaitAsync(cancellationToken);
+                await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 //_lastReadStateId = _stateId;
             }
             catch (OperationCanceledException)
@@ -473,7 +470,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             finally
             {
                 if (cts != null)
-                    await cts.Value.DisposeAsync();
+                    await cts.Value.DisposeAsync().ConfigureAwait(false);
             }
 
             //using var lockToken = await _readLock.TryWaitAsync(cancellationToken, MutexSlim.WaitOptions.NoDelay);
@@ -689,10 +686,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                         MessageType.DuplexPipeWrite,
                         _pipeId,
                         sendingBuffer,
-                        _flushCts.Token).ConfigureAwait(true);
+                        _flushCts.Token).ConfigureAwait(false);
                 }
                 catch (InvalidOperationException)
                 {
+                    // ReSharper disable once MethodHasAsyncOverload
                     Complete();
                     break;
                 }
@@ -703,7 +701,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 catch (Exception e)
                 {
                     _nexusDuplexPipe._logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_nexusDuplexPipe.Id}.");
-                    await session.DisconnectAsync(DisconnectReason.ProtocolError);
+                    await session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                     break;
                 }
 
@@ -727,7 +725,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 if(_nexusDuplexPipe.UpdateState(session.IsServer
                     ? State.ClientReaderServerWriterComplete
                     : State.ClientWriterServerReaderComplete))
-                    await _nexusDuplexPipe.NotifyState();
+                    await _nexusDuplexPipe.NotifyState().ConfigureAwait(false);
 
                 //-------------------------- await _nexusDuplexPipe.NotifyState();
             }

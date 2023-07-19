@@ -73,7 +73,18 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// </summary>
     /// <returns>Task for completion</returns>
     /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
-    public async Task ConnectAsync()
+    public Task ConnectAsync()
+    {
+        return ConnectAsync(false);
+    }
+
+    /// <summary>
+    /// Connects to the server and optionally waits for the ready signal.
+    /// </summary>
+    /// <param name="waitForReady">If true, the returned task will not complete until the client is ready to communicate with the server.</param>
+    /// <returns>Task for completion</returns>
+    /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
+    public async Task ConnectAsync(bool waitForReady)
     {
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
@@ -108,10 +119,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             OnDisconnected = OnDisconnected,
             OnSent = OnSent
         };
-        
+
         Proxy.Configure(_session, null, ProxyInvocationMode.Caller, null);
 
         await _session.StartAsClient().ConfigureAwait(false);
+
+        if (waitForReady)
+            await ReadyTask.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -136,9 +150,31 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         await DisconnectAsync().ConfigureAwait(false);
     }
 
-    public INexusDuplexPipe? CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
+    /// <summary>
+    /// Creates a pipe for sending and receiving byte arrays.
+    /// </summary>
+    /// <returns>Pipe to use.</returns>
+    public INexusDuplexPipe CreatePipe()
     {
-        return _session?.PipeManager.GetPipe(onReady);
+        var pipe = _session?.PipeManager.GetPipe();
+        if (pipe == null)
+            throw new InvalidOperationException("Client is not connected.");
+
+        return pipe;
+    }
+
+    /// <summary>
+    /// Creates a pipe for sending and receiving byte arrays.
+    /// </summary>
+    /// <param name="onReady">Method invoked when the pipe is ready for usage.</param>
+    /// <returns>Pipe to use.</returns>
+    public INexusDuplexPipe CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
+    {
+        var pipe = _session?.PipeManager.GetPipe(onReady);
+        if (pipe == null)
+            throw new InvalidOperationException("Client is not connected.");
+
+        return pipe;
     }
 
     private void PingTimer(object? state)
