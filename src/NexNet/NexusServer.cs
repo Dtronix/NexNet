@@ -91,7 +91,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _stoppedTcs = new TaskCompletionSource();
         _listener = _config.CreateServerListener();
 
-        StartOnScheduler(_config.ReceivePipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
+        StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
 
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
     }
@@ -231,7 +231,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
                 // boxed, but only once per client
                 StartOnScheduler(
-                    _config.ReceivePipeOptions.ReaderScheduler,
+                    _config.ReceiveSessionPipeOptions.ReaderScheduler,
                     RunClientAsync,
                     new NexusSessionConfigurations<TServerNexus, TClientProxy>()
                     {

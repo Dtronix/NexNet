@@ -25,7 +25,7 @@ public sealed class UdsClientConfig : ClientConfig
     }
 
     /// <inheritdoc />
-    public override int PipeFlushChunkSize { get; set; } = 1024 * 4;
+    public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport()
@@ -55,7 +55,7 @@ public sealed class UdsServerConfig : ServerConfig
     }
 
     /// <inheritdoc />
-    public override int PipeFlushChunkSize { get; set; } = 1024 * 4;
+    public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
     protected override ITransportListener OnCreateServerListener()

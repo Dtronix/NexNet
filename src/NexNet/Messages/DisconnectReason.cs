@@ -54,4 +54,9 @@ public enum DisconnectReason : byte
     /// Server is restarting.
     /// </summary>
     ServerRestarting = MessageType.DisconnectServerRestarting,
+
+    /// <summary>
+    /// The high water cutoff was reached on a duplex pipe. No body.
+    /// </summary>
+    NexusPipeHighWaterCutoffReached = MessageType.DisconnectNexusPipeHighWaterCutoffReached,
 }

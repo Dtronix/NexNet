@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Internal;
 
 namespace NexNet.Internals;
@@ -83,19 +84,36 @@ internal class NexusPipeManager
         _availableIds.Push(_session.IsServer ? serverId : clientId);
     }
 
-    public void BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
+    /// <summary>
+    /// Buffers incoming data from the other side of the pipe.
+    /// </summary>
+    /// <param name="id">Full ID of the pipe.</param>
+    /// <param name="data">Data to buffer.</param>
+    /// <returns>True if the buffering succeeded.  False if the data was not buffered and the connection needs to be disconnected.</returns>
+    public async ValueTask<NexusPipeBufferResult> BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
     {
         if (_isCanceled)
-            return;
+            return NexusPipeBufferResult.DataIgnored;
 
         if (_activePipes.TryGetValue(id, out var pipe))
         {
-            pipe.WriteFromUpstream(data);
-            return;
+            // Check to see if we have exceeded the high water cutoff for the pipe.
+            // If we have, then disconnect the connection.
+            var bufferResult = pipe.WriteFromUpstream(data);
+
+            // If we have reached the high water mark, then notify the other side of the pipe.
+            if (bufferResult == NexusPipeBufferResult.HighWatermarkReached)
+            {
+                if (pipe.UpdateState(_session.IsServer
+                        ? NexusDuplexPipe.State.ServerReaderBackPressure
+                        : NexusDuplexPipe.State.ClientReaderBackPressure))
+                    await pipe.NotifyState();
+            }
         }
 
         _session.Logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
         //throw new InvalidOperationException($"No pipe exists for id: {id}.");
+        return NexusPipeBufferResult.DataIgnored;
     }
 
     public void UpdateState(ushort id, NexusDuplexPipe.State state)

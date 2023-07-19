@@ -41,22 +41,43 @@ public abstract class ConfigBase
     /// <summary>
     /// Options to configure the sending pipe with.
     /// </summary>
-    public PipeOptions SendPipeOptions { get; set; }  = PipeOptions.Default;/*= new PipeOptions(
+    public PipeOptions SendSessionPipeOptions { get; set; }  = PipeOptions.Default;/*= new PipeOptions(
         pauseWriterThreshold: ushort.MaxValue,
         resumeWriterThreshold: ushort.MaxValue / 2,
         minimumSegmentSize: ushort.MaxValue);*/
+
+    /// <summary>
+    /// Options to configure the receiving pipe with.
+    /// </summary>
+    public PipeOptions ReceiveSessionPipeOptions { get; set; } = PipeOptions.Default;
 
     /// <summary>
     /// The NexusPipe class will flush this maximum amount of data at once.
     /// If the data surpasses this limit, it will be divided into chunks of this ize and sent until
     /// the entire data is transmitted.
     /// </summary>
-    public virtual int PipeFlushChunkSize { get; set; } = 1024 * 8;
+    public virtual int NexusPipeFlushChunkSize { get; set; } = 1024 * 8;
 
     /// <summary>
-    /// Options to configure the receiving pipe with.
+    /// Level at which the pipe will pause the writer.
+    /// 512KB default.
     /// </summary>
-    public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;
+    public int NexusPipeHighWaterMark { get; set; } = 1024 * 512;
+
+    /// <summary>
+    /// Level at which the pipe will notify the other session to pause sending any more data until the amount
+    /// of data buffered is this amount or less.
+    /// 64KB default.
+    /// </summary>
+    public int NexusPipeLowWaterMark { get; set; } = 1024 * 64;
+
+    /// <summary>
+    /// Level at which the pipe will stop the session from sending any more data until the low water mark is met.
+    /// 1MB default.
+    /// </summary>
+    public int NexusPipeHighWaterCutoff { get; set; } = 1024 * 1024;
+
+
 
     internal Action<INexusSession, byte[]>? InternalOnSend;
     internal Action<INexusSession>? InternalOnSessionSetup;

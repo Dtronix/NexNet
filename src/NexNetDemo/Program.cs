@@ -160,7 +160,7 @@ class Logger : INexusLogger
     }
     public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
-        if (logLevel < INexusLogger.LogLevel.Trace)
+        if (logLevel < INexusLogger.LogLevel.Information)
             return;
 
         Console.WriteLine($"{_prefix} {logLevel}: {message} {exception}");
@@ -210,9 +210,9 @@ internal class Program
 
     static async Task Main(string[] args)
     {
-        await new DuplexPipeSample().UploadDownloadSample();
-        Console.ReadLine();
-        return;
+        //await new DuplexPipeSample().UploadDownloadSample();
+        //Console.ReadLine();
+        //return;
         //RoughBenchmark();
         //Console.ReadLine();
         //return;
@@ -223,12 +223,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new Logger("SV")
+            Logger = new Logger("SV")
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = new Logger("CL")
+            Logger = new Logger("CL")
         };
         /*
         var serverConfig = new TcpServerConfig()
