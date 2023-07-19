@@ -39,12 +39,21 @@ public abstract class SessionContext<TProxy>
         SessionManager = sessionManager;
     }
 
-    public INexusDuplexPipe CreatePipe()
+    /// <summary>
+    /// Creates a pipe for use with the current session.
+    /// </summary>
+    /// <returns>Pipe for communication over teh current session.</returns>
+    public INexusDuplexPipe? CreatePipe()
     {
         return Session.PipeManager.GetPipe();
     }
 
-    public INexusDuplexPipe CreatePipe(Func<IDuplexPipe, ValueTask> onReady)
+    /// <summary>
+    /// Creates a pipe for use with the current session.
+    /// </summary>
+    /// <param name="onReady">Method to call when the pipe is ready.</param>
+    /// <returns>Pipe for communication over teh current session.</returns>
+    public INexusDuplexPipe? CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
     {
         return Session.PipeManager.GetPipe(onReady);
     }

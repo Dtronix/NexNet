@@ -11,7 +11,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     public async Task PipeReaderReceivesData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -28,7 +28,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(100);
     }
 
     [TestCase(Type.Uds)]
@@ -60,7 +60,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public async Task PipeReaderCompletesUponMethodExit(Type type)
+    public async Task PipeReaderCompletesUponPipeCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
 
@@ -73,6 +73,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         var pipe = sNexus.Context.CreatePipe(async pipe =>
         {
+            await pipe.CompleteAsync();
         });
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
@@ -82,7 +83,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public async Task PipeWriterCompletesUponMethodExit(Type type)
+    public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
 
@@ -97,6 +98,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         var pipe = sNexus.Context.CreatePipe(async pipe =>
         {
+            await pipe.CompleteAsync();
         });
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 

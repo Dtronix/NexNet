@@ -76,12 +76,11 @@ internal class NexusPipeManager
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;
 
-        await nexusPipe.UpdateState(NexusDuplexPipe.State.Complete);
-
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
-        _availableIds.Push(_session.IsServer ? serverId : clientId);
 
-        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
+        await nexusPipe.CompleteAsync();
+
+        _availableIds.Push(_session.IsServer ? serverId : clientId);
     }
 
     public void BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
