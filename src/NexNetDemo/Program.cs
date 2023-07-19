@@ -210,7 +210,7 @@ internal class Program
 
     static async Task Main(string[] args)
     {
-        await new DuplexPipeSample().UploadSample();
+        await new DuplexPipeSample().UploadDownloadSample();
         Console.ReadLine();
         return;
         //RoughBenchmark();

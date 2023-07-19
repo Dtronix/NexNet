@@ -246,7 +246,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
             if (_session.IsServer)
             {
-                _outputPipeWriter.Complete();
+                _outputPipeWriter.SetComplete();
                 _outputPipeWriter.CancelPendingFlush();
             }
             else
@@ -272,7 +272,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             else
             {
                 // Close output pipe.
-                _outputPipeWriter.Complete();
+                _outputPipeWriter.SetComplete();
                 _outputPipeWriter.CancelPendingFlush();
             }
 
@@ -634,6 +634,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
         public override void Complete(Exception? exception = null)
         {
+            throw new InvalidOperationException("Use CompleteAsync instead.");
+        }
+
+
+        public void SetComplete()
+        {
             _isCompleted = true;
         }
 
@@ -691,7 +697,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 catch (InvalidOperationException)
                 {
                     // ReSharper disable once MethodHasAsyncOverload
-                    Complete();
+                    SetComplete();
                     break;
                 }
                 catch (TaskCanceledException)
