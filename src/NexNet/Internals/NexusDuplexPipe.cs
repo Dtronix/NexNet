@@ -66,7 +66,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
     internal State CurrentState = State.Unset;
 
-    private INexusSession? _session;
+    private static INexusSession? _session;
 
     // <summary>
     // Id which changes based upon completion of the pipe. Used to make sure the
@@ -382,10 +382,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         }
 
-        public void Setup()
+        public void Setup(INexusSession session)
         {
-            _highWaterCutoff = _nexusDuplexPipe._session!.Config.NexusPipeHighWaterCutoff;
-            _lowWaterMark = _nexusDuplexPipe._session!.Config.NexusPipeLowWaterMark;
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+            _highWaterCutoff = _session!.Config.NexusPipeHighWaterCutoff;
+            _lowWaterMark = _session!.Config.NexusPipeLowWaterMark;
         }
 
         /// <summary>
@@ -404,6 +405,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
             // Reset the semaphore to it's original state.
             if (_readSemaphore.CurrentCount == 1)
                 _readSemaphore.Wait();
+
+            _session = null;
         }
 
         /// <summary>
@@ -433,11 +436,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             _isCompleted = true;
 
-            var session = _nexusDuplexPipe._session;
-            if (session == null)
+            if (_session == null)
                 return default;
 
-            if (_nexusDuplexPipe.UpdateState(session.IsServer
+            if (_nexusDuplexPipe.UpdateState(_session.IsServer
                     ? State.ClientWriterServerReaderComplete
                     : State.ClientReaderServerWriterComplete))
                 return _nexusDuplexPipe.NotifyState();
@@ -513,6 +515,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 return result;
             }
 
+            if(_session == null)
+                return new ReadResult(ReadOnlySequence<byte>.Empty, false, true);
+
             // Compare the state id to the last read state id. If they are different, then the state has changed
             // and we need to return the current buffer.
             // TODO: Investigate this hotpath.
@@ -587,7 +592,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 bufferLength = _buffer.Length;
             }
 
-            var backPressureFlagCheck = _nexusDuplexPipe._session.IsServer
+            var backPressureFlagCheck = _session.IsServer
                 ? State.ServerReaderBackPressure
                 : State.ClientReaderBackPressure;
 
@@ -692,9 +697,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         /// <summary>
         /// Sets up the pipe writer for use.
         /// </summary>
-        public void Setup()
+        public void Setup(INexusSession session)
         {
-            _chunkSize = _nexusDuplexPipe._session!.Config.NexusPipeFlushChunkSize;
+            _session = session ?? throw new ArgumentNullException(nameof(session));
+            _chunkSize = _session.Config.NexusPipeFlushChunkSize;
         }
 
         /// <summary>
@@ -744,11 +750,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe
         {
             _isCompleted = true;
 
-            var session = _nexusDuplexPipe._session;
-            if (session == null)
+            if (_session == null)
                 return default;
 
-            if(_nexusDuplexPipe.UpdateState(session.IsServer
+            if(_nexusDuplexPipe.UpdateState(_session.IsServer
                 ? State.ClientReaderServerWriterComplete
                 : State.ClientWriterServerReaderComplete))
                 return _nexusDuplexPipe.NotifyState();
@@ -804,9 +809,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 : buffer;
             
             var flushPosition = 0;
-            var session = _nexusDuplexPipe._session;
 
-            if (session == null)
+            if (_session == null)
                 throw new InvalidOperationException("Session is null.");
 
             while (true)
@@ -816,7 +820,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 
                 try
                 {
-                    await session.SendHeaderWithBody(
+                    await _session.SendHeaderWithBody(
                         MessageType.DuplexPipeWrite,
                         _pipeId,
                         sendingBuffer,
@@ -835,7 +839,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
                 catch (Exception e)
                 {
                     _nexusDuplexPipe._logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_nexusDuplexPipe.Id}.");
-                    await session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
+                    await _session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                     break;
                 }
 
@@ -856,7 +860,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe
 
             if (_isCompleted)
             {
-                if(_nexusDuplexPipe.UpdateState(session.IsServer
+                if(_nexusDuplexPipe.UpdateState(_session.IsServer
                     ? State.ClientReaderServerWriterComplete
                     : State.ClientWriterServerReaderComplete))
                     await _nexusDuplexPipe.NotifyState().ConfigureAwait(false);

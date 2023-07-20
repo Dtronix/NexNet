@@ -15,7 +15,7 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusDuplexPipeReaderTests
 {
-    /*private class SessionStub : INexusSession
+    private class SessionStub : INexusSession
     {
         private class ConsoleLogger : INexusLogger
         {
@@ -71,10 +71,10 @@ internal class NexusDuplexPipeReaderTests
         {
             return ValueTask.CompletedTask;
         }
-    }*/
+    }
     private NexusDuplexPipe.PipeReaderImpl CreateReader()
     {
-        var reader = new NexusDuplexPipe.PipeReaderImpl(null!);
+        var reader = new NexusDuplexPipe.PipeReaderImpl(new SessionStub());
 
         return reader;
     }
