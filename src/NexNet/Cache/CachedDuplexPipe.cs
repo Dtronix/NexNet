@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 
 namespace NexNet.Cache;
 

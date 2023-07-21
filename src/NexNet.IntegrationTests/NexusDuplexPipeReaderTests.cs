@@ -2,9 +2,11 @@
 using System.Diagnostics;
 using System.Net.Sockets;
 using MemoryPack;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NexNet.Cache;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -15,67 +17,43 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusDuplexPipeReaderTests
 {
-    private class SessionStub : INexusSession
+    private class PipeStateManagerStub : IPipeStateManager
     {
-        private class ConsoleLogger : INexusLogger
+        private NexusDuplexPipe.State _currentState;
+
+
+        public ushort Id { get; set; }
+        public ValueTask NotifyState()
         {
-            public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
+            return default;
+        }
+
+        public bool UpdateState(NexusDuplexPipe.State updatedState, bool remove = false)
+        {
+            if (remove)
             {
-                if (logLevel < INexusLogger.LogLevel.Trace)
-                    return;
-
-                Console.WriteLine($"{logLevel}: {message} {exception}");
+                // Remove the state from the current state.
+                _currentState &= ~updatedState;
             }
-        }
-        public long Id { get; set; }
-        public List<int> RegisteredGroups { get; set; }
-        public Task DisconnectAsync(DisconnectReason reason)
-        {
-            throw new NotImplementedException();
-        }
-
-        public SessionManager? SessionManager { get; set; }
-        public SessionStore SessionStore { get; set; }
-        public SessionInvocationStateManager SessionInvocationStateManager { get; set; }
-        public long LastReceived { get; set; }
-        public INexusLogger? Logger { get; set; } = new ConsoleLogger();
-        public CacheManager CacheManager { get; set; }
-        public ConfigBase Config { get; set; }
-        public ConnectionState State { get; set; }
-        public bool IsServer { get; set; }
-        public NexusPipeManager PipeManager { get; set; }
-        public ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default) where TMessage : IMessageBase
-        {
-            throw new NotImplementedException();
+            else
+            {
+                // Add the state to the current state.
+                _currentState |= updatedState;
+            }
+            return true;
         }
 
-        public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public bool DisconnectIfTimeout(long timeoutTicks)
-        {
-            throw new NotImplementedException();
-        }
-
-        public ValueTask SendHeaderWithBody(MessageType type,
-            ReadOnlyMemory<byte>? messageHeader,
-            ReadOnlySequence<byte> body,
-            CancellationToken cancellationToken = default)
-        {
-            return ValueTask.CompletedTask;
-        }
+        public NexusDuplexPipe.State CurrentState => _currentState;
     }
-    private NexusDuplexPipe.PipeReaderImpl CreateReader()
-    {
-        var reader = new NexusDuplexPipe.PipeReaderImpl(new SessionStub());
 
+    private NexusPipeReader CreateReader(IPipeStateManager? stateManager = null)
+    {
+        stateManager ??= new PipeStateManagerStub();
+        var reader = new NexusPipeReader(stateManager);
+        reader.Setup(
+            true,
+            1024 * 1024,
+            1024 * 128);
         return reader;
     }
 
@@ -327,7 +305,7 @@ internal class NexusDuplexPipeReaderTests
     public async Task ReadWillContinueAfterCancelByCancellationToken_Post()
     {
         var reader = CreateReader();
-
+        var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
         var cts = new CancellationTokenSource();
 
         Task.Run(async () =>
@@ -335,7 +313,7 @@ internal class NexusDuplexPipeReaderTests
             await Task.Delay(100);
             cts.Cancel();
 
-            reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+            reader.BufferData(data);
         });
 
         var result = await reader.ReadAsync(cts.Token);
@@ -350,15 +328,31 @@ internal class NexusDuplexPipeReaderTests
     public async Task ReadAdvance()
     {
         var reader = CreateReader();
+        var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
         for (int i = 0; i < 9000; i++)
         {
-            reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+            reader.BufferData(data);
         }
         var result = await reader.ReadAsync();
 
         var position = result.Buffer.GetPosition(3000 * 16);
 
         reader.AdvanceTo(position);
+    }
+
+    [Test]
+    public async Task ReaderNotifiesBackPressure()
+    {
+        var stateManager = new PipeStateManagerStub();
+        var data = new ReadOnlySequence<byte>(new byte[1024]);
+        var reader = CreateReader();
+        for (int i = 0; i < 1025; i++)
+        {
+            reader.BufferData(data);
+        }
+
+        var s = stateManager.CurrentState;
+
     }
 
 }

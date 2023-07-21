@@ -4,10 +4,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using NexNet.Messages;
-using Pipelines.Sockets.Unofficial.Internal;
 
-namespace NexNet.Internals;
+namespace NexNet.Internals.Pipes;
 
 internal class NexusPipeManager
 {

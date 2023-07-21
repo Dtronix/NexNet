@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 using NexNet.Messages;
 
 namespace NexNet.Invocation;

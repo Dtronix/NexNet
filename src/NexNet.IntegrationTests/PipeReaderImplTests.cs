@@ -1,17 +1,18 @@
 ﻿using System.Buffers;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests
 {
     public class PipeReaderImplTests
     {
-        private NexusDuplexPipe.PipeReaderImpl _pipeReader;
+        private NexusPipeReader _pipeReader;
 
         [SetUp]
         public void SetUp()
         {
-            _pipeReader = new NexusDuplexPipe.PipeReaderImpl(null!);
+            _pipeReader = new NexusPipeReader(null!);
         }
 
         [Test]

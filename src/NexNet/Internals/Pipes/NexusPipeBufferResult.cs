@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace NexNet.Internals;
+﻿namespace NexNet.Internals.Pipes;
 
 internal enum NexusPipeBufferResult : byte
 {

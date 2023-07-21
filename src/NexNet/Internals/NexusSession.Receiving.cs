@@ -7,6 +7,7 @@ using System;
 using System.ComponentModel.Design;
 using System.Drawing;
 using System.Runtime.CompilerServices;
+using NexNet.Internals.Pipes;
 using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;

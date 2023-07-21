@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using MemoryPack;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 
 namespace NexNet.Messages;
 

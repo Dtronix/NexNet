@@ -1,6 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Threading;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 
 namespace NexNet.Cache;
 
