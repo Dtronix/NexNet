@@ -21,6 +21,10 @@ internal class NexusDuplexPipeReaderTests
     {
         private NexusDuplexPipe.State _currentState;
 
+        public PipeStateManagerStub(NexusDuplexPipe.State initialState = NexusDuplexPipe.State.Unset)
+        {
+            
+        }
 
         public ushort Id { get; set; }
         public ValueTask NotifyState()
@@ -51,9 +55,11 @@ internal class NexusDuplexPipeReaderTests
         stateManager ??= new PipeStateManagerStub();
         var reader = new NexusPipeReader(stateManager);
         reader.Setup(
+            null,//new ConsoleLogger(""),
             true,
+            1024 * 128,
             1024 * 1024,
-            1024 * 128);
+            1024 * 32);
         return reader;
     }
 
@@ -130,7 +136,7 @@ internal class NexusDuplexPipeReaderTests
             for (int i = 0; i < 100; i++)
             {
                 //Console.WriteLine("Writer");
-                reader.BufferData(new ReadOnlySequence<byte>(new byte[] { (byte)i }));
+                await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { (byte)i }));
                 await bufferSemaphore.WaitAsync();
             }
             
@@ -142,6 +148,7 @@ internal class NexusDuplexPipeReaderTests
             {
                 //Console.WriteLine("Reader");
                 var task = reader.ReadAsync().AsTask();
+                reader.AdvanceTo(task.Result.Buffer.Start, task.Result.Buffer.End);
                 await task.Timeout(1);
                 var data = await task;
                 Assert.AreEqual(i + 1, data.Buffer.Length);
@@ -341,18 +348,81 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReaderNotifiesBackPressure()
+    public async Task ReaderNotifiesBackPressure_HighWaterMark()
     {
-        var stateManager = new PipeStateManagerStub();
+        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
         var data = new ReadOnlySequence<byte>(new byte[1024]);
-        var reader = CreateReader();
-        for (int i = 0; i < 1025; i++)
+        var reader = CreateReader(stateManager);
+        for (int i = 0; i < 1025 * 2; i++)
         {
-            reader.BufferData(data);
+            var result = await reader.BufferData(data);
+            if (result == NexusPipeBufferResult.HighWatermarkReached)
+            {
+                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+                return;
+            }
         }
 
-        var s = stateManager.CurrentState;
+        Assert.Fail("High water mark not reached.");
+    }
 
+    [Test]
+    public async Task ReaderNotifiesBackPressure_HighWaterCutoff()
+    {
+        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
+        var data = new ReadOnlySequence<byte>(new byte[1024]);
+        var reader = CreateReader(stateManager);
+        for (int i = 0; i < 1025 * 2; i++)
+        {
+            var result = await reader.BufferData(data);
+            if (result == NexusPipeBufferResult.HighCutoffReached)
+            {
+                return;
+            }
+        }
+
+        Assert.Fail("High water cutoff not reached.");
+    }
+
+    [Test]
+    public async Task ReaderNotifiesBackPressure_ReachesLowWaterMark()
+    {
+        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
+        var data = new ReadOnlySequence<byte>(new byte[1024]);
+        var reader = CreateReader(stateManager);
+        reader.Setup(
+            null,//new ConsoleLogger(""),
+            true,
+            1024 * 128,
+            1024 * 1024,
+            1024 * 32);
+
+        for (int j = 0; j < 10; j++)
+        {
+            // Reach the high water mark.
+            for (int i = 0; i < 128; i++)
+            {
+                var result = await reader.BufferData(data);
+            }
+
+            Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+
+            for (int i = 0; i < 96; i++)
+            {
+                var result = await reader.ReadAsync();
+                reader.AdvanceTo(result.Buffer.GetPosition(1024));
+                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+            }
+
+            for (int i = 0; i < 32; i++)
+            {
+                var result = await reader.ReadAsync();
+                reader.AdvanceTo(result.Buffer.GetPosition(1024));
+                Assert.IsFalse(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+            }
+
+        }
+       
     }
 
 }

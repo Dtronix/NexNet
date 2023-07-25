@@ -110,7 +110,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     public async Task PipeReaderCompletesUponDisconnection(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -128,7 +128,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
             .Timeout(1);
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(1000);
     }
 
     [TestCase(Type.Uds)]

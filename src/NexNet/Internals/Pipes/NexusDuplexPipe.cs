@@ -157,7 +157,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         InitialId = initialId;
         _outputPipeWriter.Setup(_session);
         _inputNexusPipeReader.Setup(
-            _session.IsServer, 
+            _logger,
+            _session.IsServer,
+            _session.Config.NexusPipeHighWaterMark,
             _session.Config.NexusPipeHighWaterCutoff,
             _session.Config.NexusPipeLowWaterMark);
     }
@@ -205,35 +207,18 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// Writes data from upstream reader into the input pipe
     /// </summary>
     /// <param name="data">The data to write from upstream reader</param>
-    /// <returns>True if the data was written successfully, false if the pipe has reached its high water cutoff.</returns></returns>
-    public NexusPipeBufferResult WriteFromUpstream(ReadOnlySequence<byte> data)
+    /// <returns>Result of the buffering.</returns>
+    public ValueTask<NexusPipeBufferResult> WriteFromUpstream(ReadOnlySequence<byte> data)
     {
         if (_session == null)
-            return NexusPipeBufferResult.DataIgnored;
+            return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
 
         // See if this pipe is accepting data.
         if ((_session.IsServer && _currentState.HasFlag(State.ClientWriterServerReaderComplete))
             || (!_session.IsServer && _currentState.HasFlag(State.ClientReaderServerWriterComplete)))
-            return NexusPipeBufferResult.DataIgnored;
+            return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
 
-        var bufferedLength = _inputNexusPipeReader.BufferData(data);
-
-        if (bufferedLength >= _session.Config.NexusPipeHighWaterCutoff)
-        {
-            _session.Logger?.LogWarning(
-                $"Pipe {Id} has buffered {bufferedLength} bytes of data and exceed the high water cutoff of {_session.Config.NexusPipeHighWaterCutoff}");
-
-            return NexusPipeBufferResult.HighCutoffReached;
-        }
-        else if (bufferedLength >= _session.Config.NexusPipeHighWaterMark)
-        {
-            _session.Logger?.LogInfo(
-                $"Pipe {Id} has buffered {bufferedLength} bytes of data and exceed the high water of {_session.Config.NexusPipeHighWaterMark}");
-
-            return NexusPipeBufferResult.HighWatermarkReached;
-        }
-
-        return NexusPipeBufferResult.Success;
+        return _inputNexusPipeReader.BufferData(data);
     }
 
     public async ValueTask NotifyState()
@@ -281,6 +266,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         {
             if (_session.IsServer)
             {
+                // Close output pipe.
                 _outputPipeWriter.SetComplete();
                 _outputPipeWriter.CancelPendingFlush();
             }
