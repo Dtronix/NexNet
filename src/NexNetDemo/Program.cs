@@ -40,7 +40,7 @@ partial class ClientNexus
             Memory<byte> randomData = Program.Data;
             var length = 1024 * 32;
 
-            Task.Run(async () =>
+            /*Task.Run(async () =>
             {
                 var sw = Stopwatch.StartNew();
                 var sentBytes = 0L;
@@ -69,7 +69,7 @@ partial class ClientNexus
                         loopNumber = 0;
                     }
                 }
-            });
+            });*/
 
             var loopNumber = 0;
             while (true)
@@ -107,7 +107,7 @@ partial class ServerNexus : IServerNexus
         int loopNumber = 0;
         AverageRate = 0;
         var sw = new Stopwatch();
-
+        /*
         _ = Task.Run(async () =>
         {
             while (true)
@@ -117,7 +117,7 @@ partial class ServerNexus : IServerNexus
                 if(result.IsCanceled || result.IsCompleted)
                     return;
             }
-        });
+        });*/
 
         while (true)
         {
@@ -126,6 +126,11 @@ partial class ServerNexus : IServerNexus
 
             if (data.IsCanceled || data.IsCompleted)
                 return;
+
+            if (data.Buffer.Length == 0)
+            {
+                continue;
+            }
 
             pipe.Input.AdvanceTo(data.Buffer.End);
 
@@ -143,7 +148,7 @@ partial class ServerNexus : IServerNexus
                 sentBytes = 0;
                 loopNumber = 0;
 
-                Console.Write($"Server Rec:{ServerNexus.AverageRate:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
+                Console.WriteLine($"Server Rec:{ServerNexus.AverageRate:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
                 Console.SetCursorPosition(0, 0);
             }
         }
@@ -223,12 +228,12 @@ internal class Program
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new Logger("SV")
+            Logger = new Logger("SV"),
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = new Logger("CL")
+            Logger = new Logger("CL"),
         };
         /*
         var serverConfig = new TcpServerConfig()

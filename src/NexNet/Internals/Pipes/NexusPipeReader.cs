@@ -60,9 +60,9 @@ internal class NexusPipeReader : PipeReader
         _lowWaterMark = lowWaterMark; //_session!.Config.NexusPipeLowWaterMark;
         _examinedPosition = 0;
         _bufferTailPosition = 0;
-        _backPressureFlag = isServer
-            ? NexusDuplexPipe.State.ServerReaderBackPressure
-            : NexusDuplexPipe.State.ClientReaderBackPressure;
+        _backPressureFlag = !isServer
+            ? NexusDuplexPipe.State.ServerWriterPause
+            : NexusDuplexPipe.State.ClientWriterPause;
 
         _writingCompleteFlag = isServer
             ? NexusDuplexPipe.State.ClientWriterServerReaderComplete
@@ -101,13 +101,15 @@ internal class NexusPipeReader : PipeReader
             var length = (int)data.Length;
             bufferLength = _buffer.Length + length;
             _bufferTailPosition += length;
-            if (bufferLength >= _highWaterCutoff)
+            if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
             {
                 _logger?.LogInfo(
                     $"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
 
                 return NexusPipeBufferResult.HighCutoffReached;
             }
+
+            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength}");
 
             // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
@@ -118,7 +120,7 @@ internal class NexusPipeReader : PipeReader
         Utilities.TryReleaseSemaphore(_readSemaphore);
 
         // If we have reached the high water mark, then notify the other side of the pipe.
-        if (bufferLength >= _highWaterMark)
+        if (_highWaterMark != 0 && bufferLength >= _highWaterMark)
         {
             _logger?.LogTrace(
                 $"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water mark of {_highWaterMark}");
@@ -223,11 +225,17 @@ internal class NexusPipeReader : PipeReader
 
         // If we currently have back pressure, and the buffer length is below the low water mark, then we need to
         // notify the other side that we are ready to receive more data.
-        if (_stateManager.CurrentState.HasFlag(_backPressureFlag) && bufferLength <= _lowWaterMark)
+        if (_lowWaterMark != 0
+            && _stateManager.CurrentState.HasFlag(_backPressureFlag) 
+            && bufferLength <= _lowWaterMark)
         {
             // Remove the flag and notify the other side.
             if (_stateManager.UpdateState(_backPressureFlag, true))
+            {
                 await _stateManager.NotifyState().ConfigureAwait(false);
+            }
+
+
         }
 
         return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isCompleted);

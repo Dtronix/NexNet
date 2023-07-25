@@ -325,7 +325,7 @@ internal class NexusDuplexPipeReaderTests
             var result = await reader.BufferData(data);
             if (result == NexusPipeBufferResult.HighWatermarkReached)
             {
-                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause));
                 return;
             }
         }
@@ -372,20 +372,20 @@ internal class NexusDuplexPipeReaderTests
                 var result = await reader.BufferData(data);
             }
 
-            Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+            Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause));
 
             for (int i = 0; i < 96; i++)
             {
                 var result = await reader.ReadAsync();
                 reader.AdvanceTo(result.Buffer.GetPosition(1024));
-                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+                Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause));
             }
 
             for (int i = 0; i < 32; i++)
             {
                 var result = await reader.ReadAsync();
                 reader.AdvanceTo(result.Buffer.GetPosition(1024));
-                Assert.IsFalse(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ServerReaderBackPressure));
+                Assert.IsFalse(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause));
             }
 
         }

@@ -42,12 +42,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         /// <summary>
         /// Client has reached it's buffer limit which notifies the server to stop sending data.
         /// </summary>
-        ClientReaderBackPressure = 1 << 3,
+        ClientWriterPause = 1 << 3,
 
         /// <summary>
         /// Server has reached it's buffer limit which notifies the client to stop sending data.
         /// </summary>
-        ServerReaderBackPressure = 1 << 4,
+        ServerWriterPause = 1 << 4,
         
         /// <summary>
         /// Marks the state to indicate that the communication session has completed its operation.
@@ -231,6 +231,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         if(_session == null)
             return;
 
+        //_logger?.LogInfo($"Notifying state: {_currentState}");
+
         var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
         message.PipeId = Id;
         message.State = _currentState;
@@ -242,7 +244,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     }
 
     /// <summary>
-    /// Updates the state of the NexusDuplexPipe .
+    /// Updates the state of the NexusDuplexPipe.
     /// </summary>
     /// <param name="updatedState">The state to update to.</param>
     /// <returns>True if the state changed, false if it did not change.</returns>
@@ -255,7 +257,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             return false;
 
 
-        if (updatedState == State.Ready)
+        if (_currentState == State.Unset && updatedState == State.Ready)
         {
             _currentState = State.Ready;
             if (_onReady != null)
@@ -298,26 +300,26 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         }
 
         // Back pressure
-        if (HasState(updatedState, _currentState, State.ClientReaderBackPressure) && _session.IsServer)
+        if (HasState(updatedState, _currentState, State.ClientWriterPause) && _session.IsServer)
         {
             // Back pressure was added
             _outputPipeWriter.PauseWriting = true;
         }
-        else if (remove && _currentState.HasFlag(State.ClientReaderBackPressure)
-                        && updatedState.HasFlag(State.ClientReaderBackPressure)
+        else if (remove && _currentState.HasFlag(State.ClientWriterPause)
+                        && updatedState.HasFlag(State.ClientWriterPause)
                         && _session.IsServer)
         {
             // Back pressure was removed.
             _outputPipeWriter.PauseWriting = false;
         }
 
-        if (HasState(updatedState, _currentState, State.ServerReaderBackPressure) && !_session.IsServer)
+        if (HasState(updatedState, _currentState, State.ServerWriterPause) && !_session.IsServer)
         {
             // Back pressure was added
             _outputPipeWriter.PauseWriting = true;
         }
-        else if (remove && _currentState.HasFlag(State.ServerReaderBackPressure)
-                        && updatedState.HasFlag(State.ServerReaderBackPressure)
+        else if (remove && _currentState.HasFlag(State.ServerWriterPause)
+                        && updatedState.HasFlag(State.ServerWriterPause)
                         && !_session.IsServer)
         {
             // Back pressure was removed.

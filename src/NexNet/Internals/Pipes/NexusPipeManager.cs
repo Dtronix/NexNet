@@ -110,7 +110,11 @@ internal class NexusPipeManager
         if (_isCanceled)
             return;
 
-        if (state == NexusDuplexPipe.State.Ready)
+        if (_activePipes.TryGetValue(id, out var pipe))
+        {
+            pipe.UpdateState(state);
+        }
+        else
         {
             var (clientId, serverId) = GetClientAndServerId(id);
             var thisId = _session.IsServer ? serverId : clientId;
@@ -124,9 +128,6 @@ internal class NexusPipeManager
 
             return;
         }
-        
-        if (_activePipes.TryGetValue(id, out var pipe))
-            pipe.UpdateState(state);
     }
 
     public void CancelAll()
