@@ -33,8 +33,6 @@ internal class NexusPipeReader : PipeReader
     private INexusLogger? _logger;
     private long _examinedPosition;
     private long _bufferTailPosition;
-    private bool _waiting;
-
 
     /// <summary>
     /// Length of data that has been buffered.
@@ -117,8 +115,7 @@ internal class NexusPipeReader : PipeReader
         }
 
         //Interlocked.Increment(ref _stateId);
-        TryReleaseSemaphore(_readSemaphore);
-
+        Utilities.TryReleaseSemaphore(_readSemaphore);
 
         // If we have reached the high water mark, then notify the other side of the pipe.
         if (bufferLength >= _highWaterMark)
@@ -127,7 +124,7 @@ internal class NexusPipeReader : PipeReader
                 $"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water mark of {_highWaterMark}");
 
             if (_stateManager.UpdateState(_backPressureFlag))
-                await _stateManager.NotifyState();
+                await _stateManager.NotifyState().ConfigureAwait(false);
 
             return NexusPipeBufferResult.HighWatermarkReached;
         }
@@ -148,7 +145,8 @@ internal class NexusPipeReader : PipeReader
 
     public override bool TryRead(out ReadResult result)
     {
-        
+        // Todo: implement
+        throw new NotImplementedException();
     }
 
 
@@ -173,7 +171,7 @@ internal class NexusPipeReader : PipeReader
             cts = cancellationToken.UnsafeRegister(static argsObj =>
             {
                 var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
-                TryReleaseSemaphore(args.Semaphore);
+                Utilities.TryReleaseSemaphore(args.Semaphore);
 
             }, _cancelReadingArgs);
         }
@@ -185,9 +183,7 @@ internal class NexusPipeReader : PipeReader
                 // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
                 do
                 {
-                    _waiting = true;
                     await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-                    _waiting = false;
                 } while (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false);
             }
             catch (OperationCanceledException)
@@ -244,12 +240,23 @@ internal class NexusPipeReader : PipeReader
 
     public override void AdvanceTo(SequencePosition consumed, SequencePosition examined)
     {
-        if (examined.GetObject() is not SequenceSegment<byte> examinedSegment)
-            throw new InvalidOperationException($"Passed {nameof(examined)} argument is not a sequence from this pipe.");
+        var examinedObject = examined.GetObject();
+        if (examinedObject != null)
+        {
+            if (examinedObject is SequenceSegment<byte> examinedSegment)
+            {
+                _examinedPosition = examinedSegment.RunningIndex + examined.GetInteger();
+            }
+            else
+            {
+                throw new InvalidOperationException($"Passed {nameof(examined)} argument is not a sequence from this pipe.");
+            }
+        }
+
+
 
         lock (_buffer)
         {
-            _examinedPosition = examinedSegment.RunningIndex + examined.GetInteger();
             _buffer.ReleaseTo(consumed);
         }
     }
@@ -257,37 +264,12 @@ internal class NexusPipeReader : PipeReader
     public override void CancelPendingRead()
     {
         _isCanceled = true;
-        TryReleaseSemaphore(_readSemaphore);
+        Utilities.TryReleaseSemaphore(_readSemaphore);
     }
 
     public override void Complete(Exception? exception = null)
     {
         _isCompleted = true;
-        TryReleaseSemaphore(_readSemaphore);
+        Utilities.TryReleaseSemaphore(_readSemaphore);
     }
-
-    /// <summary>
-    /// Releases the semaphore if it is currently held.
-    /// </summary>
-    /// <param name="semaphore"></param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void TryReleaseSemaphore(SemaphoreSlim semaphore)
-    {
-        try
-        {
-            if (semaphore.CurrentCount == 0)
-            {
-                semaphore.Release();
-
-            }
-            else
-            {
-            }
-        }
-        catch
-        {
-            // ignore.
-        }
-    }
-
 }

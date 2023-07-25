@@ -155,7 +155,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         _session = session;
         _logger = session.Logger;
         InitialId = initialId;
-        _outputPipeWriter.Setup(_session);
+        _outputPipeWriter.Setup(
+            _session.Logger,
+            _session,
+            _session.IsServer,
+            _session.Config.NexusPipeFlushChunkSize);
+
         _inputNexusPipeReader.Setup(
             _logger,
             _session.IsServer,
@@ -244,7 +249,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     public bool UpdateState(State updatedState, bool remove = false)
     {
         _logger?.LogTrace($"Current State: {_currentState}; Update State: {updatedState}");
-        if (_session == null || _currentState.HasFlag(updatedState))
+        if (_session == null 
+            || (!remove && _currentState.HasFlag(updatedState))
+            || (remove && !_currentState.HasFlag(updatedState)))
             return false;
 
 
@@ -260,8 +267,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             return true;
         }
 
-        bool changed = false;
-
         if (HasState(updatedState, _currentState, State.ClientReaderServerWriterComplete))
         {
             if (_session.IsServer)
@@ -275,8 +280,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
                 // Close input pipe.
                 _inputNexusPipeReader.Complete();
             }
-
-            changed = true;
         }
 
         if (HasState(updatedState, _currentState, State.ClientWriterServerReaderComplete))
@@ -285,7 +288,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             {
                 // Close input pipe.
                 _inputNexusPipeReader.Complete();
-
             }
             else
             {
@@ -293,8 +295,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
                 _outputPipeWriter.SetComplete();
                 _outputPipeWriter.CancelPendingFlush();
             }
-
-            changed = true;
         }
 
         // Back pressure
@@ -335,7 +335,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             _currentState |= updatedState;
         }
 
-        return changed;
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -16,12 +16,13 @@ internal class NexusPipeWriter : PipeWriter
     private bool _isCanceled;
     private bool _isCompleted;
     private CancellationTokenSource? _flushCts;
-    private Memory<byte> _pipeId = new byte[sizeof(ushort)];
+    private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
     private int _chunkSize;
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
     private bool _pauseWriting;
     private INexusLogger? _logger;
-    private INexusSession? _session;
+    private IMessengerAndDisconnector? _messenger;
+    private NexusDuplexPipe.State _completedFlag;
 
     public NexusPipeWriter(IPipeStateManager stateManager)
     {
@@ -38,18 +39,24 @@ internal class NexusPipeWriter : PipeWriter
         {
             _pauseWriting = value;
             if (value == false)
-                _pauseSemaphore.Release();
+            {
+                Utilities.TryReleaseSemaphore(_pauseSemaphore);
+            }
         }
     }
 
     /// <summary>
     /// Sets up the pipe writer for use.
     /// </summary>
-    public void Setup(INexusSession session)
+    public void Setup(INexusLogger? logger, IMessengerAndDisconnector messenger, bool isServer, int chunkSize)
     {
-        _session = session ?? throw new ArgumentNullException(nameof(session));
-        _logger = session.Logger;
-        _chunkSize = _session.Config.NexusPipeFlushChunkSize;
+        _messenger = messenger ?? throw new ArgumentNullException(nameof(messenger));
+        _logger = logger;
+        _chunkSize = chunkSize; // _session.Config.NexusPipeFlushChunkSize;
+
+        _completedFlag = isServer
+            ? NexusDuplexPipe.State.ClientReaderServerWriterComplete
+            : NexusDuplexPipe.State.ClientWriterServerReaderComplete;
     }
 
     /// <summary>
@@ -65,8 +72,7 @@ internal class NexusPipeWriter : PipeWriter
         PauseWriting = false;
 
         // Reset the pause Semaphore back to 0.
-        if (_pauseSemaphore.CurrentCount == 1)
-            _pauseSemaphore.Wait();
+        _pauseSemaphore.Wait(0);
     }
 
 
@@ -99,12 +105,10 @@ internal class NexusPipeWriter : PipeWriter
     {
         _isCompleted = true;
 
-        if (_session == null)
+        if (_messenger == null)
             return default;
 
-        if (_stateManager.UpdateState(_session.IsServer
-                ? NexusDuplexPipe.State.ClientReaderServerWriterComplete
-                : NexusDuplexPipe.State.ClientWriterServerReaderComplete))
+        if (_stateManager.UpdateState(_completedFlag))
             return _stateManager.NotifyState();
 
         return default;
@@ -159,7 +163,7 @@ internal class NexusPipeWriter : PipeWriter
 
         var flushPosition = 0;
 
-        if (_session == null)
+        if (_messenger == null)
             throw new InvalidOperationException("Session is null.");
 
         while (true)
@@ -169,7 +173,7 @@ internal class NexusPipeWriter : PipeWriter
 
             try
             {
-                await _session.SendHeaderWithBody(
+                await _messenger.SendHeaderWithBody(
                     MessageType.DuplexPipeWrite,
                     _pipeId,
                     sendingBuffer,
@@ -188,7 +192,7 @@ internal class NexusPipeWriter : PipeWriter
             catch (Exception e)
             {
                 _logger?.LogError(e, $"Unknown error while writing to pipe on Invocation Id: {_stateManager.Id}.");
-                await _session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
+                await _messenger.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                 break;
             }
 
@@ -209,12 +213,8 @@ internal class NexusPipeWriter : PipeWriter
 
         if (_isCompleted)
         {
-            if (_stateManager.UpdateState(_session.IsServer
-                    ? NexusDuplexPipe.State.ClientReaderServerWriterComplete
-                    : NexusDuplexPipe.State.ClientWriterServerReaderComplete))
+            if (_stateManager.UpdateState(_completedFlag))
                 await _stateManager.NotifyState().ConfigureAwait(false);
-
-            //-------------------------- await _nexusDuplexPipe.NotifyState();
         }
 
         return new FlushResult(_isCanceled, _isCompleted);
