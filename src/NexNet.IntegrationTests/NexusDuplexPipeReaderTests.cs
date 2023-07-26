@@ -339,16 +339,18 @@ internal class NexusDuplexPipeReaderTests
         var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
         var data = new ReadOnlySequence<byte>(new byte[1024]);
         var reader = CreateReader(stateManager);
-        for (int i = 0; i < 1025 * 2; i++)
+        reader.Setup(
+            null,//new ConsoleLogger(""),
+            true,
+            1024 * 128,
+            1024 * 1024,
+            1024 * 32);
+        for (int i = 0; i < 1023; i++)
         {
             var result = await reader.BufferData(data);
-            if (result == NexusPipeBufferResult.HighCutoffReached)
-            {
-                return;
-            }
         }
 
-        Assert.Fail("High water cutoff not reached.");
+        await reader.BufferData(data).AsTask().AssertTimeout(.15);
     }
 
     [Test]

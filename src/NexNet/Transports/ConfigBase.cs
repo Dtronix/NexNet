@@ -60,16 +60,16 @@ public abstract class ConfigBase
 
     /// <summary>
     /// Level at which the pipe will pause the writer.
-    /// 512KB default.
+    /// 192KB default.
     /// </summary>
-    public int NexusPipeHighWaterMark { get; set; } = 1024 * 128;
+    public int NexusPipeHighWaterMark { get; set; } = 1024 * 192;
 
     /// <summary>
     /// Level at which the pipe will notify the other session to pause sending any more data until the amount
     /// of data buffered is this amount or less.
     /// 64KB default.
     /// </summary>
-    public int NexusPipeLowWaterMark { get; set; } = 1024 * 64;
+    public int NexusPipeLowWaterMark { get; set; } = 1024 * 16;
 
     /// <summary>
     /// Level at which the pipe will stop the session from sending any more data until the low water mark is met.

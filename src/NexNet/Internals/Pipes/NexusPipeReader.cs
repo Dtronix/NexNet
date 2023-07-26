@@ -15,6 +15,7 @@ internal class NexusPipeReader : PipeReader
     //private readonly NexusDuplexPipe _nexusDuplexPipe;
     private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
     private readonly CancellationRegistrationArgs _cancelReadingArgs;
+    //private TaskCompletionSource _allowBuffer = new TaskCompletionSource();
 
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
@@ -100,16 +101,37 @@ internal class NexusPipeReader : PipeReader
 
         if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
         {
+
+            
+            // Ensure the connection is not completed.
+            if (_isCompleted)
+                return NexusPipeBufferResult.DataIgnored;
+
+
             //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
-            var i = 0;
-            while(!_isCompleted)
+            //Todo: Review changing this out for a latch instead of a loop.
+            int loopCount = 0;
+            while (!_isCompleted)
             {
                 //_logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low water mark completion. Loop {i++}");
+                // Do a short delay to allow the other side to process the data and progressively increase the delay.
+                if (loopCount < 10)
+                {
+                    await Task.Delay(1).ConfigureAwait(false);
+                }
+                else if (loopCount < 50)
+                {
+                    await Task.Delay(10).ConfigureAwait(false);
+                }
+                else
+                {
+                    await Task.Delay(100).ConfigureAwait(false);
+                }
 
-                await Task.Delay(25).ConfigureAwait(false);
+                loopCount++;
 
                 // Check to see if the back pressure flag was removed.  If so, then we can exit the waiting loop.
-                if(_buffer.Length + length < _lowWaterMark)
+                if (_buffer.Length + length < _lowWaterMark)
                     break;
             }
 
@@ -256,6 +278,10 @@ internal class NexusPipeReader : PipeReader
             if (_stateManager.UpdateState(_backPressureFlag, true))
             {
                 await _stateManager.NotifyState().ConfigureAwait(false);
+
+                //_logger?.LogInfo("Allow");
+                // Set the task completion source to allow the next write to continue then assign a new one.
+                //_allowBuffer.TrySetResult();
             }
 
 

@@ -148,7 +148,7 @@ partial class ServerNexus : IServerNexus
                 sentBytes = 0;
                 loopNumber = 0;
 
-                Console.WriteLine($"Server Rec:{ServerNexus.AverageRate:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
+                Console.WriteLine($"Server Rec:{value:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
                 //Console.SetCursorPosition(0, 0);
             }
         }
@@ -176,14 +176,21 @@ internal class Program
 {
     public static byte[] Data;
 
+
+
+    /// <summary>
+    /// Rolling average function that takes a new sample and returns the average of the last 100 samples.
+    /// </summary>
+    /// <param name="avg"></param>
+    /// <param name="newSample"></param>
+    /// <returns></returns>
     public static double ApproxRollingAverage(double avg, double newSample)
     {
-
         avg -= avg / 100;
         avg += newSample / 100;
-
         return avg;
     }
+
 
     static Program()
     {
@@ -224,7 +231,7 @@ internal class Program
         var path = "test.sock";
         if (File.Exists(path))
             File.Delete(path);
-
+        
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
@@ -235,7 +242,9 @@ internal class Program
             EndPoint = new UnixDomainSocketEndPoint(path),
             Logger = new Logger("CL"),
         };
+        
         /*
+        
         var serverConfig = new TcpServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
