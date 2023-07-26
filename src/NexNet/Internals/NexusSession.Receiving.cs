@@ -176,14 +176,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     switch (_recMessageHeader.Type)
                     { 
                         case MessageType.DuplexPipeWrite:
-                            if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexStreamId))
+                            if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexPipeId))
                             {
                                 _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
                                 disconnect = DisconnectReason.ProtocolError;
                                 break;
                             }
 
-                            _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexStreamId} for {_recMessageHeader.Type}.");
+                            _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
                             break;
                         default:
                             _config.Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
@@ -225,7 +225,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        var bufferDuplexPipeResult = await PipeManager.BufferIncomingData(_recMessageHeader.DuplexStreamId, bodySlice);
+                        var bufferDuplexPipeResult = await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
                         if (bufferDuplexPipeResult == NexusPipeBufferResult.HighCutoffReached)
                         {
                             disconnect = DisconnectReason.NexusPipeHighWaterCutoffReached;
@@ -297,7 +297,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             case MessageType.ClientGreeting:
             {
-                var cGreeting = Unsafe.As<ClientGreetingMessage>(message);
+                var cGreeting = message.As<ClientGreetingMessage>();
                 // Verify that this is the server
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
@@ -363,7 +363,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
             case MessageType.Invocation:
             {
-                var invocationRequestMessage = Unsafe.As<InvocationMessage>(message);
+                var invocationRequestMessage = message.As<InvocationMessage>();
                 // Throttle invocations.
                 await _invocationSemaphore.WaitAsync().ConfigureAwait(false);
 
@@ -404,21 +404,21 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
             case MessageType.InvocationResult:
             {
-                var invocationProxyResultMessage = Unsafe.As<InvocationResultMessage>(message);
+                var invocationProxyResultMessage = message.As<InvocationResultMessage>();
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
                 break;
             }
 
             case MessageType.InvocationCancellation:
             {
-                var invocationCancellationRequestMessage = Unsafe.As<InvocationCancellationMessage>(message);
+                var invocationCancellationRequestMessage = message.As<InvocationCancellationMessage>();
                 _nexus.CancelInvocation(invocationCancellationRequestMessage);
                 break;
             }
 
             case MessageType.DuplexPipeUpdateState:
             {
-                var updateStateMessage = Unsafe.As<DuplexPipeUpdateStateMessage>(message);
+                var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
                 PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
                 _cacheManager.Return(updateStateMessage);
                 break;

@@ -149,7 +149,7 @@ partial class ServerNexus : IServerNexus
                 loopNumber = 0;
 
                 Console.WriteLine($"Server Rec:{ServerNexus.AverageRate:F} MBps; Client Rec:{ClientNexus.AverageRate:F} MBps;");
-                Console.SetCursorPosition(0, 0);
+                //Console.SetCursorPosition(0, 0);
             }
         }
     }

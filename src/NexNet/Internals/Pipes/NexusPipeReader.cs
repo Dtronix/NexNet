@@ -94,20 +94,42 @@ internal class NexusPipeReader : PipeReader
     /// <returns>The length of the buffered data.</returns>
     public async ValueTask<NexusPipeBufferResult> BufferData(ReadOnlySequence<byte> data)
     {
-        long bufferLength;
         //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
+        var length = (int)data.Length;
+        var bufferLength = _buffer.Length + length;
+
+        if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
+        {
+            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
+            var i = 0;
+            while(!_isCompleted)
+            {
+                //_logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low water mark completion. Loop {i++}");
+
+                await Task.Delay(25).ConfigureAwait(false);
+
+                // Check to see if the back pressure flag was removed.  If so, then we can exit the waiting loop.
+                if(_buffer.Length + length < _lowWaterMark)
+                    break;
+            }
+
+            // Ensure the connection is not completed.
+            if(_isCompleted)
+                return NexusPipeBufferResult.DataIgnored;
+
+            // If we have the back pressure flag, then we have not yet reached the low water mark.
+            if (_stateManager.CurrentState.HasFlag(_backPressureFlag))
+            {
+                //return NexusPipeBufferResult.HighCutoffReached;
+            }
+        }
+
         lock (_buffer)
         {
-            var length = (int)data.Length;
-            bufferLength = _buffer.Length + length;
             _bufferTailPosition += length;
-            if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
-            {
-                _logger?.LogInfo(
-                    $"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
 
-                return NexusPipeBufferResult.HighCutoffReached;
-            }
+            // Get the updated length which may have changed while we were waiting.
+            bufferLength = _buffer.Length + length;
 
             //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength}");
 
@@ -116,20 +138,21 @@ internal class NexusPipeReader : PipeReader
             _buffer.Advance(length);
         }
 
-        //Interlocked.Increment(ref _stateId);
-        Utilities.TryReleaseSemaphore(_readSemaphore);
-
         // If we have reached the high water mark, then notify the other side of the pipe.
         if (_highWaterMark != 0 && bufferLength >= _highWaterMark)
         {
-            _logger?.LogTrace(
-                $"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water mark of {_highWaterMark}");
+            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water mark of {_highWaterMark}");
 
             if (_stateManager.UpdateState(_backPressureFlag))
                 await _stateManager.NotifyState().ConfigureAwait(false);
 
             return NexusPipeBufferResult.HighWatermarkReached;
         }
+
+        //Interlocked.Increment(ref _stateId);
+        Utilities.TryReleaseSemaphore(_readSemaphore);
+
+
         
         return NexusPipeBufferResult.Success;
     }
