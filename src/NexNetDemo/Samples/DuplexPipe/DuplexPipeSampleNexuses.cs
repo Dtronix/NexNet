@@ -64,7 +64,7 @@ partial class DuplexPipeSampleServerNexus
 
         await pipe.Input.CopyToAsync(stream);
 
-        // Process Stream
+        // Process StreamToAndFrom
 
         // Send the data back.
         await stream.CopyToAsync(pipe.Output);

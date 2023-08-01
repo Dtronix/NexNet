@@ -29,7 +29,7 @@ public abstract class ClientConfig : ConfigBase
     /// Method called to pass data to the server upon connection.  If not overridden,
     /// the client will not pass any authentication information to the server.
     /// </summary>
-    public Func<byte[]?>? Authenticate { get; set; }
+    public Func<Memory<byte>>? Authenticate { get; set; }
 
     /// <summary>
     /// Returns the transport configured and connected for the overridden configurations.

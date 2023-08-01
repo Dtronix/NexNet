@@ -1,20 +1,31 @@
 ﻿using System;
-using System.Runtime.CompilerServices;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using MemoryPack;
 
 namespace NexNet.Messages;
 
+/// <summary>
+/// Base interface for all messages.
+/// </summary>
 internal interface IMessageBase
 {
+    /// <summary>
+    /// Type of the message.
+    /// </summary>
     public static abstract MessageType Type { get; }
-}
 
-internal static class MessageBaseExtensions
-{
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T As<T>(this IMessageBase message)
-        where T : class, IMessageBase
+    /// <summary>
+    /// Resets the message to its default state for reuse.
+    /// </summary>
+    public void Reset();
+
+    protected static void Return<T>(Memory<T> memory) => Return((ReadOnlyMemory<T>)memory);
+    protected static void Return<T>(ReadOnlyMemory<T> memory)
     {
-        return Unsafe.As<T>(message);
+        if (MemoryMarshal.TryGetArray(memory, out var segment) && segment.Array is { Length: > 0 })
+        {
+            ArrayPool<T>.Shared.Return(segment.Array, false);
+        }
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 namespace NexNet.Invocation;
@@ -15,7 +16,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// </summary>
     public ServerSessionContext<TProxy> Context => Unsafe.As<ServerSessionContext<TProxy>>(SessionContext)!;
 
-    internal ValueTask<IIdentity?> Authenticate(byte[]? authenticationToken)
+    internal ValueTask<IIdentity?> Authenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticate(authenticationToken);
     }
@@ -23,7 +24,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// <summary>
     /// Called on server sessions and called with the client's Authentication token.
     /// </summary>
-    protected virtual ValueTask<IIdentity?> OnAuthenticate(byte[]? authenticationToken)
+    protected virtual ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return ValueTask.FromResult((IIdentity?)null);
     }

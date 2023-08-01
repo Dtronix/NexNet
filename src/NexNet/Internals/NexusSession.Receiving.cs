@@ -305,11 +305,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 // Verify what the greeting method hashes matches this nexus's and proxy's
                 if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
                 {
+                    CacheManager.Return(cGreeting);
                     return DisconnectReason.ServerMismatch;
                 }
 
                 if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
                 {
+                    CacheManager.Return(cGreeting);
                     return DisconnectReason.ClientMismatch;
                 }
 
@@ -328,7 +330,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                     // If the token is not good, disconnect.
                     if (Identity == null)
+                    {
+                        CacheManager.Return(cGreeting);
                         return DisconnectReason.Authentication;
+                    }
                 }
 
                 var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
@@ -343,7 +348,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in server.");
                 _readyTaskCompletionSource?.TrySetResult();
-
+                CacheManager.Return(cGreeting);
                 break;
             }
 
@@ -357,6 +362,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in client.");
                 _readyTaskCompletionSource?.TrySetResult();
+
+                CacheManager.Return(Unsafe.As<ServerGreetingMessage>(message));
                 break;
 
             }

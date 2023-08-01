@@ -1,12 +1,11 @@
-﻿using System.IO.Pipelines;
-using NexNet;
+﻿using NexNet;
 
 namespace NexNetDemo.Samples.DuplexPipe;
 
-public class DuplexPipeSample : SampleBase
+public class DuplexPipeSimpleSample : SampleBase
 {
-    public DuplexPipeSample() 
-        : base(false)
+    public DuplexPipeSimpleSample(TransportMode transportMode = TransportMode.Uds) 
+        : base(false, transportMode)
     {
     }
 

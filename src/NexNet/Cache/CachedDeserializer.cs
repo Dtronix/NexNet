@@ -43,7 +43,9 @@ internal class CachedDeserializer<T> : ICachedDeserializer
 
     public void Return(T item)
     {
+        item.Reset();
         _cache.Add(item);
+
     }
 
     public void Clear()

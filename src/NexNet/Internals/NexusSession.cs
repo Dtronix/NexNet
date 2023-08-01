@@ -139,7 +139,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         greetingMessage.Version = 0;
         greetingMessage.ServerNexusMethodHash = TProxy.MethodHash;
         greetingMessage.ClientNexusMethodHash = TNexus.MethodHash;
-        greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke();
+        greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
 
         State = ConnectionState.Connected;
 
