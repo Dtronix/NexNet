@@ -134,7 +134,7 @@ internal partial class NexusClientTests : BaseTests
         {
             var message = MemoryPackSerializer.Deserialize<ClientGreetingMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
 
-            if (message!.AuthenticationToken![0] == 123)
+            if (message!.AuthenticationToken!.Span[0] == 123)
             {
                 tcs.SetResult();
                 return;

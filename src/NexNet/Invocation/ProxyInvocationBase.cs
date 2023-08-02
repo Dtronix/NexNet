@@ -374,8 +374,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     private void ReturnState(RegisteredInvocationState state)
     {
-        _cacheManager.Return(state.Result);
-        state.Result = null!;
+        if(state.Result != null)
+            _cacheManager.Return(state.Result);
+
+        state.Result = null;
         _cacheManager.RegisteredInvocationStateCache.Return(state);
     }
 

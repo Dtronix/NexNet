@@ -238,7 +238,7 @@ public partial class ServerNexus
         return OnDisconnectedEvent.Invoke(this);
     }
 
-    protected override ValueTask<IIdentity?> OnAuthenticate(byte[]? authenticationToken)
+    protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticateEvent!.Invoke(this);
     }
