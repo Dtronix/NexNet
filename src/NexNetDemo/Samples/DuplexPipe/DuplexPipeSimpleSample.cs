@@ -1,4 +1,5 @@
 ﻿using NexNet;
+using System.IO.Pipelines;
 
 namespace NexNetDemo.Samples.DuplexPipe;
 
@@ -17,7 +18,7 @@ public class DuplexPipeSimpleSample : SampleBase
         await client.ConnectAsync();
         await client.ReadyTask!;
 
-
+        // Create the client pipe.
         var pipe = client.CreatePipe();
         await client.Proxy.Upload(pipe);
         await pipe.ReadyTask;
@@ -37,6 +38,7 @@ public class DuplexPipeSimpleSample : SampleBase
         await client.ConnectAsync();
         await client.ReadyTask!;
 
+        // Create the client pipe.
         var pipe = client.CreatePipe();
         await client.Proxy.Download(pipe);
         await pipe.ReadyTask;
@@ -73,6 +75,7 @@ public class DuplexPipeSimpleSample : SampleBase
         await client.ConnectAsync();
         await client.ReadyTask!;
 
+        // Create the client pipe.
         var pipe = client.CreatePipe();
         await client.Proxy.UploadDownload(pipe);
         await pipe.ReadyTask;

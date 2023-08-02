@@ -34,12 +34,12 @@ public class SampleBase
             ServerConfig = new UdsServerConfig()
             {
                 EndPoint = new UnixDomainSocketEndPoint(path), 
-                Logger = log ? new Logger("Server") : null
+                Logger = log ? new SampleLogger("Server") : null
             };
             ClientConfig = new UdsClientConfig()
             {
                 EndPoint = new UnixDomainSocketEndPoint(path),
-                Logger = log ? new Logger("Client") : null
+                Logger = log ? new SampleLogger("Client") : null
             };
         }
         else if (transportMode == TransportMode.Tcp)
@@ -47,12 +47,12 @@ public class SampleBase
             ServerConfig = new TcpServerConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = log ? new Logger("Server") : null
+                Logger = log ? new SampleLogger("Server") : null
             };
             ClientConfig = new TcpClientConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = log ? new Logger("Client") : null
+                Logger = log ? new SampleLogger("Client") : null
             };
         }
         else if (transportMode == TransportMode.TlsTcp)
@@ -60,7 +60,7 @@ public class SampleBase
             ServerConfig = new TcpTlsServerConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = log ? new Logger("Server") : null,
+                Logger = log ? new SampleLogger("Server") : null,
                 SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
                 {
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -73,7 +73,7 @@ public class SampleBase
             ClientConfig = new TcpTlsClientConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = log ? new Logger("Client") : null,
+                Logger = log ? new SampleLogger("Client") : null,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,

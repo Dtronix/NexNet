@@ -304,6 +304,11 @@ internal class NexusPipeReader : PipeReader
             {
                 _examinedPosition = examinedSegment.RunningIndex + examined.GetInteger();
             }
+            else if (examined.GetInteger() == 0 && examinedObject.Equals(Array.Empty<byte>()))
+            {
+                // Provided an zero advance position. No need to update the examined position.
+                return;
+            }
             else
             {
                 throw new InvalidOperationException($"Passed {nameof(examined)} argument is not a sequence from this pipe.");
