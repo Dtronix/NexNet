@@ -151,26 +151,40 @@ namespace {{Symbol.ContainingNamespace}}
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker>(this);
             try
             {
+""");
+        if (NexusInterface.Methods.Length > 0)
+        {
+            sb.AppendLine($$"""
                 switch (message.MethodId)
                 {
 """);
-        for (int i = 0; i < NexusInterface.Methods.Length; i++)
-        {
-            sb.Append($$"""
+
+
+            for (int i = 0; i < NexusInterface.Methods.Length; i++)
+            {
+                sb.Append($$"""
                     case {{NexusInterface.Methods[i].Id}}:
                     {
                         // {{NexusInterface.Methods[i].ToString()}}
 
 """);
-            NexusInterface.Methods[i].EmitNexusInvocation(sb, this.ProxyInterface, this);
-            sb.AppendLine("""
+                NexusInterface.Methods[i].EmitNexusInvocation(sb, this.ProxyInterface, this);
+                sb.AppendLine("""
                         break;
                     }
 """);
+            }
+
+            sb.AppendLine($$"""
+                }
+""");
+        }
+        else
+        {
+            sb.AppendLine("                // No methods.");
         }
 
         sb.AppendLine($$"""
-                }
             }
             finally
             {

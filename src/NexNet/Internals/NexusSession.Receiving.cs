@@ -9,9 +9,7 @@ using NexNet.Internals.Pipes;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
-    where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
-    where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync()
     {

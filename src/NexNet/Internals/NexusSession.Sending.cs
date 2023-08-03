@@ -10,9 +10,7 @@ using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
-    where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
-    where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+internal partial class NexusSession<TNexus, TProxy>
 {
    
     public async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
