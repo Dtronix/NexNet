@@ -89,10 +89,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
 
-        // Set the ready task completion source now and get the task since the ConnectTransport
-        // call below can/will await and cause any usages of the ReadyTask used outside this function call
-        // to be null.
-        var readyTaskCompletionSource = new TaskCompletionSource();
+        // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
+        // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
+        var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnectedTaskCompletionSource = new TaskCompletionSource();
         ReadyTask = readyTaskCompletionSource.Task;
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;

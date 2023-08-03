@@ -89,12 +89,12 @@ internal partial class NexusServerTests : BaseTests
             CreateClientConfig(type, false));
 
         
-        Assert.IsNull(server.StoppedTcs);
+        Assert.IsNull(server.StoppedTask);
         server.Start();
-        Assert.IsFalse(server.StoppedTcs!.IsCompleted);
+        Assert.IsFalse(server.StoppedTask!.IsCompleted);
 
         server.Stop();
 
-        await server.StoppedTcs!.Timeout(1);
+        await server.StoppedTask!.Timeout(1);
     }
 }
