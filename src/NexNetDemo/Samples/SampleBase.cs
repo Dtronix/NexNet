@@ -16,8 +16,8 @@ public class SampleBase
         TlsTcp
     }
 
-    protected ServerConfig ServerConfig { get; } = null!;
-    protected ClientConfig ClientConfig { get; } = null!;
+    protected ServerConfig ServerConfig { get; set; } = null!;
+    protected ClientConfig ClientConfig { get; set; } = null!;
 
     public SampleBase(bool log, TransportMode transportMode)
     {

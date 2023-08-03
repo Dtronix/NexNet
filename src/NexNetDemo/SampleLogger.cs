@@ -12,8 +12,8 @@ class SampleLogger : INexusLogger
     }
     public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
-        if (logLevel < INexusLogger.LogLevel.Information)
-            return;
+        //if (logLevel < INexusLogger.LogLevel.Information)
+        //    return;
 
         Console.WriteLine($"{_prefix} {logLevel}: {message} {exception}");
     }

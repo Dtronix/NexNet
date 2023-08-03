@@ -48,9 +48,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public ServerConfig Config => _config;
 
     /// <summary>
-    /// Task completion source which completes upon the server stopping.
+    /// Task which completes upon the server stopping.
     /// </summary>
-    public Task? StoppedTcs => _stoppedTcs?.Task;
+    public Task? StoppedTask => _stoppedTcs?.Task;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
