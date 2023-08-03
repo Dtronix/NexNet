@@ -49,8 +49,8 @@ internal class SocketTransport : ITransport
     {
         var pipe = SocketConnection.Create(
             socket,
-            config.SendPipeOptions,
-            config.ReceivePipeOptions,
+            config.SendSessionPipeOptions,
+            config.ReceiveSessionPipeOptions,
             SocketConnectionOptions.InlineConnect | SocketConnectionOptions.InlineReads | SocketConnectionOptions.InlineWrites);
 
         return ValueTask.FromResult((ITransport)new SocketTransport(pipe));
@@ -116,8 +116,8 @@ internal class SocketTransport : ITransport
 
         var connection = SocketConnection.Create(
             socket,
-            clientConfig.SendPipeOptions,
-            clientConfig.ReceivePipeOptions,
+            clientConfig.SendSessionPipeOptions,
+            clientConfig.ReceiveSessionPipeOptions,
             connectionOptions);
 
         return new SocketTransport(connection);

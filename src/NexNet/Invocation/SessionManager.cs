@@ -17,16 +17,16 @@ internal class SessionManager
     private readonly ConcurrentDictionary<string, int> _groupIdDictionary = new();
 
 
-    public readonly ConcurrentDictionary<long, INexNetSession> Sessions = new();
+    public readonly ConcurrentDictionary<long, INexusSession> Sessions = new();
 
     public IReadOnlyDictionary<string, int> Groups => _groupIdDictionary;
 
-    public bool RegisterSession(INexNetSession session)
+    public bool RegisterSession(INexusSession session)
     {
         return Sessions.TryAdd(session.Id, session);
     }
 
-    public void UnregisterSession(INexNetSession session)
+    public void UnregisterSession(INexusSession session)
     {
         if (!Sessions.TryRemove(session.Id, out var _))
             return;
@@ -47,7 +47,7 @@ internal class SessionManager
         }
     }
 
-    public void UnregisterSessionGroup(string groupName, INexNetSession session)
+    public void UnregisterSessionGroup(string groupName, INexusSession session)
     {
 
         if (!_groupIdDictionary.TryGetValue(groupName, out int id))
@@ -60,7 +60,7 @@ internal class SessionManager
     }
 
 
-    public void RegisterSessionGroup(string groupName, INexNetSession session)
+    public void RegisterSessionGroup(string groupName, INexusSession session)
     {
         var id = _groupIdDictionary.GetOrAdd(groupName, name => Interlocked.Increment(ref _idCounter));
         // ReSharper disable once InconsistentlySynchronizedField
@@ -74,7 +74,7 @@ internal class SessionManager
         }
     }
 
-    public void RegisterSessionGroup(string[] groupNames, INexNetSession session)
+    public void RegisterSessionGroup(string[] groupNames, INexusSession session)
     {
         int[] groupIds = new int[groupNames.Length];
 
@@ -94,7 +94,7 @@ internal class SessionManager
         }
     }
 
-    public async ValueTask GroupChannelIterator<T>(string groupName, Func<INexNetSession, T, ValueTask> channelIterator, T state)
+    public async ValueTask GroupChannelIterator<T>(string groupName, Func<INexusSession, T, ValueTask> channelIterator, T state)
     {
         if (!_groupIdDictionary.TryGetValue(groupName, out int id))
             return;
@@ -110,14 +110,14 @@ internal class SessionManager
 
     private class SessionGroup
     {
-        public readonly ConcurrentDictionary<long, INexNetSession> SessionDictionary = new();
+        public readonly ConcurrentDictionary<long, INexusSession> SessionDictionary = new();
 
-        public bool RegisterSession(INexNetSession session)
+        public bool RegisterSession(INexusSession session)
         {
             return SessionDictionary.TryAdd(session.Id, session);
         }
 
-        public void UnregisterSession(INexNetSession session)
+        public void UnregisterSession(INexusSession session)
         {
             if (!SessionDictionary.TryRemove(session.Id, out var _))
                 return;

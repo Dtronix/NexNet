@@ -16,5 +16,10 @@ public enum InvocationFlags : byte
     /// <summary>
     /// Instructs to ignore the return value if there is one.
     /// </summary>
-    IgnoreReturn = 1
+    IgnoreReturn = 1 << 0,
+
+    /// <summary>
+    /// Informs the invoker that the arguments contain a duplex pipe.
+    /// </summary>
+    DuplexPipe = 1 << 1
 }

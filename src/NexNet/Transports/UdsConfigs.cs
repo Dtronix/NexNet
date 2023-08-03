@@ -25,6 +25,9 @@ public sealed class UdsClientConfig : ClientConfig
     }
 
     /// <inheritdoc />
+    public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
+
+    /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport()
     {
         return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.IP);
@@ -50,6 +53,9 @@ public sealed class UdsServerConfig : ServerConfig
             _endPoint = value;
         }
     }
+
+    /// <inheritdoc />
+    public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
     protected override ITransportListener OnCreateServerListener()

@@ -2,11 +2,12 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using MemoryPack;
+using NexNet.Messages;
 
 namespace NexNet.Cache;
 
-internal class CachedDeserializer<T>
-    where T : new()
+internal class CachedDeserializer<T> : ICachedDeserializer
+    where T : IMessageBase, new()
 {
     private readonly ConcurrentBag<T> _cache = new();
 
@@ -29,13 +30,32 @@ internal class CachedDeserializer<T>
         return cachedItem;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence)
+    {
+        if (!_cache.TryTake(out var cachedItem))
+            cachedItem = new T();
+
+        MemoryPackSerializer.Deserialize(bodySequence, ref cachedItem);
+
+        return cachedItem!;
+    }
+
     public void Return(T item)
     {
+        item.Reset();
         _cache.Add(item);
+
     }
 
     public void Clear()
     {
         _cache.Clear();
     }
+}
+
+internal interface ICachedDeserializer
+{
+    void Clear();
+    IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence);
 }

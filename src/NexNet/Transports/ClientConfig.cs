@@ -23,13 +23,13 @@ public abstract class ClientConfig : ConfigBase
     /// Policy for reconnecting to the server upon connection closing.
     /// Set to null to disable this functionality.
     /// </summary>
-    public IReconnectionPolicy? ReconnectionPolicy { get; set; } = new DefaultReconnectionPolicy();
+    public IReconnectionPolicy? ReconnectionPolicy { get; set; } = null;
 
     /// <summary>
     /// Method called to pass data to the server upon connection.  If not overridden,
     /// the client will not pass any authentication information to the server.
     /// </summary>
-    public Func<byte[]?>? Authenticate { get; set; }
+    public Func<Memory<byte>>? Authenticate { get; set; }
 
     /// <summary>
     /// Returns the transport configured and connected for the overridden configurations.
