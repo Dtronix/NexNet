@@ -3,3 +3,4 @@
 /tools/certgen/*.csr
 /tools/certgen/*.pfx
 artifacts
+/src/NexNetDemo/Properties/launchSettings.json
