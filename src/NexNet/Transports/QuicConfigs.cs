@@ -1,16 +1,20 @@
 ﻿using System;
+using System.Net;
+using System.Net.Quic;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
 /// <summary>
-/// Configurations for the client to connect to a TLS TCP NexNet server.
+/// Configurations for the client to connect to a QUIC NexNet server.
 /// </summary>
-public sealed class TcpTlsClientConfig : TcpClientConfig
+public class QuicClientConfig : ClientConfig
 {
+
     private SslClientAuthenticationOptions _sslClientAuthenticationOptions = null!;
 
     /// <summary>
@@ -25,25 +29,24 @@ public sealed class TcpTlsClientConfig : TcpClientConfig
             _sslClientAuthenticationOptions = value;
         }
     }
-
     /// <summary>
-    /// Number of milliseconds to timeout a SSL connection attempt.  This occurs between the connection is
-    /// initially established and the connection starts TLS communication.
+    /// Endpoint
     /// </summary>
-    public int SslConnectionTimeout { get; set; } = 5000;
+    public required EndPoint EndPoint { get; set; }
 
     /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport()
     {
-        return TcpTlsTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
+        return QuicTransport.ConnectAsync(this);
     }
 }
 
 /// <summary>
-/// Configurations for the server to allow connections from TLS TCP NexNet clients.
+/// Configurations for the server to allow connections from QUIC NexNet clients.
 /// </summary>
-public sealed class TcpTlsServerConfig : TcpServerConfig
+public class QuicServerConfig : ServerConfig
 {
+
     private SslServerAuthenticationOptions _sslServerAuthenticationOptions = null!;
 
     /// <summary>
@@ -60,14 +63,15 @@ public sealed class TcpTlsServerConfig : TcpServerConfig
     }
 
     /// <summary>
-    /// Number of milliseconds to timeout a SSL connection attempt.  This occurs between the connection is
-    /// initially established and the connection starts TLS communication.
+    /// Endpoint to bind to.
     /// </summary>
-    public int SslConnectionTimeout { get; set; } = 5000;
+    public required IPEndPoint EndPoint { get; set; }
 
+
+    /// <param name="cancellationToken"></param>
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return new ValueTask<ITransportListener>(TcpTlsTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
+        return QuicTransportListener.Create(this, cancellationToken);
     }
 }

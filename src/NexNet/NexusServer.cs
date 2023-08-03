@@ -84,12 +84,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// Starts the server.
     /// </summary>
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
-    public void Start()
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (_listener != null) throw new InvalidOperationException("Server is already running");
         _stoppedTcs?.TrySetResult();
         _stoppedTcs = new TaskCompletionSource();
-        _listener = _config.CreateServerListener();
+        _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
 
         StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
 

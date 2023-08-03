@@ -9,6 +9,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -19,7 +20,7 @@ internal partial class NexusServerTests : BaseTests
 
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        server.Start();
+        await server.StartAsync();
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -29,6 +30,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -42,7 +44,7 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        server.Start();
+        await server.StartAsync();
 
         await client.ConnectAsync().Timeout(1);
 
@@ -54,6 +56,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
@@ -65,7 +68,7 @@ internal partial class NexusServerTests : BaseTests
 
         for (int i = 0; i < 3; i++)
         {
-            server.Start();
+            await server.StartAsync();
             await client.ConnectAsync().Timeout(1);
 
             await client.ReadyTask.Timeout(1);
@@ -82,6 +85,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task StopsAndReleasesStoppedTcs(Type type)
     {
         var (server, _, client, clientHub) = CreateServerClient(
@@ -90,7 +94,7 @@ internal partial class NexusServerTests : BaseTests
 
         
         Assert.IsNull(server.StoppedTask);
-        server.Start();
+        await server.StartAsync();
         Assert.IsFalse(server.StoppedTask!.IsCompleted);
 
         server.Stop();

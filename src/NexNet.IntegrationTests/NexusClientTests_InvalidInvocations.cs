@@ -8,6 +8,7 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientThrowsWhenArgumentTooLarge(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -15,7 +16,7 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             CreateServerConfig(type, false),
             CreateClientConfig(type, false));
 
-        server.Start();
+        await server.StartAsync();
         await client.ConnectAsync(true).Timeout(1);
 
         var data = new byte[65521];

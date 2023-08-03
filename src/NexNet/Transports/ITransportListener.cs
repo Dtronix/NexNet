@@ -15,7 +15,7 @@ public interface ITransportListener
     /// Set to true to let the connection linger to allow for sending of last second packets.
     /// False if the connection is to close as soon as possible and possibly cut off any packets in the queue.
     /// </param>
-    public void Close(bool linger);
+    public ValueTask Close(bool linger);
 
     /// <summary>
     /// Listens and accepts new transport connections.

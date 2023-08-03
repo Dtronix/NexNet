@@ -26,18 +26,19 @@ internal class TcpTlsTransport : ITransport
         Output = PipeWriter.Create(sslStream);
     }
 
-    public void Close(bool linger)
+    public ValueTask Close(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _sslStream.Dispose();
         _networkStream.Dispose();
         _socket.Close();
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -82,13 +83,13 @@ internal class TcpTlsTransport : ITransport
 
             return new TcpTlsTransport(socket, networkStream, sslStream);
         }
-        catch (SocketException)
+        catch (SocketException e)
         {
-            throw;
+            throw new TransportException(SocketTransport.SocketErrorToTransportError(e.SocketErrorCode), e.Message, e);
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            throw new SocketException((int)SocketError.NotConnected);
+            throw new TransportException(TransportError.ConnectionRefused, "Connection failed to connect.", e);
         }
 
     }

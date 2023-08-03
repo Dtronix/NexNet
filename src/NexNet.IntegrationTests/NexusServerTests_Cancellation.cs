@@ -13,6 +13,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ClientTaskValueWithParam(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -42,6 +43,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -72,6 +74,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -98,6 +101,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -123,6 +127,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -150,7 +155,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
 
         setup.Invoke(clientNexus);
 
-        server.Start();
+        await server.StartAsync();
 
         serverConfig.InternalOnSend = (_, bytes) =>
         {

@@ -16,7 +16,8 @@ public class BaseTests
     {
         Uds,
         Tcp,
-        TcpTls
+        TcpTls,
+        Quic
     }
 
     private int _counter;
@@ -93,6 +94,25 @@ public class BaseTests
                 },
             };
         }
+        else if (type == Type.Quic)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+
+            return new QuicServerConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
+                Logger = logger,
+                SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
+                {
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    ClientCertificateRequired = false,
+                    AllowRenegotiation = false,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                },
+            };
+        }
+
 
         throw new InvalidOperationException();
     }
@@ -137,7 +157,24 @@ public class BaseTests
                 Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    EnabledSslProtocols = SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    AllowRenegotiation = false,
+                    RemoteCertificateValidationCallback = (_, _, _, _) => true
+                }
+            };
+        }
+        else if (type == Type.Quic)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+
+            return new QuicClientConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
+                Logger = logger,
+                SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
+                {
+                    EnabledSslProtocols = SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,
                     RemoteCertificateValidationCallback = (_, _, _, _) => true

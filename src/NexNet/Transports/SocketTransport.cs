@@ -1,10 +1,12 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Quic;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace NexNet.Transports;
 
@@ -24,16 +26,17 @@ internal class SocketTransport : ITransport
         Output = socketConnection.Output;
     }
 
-    public void Close(bool linger)
+    public ValueTask Close(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _socketConnection.Dispose();
+        return ValueTask.CompletedTask;
     }
 
 
@@ -55,6 +58,32 @@ internal class SocketTransport : ITransport
 
         return ValueTask.FromResult((ITransport)new SocketTransport(pipe));
     }
+
+    internal static TransportError SocketErrorToTransportError(SocketError error) =>
+        error switch
+        {
+            SocketError.ConnectionRefused => TransportError.ConnectionRefused,
+            SocketError.ConnectionReset => TransportError.ConnectionReset,
+            SocketError.ConnectionAborted => TransportError.ConnectionAborted,
+            SocketError.HostUnreachable => TransportError.Unreachable,
+            SocketError.HostNotFound => TransportError.Unreachable,
+            SocketError.TimedOut => TransportError.ConnectionTimeout,
+            SocketError.NetworkUnreachable => TransportError.Unreachable,
+            SocketError.NetworkDown => TransportError.Unreachable,
+            SocketError.NetworkReset => TransportError.Unreachable,
+            SocketError.Shutdown => TransportError.OperationAborted,
+            SocketError.NotConnected => TransportError.OperationAborted,
+            SocketError.AddressNotAvailable => TransportError.Unreachable,
+            SocketError.AddressAlreadyInUse => TransportError.AddressInUse,
+            SocketError.AccessDenied => TransportError.Unreachable,
+            SocketError.MessageSize => TransportError.ProtocolError,
+            SocketError.ProtocolNotSupported => TransportError.ProtocolError,
+            SocketError.ProtocolOption => TransportError.ProtocolError,
+            SocketError.ProtocolType => TransportError.ProtocolError,
+            SocketError.SocketNotSupported => TransportError.ProtocolError,
+            _ => TransportError.InternalError
+        };
+
 
     /// <summary>
     /// Open a new or existing socket as a client
@@ -97,9 +126,18 @@ internal class SocketTransport : ITransport
                     _ = Task.Run(ConnectionTimeout);
                 }
 
-                if (!socket.ConnectAsync(args))
-                    args.Complete();
-                await args;
+                try
+                {
+                    if (!socket.ConnectAsync(args))
+                        args.Complete();
+
+                    await args;
+                }
+                catch (SocketException e)
+                {
+                    throw new TransportException(SocketErrorToTransportError(e.SocketErrorCode), e.Message, e);
+                }
+
 
                 timeoutCancellation.Cancel();
             }

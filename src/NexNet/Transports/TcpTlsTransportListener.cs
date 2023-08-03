@@ -17,16 +17,17 @@ internal class TcpTlsTransportListener : ITransportListener
         _socket = socket;
     }
 
-    public void Close(bool linger)
+    public ValueTask Close(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _socket.Close();
+        return ValueTask.CompletedTask;
     }
 
     public async Task<ITransport?> AcceptTransportAsync()

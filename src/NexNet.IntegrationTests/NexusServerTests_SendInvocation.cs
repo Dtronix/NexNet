@@ -11,6 +11,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerVoid(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -26,6 +27,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerVoidWithParam(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -41,6 +43,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTask(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -56,6 +59,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskWithParam(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -86,6 +90,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithParam(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -102,6 +107,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskWithCancellation(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -117,6 +123,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskWithValueAndCancellation(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -132,6 +139,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithCancellation(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -147,6 +155,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ServerSendsInvocationFor_ServerTaskValueWithValueAndCancellation(Type type)
     {
         return InvokeFromServerAndVerifySent(type, new InvocationMessage()
@@ -165,7 +174,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
-        server.Start();
+        await server.StartAsync();
 
         serverConfig.InternalOnSend = (_, bytes) =>
         {
