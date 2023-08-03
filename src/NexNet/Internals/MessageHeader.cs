@@ -47,13 +47,17 @@ internal struct MessageHeader
     public void SetTotalHeaderSize(int postHeaderSize, bool hasBody)
     {
         PostHeaderLength = postHeaderSize;
+
+        // Check to see if we have a body.
         if (hasBody)
         {
             BodyLength = 0;
+            // Two bytes for the body length + the post header size
             TotalHeaderLength = 2 + postHeaderSize;
         }
         else
         {
+            // If no body, then the post header size is the total header size.
             TotalHeaderLength = postHeaderSize;
 
             if(postHeaderSize == 0)
