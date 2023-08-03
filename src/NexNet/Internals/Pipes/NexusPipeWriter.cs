@@ -21,7 +21,7 @@ internal class NexusPipeWriter : PipeWriter
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
     private bool _pauseWriting;
     private INexusLogger? _logger;
-    private IMessengerAndDisconnector? _messenger;
+    private ISessionMessenger? _messenger;
     private NexusDuplexPipe.State _completedFlag;
 
     public NexusPipeWriter(IPipeStateManager stateManager)
@@ -48,9 +48,9 @@ internal class NexusPipeWriter : PipeWriter
     /// <summary>
     /// Sets up the pipe writer for use.
     /// </summary>
-    public void Setup(INexusLogger? logger, IMessengerAndDisconnector messenger, bool isServer, int chunkSize)
+    public void Setup(INexusLogger? logger, ISessionMessenger sessionMessenger, bool isServer, int chunkSize)
     {
-        _messenger = messenger ?? throw new ArgumentNullException(nameof(messenger));
+        _messenger = sessionMessenger ?? throw new ArgumentNullException(nameof(sessionMessenger));
         _logger = logger;
         _chunkSize = chunkSize; // _session.Config.NexusPipeFlushChunkSize;
 

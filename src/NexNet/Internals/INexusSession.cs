@@ -9,7 +9,7 @@ namespace NexNet.Internals;
 /// <summary>
 /// Base interface for all sessions.
 /// </summary>
-internal interface INexusSession : IMessengerAndDisconnector
+internal interface INexusSession : ISessionMessenger
 {
     /// <summary>
     /// ID of this session.

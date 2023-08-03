@@ -9,7 +9,7 @@ namespace NexNet.Internals;
 /// <summary>
 /// Base interface for sending messages and disconnecting.
 /// </summary>
-internal interface IMessengerAndDisconnector
+internal interface ISessionMessenger
 {
     /// <summary>
     /// Sends a message.

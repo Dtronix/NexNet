@@ -17,7 +17,7 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusDuplexPipeWriterTests
 {
-    internal class MessengerAndDisconnectorStub : IMessengerAndDisconnector
+    internal class SessionMessengerStub : ISessionMessenger
     {
 
         public Func<MessageType, ReadOnlySequence<byte>, CancellationToken, ValueTask> OnSendHeaderWithBody = 
@@ -54,10 +54,10 @@ internal class NexusDuplexPipeWriterTests
     }
 
 
-    private NexusPipeWriter CreateWriter(MessengerAndDisconnectorStub? messenger = null, IPipeStateManager? stateManager = null)
+    private NexusPipeWriter CreateWriter(SessionMessengerStub? messenger = null, IPipeStateManager? stateManager = null)
     {
         stateManager ??= new PipeStateManagerStub();
-        messenger ??= new MessengerAndDisconnectorStub();
+        messenger ??= new SessionMessengerStub();
         var writer = new NexusPipeWriter(stateManager);
         writer.Setup(null,
             messenger,
@@ -71,7 +71,7 @@ internal class NexusDuplexPipeWriterTests
     {
         var tcs = new TaskCompletionSource();
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-        var messenger = new MessengerAndDisconnectorStub();
+        var messenger = new SessionMessengerStub();
         var writer = CreateWriter(messenger);
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
@@ -90,7 +90,7 @@ internal class NexusDuplexPipeWriterTests
     {
         var tcs = new TaskCompletionSource();
         var simpleData = new byte[512 * 3];
-        var messenger = new MessengerAndDisconnectorStub();
+        var messenger = new SessionMessengerStub();
         var writer = CreateWriter(messenger);
         writer.Setup(null,
             messenger,
