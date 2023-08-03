@@ -1,6 +1,4 @@
-﻿using System.Diagnostics;
-
-namespace NexNetDemo.Samples.InvocationSample;
+﻿namespace NexNetDemo.Samples.InvocationSample;
 
 public class InvocationSample : SampleBase
 {

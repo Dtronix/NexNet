@@ -1,5 +1,4 @@
-﻿using System.IO.Pipelines;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using System;
 using NexNet.Cache;
 using NexNet.Internals;

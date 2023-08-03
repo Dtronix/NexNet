@@ -7,7 +7,6 @@ using System.Threading;
 using System;
 using MemoryPack;
 using Pipelines.Sockets.Unofficial.Arenas;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Internals;
 

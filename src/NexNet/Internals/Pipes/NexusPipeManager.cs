@@ -17,7 +17,7 @@ internal class NexusPipeManager
 
     private int _currentId;
 
-    private bool _isCanceled = false;
+    private bool _isCanceled;
 
     public void Setup(INexusSession session)
     {
@@ -38,7 +38,10 @@ internal class NexusPipeManager
     }
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
-        _session?.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
+        if (_session == null)
+            throw new InvalidOperationException("Session if not available for usage.");
+
+        _session.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
         if (_isCanceled)
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
@@ -112,8 +115,6 @@ internal class NexusPipeManager
             _activePipes.TryAdd(id, initialPipe);
             initialPipe.Id = id;
             initialPipe.UpdateState(state);
-
-            return;
         }
     }
 
@@ -176,10 +177,5 @@ internal class NexusPipeManager
             throw new InvalidOperationException("Exceeded maximum number of concurrent streams.");
 
         return (byte)++_currentId;
-    }
-
-    private void ReturnPartialId(byte id)
-    {
-        _availableIds.Push(id);
     }
 }

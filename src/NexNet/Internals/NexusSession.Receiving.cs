@@ -4,11 +4,8 @@ using NexNet.Transports;
 using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
-using System.ComponentModel.Design;
-using System.Drawing;
 using System.Runtime.CompilerServices;
 using NexNet.Internals.Pipes;
-using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace NexNet.Internals;
 
@@ -438,7 +435,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 // If we don't know what the message is, then disconnect the connection
                 // as we have received invalid/unexpected data.
                 return DisconnectReason.ProtocolError;
-                break;
         }
         return DisconnectReason.None;
     }

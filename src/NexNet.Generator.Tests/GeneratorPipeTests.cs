@@ -1,5 +1,4 @@
-﻿using NexNet.Generator;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 

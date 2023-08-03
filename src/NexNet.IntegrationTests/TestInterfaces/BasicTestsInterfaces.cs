@@ -1,6 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
-using System.Threading;
-using NexNet.Messages;
+﻿using NexNet.Messages;
 // ReSharper disable InconsistentNaming
 #pragma warning disable CS8618
 #pragma warning disable VSTHRD200

@@ -138,8 +138,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// </summary>
     /// <param name="initialId">The partial initial identifier.</param>
     /// <param name="session">The Nexus session.</param>
-    /// <param name="onReady">The callback when the pipe is ready.</param>
-
     public void Setup(byte initialId, INexusSession session)
     {
         if (_currentState != State.Unset)
@@ -239,6 +237,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// Updates the state of the NexusDuplexPipe.
     /// </summary>
     /// <param name="updatedState">The state to update to.</param>
+    /// <param name="remove">True to remove the state, false to add the state.</param>
     /// <returns>True if the state changed, false if it did not change.</returns>
     public bool UpdateState(State updatedState, bool remove = false)
     {

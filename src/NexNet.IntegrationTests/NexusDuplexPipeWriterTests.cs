@@ -1,15 +1,7 @@
 ﻿using System.Buffers;
-using System.Diagnostics;
-using System.Net.Sockets;
-using MemoryPack;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
-using NexNet.Cache;
-using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Internals.Pipes;
-using NexNet.Invocation;
 using NexNet.Messages;
-using NexNet.Transports;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 

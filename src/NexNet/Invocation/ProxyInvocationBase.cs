@@ -2,7 +2,6 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Internals.Pipes;
@@ -294,7 +293,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         if (state == null)
             return;
 
-        var messageState = state.Result.State;
+        var messageState = state.Result!.State;
         ReturnState(state);
 
         switch (messageState)
@@ -328,7 +327,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         if (state == null)
             return default;
 
-        switch (state.Result.State)
+        switch (state.Result!.State)
         {
             case InvocationResultMessage.StateType.CompletedResult:
                 var result = state.Result.GetResult<TReturn>();

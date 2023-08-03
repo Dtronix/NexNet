@@ -3,7 +3,6 @@ using MemoryPack;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
-using NexNet.Generator;
 
 namespace NexNet.Generator.Tests;
 

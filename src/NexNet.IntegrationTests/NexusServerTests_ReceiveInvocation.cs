@@ -1,6 +1,4 @@
-﻿using MemoryPack;
-using NexNet.IntegrationTests.TestInterfaces;
-using NexNet.Messages;
+﻿using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
