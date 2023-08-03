@@ -2,9 +2,9 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Internals.Pipes;
 using NexNet.Messages;
 
 namespace NexNet.Invocation;
@@ -14,14 +14,15 @@ namespace NexNet.Invocation;
 /// </summary>
 public abstract class ProxyInvocationBase : IProxyInvoker
 {
+    private const string CanNotInvokeDuplexPipeMessage = $"Can not invoke method with {nameof(INexusDuplexPipe)} on multiple connections";
+    private const string SessionManagerNullMessage = "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.";
 
     private CacheManager _cacheManager = null!;
     private ProxyInvocationMode _mode;
     private long[]? _modeClientArguments;
     private string[]? _modeGroupArguments;
-    private INexNetSession? _session;
+    private INexusSession? _session;
     private SessionManager? _sessionManager;
-    
 
     internal CacheManager CacheManager
     {
@@ -30,7 +31,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     void IProxyInvoker.Configure(
-        INexNetSession? session,
+        INexusSession? session,
         SessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments)
@@ -81,58 +82,50 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <summary>
-    /// Checks the passed data and serializes the data into a byte array. 
-    /// </summary>
-    /// <typeparam name="T">Data type to serialize.</typeparam>
-    /// <param name="data">Data to serialize.</param>
-    /// <returns>Serialized data.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Throws if the serialized data exceeds the maximum message length.</exception>
-    protected byte[] SerializeArgumentsCore<T>(in T data)
-    {
-        var arguments = MemoryPackSerializer.Serialize(data);
-
-        // Check for arguments which exceed max length.
-        if (arguments.Length > IInvocationRequestMessage.MaxArgumentSize)
-            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {IInvocationRequestMessage.MaxArgumentSize} bytes or less.");
-
-        return arguments;
-    }
-
-    /// <summary>
     /// Invokes the specified method on the connected session and waits until the message has been completely sent.
     /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
+    /// <param name="flags">Special flags for the invocation of this method.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    protected async ValueTask ProxyInvokeMethodCore(ushort methodId, byte[]? arguments)
+    protected async ValueTask __ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
     {
-        var message = _cacheManager.InvocationRequestDeserializer.Rent();
+        var message = _cacheManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
-        message.Arguments = arguments;
-        message.Flags = InvocationFlags.IgnoreReturn;
+        message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
+
+        // Try to set the arguments. If we can not, then the arguments are too large.
+        if (!message.TrySetArguments(arguments))
+        {
+            _cacheManager.Return(message);
+            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
+        }
 
         switch (_mode)
         {
             case ProxyInvocationMode.Caller:
             {
-                await _session!.SendHeaderWithBody(message).ConfigureAwait(false);
+                await _session!.SendMessage(message).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.All:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 foreach (var (_, session) in _sessionManager.Sessions)
                 {
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId();
                     try
                     {
-                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                        await session.SendMessage(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -145,9 +138,12 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Others:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
@@ -156,7 +152,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                        await session.SendMessage(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -170,16 +166,19 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
             case ProxyInvocationMode.Clients:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 for (int i = 0; i < _modeClientArguments!.Length; i++)
                 {
                     if (_sessionManager.Sessions.TryGetValue(_modeClientArguments[i], out var session))
                         try
                         {
-                            await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                            await session.SendMessage(message).ConfigureAwait(false);
                         }
                         catch
                         {
@@ -193,13 +192,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             {
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 if (_sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out var session))
                 {
                     try
                     {
-                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                        await session.SendMessage(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -211,9 +210,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.AllExcept:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
                 if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                    throw new ArgumentNullException(nameof(_sessionManager), SessionManagerNullMessage);
 
                 foreach (var (id, session) in _sessionManager.Sessions)
                 {
@@ -222,7 +223,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                     try
                     {
-                        await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                        await session.SendMessage(message).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -240,9 +241,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    break;
             case ProxyInvocationMode.Groups:
             {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(
+                        $"Can't invoke method with {nameof(INexusDuplexPipe)} on multiple connections");
+
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager),
-                        "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                        SessionManagerNullMessage);
 
                 for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
@@ -251,7 +256,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                         {
                             try
                             {
-                                await session.SendHeaderWithBody(message).ConfigureAwait(false);
+                                await session.SendMessage(message).ConfigureAwait(false);
                             }
                             catch
                             {
@@ -268,7 +273,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
 
         // Return the message to the cache
-        _cacheManager.InvocationRequestDeserializer.Return(message);
+        _cacheManager.Return(message);
     }
 
     /// <summary>
@@ -281,22 +286,22 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask __ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return;
 
-        var messageState = state.Result.State;
+        var messageState = state.Result!.State;
         ReturnState(state);
 
         switch (messageState)
         {
-            case InvocationProxyResultMessage.StateType.CompletedResult:
+            case InvocationResultMessage.StateType.CompletedResult:
                 return;
 
-            case InvocationProxyResultMessage.StateType.Exception:
+            case InvocationResultMessage.StateType.Exception:
                 throw new ProxyRemoteInvocationException();
 
             default:
@@ -315,21 +320,21 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn?> __ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return default;
 
-        switch (state.Result.State)
+        switch (state.Result!.State)
         {
-            case InvocationProxyResultMessage.StateType.CompletedResult:
+            case InvocationResultMessage.StateType.CompletedResult:
                 var result = state.Result.GetResult<TReturn>();
                 ReturnState(state);
                 return result;
 
-            case InvocationProxyResultMessage.StateType.Exception:
+            case InvocationResultMessage.StateType.Exception:
                 ReturnState(state);
                 throw new ProxyRemoteInvocationException();
 
@@ -339,16 +344,30 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
+    /// <summary>
+     /// Gets the Initial Id of the duplex pipe.
+     /// </summary>
+     /// <param name="pipe">Pipe to retrieve the Id of.</param>
+     /// <returns>Initial id of the pipe.</returns>
+     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
+     {
+         return Unsafe.As<NexusDuplexPipe>(pipe).InitialId;
+     }
+     
+
     private void ReturnState(RegisteredInvocationState state)
     {
-        _cacheManager.InvocationProxyResultDeserializer.Return(state.Result);
-        state.Result = null!;
+        if(state.Result != null)
+            _cacheManager.Return(state.Result);
+
+        state.Result = null;
         _cacheManager.RegisteredInvocationStateCache.Return(state);
     }
 
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
-        ushort methodId, 
-        byte[]? arguments,
+        ushort methodId,
+        ITuple? arguments,
         CancellationToken? cancellationToken = null)
     {
         // If we are invoking on multiple sessions, then we are not going to wait
@@ -359,7 +378,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
         {
-            await ProxyInvokeMethodCore(methodId, arguments).ConfigureAwait(false);
+            await __ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None).ConfigureAwait(false);
             return null;
         }
 
@@ -370,7 +389,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             if (_sessionManager == null)
                 throw new ArgumentNullException(nameof(_sessionManager),
-                    "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.");
+                    SessionManagerNullMessage);
 
             _sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out session);
 
@@ -380,7 +399,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
 
         var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
-            methodId, 
+            methodId,
             arguments, 
             session, 
             cancellationToken).ConfigureAwait(false);
@@ -402,10 +421,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             {
                 if (state.NotifyConnection)
                 {
-                    var message = CacheManager.InvocationCancellationRequestDeserializer.Rent();
+                    var message = CacheManager.Rent<InvocationCancellationMessage>();
                     message.InvocationId = state.InvocationId;
-                    await session.SendHeaderWithBody(message).ConfigureAwait(false);
-                    CacheManager.InvocationCancellationRequestDeserializer.Return(message);
+                    await session.SendMessage(message).ConfigureAwait(false);
+                    CacheManager.Return(message);
                 }
 
                 ReturnState(state);

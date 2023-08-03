@@ -1,4 +1,6 @@
-﻿using NexNet.Cache;
+﻿using System.Threading.Tasks;
+using System;
+using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
 
@@ -11,10 +13,14 @@ namespace NexNet.Invocation;
 public abstract class SessionContext<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    internal INexNetSession<TProxy> Session { get; }
+    internal INexusSession<TProxy> Session { get; }
     internal SessionManager? SessionManager { get; }
     internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
 
+    /// <summary>
+    /// Logger.
+    /// </summary>
+    public INexusLogger? Logger => Session.Logger;
 
     /// <summary>
     /// Store for this session used to keep and pass variables for the lifetime of this session.
@@ -26,18 +32,28 @@ public abstract class SessionContext<TProxy>
     /// </summary>
     public long Id => Session.Id;
 
-    internal SessionContext(INexNetSession<TProxy> session, SessionManager? sessionManager)
+    internal SessionContext(INexusSession<TProxy> session, SessionManager? sessionManager)
     {
         Session = session;
         SessionManager = sessionManager;
     }
 
     /// <summary>
+    /// Creates a pipe for use with the current session.
+    /// </summary>
+    /// <returns>Pipe for communication over teh current session.</returns>
+    public INexusDuplexPipe CreatePipe()
+    {
+        return Session.PipeManager.GetPipe() 
+               ?? throw new InvalidOperationException("Can't create a pipe due to session being closed.");
+    }
+
+    /// <summary>
     /// Disconnect the current connection.
     /// </summary>
-    public void Disconnect()
+    public Task DisconnectAsync()
     {
-        Session.DisconnectAsync(DisconnectReason.Graceful);
+        return Session.DisconnectAsync(DisconnectReason.Graceful);
     }
 
     internal abstract void Reset();

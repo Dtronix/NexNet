@@ -48,9 +48,9 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
     }
-    protected ServerConfig CreateServerConfig(Type type, bool log = false)
+
+    protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
     {
-        var logger = log ? new ConsoleLogger("SV") : null;
         if (type == Type.Uds)
         {
             CurrentPath ??=
@@ -97,9 +97,14 @@ public class BaseTests
         throw new InvalidOperationException();
     }
 
-    protected ClientConfig CreateClientConfig(Type type, bool log = false)
+    protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("CL") : null;
+        var logger = log ? new ConsoleLogger("SV") : null;
+        return CreateServerConfigWithLog(type, logger);
+    }
+
+    protected ClientConfig CreateClientConfigWithLog(Type type, INexusLogger? logger = null)
+    {
         if (type == Type.Uds)
         {
             CurrentPath ??=
@@ -143,37 +148,43 @@ public class BaseTests
         throw new InvalidOperationException();
     }
 
-
-    protected (NexNetServer<ServerHub, ServerHub.ClientProxy> server, ServerHub serverHub, NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
-        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
+    protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
-        var serverHub = new ServerHub();
-        var clientHub = new ClientHub();
-        var server = ServerHub.CreateServer(sConfig, () => serverHub);
-        var client = ClientHub.CreateClient(cConfig, clientHub);
-
-        return (server, serverHub, client, clientHub);
+        var logger = log ? new ConsoleLogger("CL") : null;
+        return CreateClientConfigWithLog(type, logger);
     }
 
-    protected NexNetServer<ServerHub, ServerHub.ClientProxy>
-        CreateServer(ServerConfig sConfig, Action<ServerHub>? hubCreated)
+
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, ServerNexus serverNexus, NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
+        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
     {
-        var server = ServerHub.CreateServer(sConfig, () =>
+        var serverNexus = new ServerNexus();
+        var clientNexus = new ClientNexus();
+        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
+
+        return (server, serverNexus, client, clientNexus);
+    }
+
+    protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
+        CreateServer(ServerConfig sConfig, Action<ServerNexus>? nexusCreated)
+    {
+        var server = ServerNexus.CreateServer(sConfig, () =>
         {
-            var hub = new ServerHub();
-            hubCreated?.Invoke(hub);
-            return hub;
+            var nexus = new ServerNexus();
+            nexusCreated?.Invoke(nexus);
+            return nexus;
         });
         return server;
     }
 
-    protected (NexNetClient<ClientHub, ClientHub.ServerProxy> client, ClientHub clientHub)
+    protected (NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
         CreateClient(ClientConfig cConfig)
     {
-        var clientHub = new ClientHub();
-        var client = ClientHub.CreateClient(cConfig, clientHub);
+        var clientNexus = new ClientNexus();
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
 
-        return (client, clientHub);
+        return (client, clientNexus);
     }
 
     private int FreeTcpPort()
@@ -183,5 +194,21 @@ public class BaseTests
         int port = ((IPEndPoint)l.LocalEndpoint).Port;
         l.Stop();
         return port;
+    }
+
+    public static async Task AssertThrows<T>(Func<Task> task)
+        where T : Exception
+    {
+        Exception? thrown = null;
+        try
+        {
+            await task.Invoke();
+        }
+        catch (Exception e)
+        {
+            thrown = e;
+        }
+
+        Assert.AreEqual(typeof(T), thrown?.GetType());
     }
 }

@@ -1,13 +1,11 @@
-﻿using Newtonsoft.Json.Linq;
-using System.Threading;
-using NexNet.Messages;
+﻿using NexNet.Messages;
 // ReSharper disable InconsistentNaming
 #pragma warning disable CS8618
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.TestInterfaces;
 
-public partial interface IClientHub
+public partial interface IClientNexus
 {
     void ClientVoid();
     void ClientVoidWithParam(int id);
@@ -19,12 +17,12 @@ public partial interface IClientHub
     ValueTask ClientTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
-
+    ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
 
 
-public partial interface IServerHub
+public partial interface IServerNexus
 {
     void ServerVoid();
     void ServerVoidWithParam(int id);
@@ -36,26 +34,30 @@ public partial interface IServerHub
     ValueTask ServerTaskWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 
-    void ServerData(byte[] data);
+    ValueTask ServerData(byte[] data);
 }
 
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
-public partial class ClientHub
+
+
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+public partial class ClientNexus
 {
-    public Action<ClientHub> ClientVoidEvent;
-    public Action<ClientHub, int> ClientVoidWithParamEvent;
-    public Func<ClientHub, ValueTask> ClientTaskEvent;
-    public Func<ClientHub, int, ValueTask> ClientTaskWithParamEvent;
-    public Func<ClientHub, ValueTask<int>> ClientTaskValueEvent;
-    public Func<ClientHub, int, ValueTask<int>> ClientTaskValueWithParamEvent;
-    public Func<ClientHub, CancellationToken, ValueTask> ClientTaskWithCancellationEvent;
-    public Func<ClientHub, int, CancellationToken, ValueTask> ClientTaskWithValueAndCancellationEvent;
-    public Func<ClientHub, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
-    public Func<ClientHub, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
-    public Func<ClientHub, bool, ValueTask>? OnConnectedEvent;
-    public Func<ClientHub, ValueTask>? OnReconnectingEvent;
-    public Func<ClientHub, ValueTask>? OnDisconnectedEvent;
+    public Action<ClientNexus> ClientVoidEvent;
+    public Action<ClientNexus, int> ClientVoidWithParamEvent;
+    public Func<ClientNexus, ValueTask> ClientTaskEvent;
+    public Func<ClientNexus, int, ValueTask> ClientTaskWithParamEvent;
+    public Func<ClientNexus, ValueTask<int>> ClientTaskValueEvent;
+    public Func<ClientNexus, int, ValueTask<int>> ClientTaskValueWithParamEvent;
+    public Func<ClientNexus, CancellationToken, ValueTask> ClientTaskWithCancellationEvent;
+    public Func<ClientNexus, int, CancellationToken, ValueTask> ClientTaskWithValueAndCancellationEvent;
+    public Func<ClientNexus, CancellationToken, ValueTask<int>> ClientTaskValueWithCancellationEvent;
+    public Func<ClientNexus, int, CancellationToken, ValueTask<int>> ClientTaskValueWithValueAndCancellationEvent;
+    public Func<ClientNexus, INexusDuplexPipe, ValueTask> ClientTaskValueWithDuplexPipeEvent;
+    public Func<ClientNexus, bool, ValueTask>? OnConnectedEvent;
+    public Func<ClientNexus, ValueTask>? OnReconnectingEvent;
+    public Func<ClientNexus, ValueTask>? OnDisconnectedEvent;
 
     public void ClientVoid()
     {
@@ -107,7 +109,12 @@ public partial class ClientHub
     {
         return ClientTaskValueWithValueAndCancellationEvent.Invoke(this, value, cancellationToken);
     }
-    
+
+    public ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
+    {
+        return ClientTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+    }
+
     protected override ValueTask OnConnected(bool isReconnected)
     {
         if (OnConnectedEvent == null)
@@ -133,23 +140,25 @@ public partial class ClientHub
     }
 }
 
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
-public partial class ServerHub
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+public partial class ServerNexus
 {
-    public Action<ServerHub> ServerVoidEvent;
-    public Action<ServerHub, int> ServerVoidWithParamEvent;
-    public Func<ServerHub, ValueTask> ServerTaskEvent;
-    public Func<ServerHub, int, ValueTask> ServerTaskWithParamEvent;
-    public Func<ServerHub, ValueTask<int>> ServerTaskValueEvent;
-    public Func<ServerHub, int, ValueTask<int>> ServerTaskValueWithParamEvent;
-    public Func<ServerHub, CancellationToken, ValueTask> ServerTaskWithCancellationEvent;
-    public Func<ServerHub, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
-    public Func<ServerHub, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
-    public Func<ServerHub, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
-    public Action<ServerHub, byte[]> ServerDataEvent;
-    public Func<ServerHub, ValueTask>? OnConnectedEvent;
-    public Func<ServerHub, ValueTask>? OnDisconnectedEvent;
-    public Func<ServerHub, ValueTask<IIdentity?>>? OnAuthenticateEvent;
+    public Action<ServerNexus> ServerVoidEvent;
+    public Action<ServerNexus, int> ServerVoidWithParamEvent;
+    public Func<ServerNexus, ValueTask> ServerTaskEvent;
+    public Func<ServerNexus, int, ValueTask> ServerTaskWithParamEvent;
+    public Func<ServerNexus, ValueTask<int>> ServerTaskValueEvent;
+    public Func<ServerNexus, int, ValueTask<int>> ServerTaskValueWithParamEvent;
+    public Func<ServerNexus, CancellationToken, ValueTask> ServerTaskWithCancellationEvent;
+    public Func<ServerNexus, int, CancellationToken, ValueTask> ServerTaskWithValueAndCancellationEvent;
+    public Func<ServerNexus, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
+    public Func<ServerNexus, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
+    public Func<ServerNexus, INexusDuplexPipe, ValueTask> ServerTaskValueWithDuplexPipeEvent;
+
+    public Func<ServerNexus, byte[], ValueTask>? ServerDataEvent;
+    public Func<ServerNexus, ValueTask>? OnConnectedEvent;
+    public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
+    public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
 
     public void ServerVoid()
     {
@@ -201,9 +210,17 @@ public partial class ServerHub
     {
         return ServerTaskValueWithValueAndCancellationEvent.Invoke(this, value, cancellationToken);
     }
-    public void ServerData(byte[] data)
+    public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
-        ServerDataEvent.Invoke(this, data);
+        return ServerTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+    }
+
+    public ValueTask ServerData(byte[] data)
+    {
+        if (ServerDataEvent == null)
+            return ValueTask.CompletedTask;
+
+        return ServerDataEvent.Invoke(this, data);
     }
 
     protected override ValueTask OnConnected(bool isReconnected)
@@ -222,7 +239,7 @@ public partial class ServerHub
         return OnDisconnectedEvent.Invoke(this);
     }
 
-    protected override ValueTask<IIdentity?> OnAuthenticate(byte[]? authenticationToken)
+    protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticateEvent!.Invoke(this);
     }

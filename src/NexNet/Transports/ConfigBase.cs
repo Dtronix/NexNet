@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.IO.Pipelines;
 using NexNet.Internals;
 
@@ -12,7 +13,7 @@ public abstract class ConfigBase
     /// <summary>
     /// Logger for the server/client.
     /// </summary>
-    public INexNetLogger? Logger { get; set; }
+    public INexusLogger? Logger { get; set; }
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
@@ -41,15 +42,47 @@ public abstract class ConfigBase
     /// <summary>
     /// Options to configure the sending pipe with.
     /// </summary>
-    public PipeOptions SendPipeOptions { get; set; } = PipeOptions.Default;
+    public PipeOptions SendSessionPipeOptions { get; set; }  = PipeOptions.Default;/*= new PipeOptions(
+        pauseWriterThreshold: ushort.MaxValue,
+        resumeWriterThreshold: ushort.MaxValue / 2,
+        minimumSegmentSize: ushort.MaxValue);*/
 
     /// <summary>
     /// Options to configure the receiving pipe with.
     /// </summary>
-    public PipeOptions ReceivePipeOptions { get; set; } = PipeOptions.Default;
+    public PipeOptions ReceiveSessionPipeOptions { get; set; } = PipeOptions.Default;
 
-    internal Action<INexNetSession, byte[]>? InternalOnSend;
-    internal Action<INexNetSession>? InternalOnSessionSetup;
+    /// <summary>
+    /// The NexusPipe class will flush this maximum amount of data at once.
+    /// If the data surpasses this limit, it will be divided into chunks of this ize and sent until
+    /// the entire data is transmitted.
+    /// </summary>
+    public virtual int NexusPipeFlushChunkSize { get; set; } = 1024 * 8;
+
+    /// <summary>
+    /// Level at which the pipe will pause the writer.
+    /// 192KB default.
+    /// </summary>
+    public int NexusPipeHighWaterMark { get; set; } = 1024 * 192;
+
+    /// <summary>
+    /// Level at which the pipe will notify the other session to pause sending any more data until the amount
+    /// of data buffered is this amount or less.
+    /// 64KB default.
+    /// </summary>
+    public int NexusPipeLowWaterMark { get; set; } = 1024 * 16;
+
+    /// <summary>
+    /// Level at which the pipe will stop the session from sending any more data until the low water mark is met.
+    /// 1MB default.
+    /// </summary>
+    public int NexusPipeHighWaterCutoff { get; set; } = 1024 * 256;
+
+
+
+    internal Action<INexusSession, byte[]>? InternalOnSend;
+    internal Action<INexusSession, ReadOnlySequence<byte>>? InternalOnReceive;
+    internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
 }

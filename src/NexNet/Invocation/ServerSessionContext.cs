@@ -29,7 +29,7 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
     /// </summary>
     public GroupManager Groups { get; }
 
-    internal ServerSessionContext(INexNetSession<TClientProxy> session, SessionManager sessionManager)
+    internal ServerSessionContext(INexusSession<TClientProxy> session, SessionManager sessionManager)
         : base(session, sessionManager)
     {
         _proxy = new ClientProxy(session.CacheManager, this);

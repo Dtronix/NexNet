@@ -7,18 +7,22 @@ namespace NexNet.Internals;
 
 internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 {
+    /// <summary>
+    /// Id used for invocation management.
+    /// </summary>
     public int InvocationId { get; set; }
 
     // Mutable struct.
-    private ManualResetValueTaskSourceCore<bool> _source = new ManualResetValueTaskSourceCore<bool>(); 
+    private ManualResetValueTaskSourceCore<bool> _source;
 
     public bool IsComplete { get; set; }
+
     public bool IsCanceled { get; set; }
 
     public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
 
-    public InvocationProxyResultMessage Result { get; set; } = null!;
+    public InvocationResultMessage? Result { get; set; } = null;
 
     /// <summary>
     /// Environment.Ticks when this state was instanced.
@@ -87,9 +91,4 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     }
 
     bool IValueTaskSource<bool>.GetResult(short token) => _source.GetResult(token);
-    public RegisteredInvocationState()
-    {
-        // Sequence = new Sequence<byte>(ArrayPool<byte>.Shared);
-        //OptionalState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Utf8);
-    }
 }
