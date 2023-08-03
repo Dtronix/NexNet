@@ -26,7 +26,7 @@ internal class NexusDuplexPipeReaderTests
         var tcs = new TaskCompletionSource();
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
-        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
+        await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
 
         _ = Task.Run(async () =>
@@ -53,7 +53,7 @@ internal class NexusDuplexPipeReaderTests
             tcs.SetResult();
         });
 
-        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
+        await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         await tcs.Task.Timeout(1);
     }
@@ -76,7 +76,7 @@ internal class NexusDuplexPipeReaderTests
         });
 
 
-        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
+        await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         await tcs.Task.Timeout(1);
     }
@@ -93,7 +93,7 @@ internal class NexusDuplexPipeReaderTests
             for (int i = 0; i < 100; i++)
             {
                 //Console.WriteLine("Writer");
-                await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { (byte)i }));
+                await reader.BufferData(new ReadOnlySequence<byte>(new[] { (byte)i }));
                 await bufferSemaphore.WaitAsync();
             }
             
@@ -180,7 +180,7 @@ internal class NexusDuplexPipeReaderTests
         await Task.Delay(1);
 
         reader.CancelPendingRead();
-        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
         
         await tcs.Task.Timeout(1);
     }
@@ -192,7 +192,7 @@ internal class NexusDuplexPipeReaderTests
         var reader = CreateReader();
 
         reader.CancelPendingRead();
-        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         _ = Task.Run(async () =>
         {
@@ -234,7 +234,8 @@ internal class NexusDuplexPipeReaderTests
 
         var cts = new CancellationTokenSource();
 
-        Task.Run(async () =>
+        // ReSharper disable once MethodSupportsCancellation
+        _ = Task.Run(async () =>
         {
             await Task.Delay(100);
             cts.Cancel();
@@ -255,11 +256,12 @@ internal class NexusDuplexPipeReaderTests
         var cts = new CancellationTokenSource();
 
         cts.Cancel();
-        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         var result = await reader.ReadAsync(cts.Token);
         Assert.IsTrue(result.IsCanceled);
 
+        // ReSharper disable once MethodSupportsCancellation
         result = await reader.ReadAsync();
         Assert.IsFalse(result.IsCanceled);
         Assert.AreEqual(10, result.Buffer.Length);
@@ -272,12 +274,14 @@ internal class NexusDuplexPipeReaderTests
         var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
         var cts = new CancellationTokenSource();
 
-        Task.Run(async () =>
+        // ReSharper disable once MethodSupportsCancellation
+        _ = Task.Run(async () =>
         {
+            // ReSharper disable once MethodSupportsCancellation
             await Task.Delay(100);
             cts.Cancel();
 
-            reader.BufferData(data);
+            await reader.BufferData(data);
         });
 
         var result = await reader.ReadAsync(cts.Token);
@@ -295,7 +299,7 @@ internal class NexusDuplexPipeReaderTests
         var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
         for (int i = 0; i < 9000; i++)
         {
-            reader.BufferData(data);
+            await reader.BufferData(data);
         }
         var result = await reader.ReadAsync();
 
@@ -337,7 +341,7 @@ internal class NexusDuplexPipeReaderTests
             1024 * 32);
         for (int i = 0; i < 1023; i++)
         {
-            var result = await reader.BufferData(data);
+            await reader.BufferData(data);
         }
 
         await reader.BufferData(data).AsTask().AssertTimeout(.15);
@@ -361,7 +365,7 @@ internal class NexusDuplexPipeReaderTests
             // Reach the high water mark.
             for (int i = 0; i < 128; i++)
             {
-                var result = await reader.BufferData(data);
+                await reader.BufferData(data);
             }
 
             Assert.IsTrue(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause));

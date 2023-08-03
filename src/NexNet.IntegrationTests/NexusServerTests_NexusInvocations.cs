@@ -4,7 +4,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-internal partial class NexusServerTests_NexusInvocations : BaseTests
+internal class NexusServerTests_NexusInvocations : BaseTests
 {
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -13,11 +13,11 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
-
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus.ClientTaskEvent = async _ => tcs.SetResult();
-
+#pragma warning restore CS1998
         server.Start();
         await client.ConnectAsync().Timeout(1);
 
@@ -36,8 +36,8 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
     {
         bool completed = false;
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         clientNexus.ClientTaskEvent = async _ =>
         {
@@ -71,15 +71,16 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
     {
         bool completed = false;
         var tcs1 = new TaskCompletionSource();
-        NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null;
-        server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
+        server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 nexus.Context.Groups.Add("myGroup");
 
                 await nexus.Context.Clients.All.ClientTask();
-                await nexus.Context.Clients.Clients(server.GetContext().Clients.GetIds().ToArray()).ClientTask();
+                // ReSharper disable once AccessToModifiedClosure
+                await nexus.Context.Clients.Clients(server!.GetContext().Clients.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(new[] { "myGroup" }).ClientTask();
                 Assert.IsFalse(completed);
@@ -87,7 +88,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client, clientNexus) = CreateClient(CreateClientConfig(type, false));
+        var (client, clientNexus) = CreateClient(CreateClientConfig(type));
 
         clientNexus.ClientTaskEvent = async _ =>
         {
@@ -111,8 +112,8 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         clientNexus.ClientTaskValueEvent = _ => ValueTask.FromResult(54321);
 
@@ -136,7 +137,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
         var tcs1 = new TaskCompletionSource();
         var tcs2 = new TaskCompletionSource();
         int connectedCount = 0;
-        var server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
@@ -148,12 +149,13 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
 
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);
@@ -174,7 +176,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
         var tcs1 = new TaskCompletionSource();
         var tcs2 = new TaskCompletionSource();
         int connectedCount = 0;
-        var server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
@@ -187,12 +189,12 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
-
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);
@@ -213,7 +215,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
         var tcs1 = new TaskCompletionSource();
         var tcs2 = new TaskCompletionSource();
         int connectedCount = 0;
-        var server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
@@ -229,12 +231,12 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
-
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);
@@ -256,7 +258,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
 
         int connectedCount = 0;
         int invocationCount = 0;
-        var server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
@@ -270,12 +272,12 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
-
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => invocationCount++;
         clientNexus2.ClientTaskEvent = async _ => invocationCount++;
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);
@@ -298,7 +300,7 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
 
         int connectedCount = 0;
         int invocationCount = 0;
-        var server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
@@ -312,12 +314,12 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
-
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => invocationCount++;
         clientNexus2.ClientTaskEvent = async _ => invocationCount++;
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);
@@ -339,26 +341,27 @@ internal partial class NexusServerTests_NexusInvocations : BaseTests
         var tcs1 = new TaskCompletionSource();
         var tcs2 = new TaskCompletionSource();
         int connectedCount = 0;
-        NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null;
-        server = CreateServer(CreateServerConfig(type, false), connectedNexus =>
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
+        server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 // Second connection
                 if (++connectedCount == 2)
                 {
+                    // ReSharper disable once AccessToModifiedClosure
                     var clientIds = server!.GetContext().Clients.GetIds().ToArray();
                     await nexus.Context.Clients.Clients(clientIds).ClientTask();
                 }
             };
         });
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, false));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, false));
-
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+#pragma warning disable CS1998
         clientNexus1.ClientTaskEvent = async _ => tcs1.TrySetResult();
         clientNexus2.ClientTaskEvent = async _ => tcs2.TrySetResult();
-
+#pragma warning restore CS1998
         server.Start();
 
         await client1.ConnectAsync().Timeout(1);

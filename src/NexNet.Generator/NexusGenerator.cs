@@ -8,12 +8,7 @@ namespace NexNet.Generator;
 internal partial class NexusGenerator : IIncrementalGenerator
 {
     public const string NexusAttributeFullName = "NexNet.NexusAttribute`2";
-
-    public NexusGenerator()
-    {
-        
-    }
-
+    
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         // no need RegisterPostInitializationOutput
@@ -26,17 +21,10 @@ internal partial class NexusGenerator : IIncrementalGenerator
         // return dir of info output or null .
         var typeDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
                 NexusAttributeFullName,
-                predicate: static (node, token) =>
-                {
-                    // search [NexNetHubAttribute] class or struct or interface or record
-                    return (node is ClassDeclarationSyntax);
-                },
-                transform: static (context, token) =>
-                {
-                    return (TypeDeclarationSyntax)context.TargetNode;
-                });
+                predicate: static (node, _) => (node is ClassDeclarationSyntax), // search [NexNetHubAttribute] class or struct or interface or record
+                transform: static (context, _) => (TypeDeclarationSyntax)context.TargetNode);
 
-        var parseOptions = context.ParseOptionsProvider.Select((parseOptions, token) =>
+        var parseOptions = context.ParseOptionsProvider.Select((parseOptions, _) =>
         {
             var csOptions = (CSharpParseOptions)parseOptions;
             var langVersion = csOptions.LanguageVersion;
@@ -52,7 +40,6 @@ internal partial class NexusGenerator : IIncrementalGenerator
             context.RegisterSourceOutput(source, static (context, source) =>
             {
                 var (typeDeclaration, compilation) = source.Left;
-                var logPath = source.Left.Item2;
                 var langVersion = source.Right;
 
                 Generate(typeDeclaration, compilation, new GeneratorContext(context, langVersion));
@@ -88,7 +75,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
 
         public CancellationToken CancellationToken => _context.CancellationToken;
 
-        public Microsoft.CodeAnalysis.CSharp.LanguageVersion LanguageVersion { get; }
+        public LanguageVersion LanguageVersion { get; }
 
         public void AddSource(string hintName, string source)
         {

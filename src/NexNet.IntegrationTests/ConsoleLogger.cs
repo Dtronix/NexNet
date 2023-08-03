@@ -23,11 +23,12 @@ public class StreamLogger : INexusLogger
     public Stream? BaseStream { get; }
     private readonly string _prefix;
     //private DateTime _startTime = DateTime.Now;
-    private Stopwatch _sw;
+    private readonly Stopwatch _sw;
     private readonly StreamWriter _logFile;
 
     public StreamLogger(Stream? baseStream = null)
     {
+        _prefix = "";
         baseStream ??= new MemoryStream(new byte[1024 * 1024]);
         BaseStream = baseStream;
         _sw = Stopwatch.StartNew();

@@ -401,10 +401,10 @@ internal partial class NexusClientTests : BaseTests
             serverConfig,
             CreateClientConfig(type));
 
-        serverHub.OnAuthenticateEvent = async hub =>
+        serverHub.OnAuthenticateEvent = hub =>
         {
             authCompleted = true;
-            return new DefaultIdentity();
+            return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
         };
 
         server.Start();

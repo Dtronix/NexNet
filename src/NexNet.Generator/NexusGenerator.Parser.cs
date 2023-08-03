@@ -30,9 +30,7 @@ internal partial class InvocationInterfaceMeta
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
-        var usedHashes = new HashSet<ushort>();
         this.Symbol = symbol;
-        
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
@@ -73,12 +71,6 @@ internal partial class InvocationInterfaceMeta
                 methodMeta.Id = id++;
             }
         }
-
-
-        var members = Symbol.GetMembers().ToArray();
-
-        var lessInterfaceI = symbol.Name[0] == 'I' ? symbol.Name.Substring(1) : symbol.Name;
-        //this.ProxyImplName = $"{lessInterfaceI}ProxyImpl";
 
         this.ProxyImplName = !isServer ? $"ServerProxy" : "ClientProxy";
         //this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
@@ -151,7 +143,6 @@ internal abstract class AttributeMetaBase
             {
                 foreach (KeyValuePair<string, TypedConstant> namedArgument in attributeData.NamedArguments)
                 {
-                    TypedConstant typedConstant = namedArgument.Value;
                     TypedConstant value = namedArgument.Value;
                     ProcessArgument(namedArgument.Key, null, value);
                 }
@@ -389,7 +380,7 @@ internal partial class NexusMeta
     }
 }
 
-internal partial class MethodParameterMeta
+internal class MethodParameterMeta
 {
     public IParameterSymbol Symbol { get; }
     public string Name { get; }
@@ -456,7 +447,7 @@ internal partial class MethodMeta
 
     public bool IsReturnVoid { get; }
     public string? ReturnType { get; }
-    public string ReturnTypeSource { get; }
+    public string? ReturnTypeSource { get; }
     public bool IsAsync { get; }
     public int ReturnArity { get; }
 

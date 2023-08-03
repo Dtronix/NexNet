@@ -43,9 +43,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     /// <summary>
     /// Task which completes upon the completed connection and optional authentication of the client.
-    /// Null when the client is has not started connection or after disconnection.
+    /// Set to complete when the client has not started connecting yet or after disconnection.
     /// </summary>
-    public Task? ReadyTask { get; private set; }
+    public Task ReadyTask { get; private set; } = Task.CompletedTask;
 
     /// <summary>
     /// Task which completes upon the disconnection of the client.
