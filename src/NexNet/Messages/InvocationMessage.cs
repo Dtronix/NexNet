@@ -31,12 +31,41 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     [MemoryPoolFormatter<byte>]
     public Memory<byte> Arguments { get; set; }
 
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<T>()
     {
         return MemoryPackSerializer.Deserialize<T>(Arguments.Span);
     }
+    public bool TrySetArguments(ITuple? arguments)
+    {
+        Arguments = arguments == null
+            ? Memory<byte>.Empty
+            : MemoryPackSerializer.Serialize(arguments.GetType(), arguments);
+
+        //TODO: Review this on the sync path as it will get ignored as it is running on a separate task from the original caller.
+        return Arguments.Length <= IInvocationMessage.MaxArgumentSize;
+    }
+
+    /*
+
+    TODO: Review custom serialization for the arguments.
+    [MemoryPackOnSerializing]
+    static void WriteArguments<TBufferWriter>(ref MemoryPackWriter<TBufferWriter> writer, ref InvocationMessage? value)
+        where TBufferWriter : class, IBufferWriter<byte>
+    {
+        var initialLength = writer.WriteVarInt();
+        MemoryPackSerializer.Serialize(value._writeArguments.GetType(), ref writer, value._writeArguments);
+        ;
+    }
+
+    [MemoryPackOnDeserializing]
+    static void ReadArguments(ref MemoryPackReader reader, ref InvocationMessage? value)
+    {
+        MemoryPackSerializer.Deserialize()
+        // read custom header before deserialize
+        var guid = reader.ReadUnmanaged<Guid>();
+        Console.WriteLine(guid);
+    }*/
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized()
@@ -55,4 +84,5 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         IMessageBase.Return(Arguments); 
         Arguments = default;
     }
+
 }

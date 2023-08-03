@@ -14,26 +14,37 @@ namespace NexNet.Invocation;
 /// Base hub with common methods used between server and client.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
+public abstract class NexusBase<TProxy> : IMethodInvoker
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
+    private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
+    
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
+    private readonly InvokeMethodCoreDelegate _invokeMethodCoreDelegate;
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
 
     // ReSharper disable once StaticMemberInGenericType
     private static readonly ConcurrentBag<BufferWriter<byte>> _bufferWriters = new ConcurrentBag<BufferWriter<byte>>();
 
-    ValueTask IMethodInvoker<TProxy>.InvokeMethod(InvocationMessage message)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="NexusBase{TProxy}"/> class.
+    /// </summary>
+    protected NexusBase()
+    {
+        _invokeMethodCoreDelegate = InvokeMethodCore;
+    }
+
+    ValueTask IMethodInvoker.InvokeMethod(InvocationMessage message)
     {
         var args = InvokeMethodCoreArgs.Get();
         args.Message = message;
         args.SessionContext = SessionContext;
-        args.InvokeMethodCore = InvokeMethodCore;
+        args.InvokeMethodCore = _invokeMethodCoreDelegate;
         return InvokeMethodCoreTask(args);
     }
 
-    CancellationTokenSource IMethodInvoker<TProxy>.RegisterCancellationToken(int invocationId)
+    CancellationTokenSource IMethodInvoker.RegisterCancellationToken(int invocationId)
     {
         var cts = SessionContext.CacheManager.CancellationTokenSourceCache.Rent();
 
@@ -41,7 +52,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         return cts;
     }
 
-    void IMethodInvoker<TProxy>.ReturnCancellationToken(int invocationId)
+    void IMethodInvoker.ReturnCancellationToken(int invocationId)
     {
         if (!_cancellableInvocations.TryRemove(invocationId, out var cts))
             return;
@@ -50,17 +61,17 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
         SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
     }
 
-    ValueTask<INexusDuplexPipe> IMethodInvoker<TProxy>.RegisterDuplexPipe(byte startId)
+    ValueTask<INexusDuplexPipe> IMethodInvoker.RegisterDuplexPipe(byte startId)
     {
         return SessionContext.Session.PipeManager.RegisterPipe(startId);
     }
 
-    ValueTask IMethodInvoker<TProxy>.ReturnDuplexPipe(INexusDuplexPipe pipe)
+    ValueTask IMethodInvoker.ReturnDuplexPipe(INexusDuplexPipe pipe)
     {
         return SessionContext.Session.PipeManager.DeregisterPipe(pipe);
     }
 
-    void IMethodInvoker<TProxy>.CancelInvocation(InvocationCancellationMessage message)
+    void IMethodInvoker.CancelInvocation(InvocationCancellationMessage message)
     {
         if (!_cancellableInvocations.TryRemove(message.InvocationId, out var cts))
             return;
@@ -186,10 +197,11 @@ public abstract class NexusBase<TProxy> : IMethodInvoker<TProxy>
 
     private class InvokeMethodCoreArgs
     {
+
         private static readonly ConcurrentBag<InvokeMethodCoreArgs> _cache = new();
         public InvocationMessage Message = null!;
         public SessionContext<TProxy> SessionContext = null!;
-        public Func<InvocationMessage, IBufferWriter<byte>?, ValueTask> InvokeMethodCore = null!;
+        public InvokeMethodCoreDelegate InvokeMethodCore = null!;
 
         public static InvokeMethodCoreArgs Get() =>
             _cache.TryTake(out var result) ? result : new InvokeMethodCoreArgs();

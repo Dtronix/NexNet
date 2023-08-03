@@ -12,13 +12,13 @@ internal class CachedDuplexPipe
 {
     private readonly ConcurrentBag<NexusDuplexPipe> _cache = new();
 
-    public NexusDuplexPipe Rent(INexusSession session, byte initialId, Func<INexusDuplexPipe, ValueTask>? onReady)
+    public NexusDuplexPipe Rent(INexusSession session, byte initialId)
     {
         if (!_cache.TryTake(out var cachedPipe))
             cachedPipe = new NexusDuplexPipe();
 
         cachedPipe.IsInCached = false;
-        cachedPipe.Setup(initialId, session, onReady);
+        cachedPipe.Setup(initialId, session);
 
         return cachedPipe;
     }

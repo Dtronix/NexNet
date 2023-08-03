@@ -3,9 +3,9 @@ using System.IO.Pipelines;
 
 namespace NexNetDemo.Samples.DuplexPipe;
 
-public class DuplexPipeSimpleSample : SampleBase
+public class DuplexPipeSample : SampleBase
 {
-    public DuplexPipeSimpleSample(TransportMode transportMode = TransportMode.Uds) 
+    public DuplexPipeSample(TransportMode transportMode = TransportMode.Uds) 
         : base(false, transportMode)
     {
     }

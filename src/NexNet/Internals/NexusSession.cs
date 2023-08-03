@@ -16,7 +16,7 @@ using NexNet.Internals.Pipes;
 namespace NexNet.Internals;
 
 internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
-    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+    where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private record struct ProcessResult(

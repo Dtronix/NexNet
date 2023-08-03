@@ -148,7 +148,7 @@ namespace {{Symbol.ContainingNamespace}}
         {
             global::System.Threading.CancellationTokenSource? cts = null;
             global::NexNet.INexusDuplexPipe? duplexPipe = null;
-            var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>>(this);
+            var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker>(this);
             try
             {
                 switch (message.MethodId)
@@ -350,7 +350,7 @@ partial class MethodMeta
 
         if (SerializedParameters > 0)
         {
-            sb.Append("                 var arguments = base.SerializeArgumentsCore<global::System.ValueTuple<");
+            sb.Append("                 var arguments = new global::System.ValueTuple<");
             
             foreach (var p in Parameters)
             {
@@ -362,7 +362,7 @@ partial class MethodMeta
 
             sb.Remove(sb.Length - 2, 2);
 
-            sb.Append(">>(new(");
+            sb.Append(">(");
             foreach (var p in Parameters)
             {
                 if (p.SerializedValue == null)
@@ -373,7 +373,7 @@ partial class MethodMeta
 
             sb.Remove(sb.Length - 2, 2);
 
-            sb.AppendLine("));");
+            sb.AppendLine(");");
         }
 
         sb.Append("                 ");
@@ -385,7 +385,7 @@ partial class MethodMeta
             // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
             sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
 
-            sb.Append("ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
+            sb.Append("__ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
             sb.Append(SerializedParameters > 0 ? "arguments, " : "null, ");
 
             // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
@@ -393,7 +393,7 @@ partial class MethodMeta
         }
         else if (this.IsAsync)
         {
-            sb.Append("return ProxyInvokeAndWaitForResultCore");
+            sb.Append("return __ProxyInvokeAndWaitForResultCore");
             if (this.ReturnType != null)
             {
                 sb.Append("<").Append(this.ReturnType).Append(">");

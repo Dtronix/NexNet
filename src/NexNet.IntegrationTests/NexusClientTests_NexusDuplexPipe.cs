@@ -20,15 +20,18 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.Output.WriteAsync(Data);
             await Task.Delay(10000);
         });
 
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
-
-        await tcs.Task.Timeout(100);
+        await tcs.Task.Timeout(1);
     }
 
     [TestCase(Type.Uds)]
@@ -44,15 +47,16 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await Task.Delay(10000);
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             var result = await pipe.Input.ReadAsync();
             Assert.AreEqual(Data, result.Buffer.ToArray());
             tcs.SetResult();
-
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
 
         await tcs.Task.Timeout(1);
     }
@@ -71,11 +75,14 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.CompleteAsync();
         });
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }
@@ -95,12 +102,14 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.CompleteAsync();
         });
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }
@@ -119,14 +128,17 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
-        {
-            await cNexus.Context.DisconnectAsync();
-            await Task.Delay(10000);
-        });
+        var pipe = sNexus.Context.CreatePipe();
 
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
             .Timeout(1);
+
+        _ = Task.Run(async () =>
+        {
+            await pipe.ReadyTask;
+            await cNexus.Context.DisconnectAsync();
+            await Task.Delay(10000);
+        });
 
         await tcs.Task.Timeout(1000);
     }
@@ -148,15 +160,18 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
+            .Timeout(1);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await cNexus.Context.DisconnectAsync();
             tcsDisconnected.SetResult();
             await Task.Delay(10000);
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).AsTask()
-            .Timeout(1);
 
         await tcs.Task.Timeout(1);
     }
@@ -175,13 +190,16 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.Output.CompleteAsync();
             await Task.Delay(10000);
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }
@@ -208,13 +226,15 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.Input.CompleteAsync();
             await Task.Delay(1000000);
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }
@@ -235,16 +255,18 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await Task.Delay(1000);
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.Output.CompleteAsync();
 
             var result = await pipe.Input.ReadAsync();
             Assert.AreEqual(Data, result.Buffer.ToArray());
             tcs.SetResult();
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }
@@ -272,16 +294,18 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             tcs.SetResult();
         };
 
-        var pipe = sNexus.Context.CreatePipe(async pipe =>
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        _ = Task.Run(async () =>
         {
+            await pipe.ReadyTask;
             await pipe.Input.CompleteAsync();
             outputComplete.TrySetResult();
 
             await pipe.Output.WriteAsync(Data);
             await Task.Delay(1000);
         });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
 
         await tcs.Task.Timeout(1);
     }

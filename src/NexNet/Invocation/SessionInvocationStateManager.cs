@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using MemoryPack;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
@@ -65,7 +66,7 @@ internal class SessionInvocationStateManager
 
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        byte[]? arguments,
+        ITuple? arguments,
         INexusSession session,
         CancellationToken? cancellationToken = null)
     {
@@ -76,8 +77,14 @@ internal class SessionInvocationStateManager
 
         message.InvocationId = GetNextId();
         message.MethodId = methodId;
-        message.Arguments = arguments;
         message.Flags = InvocationFlags.None;
+
+        // Try to set the arguments. If we can not, then the arguments are too large.
+        if (!message.TrySetArguments(arguments))
+        {
+            _cacheManager.Return(message);
+            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
+        }
 
         var state = _cacheManager.RegisteredInvocationStateCache.Rent();
 

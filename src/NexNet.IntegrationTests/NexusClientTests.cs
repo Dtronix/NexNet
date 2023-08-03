@@ -325,9 +325,8 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
         server.Start();
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync(true).Timeout(1);
 
-        await client.ReadyTask;
         await Task.Delay(100);
         server.Stop();
 

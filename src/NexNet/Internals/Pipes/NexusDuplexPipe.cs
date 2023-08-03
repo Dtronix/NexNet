@@ -93,11 +93,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     public PipeWriter Output => _outputPipeWriter;
 
     /// <summary>
-    /// Method invoked on a LongRunning task when the pipe is ready for usage on the invoking side.
-    /// </summary>
-    private Func<INexusDuplexPipe, ValueTask>? _onReady;
-
-    /// <summary>
     /// Task which completes when the pipe is ready for usage on the invoking side.
     /// </summary>
     public Task ReadyTask => _readyTcs!.Task;
@@ -145,13 +140,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// <param name="session">The Nexus session.</param>
     /// <param name="onReady">The callback when the pipe is ready.</param>
 
-    public void Setup(byte initialId, INexusSession session, Func<INexusDuplexPipe, ValueTask>? onReady)
+    public void Setup(byte initialId, INexusSession session)
     {
         if (_currentState != State.Unset)
             throw new InvalidOperationException("Can't setup a pipe that is already in use.");
 
         _readyTcs = new TaskCompletionSource();
-        _onReady = onReady;
         _session = session;
         _logger = session.Logger;
         InitialId = initialId;
@@ -197,7 +191,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         InitialId = 0;
         _currentState = State.Unset;
-        _onReady = null;
 
         // Set the task to canceled in case the pipe was reset before it was ready.
         _readyTcs?.TrySetCanceled();
@@ -260,8 +253,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         if (_currentState == State.Unset && updatedState == State.Ready)
         {
             _currentState = State.Ready;
-            if (_onReady != null)
-                TaskUtilities.StartTask<NexusDuplexPipe>(new(_onReady, this));
 
             // Set the ready task.
             _readyTcs?.TrySetResult();

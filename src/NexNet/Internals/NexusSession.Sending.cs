@@ -12,7 +12,7 @@ using Pipelines.Sockets.Unofficial.Buffers;
 namespace NexNet.Internals;
 
 internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
-    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+    where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
    

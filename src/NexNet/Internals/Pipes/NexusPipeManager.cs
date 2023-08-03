@@ -31,24 +31,11 @@ internal class NexusPipeManager
             return null;
 
         var id = GetPartialId();
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id, null);
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id);
         _initializingPipes.TryAdd(id, pipe);
 
         return pipe;
     }
-
-    public INexusDuplexPipe? GetPipe(Func<INexusDuplexPipe, ValueTask> onReady)
-    {
-        if (_isCanceled)
-            return null;
-
-        var id = GetPartialId();
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id, onReady);
-        _initializingPipes.TryAdd(id, pipe);
-
-        return pipe;
-    }
-
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
         _session?.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
@@ -57,7 +44,7 @@ internal class NexusPipeManager
 
         var id = GetCompleteId(otherId, out var thisId);
 
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId, null);
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId);
 
 
         if (!_activePipes.TryAdd(id, pipe))
@@ -70,7 +57,7 @@ internal class NexusPipeManager
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        _session?.Logger?.LogTrace($"NexusPipeManager.DeregisterPipe({pipe.Id});");
+        _session.Logger?.LogTrace($"NexusPipeManager.DeregisterPipe({pipe.Id});");
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;

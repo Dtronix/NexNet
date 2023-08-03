@@ -14,7 +14,7 @@ namespace NexNet;
 /// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
-    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker<TServerProxy>, IInvocationMethodHash
+    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private readonly Timer _pingTimer;
@@ -157,20 +157,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public INexusDuplexPipe CreatePipe()
     {
         var pipe = _session?.PipeManager.GetPipe();
-        if (pipe == null)
-            throw new InvalidOperationException("Client is not connected.");
-
-        return pipe;
-    }
-
-    /// <summary>
-    /// Creates a pipe for sending and receiving byte arrays.
-    /// </summary>
-    /// <param name="onReady">Method invoked when the pipe is ready for usage.</param>
-    /// <returns>Pipe to use.</returns>
-    public INexusDuplexPipe CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
-    {
-        var pipe = _session?.PipeManager.GetPipe(onReady);
         if (pipe == null)
             throw new InvalidOperationException("Client is not connected.");
 

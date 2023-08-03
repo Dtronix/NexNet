@@ -11,8 +11,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using NexNet.Messages;
 using NexNet.Transports;
-using NexNetDemo.Samples.DuplexPipe;
-using NexNetDemo.Samples.DuplexPipeStreaming;
+using NexNetDemo.Samples.InvocationSample;
 using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNetDemo;
@@ -21,8 +20,9 @@ internal class Program
 {
     static async Task Main(string[] args)
     {
-        await new DuplexPipeSimpleSample().UploadSample();
+        //await new DuplexPipeSimpleSample().UploadSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
+        await new InvocationSample().UpdateInfo();
 
 
         Console.ReadLine();

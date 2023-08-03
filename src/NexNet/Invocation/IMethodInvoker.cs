@@ -7,9 +7,7 @@ namespace NexNet.Invocation;
 /// <summary>
 /// Interface to be used by sessions to invoke method on local nexus.
 /// </summary>
-/// <typeparam name="TProxy"></typeparam>
-public interface IMethodInvoker<TProxy>
-    where TProxy : ProxyInvocationBase, IProxyInvoker, new()
+public interface IMethodInvoker
 {
     internal ValueTask InvokeMethod(InvocationMessage message);
     internal void CancelInvocation(InvocationCancellationMessage message);

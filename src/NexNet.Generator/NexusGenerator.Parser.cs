@@ -431,7 +431,7 @@ internal partial class MethodParameterMeta
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
-            SerializedValue = $"ProxyGetDuplexPipeInitialId({Name})";
+            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name})";
         }
         else if(IsCancellationToken)
         {

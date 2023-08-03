@@ -6,7 +6,7 @@ using NexNet.Transports;
 namespace NexNet.Internals;
 
 internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
-    where TNexus : NexusBase<TProxy>, IMethodInvoker<TProxy>, IInvocationMethodHash
+    where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     public required ConfigBase Configs { get; init; }

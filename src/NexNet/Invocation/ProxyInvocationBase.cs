@@ -24,7 +24,6 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private string[]? _modeGroupArguments;
     private INexusSession? _session;
     private SessionManager? _sessionManager;
-    
 
     internal CacheManager CacheManager
     {
@@ -84,24 +83,6 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <summary>
-    /// Checks the passed data and serializes the data into a byte array. 
-    /// </summary>
-    /// <typeparam name="T">Data type to serialize.</typeparam>
-    /// <param name="data">Data to serialize.</param>
-    /// <returns>Serialized data.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Throws if the serialized data exceeds the maximum message length.</exception>
-    protected byte[] SerializeArgumentsCore<T>(in T data)
-    {
-        var arguments = MemoryPackSerializer.Serialize(data);
-
-        // Check for arguments which exceed max length.
-        if (arguments.Length > IInvocationMessage.MaxArgumentSize)
-            throw new ArgumentOutOfRangeException(nameof(arguments), arguments.Length, $"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
-
-        return arguments;
-    }
-
-    /// <summary>
     /// Invokes the specified method on the connected session and waits until the message has been completely sent.
     /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
     /// </summary>
@@ -110,13 +91,19 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <param name="flags">Special flags for the invocation of this method.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    protected async ValueTask ProxyInvokeMethodCore(ushort methodId, byte[]? arguments, InvocationFlags flags)
+    protected async ValueTask __ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
     {
         var message = _cacheManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
-        message.Arguments = arguments;
         message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
+
+        // Try to set the arguments. If we can not, then the arguments are too large.
+        if (!message.TrySetArguments(arguments))
+        {
+            _cacheManager.Return(message);
+            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
+        }
 
         switch (_mode)
         {
@@ -291,29 +278,16 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <summary>
-    /// Gets the Initial Id of the duplex pipe.
-    /// </summary>
-    /// <param name="pipe">Pipe to retrieve the Id of.</param>
-    /// <returns>Initial id of the pipe.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
-    {
-        var setupPipe = Unsafe.As<NexusDuplexPipe>(pipe);
-        return setupPipe.InitialId;
-    }
-
-    /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
     /// and waits the the completion of the invocation.
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
-    /// <param name="pipe">Optional pipe for binary data transmission.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask __ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -343,12 +317,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <typeparam name="TReturn">Expected type to be returned by the remote invocation proxy.</typeparam>
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
-    /// <param name="pipe">Optional pipe for binary data transmission.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, byte[]? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn?> __ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -372,6 +345,18 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
+    /// <summary>
+     /// Gets the Initial Id of the duplex pipe.
+     /// </summary>
+     /// <param name="pipe">Pipe to retrieve the Id of.</param>
+     /// <returns>Initial id of the pipe.</returns>
+     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
+     {
+         return Unsafe.As<NexusDuplexPipe>(pipe).InitialId;
+     }
+     
+
     private void ReturnState(RegisteredInvocationState state)
     {
         if(state.Result != null)
@@ -383,7 +368,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
         ushort methodId,
-        byte[]? arguments,
+        ITuple? arguments,
         CancellationToken? cancellationToken = null)
     {
         // If we are invoking on multiple sessions, then we are not going to wait
@@ -394,7 +379,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
         {
-            await ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None).ConfigureAwait(false);
+            await __ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None).ConfigureAwait(false);
             return null;
         }
 

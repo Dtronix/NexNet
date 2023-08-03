@@ -43,19 +43,10 @@ public abstract class SessionContext<TProxy>
     /// Creates a pipe for use with the current session.
     /// </summary>
     /// <returns>Pipe for communication over teh current session.</returns>
-    public INexusDuplexPipe? CreatePipe()
+    public INexusDuplexPipe CreatePipe()
     {
-        return Session.PipeManager.GetPipe();
-    }
-
-    /// <summary>
-    /// Creates a pipe for use with the current session.
-    /// </summary>
-    /// <param name="onReady">Method to call when the pipe is ready.</param>
-    /// <returns>Pipe for communication over teh current session.</returns>
-    public INexusDuplexPipe? CreatePipe(Func<INexusDuplexPipe, ValueTask> onReady)
-    {
-        return Session.PipeManager.GetPipe(onReady);
+        return Session.PipeManager.GetPipe() 
+               ?? throw new InvalidOperationException("Can't create a pipe due to session being closed.");
     }
 
     /// <summary>
