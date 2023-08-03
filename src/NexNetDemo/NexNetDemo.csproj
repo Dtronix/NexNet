@@ -7,22 +7,10 @@
     <Nullable>enable</Nullable>
     <EventSourceSupport>false</EventSourceSupport>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Compile Remove="Samples\DuplexPipeStreaming\DuplexPipeSreamingSampleNexuses.cs" />
-    <Compile Remove="Samples\DuplexPipeStreaming\DuplexPipeStreamingSample.cs" />
-    <Compile Remove="Samples\DuplexPipe\DuplexPipeSample.cs" />
-    <Compile Remove="Samples\DuplexPipe\DuplexPipeSampleNexuses.cs" />
-  </ItemGroup>
-
   <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="Samples\DuplexPipeStreaming\DuplexPipeSreamingSampleNexuses.cs" />
-    <None Include="Samples\DuplexPipeStreaming\DuplexPipeStreamingSample.cs" />
-    <None Include="Samples\DuplexPipe\DuplexPipeSample.cs" />
-    <None Include="Samples\DuplexPipe\DuplexPipeSampleNexuses.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />

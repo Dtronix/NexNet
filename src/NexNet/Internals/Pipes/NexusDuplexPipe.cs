@@ -194,7 +194,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         // Set the task to canceled in case the pipe was reset before it was ready.
         _readyTcs?.TrySetCanceled();
-        _readyTcs = null;
 
         _inputNexusPipeReader.Reset();
         _outputPipeWriter.Reset();

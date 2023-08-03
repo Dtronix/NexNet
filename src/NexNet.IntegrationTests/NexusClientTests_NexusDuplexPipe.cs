@@ -313,26 +313,22 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    public async Task PipeNotifiesWhenReady(Type type)
+    public async Task PipeReadyCancelsOnDisconnection(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (server, _, cNexus, _, _) = await Setup(type, true);
 
-        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        var pipe = cNexus.CreatePipe();
+
+        // Pause the receiving to test the cancellation
+        server.Config.InternalOnReceive = (session, sequence) =>
         {
-            await Task.Delay(10000);
+            cNexus.DisconnectAsync();
+            Thread.Sleep(10000);
         };
 
-        var pipe = sNexus.Context.CreatePipe();
+        await cNexus.Proxy.ServerTaskValueWithDuplexPipe(pipe);
 
-        _ = Task.Run(async () =>
-        {
-            await pipe.ReadyTask.Timeout(1);
-            tcs.SetResult();
-        });
-
-        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
-
-        await tcs.Task.Timeout(1);
+        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(1);
     }
 
 }

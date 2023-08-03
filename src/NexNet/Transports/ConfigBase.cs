@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.IO.Pipelines;
 using NexNet.Internals;
 
@@ -80,6 +81,7 @@ public abstract class ConfigBase
 
 
     internal Action<INexusSession, byte[]>? InternalOnSend;
+    internal Action<INexusSession, ReadOnlySequence<byte>>? InternalOnReceive;
     internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;

@@ -21,8 +21,7 @@ internal class BasePipeTests : BaseTests
             CreateServerConfig(type, log),
             CreateClientConfig(type, log));
         server.Start();
-        await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.Timeout(1);
+        await client.ConnectAsync(true).Timeout(1);
         return (server, sNexus, client, cNexus, tcs);
     }
 }

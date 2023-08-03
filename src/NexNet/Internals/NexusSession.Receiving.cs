@@ -32,6 +32,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 LastReceived = Environment.TickCount64;
 
+                // Terribly inefficient and only used for testing
+                Config.InternalOnReceive?.Invoke(this, result.Buffer);
+
                 var processResult = await Process(result.Buffer).ConfigureAwait(false);
 
                 _config.Logger?.LogTrace($"Reading completed.");

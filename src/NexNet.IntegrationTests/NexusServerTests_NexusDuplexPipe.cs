@@ -335,6 +335,28 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task PipeReadyCancelsOnDisconnection(Type type)
+    {
+        var (_, sNexus, client, _, _) = await Setup(type, true);
+
+        var pipe = sNexus.Context.CreatePipe();
+
+        // Pause the receiving to test the cancellation
+        client.Config.InternalOnReceive = (session, sequence) =>
+        {
+            sNexus.Context.DisconnectAsync();
+            Thread.Sleep(10000);
+        };
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
+
+        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(1);
+    }
+
     [Test]
     public async Task PipesThrowWhenInvokingOnMultipleConnections()
     {
@@ -373,5 +395,4 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await sNexus.Context.Clients.Client(1).ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe());
     }
-
 }
