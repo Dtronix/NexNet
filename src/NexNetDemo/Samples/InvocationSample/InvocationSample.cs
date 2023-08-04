@@ -12,7 +12,7 @@ public class InvocationSample : SampleBase
     {
         var client = InvocationSampleClientNexus.CreateClient(ClientConfig, new InvocationSampleClientNexus());
         var server = InvocationSampleServerNexus.CreateServer(ServerConfig, () => new InvocationSampleServerNexus());
-        server.Start();
+        await server.StartAsync();
         await client.ConnectAsync(true);
 
 

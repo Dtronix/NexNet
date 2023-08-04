@@ -41,7 +41,7 @@ public class MessengerSample : SampleBase
     public async Task RunServer()
     {
         var server = MessengerSampleServerNexus.CreateServer(ServerConfig, () => new MessengerSampleServerNexus());
-        server.Start();
+        await server.StartAsync();
 
         if(server.StoppedTask != null)
             await server.StoppedTask;
