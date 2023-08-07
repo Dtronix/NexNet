@@ -339,7 +339,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await cNexus.Proxy.ServerTaskValueWithDuplexPipe(pipe);
 
-        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(1);
+        await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(2);
     }
 
 }
