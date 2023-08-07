@@ -127,7 +127,8 @@ public class BaseTests
     protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
         var logger = log ? new ConsoleLogger("SV") : null;
-        Loggers.Add(logger!);
+        if(logger != null)
+            Loggers.Add(logger);
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -196,7 +197,8 @@ public class BaseTests
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
         var logger = log ? new ConsoleLogger("CL") : null;
-        Loggers.Add(logger!);
+        if (logger != null)
+            Loggers.Add(logger);
 
         return CreateClientConfigWithLog(type, logger);
     }
