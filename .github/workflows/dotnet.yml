@@ -21,6 +21,9 @@ jobs:
         fetch-depth: 0
         submodules: 'recursive'
 
+    - name: Install msquic
+      run: sudo apt install libmsquic
+
     - name: Install .NET
       uses: actions/setup-dotnet@v3
       with:
@@ -28,7 +31,7 @@ jobs:
         source-url: https://api.nuget.org/v3/index.json
       env:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
-        
+
     - name: Build
       run: dotnet build src -c Release
       
