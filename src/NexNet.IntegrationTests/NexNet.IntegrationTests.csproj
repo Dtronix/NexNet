@@ -10,6 +10,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="BufferWriterTests.cs" />
     <Compile Remove="NexusClientTests.cs" />
     <Compile Remove="NexusClientTests_Cancellation.cs" />
     <Compile Remove="NexusClientTests_InvalidInvocations.cs" />
@@ -29,6 +30,7 @@
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="BufferWriterTests.cs" />
     <None Include="NexusClientTests.cs" />
     <None Include="NexusClientTests_Cancellation.cs" />
     <None Include="NexusClientTests_InvalidInvocations.cs" />

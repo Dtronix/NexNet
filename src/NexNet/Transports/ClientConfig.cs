@@ -35,7 +35,7 @@ public abstract class ClientConfig : ConfigBase
     /// Returns the transport configured and connected for the overridden configurations.
     /// </summary>
     /// <returns>Connected transport.</returns>
-    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    /// <exception cref="TransportException">Throws socket exception upon failure to connect.</exception>
     internal ValueTask<ITransport> ConnectTransport()
     {
         return OnConnectTransport();
@@ -45,7 +45,7 @@ public abstract class ClientConfig : ConfigBase
     /// Override to return the transport configured and connected for the overridden configurations.
     /// </summary>
     /// <returns>Connected transport.</returns>
-    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
+    /// <exception cref="TransportException">Throws socket exception upon failure to connect.</exception>
     protected abstract ValueTask<ITransport> OnConnectTransport();
 
     internal Action? InternalOnClientConnect;

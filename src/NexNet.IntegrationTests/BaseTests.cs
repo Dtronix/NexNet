@@ -241,7 +241,7 @@ public class BaseTests
         using var udpServer = new UdpClient();
         udpServer.ExclusiveAddressUse = true;
         udpServer.Client.Bind(localEndPoint);
-        return ((IPEndPoint)udpServer.Client.LocalEndPoint).Port;
+        return ((IPEndPoint)udpServer.Client.LocalEndPoint!).Port;
     }
 
     public static async Task AssertThrows<T>(Func<Task> task)

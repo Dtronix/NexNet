@@ -14,7 +14,7 @@ internal partial class NexusSession<TNexus, TProxy>
     public async Task StartReadAsync()
     {
         _config.Logger?.LogTrace($"NexNetSession.StartReadAsync()");
-        State = ConnectionState.Connected;
+        _state = (int)ConnectionState.Connected;
         try
         {
             while (true)

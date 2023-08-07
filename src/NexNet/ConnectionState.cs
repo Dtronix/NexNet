@@ -3,7 +3,7 @@
 /// <summary>
 /// State for the connection.
 /// </summary>
-public enum ConnectionState
+public enum ConnectionState : int
 {
     /// <summary>
     /// Unset state.  Unused.
