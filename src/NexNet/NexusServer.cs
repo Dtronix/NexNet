@@ -15,10 +15,17 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>, IAsyncDisposable
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
+    private enum State
+    {
+        Stopped,
+        Running,
+        Disposed
+    }
+
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
     private readonly ServerConfig _config;
@@ -27,7 +34,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private ITransportListener? _listener;
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
     private TaskCompletionSource? _stoppedTcs;
-
+    private volatile int _state = (int)State.Stopped;
     /// <summary>
     /// Cache for all the server nexus contexts.
     /// </summary>
@@ -86,9 +93,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
+        // Only execute if the server is stopped and not disposed.
+        var previousState = Interlocked.CompareExchange(ref _state, (int)State.Running, (int)State.Stopped);
+
+        if (previousState != (int)State.Stopped)
+            return;
+
         if (_listener != null) throw new InvalidOperationException("Server is already running");
         _stoppedTcs?.TrySetResult();
-        _stoppedTcs = new TaskCompletionSource();
+        _stoppedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
 
         StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
@@ -99,10 +112,14 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <summary>
     /// Stops the server.
     /// </summary>
-    public void Stop()
+    public async Task StopAsync()
     {
-        var listener = _listener;
-        _listener = null;
+        var previousState = Interlocked.CompareExchange(ref _state, (int)State.Stopped, (int)State.Running);
+
+        if(previousState != (int)State.Running)
+            return;
+
+        var listener = Interlocked.Exchange(ref _listener, null);
         if (listener != null)
         {
             try
@@ -112,10 +129,19 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
                 foreach (var session in _sessionManager.Sessions)
                 {
-                    session.Value.DisconnectAsync(DisconnectReason.ServerShutdown);
+                    try
+                    {
+                        await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        // Ignore exceptions
+                        _config.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
+                    }
+
                 }
 
-                listener.Close(!_config.InternalNoLingerOnShutdown);
+                await listener.CloseAsync(!_config.InternalNoLingerOnShutdown).ConfigureAwait(false);
             }
             catch
             {
@@ -127,11 +153,17 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     }
 
     /// <summary>
-    /// Release any resources associated with this instance
+    /// Disposes the server. Server can not be restarted after this.
     /// </summary>
-    public void Dispose()
+    /// <returns>Value task which completes upon disposal.</returns>
+    public async ValueTask DisposeAsync()
     {
-        Stop();
+        var previousState = Interlocked.Exchange(ref _state, (int)State.Disposed);
+
+        if (previousState == (int)State.Disposed)
+            return;
+
+        await StopAsync().ConfigureAwait(false);
     }
 
     private static async void RunClientAsync(object? boxed)
@@ -187,20 +219,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             //OnClientFaulted(in client, ex);
         }
-        /*finally
-        {
-            if (arguments.Transport is IDisposable d)
-            {
-                try
-                {
-                    d.Dispose();
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
-        }*/
     }
 
 
@@ -251,7 +269,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         catch (Exception ex)
         {
             _config.Logger?.LogError(ex, "Server shut down.");
-            Stop();
+            await StopAsync().ConfigureAwait(false);
         }
     }
 
@@ -273,4 +291,5 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
         task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
     }
+
 }

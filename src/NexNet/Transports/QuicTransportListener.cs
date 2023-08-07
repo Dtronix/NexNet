@@ -22,7 +22,7 @@ internal class QuicTransportListener : ITransportListener
         _listener = listener;
     }
 
-    public ValueTask Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         return _listener.DisposeAsync();
     }

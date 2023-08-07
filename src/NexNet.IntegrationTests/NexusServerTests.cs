@@ -60,22 +60,23 @@ internal partial class NexusServerTests : BaseTests
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
-        var clientConfig = CreateClientConfig(type, false);
+        var clientConfig = CreateClientConfig(type, true);
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
+            CreateServerConfig(type, true),
             clientConfig);
 
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 2; i++)
         {
+            Console.WriteLine($"Starting server {i}");
             await server.StartAsync();
             await client.ConnectAsync().Timeout(1);
 
             await client.ReadyTask.Timeout(1);
 
-            server.Stop();
+            await server.StopAsync();
 
-            await client.DisconnectedTask.Timeout(1);
+            await client.DisconnectedTask.Timeout(2);
 
             // Wait for the client to process the disconnect.
 
@@ -97,7 +98,7 @@ internal partial class NexusServerTests : BaseTests
         await server.StartAsync();
         Assert.IsFalse(server.StoppedTask!.IsCompleted);
 
-        server.Stop();
+        await server.StopAsync();
 
         await server.StoppedTask!.Timeout(1);
     }

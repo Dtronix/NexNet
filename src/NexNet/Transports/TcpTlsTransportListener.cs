@@ -17,7 +17,7 @@ internal class TcpTlsTransportListener : ITransportListener
         _socket = socket;
     }
 
-    public ValueTask Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
