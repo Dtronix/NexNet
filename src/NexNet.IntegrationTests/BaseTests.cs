@@ -7,6 +7,7 @@ using System.Security.Cryptography.X509Certificates;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests;
 
@@ -26,7 +27,7 @@ public class BaseTests
     //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
     protected int? CurrentUdpPort;
-
+    protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
@@ -42,6 +43,12 @@ public class BaseTests
     {
         _socketDirectory?.Delete(true);
         Trace.Flush();
+        foreach (var nexusLogger in Loggers)
+        {
+            nexusLogger.LogEnabled = false;
+        }
+        Loggers.Clear();
+
     }
 
     [TearDown]
@@ -122,6 +129,7 @@ public class BaseTests
     protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
         var logger = log ? new ConsoleLogger("SV") : null;
+        Loggers.Add(logger!);
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -190,6 +198,8 @@ public class BaseTests
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
         var logger = log ? new ConsoleLogger("CL") : null;
+        Loggers.Add(logger!);
+
         return CreateClientConfigWithLog(type, logger);
     }
 

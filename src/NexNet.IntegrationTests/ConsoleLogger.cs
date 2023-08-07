@@ -6,6 +6,7 @@ public class ConsoleLogger : INexusLogger
 {
     private readonly string _prefix;
     private DateTime _startTime = DateTime.Now;
+    public bool LogEnabled = true;
 
     public ConsoleLogger(string prefix)
     {
@@ -13,6 +14,9 @@ public class ConsoleLogger : INexusLogger
     }
     public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
     {
+        if (!LogEnabled)
+            return;
+
         Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix}: {message} {exception}");
     }
 }
