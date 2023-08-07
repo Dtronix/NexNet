@@ -358,10 +358,10 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         var pipe = sNexus.Context.CreatePipe();
 
         // Pause the receiving to test the cancellation
-        client.Config.InternalOnReceive = (session, sequence) =>
+        client.Config.InternalOnReceive = async (session, sequence) =>
         {
-            sNexus.Context.DisconnectAsync();
-            Thread.Sleep(10000);
+            await sNexus.Context.DisconnectAsync();
+            await Task.Delay(100000);
         };
 
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);

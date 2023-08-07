@@ -37,35 +37,35 @@ jobs:
       
     - name: Execute integration tests
       run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
-#
-#    - name: Execute generator tests
-#      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
-#      
-#    - name: Pack NexNet
-#      run: dotnet pack src/NexNet -c Release -o ./artifacts
-#      
-#    - name: Pack NexNet.Generator
-#      run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
-#      
-#    - name: Export artifacts
-#      uses: actions/upload-artifact@v3
-#      with:
-#        path: artifacts/*
-#        
-#    - name: Get tag name
-#      if: startsWith(github.ref, 'refs/tags/')
-#      uses: olegtarasov/get-tag@v2.1
-#      id: tagName
-#        
-#    - name: Create release
-#      uses: softprops/action-gh-release@v1
-#      if: startsWith(github.ref, 'refs/tags/')
-#      with:
-#        name: "NexNet ${{ steps.tagName.outputs.tag }} Released"
-#        files: |
-#          artifacts/*.nupkg
-#          artifacts/*.snupkg
-#      
-#    - name: Push Nuget packages
-#      if: startsWith(github.ref, 'refs/tags/')
-#      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ secrets.ORG_NUGET_AUTH_TOKEN }} --skip-duplicate
+
+    - name: Execute generator tests
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
+      
+    - name: Pack NexNet
+      run: dotnet pack src/NexNet -c Release -o ./artifacts
+      
+    - name: Pack NexNet.Generator
+      run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
+      
+    - name: Export artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        path: artifacts/*
+        
+    - name: Get tag name
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: olegtarasov/get-tag@v2.1
+      id: tagName
+        
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        name: "NexNet ${{ steps.tagName.outputs.tag }} Released"
+        files: |
+          artifacts/*.nupkg
+          artifacts/*.snupkg
+      
+    - name: Push Nuget packages
+      if: startsWith(github.ref, 'refs/tags/')
+      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ secrets.ORG_NUGET_AUTH_TOKEN }} --skip-duplicate

@@ -44,9 +44,7 @@ public class BaseTests
         _socketDirectory?.Delete(true);
         Trace.Flush();
         foreach (var nexusLogger in Loggers)
-        {
             nexusLogger.LogEnabled = false;
-        }
         Loggers.Clear();
 
     }
