@@ -85,7 +85,7 @@ internal class TcpTlsTransport : ITransport
         }
         catch (SocketException e)
         {
-            throw new TransportException(SocketTransport.SocketErrorToTransportError(e.SocketErrorCode), e.Message, e);
+            throw new TransportException(e.SocketErrorCode, e.Message, e);
         }
         catch (Exception e)
         {

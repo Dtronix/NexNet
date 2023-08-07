@@ -59,32 +59,6 @@ internal class SocketTransport : ITransport
         return ValueTask.FromResult((ITransport)new SocketTransport(pipe));
     }
 
-    internal static TransportError SocketErrorToTransportError(SocketError error) =>
-        error switch
-        {
-            SocketError.ConnectionRefused => TransportError.ConnectionRefused,
-            SocketError.ConnectionReset => TransportError.ConnectionReset,
-            SocketError.ConnectionAborted => TransportError.ConnectionAborted,
-            SocketError.HostUnreachable => TransportError.Unreachable,
-            SocketError.HostNotFound => TransportError.Unreachable,
-            SocketError.TimedOut => TransportError.ConnectionTimeout,
-            SocketError.NetworkUnreachable => TransportError.Unreachable,
-            SocketError.NetworkDown => TransportError.Unreachable,
-            SocketError.NetworkReset => TransportError.Unreachable,
-            SocketError.Shutdown => TransportError.OperationAborted,
-            SocketError.NotConnected => TransportError.OperationAborted,
-            SocketError.AddressNotAvailable => TransportError.Unreachable,
-            SocketError.AddressAlreadyInUse => TransportError.AddressInUse,
-            SocketError.AccessDenied => TransportError.Unreachable,
-            SocketError.MessageSize => TransportError.ProtocolError,
-            SocketError.ProtocolNotSupported => TransportError.ProtocolError,
-            SocketError.ProtocolOption => TransportError.ProtocolError,
-            SocketError.ProtocolType => TransportError.ProtocolError,
-            SocketError.SocketNotSupported => TransportError.ProtocolError,
-            _ => TransportError.InternalError
-        };
-
-
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
@@ -126,28 +100,20 @@ internal class SocketTransport : ITransport
                     _ = Task.Run(ConnectionTimeout);
                 }
 
-                try
-                {
-                    if (!socket.ConnectAsync(args))
-                        args.Complete();
+                if (!socket.ConnectAsync(args))
+                    args.Complete();
 
-                    await args;
-                }
-                catch (SocketException e)
-                {
-                    throw new TransportException(SocketErrorToTransportError(e.SocketErrorCode), e.Message, e);
-                }
-
+                await args;
 
                 timeoutCancellation.Cancel();
             }
-            catch (SocketException)
+            catch (SocketException e)
             {
-                throw;
+                throw new TransportException(e.SocketErrorCode, e.Message, e);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new SocketException((int)SocketError.NotConnected);
+                throw new TransportException(SocketError.NotConnected, e.Message, e);
             }
 
         }
