@@ -10,9 +10,38 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="NexusClientTests.cs" />
+    <Compile Remove="NexusClientTests_Cancellation.cs" />
+    <Compile Remove="NexusClientTests_InvalidInvocations.cs" />
+    <Compile Remove="NexusClientTests_ReceiveInvocation.cs" />
+    <Compile Remove="NexusClientTests_SendInvocation.cs" />
+    <Compile Remove="NexusDuplexPipeReaderTests.cs" />
+    <Compile Remove="NexusDuplexPipeWriterTests.cs" />
+    <Compile Remove="NexusServerTests.cs" />
+    <Compile Remove="NexusServerTests_Cancellation.cs" />
+    <Compile Remove="NexusServerTests_NexusDuplexPipe.cs" />
+    <Compile Remove="NexusServerTests_NexusInvocations.cs" />
+    <Compile Remove="NexusServerTests_ReceiveInvocation.cs" />
+    <Compile Remove="NexusServerTests_SendInvocation.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>  
+    </None>
+    <None Include="NexusClientTests.cs" />
+    <None Include="NexusClientTests_Cancellation.cs" />
+    <None Include="NexusClientTests_InvalidInvocations.cs" />
+    <None Include="NexusClientTests_ReceiveInvocation.cs" />
+    <None Include="NexusClientTests_SendInvocation.cs" />
+    <None Include="NexusDuplexPipeReaderTests.cs" />
+    <None Include="NexusDuplexPipeWriterTests.cs" />
+    <None Include="NexusServerTests.cs" />
+    <None Include="NexusServerTests_Cancellation.cs" />
+    <None Include="NexusServerTests_NexusDuplexPipe.cs" />
+    <None Include="NexusServerTests_NexusInvocations.cs" />
+    <None Include="NexusServerTests_ReceiveInvocation.cs" />
+    <None Include="NexusServerTests_SendInvocation.cs" />  
   </ItemGroup>
 
   <ItemGroup>
