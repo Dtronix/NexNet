@@ -244,7 +244,7 @@ internal partial class NexusClientTests : BaseTests
 
         await server.StartAsync();
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(5);
     }
     
     [TestCase(Type.Uds)]

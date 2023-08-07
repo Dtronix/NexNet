@@ -25,6 +25,7 @@ public class BaseTests
     protected UnixDomainSocketEndPoint? CurrentPath;
     //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
+    protected int? CurrentUdpPort;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -48,6 +49,7 @@ public class BaseTests
     {
         CurrentPath = null;
         CurrentTcpPort = null;
+        CurrentUdpPort = null;
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -96,11 +98,11 @@ public class BaseTests
         }
         else if (type == Type.Quic)
         {
-            CurrentTcpPort ??= FreeTcpPort();
+            CurrentUdpPort ??= FreeUdpPort();
 
             return new QuicServerConfig()
             {
-                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentUdpPort.Value),
                 Logger = logger,
                 SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
                 {
@@ -166,11 +168,11 @@ public class BaseTests
         }
         else if (type == Type.Quic)
         {
-            CurrentTcpPort ??= FreeTcpPort();
+            CurrentUdpPort ??= FreeUdpPort();
 
             return new QuicClientConfig()
             {
-                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentUdpPort.Value),
                 Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
@@ -231,6 +233,15 @@ public class BaseTests
         int port = ((IPEndPoint)l.LocalEndpoint).Port;
         l.Stop();
         return port;
+    }
+
+    private int FreeUdpPort()
+    {
+        IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+        using var udpServer = new UdpClient();
+        udpServer.ExclusiveAddressUse = true;
+        udpServer.Client.Bind(localEndPoint);
+        return ((IPEndPoint)udpServer.Client.LocalEndPoint).Port;
     }
 
     public static async Task AssertThrows<T>(Func<Task> task)
