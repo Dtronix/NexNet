@@ -324,7 +324,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
     /*[TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]*/
+    [TestCase(Type.TcpTls)]*/ 
     [TestCase(Type.Quic)]
     public async Task PipeReadyCancelsOnDisconnection(Type type)
     {
