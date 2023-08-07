@@ -26,7 +26,7 @@ internal class SocketTransport : ITransport
         Output = socketConnection.Output;
     }
 
-    public ValueTask Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
@@ -42,7 +42,7 @@ internal class SocketTransport : ITransport
 
     public void Dispose()
     {
-        Close(true);
+        CloseAsync(true);
     }
 
     /// <summary>

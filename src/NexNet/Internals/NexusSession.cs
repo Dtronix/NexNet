@@ -202,7 +202,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 _config.Logger?.LogError(e, "Reconnection failed with exception.");
                 if(transport != null)
-                    await transport.Close(true).ConfigureAwait(false);
+                    await transport.CloseAsync(true).ConfigureAwait(false);
             }
         }
 
@@ -239,7 +239,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (_config.InternalNoLingerOnShutdown)
         {
-            await _transportConnection.Close(false).ConfigureAwait(false);
+            await _transportConnection.CloseAsync(false).ConfigureAwait(false);
             return;
         }
         else
@@ -258,7 +258,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
 
             _pipeOutput = null;
-            _transportConnection.Close(true);
+            await _transportConnection.CloseAsync(true);
         }
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client

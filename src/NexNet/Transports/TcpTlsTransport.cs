@@ -26,7 +26,7 @@ internal class TcpTlsTransport : ITransport
         Output = PipeWriter.Create(sslStream);
     }
 
-    public ValueTask Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
