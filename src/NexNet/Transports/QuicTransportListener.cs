@@ -27,13 +27,13 @@ internal class QuicTransportListener : ITransportListener
         return _listener.DisposeAsync();
     }
 
-    public async Task<ITransport?> AcceptTransportAsync()
+    public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
+        QuicConnection connection = null!;
 
-        var connection = await _listener.AcceptConnectionAsync(CancellationToken.None).ConfigureAwait(false);
-        
         try
         {
+            connection = await _listener.AcceptConnectionAsync(cancellationToken).ConfigureAwait(false);
             return await QuicTransport.CreateFromConnection(connection, _config).ConfigureAwait(false);
         }
         catch (Exception e)
@@ -83,7 +83,7 @@ internal class QuicTransportListener : ITransportListener
 
             // Callback to provide options for the incoming connections, it gets called once per each connection.
             ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
-            ListenBacklog = config.AcceptorBacklog,
+            ListenBacklog = config.AcceptorBacklog
         }, cancellationToken);
 
         return new QuicTransportListener(config, listener);

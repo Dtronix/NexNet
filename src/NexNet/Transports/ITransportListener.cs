@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Threading;
+using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
@@ -19,6 +20,7 @@ public interface ITransportListener
     /// <summary>
     /// Listens and accepts new transport connections.
     /// </summary>
-    /// <returns></returns>
-    public Task<ITransport?> AcceptTransportAsync();
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>New transport connection.  Null if the listener is closed.</returns>
+    public ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken);
 }

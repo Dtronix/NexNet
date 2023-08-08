@@ -114,9 +114,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     public async Task StopAsync()
     {
-        var previousState = Interlocked.CompareExchange(ref _state, (int)State.Stopped, (int)State.Running);
-
-        if(previousState != (int)State.Running)
+        if(Interlocked.CompareExchange(ref _state, (int)State.Stopped, (int)State.Running) != (int)State.Running)
             return;
 
         var listener = Interlocked.Exchange(ref _listener, null);
@@ -234,9 +232,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         try
         {
-            while (true)
+            while (_state == (int)State.Running)
             {
-                var clientTransport = await _listener!.AcceptTransportAsync().ConfigureAwait(false);
+                var clientTransport = await _listener!.AcceptTransportAsync(default).ConfigureAwait(false);
 
                 if(clientTransport == null)
                     continue;
