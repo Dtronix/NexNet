@@ -13,8 +13,8 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         await server.StartAsync();
         await client.ConnectAsync(true).Timeout(1);

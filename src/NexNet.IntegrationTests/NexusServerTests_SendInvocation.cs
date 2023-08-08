@@ -169,8 +169,8 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
     
     private async Task InvokeFromServerAndVerifySent(Type type, InvocationMessage expectedMessage, Action<ServerNexus> action)
     {
-        var clientConfig = CreateClientConfig(type, false);
-        var serverConfig = CreateServerConfig(type, false);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 

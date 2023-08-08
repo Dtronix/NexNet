@@ -291,8 +291,8 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         await server.StartAsync();
 

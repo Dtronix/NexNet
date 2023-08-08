@@ -13,10 +13,10 @@ internal partial class NexusServerTests : BaseTests
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var serverConfig = CreateServerConfig(type, false);
+        var serverConfig = CreateServerConfig(type);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             serverConfig,
-            CreateClientConfig(type, false));
+            CreateClientConfig(type));
 
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
@@ -35,8 +35,8 @@ internal partial class NexusServerTests : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         serverNexus.OnConnectedEvent = nexus =>
         {
@@ -92,8 +92,8 @@ internal partial class NexusServerTests : BaseTests
     public async Task StopsAndReleasesStoppedTcs(Type type)
     {
         var (server, _, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         
         Assert.IsNull(server.StoppedTask);

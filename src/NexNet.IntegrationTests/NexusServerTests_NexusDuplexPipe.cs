@@ -92,26 +92,32 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [Repeat(30)]
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var completedTcs = new TaskCompletionSource();
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            await Task.Delay(150);
+
+            // Wait for the client to complete the pipe
+            await completedTcs.Task;
+
+            await Task.Delay(100);
             var result = await pipe.Output.WriteAsync(Data);
+
             Assert.IsTrue(result.IsCompleted);
             tcs.SetResult();
         };
 
         var pipe = cNexus.Context.CreatePipe();
         await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe);
+        await pipe.ReadyTask;
 
-        _ = Task.Run(async () =>
-        {
-            await pipe.ReadyTask;
-            await pipe.CompleteAsync();
-        });
+        await pipe.CompleteAsync();
+        // Notify the server that the pipe is complete
+        completedTcs.SetResult();
 
         await tcs.Task.Timeout(1);
     }
