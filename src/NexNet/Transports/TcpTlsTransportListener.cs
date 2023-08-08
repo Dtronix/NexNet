@@ -53,6 +53,14 @@ internal class TcpTlsTransportListener : ITransportListener
         return null;
     }
 
+    /// <summary>
+    /// Creates a new <see cref="ITransportListener"/> for the given <see cref="TcpTlsServerConfig"/>.
+    /// </summary>
+    /// <param name="config">Configuration for the listener.</param>
+    /// <param name="endPoint">Connection endpoint.</param>
+    /// <param name="socketType">Type of socket.</param>
+    /// <param name="protocolType">Protocol type.</param>
+    /// <returns>Configured Transport listener.</returns>
     public static ITransportListener Create(TcpTlsServerConfig config, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
     {
         Socket listener = new Socket(endPoint.AddressFamily, socketType, protocolType);
