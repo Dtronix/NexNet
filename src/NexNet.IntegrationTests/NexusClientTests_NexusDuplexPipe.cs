@@ -328,7 +328,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task PipeReadyCancelsOnDisconnection(Type type)
     {
-        Console.WriteLine("---PipeReadyCancelsOnDisconnection Begin");
         var (server, _, cNexus, _, _) = await Setup(type);
 
         var pipe = cNexus.CreatePipe();
