@@ -61,9 +61,8 @@ internal partial class NexusServerTests : BaseTests
     {
 
         var clientConfig = CreateClientConfig(type, true);
-        clientConfig.ConnectionTimeout = 100000000;
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, true),
+            CreateServerConfig(type),
             clientConfig);
 
 
@@ -72,7 +71,7 @@ internal partial class NexusServerTests : BaseTests
             Console.WriteLine($"Starting server {i}");
             await server.StartAsync();
 
-            await client.ConnectAsync().Timeout(1000);
+            await client.ConnectAsync().Timeout(1);
 
             await client.ReadyTask.Timeout(1);
 

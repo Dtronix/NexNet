@@ -100,11 +100,10 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-
             // Wait for the client to complete the pipe
             await completedTcs.Task;
 
-            await Task.Delay(100);
+            await Task.Delay(300);
             var result = await pipe.Output.WriteAsync(Data);
 
             Assert.IsTrue(result.IsCompleted);
