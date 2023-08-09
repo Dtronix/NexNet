@@ -80,11 +80,11 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(30)]
+    [Repeat(100)]
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
-        Console.WriteLine("Starting test");
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        //Console.WriteLine("Starting test");
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var completedTcs = new TaskCompletionSource();
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
@@ -97,7 +97,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             {
                 result = await pipe.Output.WriteAsync(Data);
 
-                Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
+                //Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
                 if (result.IsCompleted)
                     break;
 
