@@ -128,6 +128,9 @@ internal class NexusPipeWriter : PipeWriter
     public override async ValueTask<FlushResult> FlushAsync(
         CancellationToken cancellationToken = new CancellationToken())
     {
+        if (_isCompleted)
+            return new FlushResult(_isCanceled, _isCompleted);
+
         static void CancelCallback(object? ctsObject)
         {
             Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();

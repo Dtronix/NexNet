@@ -63,7 +63,8 @@ internal class SocketTransport : ITransport
     /// Open a new or existing socket as a client
     /// </summary>
     /// 
-    public static async ValueTask<ITransport> ConnectAsync(ClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
+    public static async ValueTask<ITransport> ConnectAsync(ClientConfig clientConfig, EndPoint endPoint,
+        SocketType socketType, ProtocolType protocolType, CancellationToken cancellationToken)
     {
         var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
 
@@ -80,6 +81,7 @@ internal class SocketTransport : ITransport
             try
             {
                 using var timeoutCancellation = new CancellationTokenSource();
+                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
                 // Connection timeout task.
                 async Task ConnectionTimeout()
                 {

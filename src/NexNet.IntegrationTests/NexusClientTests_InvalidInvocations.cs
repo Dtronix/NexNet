@@ -17,7 +17,7 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             CreateClientConfig(type));
 
         await server.StartAsync();
-        await client.ConnectAsync(true).Timeout(1);
+        await client.ConnectAsync().Timeout(1);
 
         var data = new byte[65521];
         await AssertThrows<ArgumentOutOfRangeException>(() => clientNexus.Context.Proxy.ServerData(data).AsTask())

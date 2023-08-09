@@ -72,8 +72,6 @@ internal partial class NexusServerTests : BaseTests
 
             await client.ConnectAsync().Timeout(1);
 
-            await client.ReadyTask.Timeout(1);
-
             await server.StopAsync();
 
             await client.DisconnectedTask.Timeout(2);

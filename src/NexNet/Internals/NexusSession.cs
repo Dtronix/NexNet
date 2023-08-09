@@ -189,7 +189,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 _config.Logger?.LogTrace($"Reconnection attempt {count}");
 
-                transport = await clientConfig.ConnectTransport().ConfigureAwait(false);
+                transport = await clientConfig.ConnectTransport(default).ConfigureAwait(false);
                 _state = (int)ConnectionState.Connecting;
 
                 _pipeInput = transport.Input;

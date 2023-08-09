@@ -35,9 +35,9 @@ public class QuicClientConfig : ClientConfig
     public required EndPoint EndPoint { get; set; }
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return QuicTransport.ConnectAsync(this);
+        return QuicTransport.ConnectAsync(this, cancellationToken);
     }
 }
 

@@ -129,7 +129,8 @@ internal class QuicTransport : ITransport
     /// Open a new or existing socket as a client
     /// </summary>
     /// 
-    public static async ValueTask<ITransport> ConnectAsync(QuicClientConfig clientConfig)
+    public static async ValueTask<ITransport> ConnectAsync(QuicClientConfig clientConfig,
+        CancellationToken cancellationToken)
     {
         if (QuicConnection.IsSupported == false)
 
@@ -149,6 +150,8 @@ internal class QuicTransport : ITransport
         };
 
         using var timeoutCancellation = new CancellationTokenSource(clientConfig.ConnectionTimeout);
+        await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
+
         QuicConnection quicConnection;
         try
         {

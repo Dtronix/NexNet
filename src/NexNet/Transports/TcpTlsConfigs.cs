@@ -33,9 +33,9 @@ public sealed class TcpTlsClientConfig : TcpClientConfig
     public int SslConnectionTimeout { get; set; } = 5000;
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return TcpTlsTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
+        return TcpTlsTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp, cancellationToken);
     }
 }
 

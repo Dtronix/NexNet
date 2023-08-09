@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Transports;
 
@@ -20,12 +21,6 @@ public interface INexusClient : IAsyncDisposable
     ClientConfig Config { get; }
 
     /// <summary>
-    /// Task which completes upon the completed connection and optional authentication of the client.
-    /// Null when the client is has not started connection or after disconnection.
-    /// </summary>
-    Task? ReadyTask { get; }
-
-    /// <summary>
     /// Task which completes upon the disconnection of the client.
     /// </summary>
     Task DisconnectedTask { get; }
@@ -33,9 +28,10 @@ public interface INexusClient : IAsyncDisposable
     /// <summary>
     /// Connects to the server.
     /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the connection.</param>
     /// <returns>Task for completion</returns>
     /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
-    Task ConnectAsync();
+    Task ConnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Disconnects from the server.

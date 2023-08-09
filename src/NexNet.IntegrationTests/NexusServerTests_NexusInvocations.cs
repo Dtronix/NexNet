@@ -22,8 +22,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync();
         await client.ConnectAsync().Timeout(1);
 
-        await client.ReadyTask.Timeout(1);
-
         using var context = server.GetContext();
         await context.Clients.All.ClientTask();
         await tcs.Task.Timeout(1);
@@ -55,8 +53,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await server.StartAsync();
         await client.ConnectAsync().Timeout(1);
-
-        await client.ReadyTask.Timeout(1);
 
         using var context = server.GetContext();
         await context.Clients.All.ClientTask();
@@ -103,8 +99,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await client.ConnectAsync().Timeout(1);
 
-        await client.ReadyTask.Timeout(1);
-
         await tcs1.Task.Timeout(1);
     }
 
@@ -123,8 +117,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await server.StartAsync();
         await client.ConnectAsync().Timeout(1);
-
-        await client.ReadyTask.Timeout(1);
 
         using var context = server.GetContext();
 
@@ -166,9 +158,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
 
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
-        
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);
     }
@@ -205,9 +194,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
-
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
 
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);
@@ -249,9 +235,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
 
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
-
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);
     }
@@ -290,9 +273,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
-
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
 
         await tcs.Task.Timeout(1);
 
@@ -334,9 +314,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
 
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
-
         await tcs.Task.Timeout(1);
 
         Assert.AreEqual(1, invocationCount);
@@ -376,9 +353,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await client1.ConnectAsync().Timeout(1);
         await client2.ConnectAsync().Timeout(1);
-
-        await client1.ReadyTask.Timeout(1);
-        await client2.ReadyTask.Timeout(1);
 
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);

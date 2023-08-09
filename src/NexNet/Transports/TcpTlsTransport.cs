@@ -61,7 +61,8 @@ internal class TcpTlsTransport : ITransport
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static async ValueTask<ITransport> ConnectAsync(TcpTlsClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
+    public static async ValueTask<ITransport> ConnectAsync(TcpTlsClientConfig clientConfig, EndPoint endPoint,
+        SocketType socketType, ProtocolType protocolType, CancellationToken cancellationToken)
     {
         using var timeoutCancellation = new CancellationTokenSource(clientConfig.ConnectionTimeout);
 
@@ -76,7 +77,8 @@ internal class TcpTlsTransport : ITransport
             var networkStream = new NetworkStream(socket, false);
             var sslStream = new SslStream(networkStream, true);
 
-            var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
+            using var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
+            await using var cancellationTokenRegistration = cancellationToken.Register(sslTimeout.Cancel);
 
             await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token)
                 .ConfigureAwait(false);

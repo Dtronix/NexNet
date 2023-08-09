@@ -29,9 +29,9 @@ public sealed class UdsClientConfig : ClientConfig
     public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.IP);
+        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.IP, cancellationToken);
     }
 }
 

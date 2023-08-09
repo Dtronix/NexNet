@@ -61,9 +61,9 @@ public class TcpClientConfig : ClientConfig
     public required EndPoint EndPoint { get; set; }
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
+        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp, cancellationToken);
     }
 }
 

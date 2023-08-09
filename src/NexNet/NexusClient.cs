@@ -42,12 +42,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public ClientConfig Config => _config;
 
     /// <summary>
-    /// Task which completes upon the completed connection and optional authentication of the client.
-    /// Set to complete when the client has not started connecting yet or after disconnection.
-    /// </summary>
-    public Task ReadyTask { get; private set; } = Task.CompletedTask;
-
-    /// <summary>
     /// Task which completes upon the disconnection of the client.
     /// </summary>
     public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
@@ -68,23 +62,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _pingTimer = new Timer(PingTimer);
     }
 
-    /// <summary>
-    /// Connects to the server.
-    /// </summary>
-    /// <returns>Task for completion</returns>
-    /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
-    public Task ConnectAsync()
-    {
-        return ConnectAsync(false);
-    }
 
     /// <summary>
     /// Connects to the server and optionally waits for the ready signal.
     /// </summary>
-    /// <param name="waitForReady">If true, the returned task will not complete until the client is ready to communicate with the server.</param>
     /// <returns>Task for completion</returns>
     /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
-    public async Task ConnectAsync(bool waitForReady)
+    public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
@@ -93,21 +77,20 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
         var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnectedTaskCompletionSource = new TaskCompletionSource();
-        ReadyTask = readyTaskCompletionSource.Task;
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
 
-        var client = await _config.ConnectTransport().ConfigureAwait(false);
+        var transport = await _config.ConnectTransport(cancellationToken).ConfigureAwait(false);
 
         _config.InternalOnClientConnect?.Invoke();
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
             Configs = _config,
-            Transport = client,
+            Transport = transport,
             Cache = _cacheManager,
             SessionManager = null,
             IsServer = false,
-            Id = 0,
+            Id = 0, // Initial value.  Not set by the client.
             Nexus = _nexus,
             ReadyTaskCompletionSource = readyTaskCompletionSource,
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource
@@ -123,39 +106,21 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         await _session.StartAsClient().ConfigureAwait(false);
 
-        if (waitForReady)
-            await ReadyTask.ConfigureAwait(false);
+        await readyTaskCompletionSource.Task.ConfigureAwait(false);
     }
 
     /// <summary>
     /// Disconnects from the server.
     /// </summary>
     /// <returns>Task which completes upon disconnection.</returns>
-    public Task DisconnectAsync()
-    {
-        if (_session == null)
-            return Task.CompletedTask;
-
-        return _session.DisconnectAsync(DisconnectReason.Graceful);
-    }
-
-    /// <summary>
-    /// Disconnects from the server.
-    /// </summary>
-    /// <param name="waitForDisconnect">
-    /// If true, the returned task will not complete until the client
-    /// is disconnected from the server.
-    /// </param>
-    /// <returns>Task which completes upon disconnection.</returns>
-    public async Task DisconnectAsync(bool waitForDisconnect)
+    public async Task DisconnectAsync()
     {
         if (_session == null)
             return;
 
-        await _session.DisconnectAsync(DisconnectReason.Graceful);
+        await _session.DisconnectAsync(DisconnectReason.Graceful).ConfigureAwait(false);
 
-        if(waitForDisconnect == true
-           && _disconnectedTaskCompletionSource != null)
+        if(_disconnectedTaskCompletionSource != null)
             await _disconnectedTaskCompletionSource.Task.ConfigureAwait(false);
     }
 
