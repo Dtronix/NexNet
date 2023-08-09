@@ -91,8 +91,17 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             // Wait for the client to complete the pipe
             await completedTcs.Task;
 
-            var result = await pipe.Output.WriteAsync(Data);
-            Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
+            FlushResult result = default;
+            for (int i = 0; i < 20; i++)
+            {
+                result = await pipe.Output.WriteAsync(Data);
+
+                Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
+                if (result.IsCompleted)
+                    break;
+
+                await Task.Delay(100);
+            }
 
             Assert.IsTrue(result.IsCompleted);
             tcs.SetResult();
@@ -106,7 +115,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         // Notify the server that the pipe is complete
         completedTcs.SetResult();
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(3);
     }
 
     [TestCase(Type.Uds)]

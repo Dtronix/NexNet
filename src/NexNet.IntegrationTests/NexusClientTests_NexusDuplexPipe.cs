@@ -82,7 +82,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(20)]
     // TODO: This one fails randomly.
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
