@@ -92,6 +92,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             await completedTcs.Task;
 
             var result = await pipe.Output.WriteAsync(Data);
+            Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
 
             Assert.IsTrue(result.IsCompleted);
             tcs.SetResult();
