@@ -82,15 +82,29 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    // TODO: This one fails randomly.
+    [Repeat(30)]
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var completedTcs = new TaskCompletionSource();
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            await Task.Delay(150);
-            var result = await pipe.Output.WriteAsync(Data);
+
+            await completedTcs.Task;
+
+            FlushResult result = default;
+            for (int i = 0; i < 20; i++)
+            {
+                result = await pipe.Output.WriteAsync(Data);
+
+                Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
+                if (result.IsCompleted)
+                    break;
+
+                await Task.Delay(100);
+            }
+
             Assert.IsTrue(result.IsCompleted);
             tcs.SetResult();
         };
@@ -100,8 +114,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await pipe.ReadyTask;
         await pipe.CompleteAsync();
+        completedTcs.SetResult();
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(3);
     }
 
     [TestCase(Type.Uds)]
