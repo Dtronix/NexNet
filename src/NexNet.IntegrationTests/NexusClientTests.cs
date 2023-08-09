@@ -182,6 +182,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [Repeat(20)]
     public async Task ClientResumePingOnDisconnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -192,20 +193,16 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync();
-
-        await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.Timeout(1);
-
-        await client.DisconnectAsync().Timeout(1);
-        await client.DisconnectedTask.Timeout(1);
-
         clientConfig.InternalOnSend = (_, bytes) =>
         {
             if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping)
                 tcs.SetResult();
         };
 
+        await server.StartAsync();
+
+        await client.ConnectAsync(true).Timeout(1);
+        await client.DisconnectAsync(true).Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1.5));

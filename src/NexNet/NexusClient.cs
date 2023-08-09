@@ -140,8 +140,28 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <summary>
+    /// Disconnects from the server.
+    /// </summary>
+    /// <param name="waitForDisconnect">
+    /// If true, the returned task will not complete until the client
+    /// is disconnected from the server.
+    /// </param>
+    /// <returns>Task which completes upon disconnection.</returns>
+    public async Task DisconnectAsync(bool waitForDisconnect)
+    {
+        if (_session == null)
+            return;
+
+        await _session.DisconnectAsync(DisconnectReason.Graceful);
+
+        if(waitForDisconnect == true
+           && _disconnectedTaskCompletionSource != null)
+            await _disconnectedTaskCompletionSource.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Disposes the client and disconnects if the client is connected to a server.
-    /// Same as <see cref="DisconnectAsync"/>.
+    /// Same as <see cref="DisconnectAsync()"/>.
     /// </summary>
     /// <returns></returns>
     public async ValueTask DisposeAsync()
