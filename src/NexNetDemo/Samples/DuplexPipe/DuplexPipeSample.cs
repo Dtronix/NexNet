@@ -16,7 +16,6 @@ public class DuplexPipeSample : SampleBase
         var server = DuplexPipeSampleServerNexus.CreateServer(ServerConfig, () => new DuplexPipeSampleServerNexus());
         await server.StartAsync();
         await client.ConnectAsync();
-        await client.ReadyTask!;
 
         // Create the client pipe.
         var pipe = client.CreatePipe();
@@ -36,7 +35,6 @@ public class DuplexPipeSample : SampleBase
         var server = DuplexPipeSampleServerNexus.CreateServer(ServerConfig, () => new DuplexPipeSampleServerNexus());
         await server.StartAsync();
         await client.ConnectAsync();
-        await client.ReadyTask!;
 
         // Create the client pipe.
         var pipe = client.CreatePipe();
@@ -73,7 +71,6 @@ public class DuplexPipeSample : SampleBase
         var server = DuplexPipeSampleServerNexus.CreateServer(ServerConfig, () => new DuplexPipeSampleServerNexus());
         await server.StartAsync();
         await client.ConnectAsync();
-        await client.ReadyTask!;
 
         // Create the client pipe.
         var pipe = client.CreatePipe();

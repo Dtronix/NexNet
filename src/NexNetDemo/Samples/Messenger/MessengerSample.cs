@@ -57,7 +57,7 @@ public class MessengerSample : SampleBase
             TimeSpan.FromSeconds(5),
         }, true);
         var client = MessengerSampleClientNexus.CreateClient(ClientConfig, new MessengerSampleClientNexus());
-        await client.ConnectAsync(true);
+        await client.ConnectAsync();
     }
 
 
