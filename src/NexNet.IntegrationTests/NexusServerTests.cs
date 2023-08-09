@@ -60,7 +60,7 @@ internal partial class NexusServerTests : BaseTests
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
-        var clientConfig = CreateClientConfig(type, true);
+        var clientConfig = CreateClientConfig(type, false);
         var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
@@ -68,7 +68,6 @@ internal partial class NexusServerTests : BaseTests
 
         for (int i = 0; i < 5; i++)
         {
-            Console.WriteLine($"Starting server {i}");
             await server.StartAsync();
 
             await client.ConnectAsync().Timeout(1);
