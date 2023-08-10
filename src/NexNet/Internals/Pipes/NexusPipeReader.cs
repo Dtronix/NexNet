@@ -152,7 +152,7 @@ internal class NexusPipeReader : PipeReader
             // Get the updated length which may have changed while we were waiting.
             bufferLength = _buffer.Length + length;
 
-            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength}");
+            _logger?.LogTrace($"Pipe {_stateManager.Id} has buffered {length} new bytes.");
 
             // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
@@ -173,8 +173,6 @@ internal class NexusPipeReader : PipeReader
         //Interlocked.Increment(ref _stateId);
         Utilities.TryReleaseSemaphore(_readSemaphore);
 
-
-        
         return NexusPipeBufferResult.Success;
     }
 

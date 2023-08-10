@@ -84,7 +84,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
         //Console.WriteLine("Starting test");
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
         var completedTcs = new TaskCompletionSource();
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
