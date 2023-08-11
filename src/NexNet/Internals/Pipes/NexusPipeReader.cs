@@ -139,10 +139,10 @@ internal class NexusPipeReader : PipeReader
                 return NexusPipeBufferResult.DataIgnored;
 
             // If we have the back pressure flag, then we have not yet reached the low water mark.
-            if (_stateManager.CurrentState.HasFlag(_backPressureFlag))
-            {
-                //return NexusPipeBufferResult.HighCutoffReached;
-            }
+            //if (_stateManager.CurrentState.HasFlag(_backPressureFlag))
+            //{
+            //    //return NexusPipeBufferResult.HighCutoffReached;
+            //}
         }
 
         lock (_buffer)
@@ -152,9 +152,16 @@ internal class NexusPipeReader : PipeReader
             // Get the updated length which may have changed while we were waiting.
             bufferLength = _buffer.Length + length;
 
+            if (_isCompleted)
+            {
+                _logger?.LogTrace($"Pipe {_stateManager.Id} has is already completed.  Cancelling.");
+                return NexusPipeBufferResult.DataIgnored;
+            }
+
             _logger?.LogTrace($"Pipe {_stateManager.Id} has buffered {length} new bytes.");
 
-            // Copy the data to the buffer.
+
+                // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
             _buffer.Advance(length);
         }

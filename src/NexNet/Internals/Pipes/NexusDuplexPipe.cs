@@ -253,20 +253,33 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         // Get a copy of the current state.
         var currentState = _currentState;
         _logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState}");
-        if (_session == null 
+        if (_session == null
             || (!remove && currentState.HasFlag(updatedState))
             || (remove && !currentState.HasFlag(updatedState)))
-            return false;
-
-
-        if (currentState == State.Unset && updatedState == State.Ready)
         {
-            _currentState = State.Ready;
+            _logger?.LogTrace($"Canceled state update of: {updatedState} because it is already set.");
+            return false;
+        }
 
-            // Set the ready task.
-            _readyTcs?.TrySetResult();
+        if (currentState == State.Unset)
+        {
+            if (updatedState == State.Ready)
+            {
+                _currentState = State.Ready;
 
-            return true;
+                // Set the ready task.
+                _readyTcs?.TrySetResult();
+
+                return true;
+            }
+            else
+            {
+                // If we are not ready, then we can't update the state.
+                // This normally happens when the pipe is reset before it is ready or after it has been reset.
+                // Honestly, we shouldn't reach here.
+                _logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
+                return false;
+            }
         }
 
         if (HasState(updatedState, currentState, State.ClientReaderServerWriterComplete))
