@@ -104,6 +104,29 @@ internal class BufferWriterTests
         Assert.AreEqual(loops * dataLength - 3000 * 16, sequence.Length);
 
 
+    }    
+    
+    [Test]
+    public void AllowsUseAfterDisposal()
+    {
+        var bufferWriter = BufferWriter<byte>.Create(8 * 1024);
+ 
+        Span<byte> data = new byte[50];
+
+        FillSpan(data);
+
+        data.CopyTo(bufferWriter.GetSpan(data.Length));
+        bufferWriter.Advance(data.Length);
+
+        bufferWriter.Reset();
+
+        data.CopyTo(bufferWriter.GetSpan(data.Length));
+        bufferWriter.Advance(data.Length);
+
+        var sequence = bufferWriter.GetBuffer().AsReadOnly();
+        Assert.AreEqual(data.Length, sequence.Length);
+
+
     }
 
     private void FillSpan(Span<byte> span)

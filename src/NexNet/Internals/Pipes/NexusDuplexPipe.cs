@@ -2,10 +2,42 @@
 using System.Buffers;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
 
 namespace NexNet.Internals.Pipes;
+
+internal class RentedNexusDuplexPipe : INexusDuplexPipe, IAsyncDisposable
+{
+    private readonly NexusDuplexPipe _wrappedDuplexPipe;
+    private readonly int _initialStateId;
+    public PipeReader Input => _wrappedDuplexPipe.Input;
+    public PipeWriter Output => _wrappedDuplexPipe.Output;
+    public ushort Id => _wrappedDuplexPipe.Id;
+
+    public Task ReadyTask => _wrappedDuplexPipe.ReadyTask;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ValueTask CompleteAsync()
+    {
+        if (_initialStateId != _wrappedDuplexPipe.StateId)
+            return new ValueTask(Task.CompletedTask);
+
+        return _wrappedDuplexPipe.CompleteAsync();
+    }
+
+    public RentedNexusDuplexPipe(NexusDuplexPipe wrappedDuplexPipe)
+    {
+        _wrappedDuplexPipe = wrappedDuplexPipe;
+        _initialStateId = _wrappedDuplexPipe.StateId;
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        return CompleteAsync();
+    }
+}
 
 /// <summary>
 /// Pipe used for transmission of binary data from a one nexus to another.
@@ -61,6 +93,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     private readonly NexusPipeReader _inputNexusPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
     private TaskCompletionSource? _readyTcs;
+    
 
     private State _currentState = State.Unset;
 
@@ -70,7 +103,12 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     // Id which changes based upon completion of the pipe. Used to make sure the
     // Pipe is in the same state upon completion of writing/reading.
     // </summary>
-    //internal int StateId;
+    internal int StateId;
+
+    /// <summary>
+    /// True if this pipe is the pipe used for initiating the pipe connection.
+    /// </summary>
+    internal bool InitiatingPipe;
 
     /// <summary>
     /// Complete compiled ID containing the client bit and the server bit.
@@ -185,12 +223,15 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         InitialId = 0;
         _currentState = State.Unset;
+        InitiatingPipe = false;
 
         // Set the task to canceled in case the pipe was reset before it was ready.
         _readyTcs?.TrySetCanceled();
 
         _inputNexusPipeReader.Reset();
         _outputPipeWriter.Reset();
+
+        Interlocked.Increment(ref StateId);
         // No need to reset anything with the writer as it is use once and dispose.
     }
 
@@ -213,6 +254,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         return _inputNexusPipeReader.BufferData(data);
     }
 
+
+    /// <summary>
+    /// Notifies the current state of the duplex pipe to the associated session.
+    /// </summary>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask NotifyState()
     {
         if(_session == null)
@@ -238,7 +284,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         _session.CacheManager.Return(message);
 
-        if (currentState == State.Complete)
+        if (currentState == State.Complete && InitiatingPipe)
             _session.CacheManager.NexusDuplexPipeCache.Return(this);
     }
 

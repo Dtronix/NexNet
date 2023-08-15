@@ -4,14 +4,33 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using static NexNet.Internals.Pipes.NexusDuplexPipe;
 
 namespace NexNet.Internals.Pipes;
 
 internal class NexusPipeManager
 {
+    private class PipeAndState
+    {
+        public readonly NexusDuplexPipe Pipe;
+        private readonly int _state;
+
+        public PipeAndState(NexusDuplexPipe pipe)
+        {
+            Pipe = pipe;
+            _state = pipe.StateId;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool ValidateState()
+        {
+            return _state == Pipe.StateId;
+        }
+    }
+
     private INexusSession _session = null!;
-    private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
-    private readonly ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
+    private readonly ConcurrentDictionary<ushort, PipeAndState> _activePipes = new();
+    private readonly ConcurrentDictionary<byte, PipeAndState> _initializingPipes = new();
 
     private readonly Stack<byte> _availableIds = new Stack<byte>();
 
@@ -32,7 +51,8 @@ internal class NexusPipeManager
 
         var id = GetPartialId();
         var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id);
-        _initializingPipes.TryAdd(id, pipe);
+        pipe.InitiatingPipe = true;
+        _initializingPipes.TryAdd(id, new PipeAndState(pipe));
 
         return pipe;
     }
@@ -50,7 +70,7 @@ internal class NexusPipeManager
         var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId);
 
 
-        if (!_activePipes.TryAdd(id, pipe))
+        if (!_activePipes.TryAdd(id, new PipeAndState(pipe)))
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
 
         await pipe.PipeReady(id).ConfigureAwait(false);
@@ -67,7 +87,7 @@ internal class NexusPipeManager
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
 
-        await nexusPipe.CompleteAsync();
+        await nexusPipe.Pipe.CompleteAsync();
 
         _availableIds.Push(_session.IsServer ? serverId : clientId);
     }
@@ -83,11 +103,17 @@ internal class NexusPipeManager
         if (_isCanceled)
             return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
 
-        if (_activePipes.TryGetValue(id, out var pipe))
+        if (_activePipes.TryGetValue(id, out var pipeWrapper))
         {
+            if (pipeWrapper.ValidateState())
+            {
+                _session.Logger?.LogTrace($"Ignored data due to pipe changing state form last .");
+                return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+            }
+
             // Check to see if we have exceeded the high water cutoff for the pipe.
             // If we have, then disconnect the connection.
-            return pipe.WriteFromUpstream(data);
+            return pipeWrapper.Pipe.WriteFromUpstream(data);
         }
 
         _session.Logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
@@ -100,9 +126,15 @@ internal class NexusPipeManager
         if (_isCanceled)
             return;
 
-        if (_activePipes.TryGetValue(id, out var pipe))
+        if (_activePipes.TryGetValue(id, out var pipeWrapper))
         {
-            pipe.UpdateState(state);
+            if (!pipeWrapper.ValidateState())
+            {
+                _session.Logger?.LogTrace($"State update of {state} ignored due to state change.");
+                return;
+            }
+
+            pipeWrapper.Pipe.UpdateState(state);
         }
         else
         {
@@ -113,8 +145,8 @@ internal class NexusPipeManager
 
             // Move the pipe to the main active pipes.
             _activePipes.TryAdd(id, initialPipe);
-            initialPipe.Id = id;
-            initialPipe.UpdateState(state);
+            initialPipe.Pipe.Id = id;
+            initialPipe.Pipe.UpdateState(state);
         }
     }
 
@@ -124,17 +156,29 @@ internal class NexusPipeManager
         _isCanceled = true;
 
         // Update all the states of the pipes to complete.
-        foreach (var pipe in _initializingPipes)
+        foreach (var pipeWrapper in _initializingPipes)
         {
-            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
-            _session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
+            if (pipeWrapper.Value.ValidateState())
+            {
+                _session.Logger?.LogTrace($"Did not cancel initializing pipe {pipeWrapper.Key} due to state change.");
+                continue;
+            }
+
+            pipeWrapper.Value.Pipe.UpdateState(NexusDuplexPipe.State.Complete);
+            _session.CacheManager.NexusDuplexPipeCache.Return(pipeWrapper.Value.Pipe);
         }
 
         _initializingPipes.Clear();
 
-        foreach (var pipe in _activePipes)
+        foreach (var pipeWrapper in _activePipes)
         {
-            pipe.Value.UpdateState(NexusDuplexPipe.State.Complete);
+            if (pipeWrapper.Value.ValidateState())
+            {
+                _session.Logger?.LogTrace($"Did not cancel active pipe {pipeWrapper.Key} due to state change.");
+                continue;
+            }
+
+            pipeWrapper.Value.Pipe.UpdateState(NexusDuplexPipe.State.Complete);
             // Todo: Return the pipe to the cache. Can't in this flow here since it will reset the 
             // result to not completed while a reading process is still ongoing.
             //_session.CacheManager.NexusDuplexPipeCache.Return(pipe.Value);
