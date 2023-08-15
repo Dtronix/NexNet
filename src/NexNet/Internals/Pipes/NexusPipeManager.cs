@@ -15,16 +15,12 @@ internal class NexusPipeManager
         public readonly NexusDuplexPipe Pipe;
         private readonly int _state;
 
+        public bool IsStateValid => _state == Pipe.StateId;
+
         public PipeAndState(NexusDuplexPipe pipe)
         {
             Pipe = pipe;
             _state = pipe.StateId;
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public bool ValidateState()
-        {
-            return _state == Pipe.StateId;
         }
     }
 
@@ -105,7 +101,7 @@ internal class NexusPipeManager
 
         if (_activePipes.TryGetValue(id, out var pipeWrapper))
         {
-            if (pipeWrapper.ValidateState())
+            if (!pipeWrapper.IsStateValid)
             {
                 _session.Logger?.LogTrace($"Ignored data due to pipe changing state form last .");
                 return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
@@ -128,7 +124,7 @@ internal class NexusPipeManager
 
         if (_activePipes.TryGetValue(id, out var pipeWrapper))
         {
-            if (!pipeWrapper.ValidateState())
+            if (!pipeWrapper.IsStateValid)
             {
                 _session.Logger?.LogTrace($"State update of {state} ignored due to state change.");
                 return;
@@ -158,7 +154,7 @@ internal class NexusPipeManager
         // Update all the states of the pipes to complete.
         foreach (var pipeWrapper in _initializingPipes)
         {
-            if (pipeWrapper.Value.ValidateState())
+            if (!pipeWrapper.Value.IsStateValid)
             {
                 _session.Logger?.LogTrace($"Did not cancel initializing pipe {pipeWrapper.Key} due to state change.");
                 continue;
@@ -172,7 +168,7 @@ internal class NexusPipeManager
 
         foreach (var pipeWrapper in _activePipes)
         {
-            if (pipeWrapper.Value.ValidateState())
+            if (!pipeWrapper.Value.IsStateValid)
             {
                 _session.Logger?.LogTrace($"Did not cancel active pipe {pipeWrapper.Key} due to state change.");
                 continue;
