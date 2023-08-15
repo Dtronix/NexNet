@@ -181,7 +181,6 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(10)]
     public async Task ClientResumePingOnDisconnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
