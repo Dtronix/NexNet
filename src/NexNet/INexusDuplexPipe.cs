@@ -1,4 +1,5 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.IO.Pipelines;
 using System.Threading.Tasks;
 
 namespace NexNet;
@@ -24,4 +25,12 @@ public interface INexusDuplexPipe : IDuplexPipe
     /// </summary>
     /// <returns>Task which completes when the pipe is closed.</returns>
     ValueTask CompleteAsync();
+}
+
+/// <summary>
+/// Interface for Duplex Pipe
+/// </summary>
+public interface IRentedNexusDuplexPipe : INexusDuplexPipe, IAsyncDisposable
+{
+
 }

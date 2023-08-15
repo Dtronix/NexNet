@@ -11,6 +11,7 @@ internal class CacheManager
     public readonly CachedPipeManager PipeManagerCache = new();
     public readonly CachedCts CancellationTokenSourceCache = new();
     public readonly CachedDuplexPipe NexusDuplexPipeCache = new();
+    public readonly CachedRentedDuplexPipe NexusRentedDuplexPipeCache = new();
 
     private readonly ICachedDeserializer?[] _cachedMessageDeserializers = new ICachedDeserializer?[50];
 
@@ -76,5 +77,7 @@ internal class CacheManager
         RegisteredInvocationStateCache.Clear();
         CancellationTokenSourceCache.Clear();
         PipeManagerCache.Clear();
+        NexusDuplexPipeCache.Clear();
+        NexusRentedDuplexPipeCache.Clear();
     }
 }

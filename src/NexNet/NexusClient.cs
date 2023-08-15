@@ -140,7 +140,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <returns>Pipe to use.</returns>
     public INexusDuplexPipe CreatePipe()
     {
-        var pipe = _session?.PipeManager.GetPipe();
+        var pipe = _session?.PipeManager.RentPipe();
         if (pipe == null)
             throw new InvalidOperationException("Client is not connected.");
 

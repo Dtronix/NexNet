@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using static NexNet.Internals.Pipes.NexusDuplexPipe;
@@ -40,18 +41,48 @@ internal class NexusPipeManager
         _session = session;
     }
 
-    public INexusDuplexPipe? GetPipe()
+    public IRentedNexusDuplexPipe? RentPipe()
     {
         if (_isCanceled)
             return null;
 
         var id = GetPartialId();
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, id);
+        var pipe = _session.CacheManager.NexusRentedDuplexPipeCache.Rent(_session, id);
         pipe.InitiatingPipe = true;
+        pipe.Manager = this;
         _initializingPipes.TryAdd(id, new PipeAndState(pipe));
 
         return pipe;
     }
+
+    /// <summary>
+    /// Asynchronously returns the specified rented duplex pipe back to the pipe manager.
+    /// </summary>
+    /// <param name="pipe">The rented duplex pipe to be returned.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    public async ValueTask ReturnPipe(IRentedNexusDuplexPipe pipe)
+    {
+        _activePipes.TryRemove(pipe.Id, out _);
+
+        var (clientId, serverId) = GetClientAndServerId(pipe.Id);
+        var localId = _session.IsServer ? serverId : clientId;
+
+        // If we can't remove the pipe from the list of initializing pipes, it means that the pipe has already
+        // been returned to the cache.
+        if (!_activePipes.TryRemove(pipe.Id, out var removedPipe)
+            && !_initializingPipes.TryRemove(localId, out removedPipe))
+            return;
+
+        await pipe.CompleteAsync();
+
+        // Return the pipe to the cache.
+        removedPipe.Pipe.Reset();
+
+        _session.CacheManager.NexusRentedDuplexPipeCache.Return(Unsafe.As<RentedNexusDuplexPipe>(pipe));
+
+        _availableIds.Push(localId);
+    }
+
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
         if (_session == null)
@@ -63,7 +94,7 @@ internal class NexusPipeManager
 
         var id = GetCompleteId(otherId, out var thisId);
 
-        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId);
+        var pipe = _session.CacheManager.NexusRentedDuplexPipeCache.Rent(_session, thisId);
 
 
         if (!_activePipes.TryAdd(id, new PipeAndState(pipe)))
@@ -84,6 +115,11 @@ internal class NexusPipeManager
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
 
         await nexusPipe.Pipe.CompleteAsync();
+
+        // Return the pipe to the cache.
+        nexusPipe.Pipe.Reset();
+
+        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe.Pipe);
 
         _availableIds.Push(_session.IsServer ? serverId : clientId);
     }
@@ -161,7 +197,6 @@ internal class NexusPipeManager
             }
 
             pipeWrapper.Value.Pipe.UpdateState(NexusDuplexPipe.State.Complete);
-            _session.CacheManager.NexusDuplexPipeCache.Return(pipeWrapper.Value.Pipe);
         }
 
         _initializingPipes.Clear();
@@ -183,6 +218,7 @@ internal class NexusPipeManager
         _activePipes.Clear();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ushort GetCompleteId(byte otherId, out byte thisId)
     {
         Span<byte> idBytes = stackalloc byte[sizeof(ushort)];

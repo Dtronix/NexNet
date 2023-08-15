@@ -8,37 +8,6 @@ using NexNet.Messages;
 
 namespace NexNet.Internals.Pipes;
 
-internal class RentedNexusDuplexPipe : INexusDuplexPipe, IAsyncDisposable
-{
-    private readonly NexusDuplexPipe _wrappedDuplexPipe;
-    private readonly int _initialStateId;
-    public PipeReader Input => _wrappedDuplexPipe.Input;
-    public PipeWriter Output => _wrappedDuplexPipe.Output;
-    public ushort Id => _wrappedDuplexPipe.Id;
-
-    public Task ReadyTask => _wrappedDuplexPipe.ReadyTask;
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ValueTask CompleteAsync()
-    {
-        if (_initialStateId != _wrappedDuplexPipe.StateId)
-            return new ValueTask(Task.CompletedTask);
-
-        return _wrappedDuplexPipe.CompleteAsync();
-    }
-
-    public RentedNexusDuplexPipe(NexusDuplexPipe wrappedDuplexPipe)
-    {
-        _wrappedDuplexPipe = wrappedDuplexPipe;
-        _initialStateId = _wrappedDuplexPipe.StateId;
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        return CompleteAsync();
-    }
-}
-
 /// <summary>
 /// Pipe used for transmission of binary data from a one nexus to another.
 /// </summary>
@@ -162,8 +131,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         if (stateChanged)
             return NotifyState();
 
-        _session?.CacheManager.NexusDuplexPipeCache.Return(this);
-
         return default;
     }
 
@@ -283,9 +250,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         }
 
         _session.CacheManager.Return(message);
-
-        if (currentState == State.Complete && InitiatingPipe)
-            _session.CacheManager.NexusDuplexPipeCache.Return(this);
     }
 
     /// <summary>

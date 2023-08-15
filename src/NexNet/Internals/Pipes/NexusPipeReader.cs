@@ -80,7 +80,7 @@ internal class NexusPipeReader : PipeReader
 
         lock (_buffer)
         {
-            _buffer.Dispose();
+            _buffer.Reset();
         }
 
         // Reset the semaphore to it's original state.

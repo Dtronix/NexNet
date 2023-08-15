@@ -6,7 +6,35 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 {
-    
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task PipeReaderReceivesDataMultipleTimes(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        int count = 0;
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            var result = await pipe.Input.ReadAsync();
+            Assert.AreEqual(Data, result.Buffer.ToArray());
+
+            if(++count == 10)
+                tcs.SetResult();
+        };
+
+        for (int i = 0; i < 10; i++)
+        {
+            await using var pipe = sNexus.Context.CreatePipe();
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
+            await pipe.ReadyTask;
+            await pipe.Output.WriteAsync(Data);
+        }
+
+
+        await tcs.Task.Timeout(1);
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
