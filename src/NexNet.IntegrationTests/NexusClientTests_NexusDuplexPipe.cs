@@ -98,7 +98,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             {
                 result = await pipe.Output.WriteAsync(Data);
 
-                Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
                 if (result.IsCompleted)
                     break;
 
