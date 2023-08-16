@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO.Pipelines;
@@ -29,7 +30,9 @@ internal class NexusPipeManager
     private readonly ConcurrentDictionary<ushort, PipeAndState> _activePipes = new();
     private readonly ConcurrentDictionary<byte, PipeAndState> _initializingPipes = new();
 
-    private readonly Stack<byte> _availableIds = new Stack<byte>();
+
+    private readonly BitArray _usedIds = new(256, false);
+    //private readonly Stack<byte> _availableIds = new Stack<byte>();
 
     private int _currentId;
 
@@ -37,6 +40,7 @@ internal class NexusPipeManager
 
     public void Setup(INexusSession session)
     {
+        _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
     }
@@ -46,7 +50,7 @@ internal class NexusPipeManager
         if (_isCanceled)
             return null;
 
-        var id = GetPartialId();
+        var id = GetLocalId();
         var pipe = _session.CacheManager.NexusRentedDuplexPipeCache.Rent(_session, id);
         pipe.InitiatingPipe = true;
         pipe.Manager = this;
@@ -80,7 +84,12 @@ internal class NexusPipeManager
 
         _session.CacheManager.NexusRentedDuplexPipeCache.Return(Unsafe.As<RentedNexusDuplexPipe>(pipe));
 
-        _availableIds.Push(localId);
+        lock (_usedIds)
+        {
+            // Return the local ID to the available IDs list.
+            _usedIds.Set(localId, false);
+        }
+        
     }
 
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
@@ -121,7 +130,12 @@ internal class NexusPipeManager
 
         _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe.Pipe);
 
-        _availableIds.Push(_session.IsServer ? serverId : clientId);
+        lock (_usedIds)
+        {
+            // Return the local ID to the available IDs list.
+            _usedIds.Set(_session.IsServer ? serverId : clientId, false);
+        }
+
     }
 
     /// <summary>
@@ -225,11 +239,11 @@ internal class NexusPipeManager
         if (_session.IsServer)
         {
             idBytes[0] = otherId; // Client
-            thisId = idBytes[1] = GetPartialId(); // Server
+            thisId = idBytes[1] = GetLocalId(); // Server
         }
         else
         {
-            thisId = idBytes[0] = GetPartialId(); // Client
+            thisId = idBytes[0] = GetLocalId(); // Client
             idBytes[1] = otherId; // Server
         }
 
@@ -244,14 +258,29 @@ internal class NexusPipeManager
         return (bytes[0], bytes[1]);
     }
 
-    private byte GetPartialId()
+    private byte GetLocalId()
     {
-        if (_availableIds.TryPop(out var id))
-            return id;
+        lock (_usedIds)
+        {
+            var incrementedId = _currentId;
 
-        if (_currentId == 255)
-            throw new InvalidOperationException("Exceeded maximum number of concurrent streams.");
+            for (int i = 0; i < 255; i++)
+            {
+                // Loop around if we reach the end of the available IDs.
+                if (++incrementedId == 256)
+                    incrementedId = 0;
 
-        return (byte)++_currentId;
+                // If the Id is not available, then try the next one.
+                if (_usedIds.Get(incrementedId))
+                    continue;
+
+                _currentId = incrementedId;
+                _usedIds.Set(incrementedId, true);
+                return (byte)incrementedId;
+            }
+        }
+
+        // If we reach the end of the available IDs, then we are full and can throw an exception.
+        throw new InvalidOperationException("Exceeded maximum number of concurrent streams.");
     }
 }

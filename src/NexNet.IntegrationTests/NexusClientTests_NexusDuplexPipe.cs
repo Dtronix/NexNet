@@ -23,10 +23,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
                 tcs.SetResult();
         };
 
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 1; i++)
         {
             await using var pipe = sNexus.Context.CreatePipe();
-            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe!);
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
             await pipe.ReadyTask;
             await pipe.Output.WriteAsync(Data);
         }

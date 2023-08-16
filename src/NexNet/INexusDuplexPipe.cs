@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace NexNet;
 
 /// <summary>
-/// Interface for Duplex Pipe
+/// Main interface for duplex pipe interaction with the Nexus system.
 /// </summary>
 public interface INexusDuplexPipe : IDuplexPipe
 {
@@ -28,7 +28,8 @@ public interface INexusDuplexPipe : IDuplexPipe
 }
 
 /// <summary>
-/// Interface for Duplex Pipe
+/// Interface for rented duplex pipe.  This interface is used to return the pipe to
+/// the pipe manager once disposed via the <see cref="IAsyncDisposable.DisposeAsync"/> method.
 /// </summary>
 public interface IRentedNexusDuplexPipe : INexusDuplexPipe, IAsyncDisposable
 {
