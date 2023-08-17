@@ -88,7 +88,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
                     position++;
-                    Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
+                    //Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
 
                     switch (_recMessageHeader.Type)
                     {
@@ -111,7 +111,6 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.DisconnectServerShutdown:
                         case MessageType.DisconnectAuthentication:
                         case MessageType.DisconnectServerRestarting:
-                            Logger?.LogTrace($"Received disconnect message.");
                             // Translate the type over to the reason.
                             disconnect = (DisconnectReason)_recMessageHeader.Type;
                             issueDisconnectMessage = false;
@@ -125,13 +124,12 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
                         case MessageType.DuplexPipeUpdateState:
-                            Logger?.LogTrace($"Message has a standard body.");
+                            //Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
                         case MessageType.DuplexPipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
-                            Logger?.LogTrace($"DuplexNexusPipe received data.");
                             break;
 
                         default:
@@ -164,7 +162,7 @@ internal partial class NexusSession<TNexus, TProxy>
                         break;
                     }
 
-                    Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
+                    //Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
                     _recMessageHeader.BodyLength = bodyLength;
                 }
 
@@ -202,7 +200,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 break;
             }
 
-            Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
+            //Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
 
             var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
 

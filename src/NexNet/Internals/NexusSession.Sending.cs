@@ -12,13 +12,26 @@ namespace NexNet.Internals;
 
 internal partial class NexusSession<TNexus, TProxy>
 {
-   
+
+    /// <summary>
+    /// Asynchronously sends a message of type <typeparamref name="TMessage"/> over the network.
+    /// </summary>
+    /// <typeparam name="TMessage">The type of the message to be sent.</typeparam>
+    /// <param name="body">The message to be sent.</param>
+    /// <param name="cancellationToken">An optional cancellation token to observe while waiting for the task to complete.</param>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field           | Size (bytes) | Description                                                                 |
+    /// |-----------------|--------------|-----------------------------------------------------------------------------|
+    /// | Type            | 1            | The type of the message.                                                    |
+    /// | Content Length  | 2            | The length of the body of the message.                                      |
+    /// | Body            | Variable     | The body of the message. Its length is specified by the 'Content Length'.   |
+    /// </remarks>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
         where TMessage : IMessageBase
     {
-        // | MessageType | Body Length | Body   |
-        // |-------------|-------------|--------|
-        // | byte        | ushort      | byte[] |
+        
 
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -45,7 +58,7 @@ internal partial class NexusSession<TNexus, TProxy>
         _bufferWriter.Deallocate(buffer);
         _pipeOutput.Advance(length);
 
-        Logger?.LogTrace($"Sending {TMessage.Type} message & body with {length} bytes.");
+        Logger?.LogTrace($"Sending {TMessage.Type} header and  body with {length} total bytes.");
 
         var result = await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -61,12 +74,25 @@ internal partial class NexusSession<TNexus, TProxy>
         return SendHeaderWithBody(type, null, body, cancellationToken);
     }
 
+    /// <summary>
+    /// Asynchronously sends a message with a header and body over the network.
+    /// </summary>
+    /// <param name="type">The type of the message to be sent.</param>
+    /// <param name="messageHeader">The header of the message. Its length can vary. Can be null.</param>
+    /// <param name="body">The body of the message.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field           | Size (bytes) | Description                                                                       |
+    /// |-----------------|--------------|-----------------------------------------------------------------------------------|
+    /// | Type            | 1            | The type of the message.                                                          |
+    /// | Content Length  | 2            | The length of the body of the message.                                            |
+    /// | Message Header  | Variable     | The header of the message. Its length can vary and must be known by the receiver.                             |
+    /// | Body            | Variable     | The body of the message. Its length is specified by the 'Content Length'. 
+    /// </remarks>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
-        // | MessageType | Body Length | Message Header? | Body   |
-        // |-------------|-------------|-----------------|--------|
-        // | byte        | ushort      | byte[]?         | byte[] |
-
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
@@ -102,7 +128,7 @@ internal partial class NexusSession<TNexus, TProxy>
             _config.InternalOnSend?.Invoke(this, debugCopy);
         }
 
-        Logger?.LogTrace($"Sending {length} bytes with header and length.");
+        Logger?.LogTrace($"Sending {type} header and {length} total bytes.");
         FlushResult result = default;
         try
         {
@@ -119,25 +145,41 @@ internal partial class NexusSession<TNexus, TProxy>
             await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
     }
 
-
+    /// <summary>
+    /// Asynchronously sends a message header of a specified type over the transport.
+    /// Does nothing if the session is not connected.
+    /// </summary>
+    /// <param name="type">The type of the message header to be sent.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field           | Size (bytes) | Description                                                                 |
+    /// |-----------------|--------------|--------------------------------|
+    /// | Type            | 1            | The type of the message.            
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
     public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
     {
         return SendHeaderCore(type, false, cancellationToken);
     }
 
     /// <summary>
-    /// Sends the the specified message header over the transport.
+    /// Asynchronously sends a message header of a specified type over the transport.
     /// </summary>
-    /// <param name="type">Type of header to send.</param>
-    /// <param name="force">Will the header even when the state set to Connected.</param>
-    /// <param name="cancellationToken">Cancels the sending.</param>
-    /// <returns>Task which competes upon successful sending.</returns>
-    /// <exception cref="InvalidOperationException">Failed to acquire write lock.</exception>
+    /// <param name="type">The type of the message header to be sent.</param>
+    /// <param name="force">If set to true, the header will be sent even when the connection state is not set to Connected.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field           | Size (bytes) | Description                                                                 |
+    /// |-----------------|--------------|--------------------------------|
+    /// | Type            | 1            | The type of the message.            
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
     private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
     {
-        // | MessageType |
-        // |-------------|
-        // | byte        |
 
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;

@@ -146,10 +146,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
-        _logger = session.Logger;
+        _logger = session.Logger?.CreateLogger<NexusDuplexPipe>();
         InitialId = initialId;
         _outputPipeWriter.Setup(
-            _session.Logger,
+            _logger,
             _session,
             _session.IsServer,
             _session.Config.NexusPipeFlushChunkSize);
