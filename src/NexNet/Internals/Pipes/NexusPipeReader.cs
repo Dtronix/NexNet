@@ -14,7 +14,6 @@ internal class NexusPipeReader : PipeReader
     //private readonly NexusDuplexPipe _nexusDuplexPipe;
     private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
     private readonly CancellationRegistrationArgs _cancelReadingArgs;
-    //private TaskCompletionSource _allowBuffer = new TaskCompletionSource();
 
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 

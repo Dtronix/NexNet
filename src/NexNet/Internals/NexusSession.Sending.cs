@@ -45,7 +45,7 @@ internal partial class NexusSession<TNexus, TProxy>
         _bufferWriter.Deallocate(buffer);
         _pipeOutput.Advance(length);
 
-        _config.Logger?.LogTrace($"NexusSession: Sending {TMessage.Type} message & body with {length} bytes.");
+        Logger?.LogTrace($"Sending {TMessage.Type} message & body with {length} bytes.");
 
         var result = await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -102,7 +102,7 @@ internal partial class NexusSession<TNexus, TProxy>
             _config.InternalOnSend?.Invoke(this, debugCopy);
         }
 
-        _config.Logger?.LogTrace($"NexusSession: Sending {length} bytes with header and length.");
+        Logger?.LogTrace($"Sending {length} bytes with header and length.");
         FlushResult result = default;
         try
         {
@@ -156,7 +156,7 @@ internal partial class NexusSession<TNexus, TProxy>
         _pipeOutput.GetSpan(1)[0] = (byte)type;
         _pipeOutput.Advance(1);
 
-        _config.Logger?.LogTrace($"NexusSession: Sending {type} header.");
+        Logger?.LogTrace($"Sending {type} header.");
         FlushResult result = default;
         try
         {

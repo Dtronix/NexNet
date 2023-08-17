@@ -182,14 +182,14 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
         finally
         {
             message.Result = null;
-            context.CacheManager.Return(message);
+            message?.Dispose();
             ReturnArgsToCache(context, requestArgs);
         }
 
         static void ReturnArgsToCache(SessionContext<TProxy> context, InvokeMethodCoreArgs args)
         {
             //args.Message.Arguments = Memory<byte>.Empty;
-            context.CacheManager.Return(args.Message);
+            args.Message?.Dispose();
             InvokeMethodCoreArgs.Return(args);
         }
     }

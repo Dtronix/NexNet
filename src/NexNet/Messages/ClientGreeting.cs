@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Threading;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Messages;
 
@@ -8,6 +10,14 @@ internal partial class ClientGreetingMessage : IMessageBase
 {
     private bool _isArgumentPoolArray;
     public static MessageType Type { get; } = MessageType.ClientGreeting;
+
+    private ICachedMessage? _messageCache = null!;
+
+    [MemoryPackIgnore]
+    public ICachedMessage? MessageCache
+    {
+        set => _messageCache = value;
+    }
 
     [MemoryPackOrder(0)]
     public int Version { get; set; }
@@ -32,7 +42,6 @@ internal partial class ClientGreetingMessage : IMessageBase
     [MemoryPackOrder(3)]
     [MemoryPoolFormatter<byte>]
     public Memory<byte> AuthenticationToken { get; set; }
-    
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized()
@@ -40,18 +49,26 @@ internal partial class ClientGreetingMessage : IMessageBase
         _isArgumentPoolArray = true;
     }
 
-    public void Reset()
+    public void Dispose()
     {
-        if (!_isArgumentPoolArray)
+        var cache = Interlocked.Exchange(ref _messageCache, null);
+
+        if (cache == null)
             return;
 
-        // Reset the pool flag.
-        _isArgumentPoolArray = false;
+        cache.Return(this);
 
-        if (AuthenticationToken.IsEmpty)
-            return;
+        if (_isArgumentPoolArray)
+        {
 
-        IMessageBase.Return(AuthenticationToken);
-        AuthenticationToken = default;
+            // Reset the pool flag.
+            _isArgumentPoolArray = false;
+
+            if (AuthenticationToken.IsEmpty)
+                return;
+
+            IMessageBase.Return(AuthenticationToken);
+            AuthenticationToken = default;
+        }
     }
 }

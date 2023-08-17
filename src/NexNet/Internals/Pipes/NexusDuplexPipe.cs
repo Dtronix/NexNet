@@ -144,7 +144,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         if (_currentState != State.Unset)
             throw new InvalidOperationException("Can't setup a pipe that is already in use.");
 
-        _readyTcs = new TaskCompletionSource();
+        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
         _logger = session.Logger;
         InitialId = initialId;
@@ -233,7 +233,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         //_logger?.LogInfo($"Notifying state: {_currentState}");
         var currentState = _currentState;
-        var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
+        using var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
         message.PipeId = Id;
         message.State = currentState;
         try
@@ -248,8 +248,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             // Close the pipe.
             _currentState = State.Complete;
         }
-
-        _session.CacheManager.Return(message);
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Buffers;
+using System.Threading;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Messages;
 
@@ -15,6 +17,14 @@ internal partial class InvocationResultMessage : IMessageBase
     }
 
     public static MessageType Type { get; } = MessageType.InvocationResult;
+
+    private ICachedMessage? _messageCache = null!;
+
+    [MemoryPackIgnore]
+    public ICachedMessage? MessageCache
+    {
+        set => _messageCache = value;
+    }
 
     [MemoryPackOrder(0)]
     public int InvocationId { get; set; }
@@ -41,8 +51,15 @@ internal partial class InvocationResultMessage : IMessageBase
         return MemoryPackSerializer.Deserialize(type, Result.Value);
     }
 
-    public void Reset()
+    public void Dispose()
     {
+        var cache = Interlocked.Exchange(ref _messageCache, null);
+
+        if (cache == null)
+            return;
+
         Result = null;
+
+        cache.Return(this);
     }
 }

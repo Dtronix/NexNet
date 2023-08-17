@@ -1,14 +1,13 @@
 ﻿using System.Threading;
 using MemoryPack;
 using NexNet.Cache;
-using NexNet.Internals.Pipes;
 
 namespace NexNet.Messages;
 
 [MemoryPackable(SerializeLayout.Explicit)]
-internal partial class DuplexPipeUpdateStateMessage : IMessageBase
+internal partial class ServerGreetingMessage : IMessageBase
 {
-    public static MessageType Type { get; } = MessageType.DuplexPipeUpdateState;
+    public static MessageType Type => MessageType.ServerGreeting;
 
     private ICachedMessage? _messageCache = null!;
 
@@ -19,10 +18,7 @@ internal partial class DuplexPipeUpdateStateMessage : IMessageBase
     }
 
     [MemoryPackOrder(0)]
-    public ushort PipeId { get; set; }
-
-    [MemoryPackOrder(1)]
-    public NexusDuplexPipe.State State { get; set; }
+    public int Version { get; set; }
 
     public void Dispose()
     {

@@ -76,7 +76,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
         var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var disconnectedTaskCompletionSource = new TaskCompletionSource();
+        var disconnectedTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
 
         var transport = await _config.ConnectTransport(cancellationToken).ConfigureAwait(false);

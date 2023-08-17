@@ -26,6 +26,7 @@ internal class NexusPipeManager
         }
     }
 
+    private INexusLogger? _logger;
     private INexusSession _session = null!;
     private readonly ConcurrentDictionary<ushort, PipeAndState> _activePipes = new();
     private readonly ConcurrentDictionary<byte, PipeAndState> _initializingPipes = new();
@@ -43,6 +44,7 @@ internal class NexusPipeManager
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
+        _logger = session.Logger?.CreateLogger<NexusPipeManager>();
     }
 
     public IRentedNexusDuplexPipe? RentPipe()
@@ -97,7 +99,7 @@ internal class NexusPipeManager
         if (_session == null)
             throw new InvalidOperationException("Session if not available for usage.");
 
-        _session.Logger?.LogTrace($"NexusPipeManager.RegisterPipe({otherId});");
+        _logger?.LogTrace($"RegisterPipe({otherId});");
         if (_isCanceled)
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
@@ -116,7 +118,7 @@ internal class NexusPipeManager
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        _session.Logger?.LogTrace($"NexusPipeManager.DeregisterPipe({pipe.Id});");
+        _logger?.LogTrace($"DeregisterPipe({pipe.Id});");
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;
@@ -153,7 +155,7 @@ internal class NexusPipeManager
         {
             if (!pipeWrapper.IsStateValid)
             {
-                _session.Logger?.LogTrace($"Ignored data due to pipe changing state form last .");
+                _logger?.LogTrace($"Ignored data due to pipe changing state form last .");
                 return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
             }
 
@@ -162,7 +164,7 @@ internal class NexusPipeManager
             return pipeWrapper.Pipe.WriteFromUpstream(data);
         }
 
-        _session.Logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
+        _logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
         //throw new InvalidOperationException($"No pipe exists for id: {id}.");
         return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
@@ -176,7 +178,7 @@ internal class NexusPipeManager
         {
             if (!pipeWrapper.IsStateValid)
             {
-                _session.Logger?.LogTrace($"State update of {state} ignored due to state change.");
+                _logger?.LogTrace($"State update of {state} ignored due to state change.");
                 return;
             }
 
@@ -198,7 +200,7 @@ internal class NexusPipeManager
 
     public void CancelAll()
     {
-        _session.Logger?.LogTrace($"NexusPipeManager.CancelAll();");
+        _logger?.LogTrace($"CancelAll();");
         _isCanceled = true;
 
         // Update all the states of the pipes to complete.
@@ -206,7 +208,7 @@ internal class NexusPipeManager
         {
             if (!pipeWrapper.Value.IsStateValid)
             {
-                _session.Logger?.LogTrace($"Did not cancel initializing pipe {pipeWrapper.Key} due to state change.");
+                _logger?.LogTrace($"Did not cancel initializing pipe {pipeWrapper.Key} due to state change.");
                 continue;
             }
 
@@ -219,7 +221,7 @@ internal class NexusPipeManager
         {
             if (!pipeWrapper.Value.IsStateValid)
             {
-                _session.Logger?.LogTrace($"Did not cancel active pipe {pipeWrapper.Key} due to state change.");
+                _logger?.LogTrace($"Did not cancel active pipe {pipeWrapper.Key} due to state change.");
                 continue;
             }
 

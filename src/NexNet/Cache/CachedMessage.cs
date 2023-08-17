@@ -6,15 +6,15 @@ using NexNet.Messages;
 
 namespace NexNet.Cache;
 
-internal class CachedDeserializer<T> : ICachedDeserializer
-    where T : IMessageBase, new()
+internal class CachedCachedMessage<T> : ICachedMessage
+    where T : class, IMessageBase, new()
 {
     private readonly ConcurrentBag<T> _cache = new();
 
     public T Rent()
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = new T();
+            cachedItem = new T() { MessageCache = this };
 
         return cachedItem;
     }
@@ -23,7 +23,7 @@ internal class CachedDeserializer<T> : ICachedDeserializer
     public T? Deserialize(in ReadOnlySequence<byte> bodySequence)
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = new T();
+            cachedItem = new T() { MessageCache = this };
 
         MemoryPackSerializer.Deserialize(bodySequence, ref cachedItem);
 
@@ -34,28 +34,22 @@ internal class CachedDeserializer<T> : ICachedDeserializer
     public IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence)
     {
         if (!_cache.TryTake(out var cachedItem))
-            cachedItem = new T();
+            cachedItem = new T() { MessageCache = this };
 
         MemoryPackSerializer.Deserialize(bodySequence, ref cachedItem);
 
         return cachedItem!;
     }
 
-    public void Return(T item)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Return(IMessageBase item)
     {
-        item.Reset();
-        _cache.Add(item);
-
+        item.MessageCache = null;
+        _cache.Add(Unsafe.As<T>(item));
     }
 
     public void Clear()
     {
         _cache.Clear();
     }
-}
-
-internal interface ICachedDeserializer
-{
-    void Clear();
-    IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence);
 }

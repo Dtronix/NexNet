@@ -100,7 +100,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // Try to set the arguments. If we can not, then the arguments are too large.
         if (!message.TrySetArguments(arguments))
         {
-            _cacheManager.Return(message);
+            message.Dispose();
             throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
         }
 
@@ -273,7 +273,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
 
         // Return the message to the cache
-        _cacheManager.Return(message);
+        message.Dispose();
     }
 
     /// <summary>
@@ -358,8 +358,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     private void ReturnState(RegisteredInvocationState state)
     {
-        if(state.Result != null)
-            _cacheManager.Return(state.Result);
+        state.Result?.Dispose();
 
         state.Result = null;
         _cacheManager.RegisteredInvocationStateCache.Return(state);
@@ -421,10 +420,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             {
                 if (state.NotifyConnection)
                 {
-                    var message = CacheManager.Rent<InvocationCancellationMessage>();
+                    using var message = CacheManager.Rent<InvocationCancellationMessage>();
                     message.InvocationId = state.InvocationId;
                     await session.SendMessage(message).ConfigureAwait(false);
-                    CacheManager.Return(message);
                 }
 
                 ReturnState(state);

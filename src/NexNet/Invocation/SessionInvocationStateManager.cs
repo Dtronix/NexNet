@@ -70,7 +70,7 @@ internal class SessionInvocationStateManager
         if (cancellationToken?.IsCancellationRequested == true)
             return null;
 
-        var message = _cacheManager.Rent<InvocationMessage>();
+        using var message = _cacheManager.Rent<InvocationMessage>();
 
         message.InvocationId = GetNextId();
         message.MethodId = methodId;
@@ -79,7 +79,6 @@ internal class SessionInvocationStateManager
         // Try to set the arguments. If we can not, then the arguments are too large.
         if (!message.TrySetArguments(arguments))
         {
-            _cacheManager.Return(message);
             throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
         }
 
@@ -113,12 +112,10 @@ internal class SessionInvocationStateManager
         else
         {
             _cacheManager.RegisteredInvocationStateCache.Return(state);
-            _cacheManager.Return(message);
             return null;
         }
 
         // Return the message to the cache
-        _cacheManager.Return(message);
         return state;
     }
 
