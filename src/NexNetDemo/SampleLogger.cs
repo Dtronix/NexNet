@@ -8,7 +8,7 @@ class SampleLogger : INexusLogger
 
     public string? Category { get; }
 
-    public SampleLogger(string prefix, string? category)
+    public SampleLogger(string prefix, string? category = null)
     {
         _prefix = prefix;
         Category = category;

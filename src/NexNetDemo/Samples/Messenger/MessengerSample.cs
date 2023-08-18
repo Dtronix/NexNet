@@ -11,10 +11,10 @@ public class MessengerSample : SampleBase
     public MessengerSample(string serverIpAddress)
         : base(false, TransportMode.TlsTcp)
     {
-        ServerConfig = new TcpTlsServerConfig()
+        ServerConfig = new QuicServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Parse(serverIpAddress), 4236),
-            Logger = new SampleLogger("Server"),
+            //Logger = new SampleLogger("Server"),
             SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
             {
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -24,10 +24,10 @@ public class MessengerSample : SampleBase
                 ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
             },
         };
-        ClientConfig = new TcpTlsClientConfig()
+        ClientConfig = new QuicClientConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Parse(serverIpAddress), 4236),
-            Logger = new SampleLogger("Client"),
+            //Logger = new SampleLogger("Client"),
             SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
             {
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,

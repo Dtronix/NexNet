@@ -1,7 +1,9 @@
 ﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Cache;
 
@@ -19,6 +21,7 @@ internal class CacheManager
     public readonly CachedCts CancellationTokenSourceCache = new();
     public readonly CachedDuplexPipe NexusDuplexPipeCache = new();
     public readonly CachedRentedDuplexPipe NexusRentedDuplexPipeCache = new();
+    public readonly ConcurrentBag<BufferWriter<byte>> BufferWriterCache = new();
 
     private readonly ICachedMessage?[] _messageCaches = new ICachedMessage?[50];
 

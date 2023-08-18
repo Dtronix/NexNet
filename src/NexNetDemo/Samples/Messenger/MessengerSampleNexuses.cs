@@ -28,7 +28,7 @@ partial class MessengerSampleClientNexus
     {
         _ = Task.Run(async () =>
         {
-            await Task.Delay(1000);
+            //await Task.Delay(1000);
             int count = 0;
             while (true)
             {
