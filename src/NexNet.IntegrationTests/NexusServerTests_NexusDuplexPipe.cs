@@ -6,6 +6,44 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 {
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task PipeReaderReceivesDataMultipleTimes(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        int count = 0;
+
+        // Ensure that the ids will properly wrap around.
+        const int iterations = 1000;
+        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            var result = await pipe.Input.ReadAsync();
+
+            // If the connection is still alive, the buffer should contain the data.
+            if (!result.IsCompleted)
+            {
+                Assert.AreEqual(Data, result.Buffer.ToArray());
+            }
+
+            if (++count == iterations)
+                tcs.SetResult();
+        };
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await using var pipe = cNexus.Context.CreatePipe();
+            await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe);
+            await pipe.ReadyTask;
+            await pipe.Output.WriteAsync(Data);
+        }
+
+
+        await tcs.Task.Timeout(2);
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]

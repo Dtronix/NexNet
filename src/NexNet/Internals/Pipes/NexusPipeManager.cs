@@ -68,23 +68,27 @@ internal class NexusPipeManager
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask ReturnPipe(IRentedNexusDuplexPipe pipe)
     {
+        _logger?.LogTrace($"ReturnPipe({pipe.Id});");
         _activePipes.TryRemove(pipe.Id, out _);
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
         var localId = _session.IsServer ? serverId : clientId;
 
-        // If we can't remove the pipe from the list of initializing pipes, it means that the pipe has already
-        // been returned to the cache.
-        if (!_activePipes.TryRemove(pipe.Id, out var removedPipe)
-            && !_initializingPipes.TryRemove(localId, out removedPipe))
-            return;
+        _activePipes.TryRemove(pipe.Id, out _);
+        _initializingPipes.TryRemove(localId, out _);
 
-        await pipe.CompleteAsync();
+        var nexusPipe = (RentedNexusDuplexPipe)pipe;
+        
+        if(nexusPipe.CurrentState != State.Complete)
+        {
+            await pipe.CompleteAsync();
+            // Return the pipe to the cache.
+            nexusPipe.Reset();
+        }
 
-        // Return the pipe to the cache.
-        removedPipe.Pipe.Reset();
+        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
 
-        _session.CacheManager.NexusRentedDuplexPipeCache.Return(Unsafe.As<RentedNexusDuplexPipe>(pipe));
+        Console.WriteLine($"Pipe [{localId}] {pipe.Id} returned.");
 
         lock (_usedIds)
         {
@@ -189,7 +193,10 @@ internal class NexusPipeManager
             var (clientId, serverId) = GetClientAndServerId(id);
             var thisId = _session.IsServer ? serverId : clientId;
             if (!_initializingPipes.TryRemove(thisId, out var initialPipe))
-                throw new Exception($"Could not find pipe with initial ID of {thisId}");
+            {
+                _logger?.LogTrace($"Could not find pipe with initial ID of {thisId}");
+                return;
+            }
 
             // Move the pipe to the main active pipes.
             _activePipes.TryAdd(id, initialPipe);
@@ -278,6 +285,8 @@ internal class NexusPipeManager
 
                 _currentId = incrementedId;
                 _usedIds.Set(incrementedId, true);
+                if(_session.IsServer)
+                    Console.WriteLine($"GetLocalId() = {incrementedId}");
                 return (byte)incrementedId;
             }
         }

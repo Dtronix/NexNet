@@ -64,7 +64,7 @@ internal class NexusPipeWriter : PipeWriter
     /// </summary>
     public void Reset()
     {
-        _bufferWriter.Dispose();
+        _bufferWriter.Reset();
         _isCanceled = false;
         _isCompleted = false;
         _flushCts?.Dispose();

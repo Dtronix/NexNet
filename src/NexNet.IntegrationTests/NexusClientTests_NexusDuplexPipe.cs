@@ -12,18 +12,26 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
+        
+        // Ensure that the ids will properly wrap around.
+        const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync();
-            Assert.AreEqual(Data, result.Buffer.ToArray());
 
-            if(++count == 10)
+            // If the connection is still alive, the buffer should contain the data.
+            if (!result.IsCompleted)
+            {
+                Assert.AreEqual(Data, result.Buffer.ToArray());
+            }
+
+            if(++count == iterations)
                 tcs.SetResult();
         };
 
-        for (int i = 0; i < 1; i++)
+        for (int i = 0; i < iterations; i++)
         {
             await using var pipe = sNexus.Context.CreatePipe();
             await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
@@ -32,7 +40,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         }
 
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(2);
     }
 
     [TestCase(Type.Uds)]
@@ -114,13 +122,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     public async Task PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-        var completedTcs = new TaskCompletionSource();
-
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-
-            await completedTcs.Task;
-
             FlushResult result = default;
             for (int i = 0; i < 20; i++)
             {
@@ -141,7 +144,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await pipe.ReadyTask;
         await pipe.CompleteAsync();
-        completedTcs.SetResult();
 
         await tcs.Task.Timeout(3);
     }

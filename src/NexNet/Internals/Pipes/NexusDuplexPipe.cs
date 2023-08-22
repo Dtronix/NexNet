@@ -62,7 +62,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     private readonly NexusPipeReader _inputNexusPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
     private TaskCompletionSource? _readyTcs;
-    
+
 
     private State _currentState = State.Unset;
 
@@ -127,6 +127,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
     public ValueTask CompleteAsync()
     {
+        if (_currentState == State.Complete)
+            return default;
+
         var stateChanged = UpdateState(State.Complete);
         if (stateChanged)
             return NotifyState();
@@ -186,7 +189,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     public void Reset()
     {
         // Close everything.
-        UpdateState(State.Complete);
+        if(_currentState != State.Complete)
+            UpdateState(State.Complete);
 
         InitialId = 0;
         _currentState = State.Unset;
@@ -199,7 +203,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         _outputPipeWriter.Reset();
 
         Interlocked.Increment(ref StateId);
-        // No need to reset anything with the writer as it is use once and dispose.
     }
 
     /// <summary>
