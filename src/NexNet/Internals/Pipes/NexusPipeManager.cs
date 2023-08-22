@@ -88,8 +88,6 @@ internal class NexusPipeManager
 
         _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
 
-        Console.WriteLine($"Pipe [{localId}] {pipe.Id} returned.");
-
         lock (_usedIds)
         {
             // Return the local ID to the available IDs list.
@@ -285,8 +283,7 @@ internal class NexusPipeManager
 
                 _currentId = incrementedId;
                 _usedIds.Set(incrementedId, true);
-                if(_session.IsServer)
-                    Console.WriteLine($"GetLocalId() = {incrementedId}");
+
                 return (byte)incrementedId;
             }
         }

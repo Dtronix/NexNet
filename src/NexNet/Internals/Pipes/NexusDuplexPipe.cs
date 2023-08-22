@@ -289,6 +289,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
                 // This normally happens when the pipe is reset before it is ready or after it has been reset.
                 // Honestly, we shouldn't reach here.
                 _logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
+                _readyTcs?.TrySetCanceled();
                 return false;
             }
         }
