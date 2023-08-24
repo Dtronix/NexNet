@@ -263,14 +263,15 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     {
         // Get a copy of the current state.
         var currentState = _currentState;
-        _logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState}");
         if (_session == null
             || (!remove && currentState.HasFlag(updatedState))
             || (remove && !currentState.HasFlag(updatedState)))
         {
-            _logger?.LogTrace($"Canceled state update of: {updatedState} because it is already set.");
+            _logger?.LogTrace($"Current State: {currentState}; Canceled state update of: {updatedState} because it is already set.");
             return false;
         }
+
+        _logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState}");
 
         if (currentState == State.Unset)
         {

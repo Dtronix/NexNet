@@ -27,7 +27,9 @@ public class BaseTests
     //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
     protected int? CurrentUdpPort;
-    protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
+    //protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
+    private ConsoleLogger _logger = null!;
+
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
@@ -43,10 +45,12 @@ public class BaseTests
     {
         _socketDirectory?.Delete(true);
         Trace.Flush();
-        foreach (var nexusLogger in Loggers)
-            nexusLogger.LogEnabled = false;
-        Loggers.Clear();
+    }
 
+    [SetUp]
+    public virtual void SetUp()
+    {
+        _logger = new ConsoleLogger();
     }
 
     [TearDown]
@@ -55,6 +59,7 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
+        _logger = null;
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -126,9 +131,7 @@ public class BaseTests
 
     protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("SV") : null;
-        if(logger != null)
-            Loggers.Add(logger);
+        var logger = log ? _logger.CreateLogger("SV") : null;
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -196,9 +199,7 @@ public class BaseTests
 
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("CL") : null;
-        if (logger != null)
-            Loggers.Add(logger);
+        var logger = log ? _logger.CreateLogger("CL") : null;
 
         return CreateClientConfigWithLog(type, logger);
     }
