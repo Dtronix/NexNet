@@ -11,18 +11,22 @@ public class ConsoleLogger : INexusLogger
 
     public string? Category { get; }
 
+
+
+    prop
+
     public ConsoleLogger()
     {
         _sw = Stopwatch.StartNew();
         _outWriter = TestContext.Out;
     }
 
-    private ConsoleLogger(string prefix, string? category, Stopwatch sw, TextWriter textWriter)
+    private ConsoleLogger(ConsoleLogger logger, string? category, string prefix = "")
     {
         _prefix = prefix;
         Category = category;
-        _sw = sw;
-        _outWriter = textWriter;
+        _sw = logger._sw;
+        _outWriter = logger._outWriter;
     }
 
 
@@ -33,11 +37,11 @@ public class ConsoleLogger : INexusLogger
 
     public INexusLogger CreateLogger(string? category)
     {
-        return new ConsoleLogger(_prefix, category, _sw, _outWriter);
+        return new ConsoleLogger(this, category);
     }
 
     public INexusLogger CreateLogger(string? category, string prefix)
     {
-        return new ConsoleLogger(prefix, category, _sw, _outWriter);
+        return new ConsoleLogger(this, category, prefix);
     }
 }

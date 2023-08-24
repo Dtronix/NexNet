@@ -29,6 +29,8 @@ public class BaseTests
     protected int? CurrentTcpPort;
     protected int? CurrentUdpPort;
     //protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
+    protected List<INexusServer> Servers = new List<INexusServer>();
+    protected List<INexusClient> Clients = new List<INexusClient>();
     private ConsoleLogger _logger = null!;
 
     [OneTimeSetUp]
@@ -60,6 +62,21 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
+        
+        foreach (var nexusClient in Clients)
+        {
+            _ = nexusClient.DisconnectAsync();
+            //nexusClient.DisconnectedTask?.Wait();
+        }
+        Clients.Clear();
+
+        foreach (var nexusServer in Servers)
+        {
+            _ = nexusServer.StopAsync();
+            //nexusServer.StoppedTask?.Wait();
+        }
+
+        Servers.Clear();
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -212,6 +229,8 @@ public class BaseTests
         var clientNexus = new ClientNexus();
         var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Servers.Add(server);
+        Clients.Add(client);
 
         return (server, serverNexus, client, clientNexus);
     }
@@ -224,7 +243,9 @@ public class BaseTests
             var nexus = new ServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        });
+        }); 
+        Servers.Add(server);
+
         return server;
     }
 
@@ -233,6 +254,7 @@ public class BaseTests
     {
         var clientNexus = new ClientNexus();
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Clients.Add(client);
 
         return (client, clientNexus);
     }

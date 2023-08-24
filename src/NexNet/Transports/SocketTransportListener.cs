@@ -42,6 +42,10 @@ internal class SocketTransportListener : ITransportListener
             SocketConnection.SetRecommendedServerOptions(clientSocket);
             return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            // noop.
+        }
         catch (Exception e)
         {
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");

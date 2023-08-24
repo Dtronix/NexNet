@@ -31,6 +31,10 @@ internal class QuicTransportListener : ITransportListener
             connection = await _listener.AcceptConnectionAsync(cancellationToken).ConfigureAwait(false);
             return await QuicTransport.CreateFromConnection(connection, _config).ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            // noop.
+        }
         catch (Exception e)
         {
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");

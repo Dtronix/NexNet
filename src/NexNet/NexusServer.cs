@@ -10,12 +10,13 @@ using System.Threading.Tasks;
 using NexNet.Internals;
 
 namespace NexNet;
+
 /// <summary>
 /// Class which manages session connections.
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>, IAsyncDisposable
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>, INexusServer 
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -35,6 +36,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
     private TaskCompletionSource? _stoppedTcs;
     private volatile int _state = (int)State.Stopped;
+    private CancellationTokenSource? _cancellationTokenSource;
     /// <summary>
     /// Cache for all the server nexus contexts.
     /// </summary>
@@ -100,6 +102,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             return;
 
         if (_listener != null) throw new InvalidOperationException("Server is already running");
+        _cancellationTokenSource = new CancellationTokenSource();
         _stoppedTcs?.TrySetResult();
         _stoppedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
@@ -122,6 +125,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         {
             try
             {
+                _cancellationTokenSource?.Cancel();
                 _cacheManager.Clear();
                 _watchdogTimer.Change(-1, -1);
 
@@ -234,7 +238,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         {
             while (_state == (int)State.Running)
             {
-                var clientTransport = await _listener!.AcceptTransportAsync(default).ConfigureAwait(false);
+                var clientTransport = await _listener!.AcceptTransportAsync(_cancellationTokenSource!.Token).ConfigureAwait(false);
 
                 if(clientTransport == null)
                     continue;

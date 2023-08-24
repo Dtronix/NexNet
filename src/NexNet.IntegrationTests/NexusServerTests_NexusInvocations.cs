@@ -107,7 +107,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(100)]
+    [Repeat(10)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(

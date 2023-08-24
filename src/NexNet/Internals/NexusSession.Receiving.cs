@@ -62,8 +62,11 @@ internal partial class NexusSession<TNexus, TProxy>
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Logger?.LogError(ex, "Reading exited with exception.");
-            await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+            if (State != ConnectionState.Disconnecting)
+            {
+                Logger?.LogError(ex, "Reading exited with exception.");
+                await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+            }
         }
     }
 
