@@ -21,7 +21,7 @@ internal class BasePipeTests : BaseTests
         var (server, sNexus, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, log),
             CreateClientConfig(type, log));
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         return (server, sNexus, client, cNexus, tcs);
     }

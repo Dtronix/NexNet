@@ -16,7 +16,7 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         var data = new byte[65521];

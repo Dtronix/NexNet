@@ -176,7 +176,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {

@@ -155,7 +155,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
 
         setup.Invoke(clientNexus);
 
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
 
         serverConfig.InternalOnSend = (_, bytes) =>
         {

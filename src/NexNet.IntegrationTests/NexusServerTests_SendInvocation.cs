@@ -174,7 +174,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
 
         serverConfig.InternalOnSend = (_, bytes) =>
         {

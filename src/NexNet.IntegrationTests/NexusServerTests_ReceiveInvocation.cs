@@ -294,7 +294,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync();
+        await server.StartAsync().Timeout(1);
 
         action(serverNexus, clientNexus, tcs);
 
