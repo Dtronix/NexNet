@@ -262,9 +262,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 _pipeOutput!.Complete();
             }
-            catch
+            catch (ObjectDisposedException)
             {
                 //noop
+            }
+            catch (Exception e)
+            {
+                _config.Logger?.LogError(e, "Error while completing output pipe.");
             }
 
             _pipeOutput = null;
