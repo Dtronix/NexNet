@@ -35,4 +35,9 @@ public class ConsoleLogger : INexusLogger
     {
         return new ConsoleLogger(_prefix, category, _sw, _outWriter);
     }
+
+    public INexusLogger CreateLogger(string? category, string prefix)
+    {
+        return new ConsoleLogger(prefix, category, _sw, _outWriter);
+    }
 }

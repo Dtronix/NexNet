@@ -131,7 +131,7 @@ public class BaseTests
 
     protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
-        var logger = log ? _logger.CreateLogger("SV") : null;
+        var logger = log ? _logger.CreateLogger(null, "SV") : null;
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -199,7 +199,7 @@ public class BaseTests
 
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
-        var logger = log ? _logger.CreateLogger("CL") : null;
+        var logger = log ? _logger.CreateLogger(null, "CL") : null;
 
         return CreateClientConfigWithLog(type, logger);
     }
