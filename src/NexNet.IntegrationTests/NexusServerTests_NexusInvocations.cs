@@ -107,11 +107,12 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [Repeat(100)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type),
-            CreateClientConfig(type));
+            CreateServerConfig(type, true),
+            CreateClientConfig(type, true));
 
         clientNexus.ClientTaskValueEvent = _ => ValueTask.FromResult(54321);
 
