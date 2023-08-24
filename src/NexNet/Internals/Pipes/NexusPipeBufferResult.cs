@@ -4,6 +4,6 @@ internal enum NexusPipeBufferResult : byte
 {
     Success,
     HighWatermarkReached,
-    HighCutoffReached,
+    //HighCutoffReached,
     DataIgnored,
 }

@@ -228,13 +228,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        var bufferDuplexPipeResult =
-                            await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
-                        if (bufferDuplexPipeResult == NexusPipeBufferResult.HighCutoffReached)
-                        {
-                            disconnect = DisconnectReason.NexusPipeHighWaterCutoffReached;
-                        }
-
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
                         break;
                     }
 

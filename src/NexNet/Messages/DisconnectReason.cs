@@ -55,10 +55,10 @@ public enum DisconnectReason : byte
     /// </summary>
     ServerRestarting = MessageType.DisconnectServerRestarting,
 
-    /// <summary>
-    /// The high water cutoff was reached on a duplex pipe.
-    /// </summary>
-    NexusPipeHighWaterCutoffReached = MessageType.DisconnectNexusPipeHighWaterCutoffReached,
+    // <summary>
+    // The high water cutoff was reached on a duplex pipe.
+    // </summary>
+    //NexusPipeHighWaterCutoffReached = MessageType.DisconnectNexusPipeHighWaterCutoffReached,
 
     /// <summary>
     /// The socket was closed while attempting to write.

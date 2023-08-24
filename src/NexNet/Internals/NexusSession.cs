@@ -262,7 +262,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 _pipeOutput!.Complete();
             }
-            catch (ObjectDisposedException)
+            catch
             {
                 //noop
             }
