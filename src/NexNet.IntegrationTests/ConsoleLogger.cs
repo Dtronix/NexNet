@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
@@ -26,7 +27,7 @@ public class ConsoleLogger : INexusLogger
         if (!LogEnabled)
             return;
 
-        Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix} [{category}]: {message} {exception}");
+        TestContext.Out.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix} [{category}]: {message} {exception}");
     }
 
     public INexusLogger CreateLogger(string? category)
