@@ -63,7 +63,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
         Logger?.LogTrace($"Sending {TMessage.Type} header and  body with {length} total bytes.");
 
-        var result = await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        var result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
 
         OnSent?.Invoke();
 
@@ -135,7 +135,7 @@ internal partial class NexusSession<TNexus, TProxy>
         FlushResult result = default;
         try
         {
-            result = await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
@@ -205,7 +205,7 @@ internal partial class NexusSession<TNexus, TProxy>
         FlushResult result = default;
         try
         {
-            result = await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
