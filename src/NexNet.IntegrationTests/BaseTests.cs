@@ -60,7 +60,6 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
-        _logger = null;
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
