@@ -53,9 +53,12 @@ internal partial class NexusSession<TNexus, TProxy>
 
         var length = (int)_bufferWriter.Length;
         var buffer = _bufferWriter.GetBuffer();
+
+        // Only used for debugging
         _config.InternalOnSend?.Invoke(this, buffer.ToArray());
+
         buffer.CopyTo(_pipeOutput.GetSpan(length));
-        _bufferWriter.Deallocate(buffer);
+        _bufferWriter.Reset();
         _pipeOutput.Advance(length);
 
         Logger?.LogTrace($"Sending {TMessage.Type} header and  body with {length} total bytes.");
@@ -65,7 +68,7 @@ internal partial class NexusSession<TNexus, TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
+            await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
 
@@ -142,7 +145,7 @@ internal partial class NexusSession<TNexus, TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
+            await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -212,6 +215,6 @@ internal partial class NexusSession<TNexus, TProxy>
         OnSent?.Invoke();
 
         if (result.IsCanceled || result.IsCompleted)
-            await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
+            await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 }

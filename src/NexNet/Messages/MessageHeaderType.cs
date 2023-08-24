@@ -70,6 +70,11 @@ public enum MessageType : byte
     DisconnectNexusPipeHighWaterCutoffReached = 31,
 
     /// <summary>
+    /// The socket was closed while attempting to write. No body.
+    /// </summary>
+    DisconnectSocketClosedWhenWriting = 32,
+
+    /// <summary>
     /// Header for data sent to a pipe.
     /// </summary>
     DuplexPipeWrite = 50,
