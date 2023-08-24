@@ -26,6 +26,8 @@ internal class SocketTransport : ITransport
         Output = socketConnection.Output;
     }
 
+    public TransportConfiguration Configurations => new TransportConfiguration();
+
     public ValueTask CloseAsync(bool linger)
     {
         if (!linger)

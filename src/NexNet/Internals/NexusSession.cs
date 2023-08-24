@@ -48,7 +48,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
-    private volatile int _state;
+    private volatile int _state; 
+    
+    /// <summary>
+    /// If true, the transport will not pass the flush cancellation token to the underlying transport.
+    /// Currently exists due to an issue in the QUIC implementation.  Should be removed once the issue is fixed.
+    /// https://github.com/dotnet/runtime/issues/82704
+    /// https://github.com/dotnet/runtime/pull/90253
+    /// </summary>
+    private readonly bool _configDoNotPassFlushCancellationToken;
 
     public NexusPipeManager PipeManager { get; }
 
@@ -87,6 +95,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
+        _configDoNotPassFlushCancellationToken = _transportConnection.Configurations.DoNotPassFlushCancellationToken;
         Config = _config = configurations.Configs;
         _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;

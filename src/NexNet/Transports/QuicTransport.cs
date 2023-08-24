@@ -14,9 +14,10 @@ namespace NexNet.Transports;
 
 internal class QuicTransport : ITransport
 {
+
     private readonly QuicConnection _quicConnection;
  
-    private readonly QuicStream _quicStream;   
+    private readonly QuicStream _quicStream;
 
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
@@ -28,6 +29,12 @@ internal class QuicTransport : ITransport
         Input = PipeReader.Create(stream);
         Output = PipeWriter.Create(stream);
     }
+
+    public TransportConfiguration Configurations => new TransportConfiguration()
+    {
+        DoNotPassFlushCancellationToken = true
+    };
+
     public ValueTask CloseAsync(bool linger)
     {
         return _quicConnection.CloseAsync(0);

@@ -63,7 +63,18 @@ internal partial class NexusSession<TNexus, TProxy>
 
         Logger?.LogTrace($"Sending {TMessage.Type} header and  body with {length} total bytes.");
 
-        var result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+        FlushResult result = default;
+        try
+        {
+            // ReSharper disable once MethodSupportsCancellation
+            result = _configDoNotPassFlushCancellationToken
+                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
+                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+
+        }
 
         OnSent?.Invoke();
 
@@ -135,7 +146,10 @@ internal partial class NexusSession<TNexus, TProxy>
         FlushResult result = default;
         try
         {
-            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            // ReSharper disable once MethodSupportsCancellation
+            result = _configDoNotPassFlushCancellationToken
+                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
+                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
@@ -202,12 +216,14 @@ internal partial class NexusSession<TNexus, TProxy>
         _pipeOutput.Advance(1);
 
         Logger?.LogTrace($"Sending {type} header.");
+
         FlushResult result = default;
         try
         {
-            // If the cancellation token is canceled after the flush has completed, QUIC throws sometimes.
-            // https://github.com/dotnet/runtime/issues/82704
-            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            // ReSharper disable once MethodSupportsCancellation
+            result = _configDoNotPassFlushCancellationToken
+                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
+                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {

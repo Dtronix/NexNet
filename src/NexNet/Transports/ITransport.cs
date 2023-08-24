@@ -9,6 +9,11 @@ namespace NexNet.Transports;
 public interface ITransport : IDuplexPipe
 {
     /// <summary>
+    /// The configuration used to create this transport.
+    /// </summary>
+    public TransportConfiguration Configurations { get; }
+
+    /// <summary>
     /// Closes the connection.
     /// </summary>
     /// <param name="linger">
