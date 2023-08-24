@@ -1,13 +1,8 @@
-﻿using System;
-using System.Net;
-using System.Net.Quic;
+﻿using System.Net;
 using System.Net.Security;
-using System.Net.Sockets;
-using System.Runtime.Versioning;
-using System.Threading;
-using System.Threading.Tasks;
+using NexNet.Transports;
 
-namespace NexNet.Transports;
+namespace NexNet.Quic;
 
 /// <summary>
 /// Configurations for the client to connect to a QUIC NexNet server.

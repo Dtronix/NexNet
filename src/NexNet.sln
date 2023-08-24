@@ -18,6 +18,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{AFD63E
 		..\.github\workflows\dotnet.yml = ..\.github\workflows\dotnet.yml
 	EndProjectSection
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNet.Quic", "NexNet.Quic\NexNet.Quic.csproj", "{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -44,6 +46,10 @@ Global
 		{156ED4BC-EF04-4230-9AED-7E1058130BB5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{156ED4BC-EF04-4230-9AED-7E1058130BB5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{156ED4BC-EF04-4230-9AED-7E1058130BB5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

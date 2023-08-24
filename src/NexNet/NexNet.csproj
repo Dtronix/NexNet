@@ -6,18 +6,12 @@
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Description>Communication system to two way communication between a single server and multiple clients.</Description>
     <Version>0.1.1</Version>
   </PropertyGroup>
-  <ItemGroup>
-    <!-- Platforms supported by this SDK for analyzer warnings. Spec: https://github.com/dotnet/designs/blob/main/accepted/2020/platform-exclusion/platform-exclusion.md  -->
-    <SupportedPlatform Include="Linux" />
-    <SupportedPlatform Include="macOS" />
-    <SupportedPlatform Include="Windows" />
-  </ItemGroup>
+
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>NexNet.IntegrationTests</_Parameter1>

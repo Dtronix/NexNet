@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Quic;
 using NexNet.Transports;
 using NUnit.Framework;
 using NUnit.Framework.Internal;

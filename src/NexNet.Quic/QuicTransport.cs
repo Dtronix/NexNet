@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO.Pipelines;
-using System.Net;
+﻿using System.IO.Pipelines;
 using System.Net.Quic;
 using System.Net.Security;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
-using Pipelines.Sockets.Unofficial;
+using NexNet.Transports;
+
 #pragma warning disable CA1416
 
-namespace NexNet.Transports;
+namespace NexNet.Quic;
 
 internal class QuicTransport : ITransport
 {
