@@ -2,7 +2,7 @@
 using System.IO.Pipelines;
 using NUnit.Framework;
 
-namespace NexNet.IntegrationTests.NexusServerTests_NexusDuplexPipe;
+namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 {
