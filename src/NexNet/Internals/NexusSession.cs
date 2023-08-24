@@ -221,11 +221,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (state == (int)ConnectionState.Disconnecting || state == (int)ConnectionState.Disconnected)
             return;
 
-        if (reason == DisconnectReason.ProtocolError)
-        {
-
-        }
-
         _registeredDisconnectReason = reason;
 
         Logger?.LogTrace($"DisconnectCore({reason}, {sendDisconnect})");
