@@ -205,6 +205,8 @@ internal partial class NexusSession<TNexus, TProxy>
         FlushResult result = default;
         try
         {
+            // If the cancellation token is canceled after the flush has completed, QUIC throws sometimes.
+            // https://github.com/dotnet/runtime/issues/82704
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
