@@ -268,7 +268,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
             catch (Exception e)
             {
-                _config.Logger?.LogError(e, "Error while completing output pipe.");
+                Logger?.LogError(e, "Error while completing output pipe.");
             }
 
             _pipeOutput = null;
