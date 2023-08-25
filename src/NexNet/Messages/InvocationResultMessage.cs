@@ -19,6 +19,7 @@ internal partial class InvocationResultMessage : IMessageBase
     public static MessageType Type { get; } = MessageType.InvocationResult;
 
     private ICachedMessage? _messageCache = null!;
+    private ReadOnlySequence<byte>? _result;
 
     [MemoryPackIgnore]
     public ICachedMessage? MessageCache
@@ -33,7 +34,15 @@ internal partial class InvocationResultMessage : IMessageBase
     public StateType State { get; set; }
 
     [MemoryPackOrder(2)]
-    public ReadOnlySequence<byte>? Result { get; set; }
+    public ReadOnlySequence<byte>? Result
+    {
+        get => _result;
+        set
+        {
+            _result = value;
+            Console.WriteLine(new System.Diagnostics.StackTrace());
+        }
+    }
 
     public T? GetResult<T>()
     {
