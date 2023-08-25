@@ -26,7 +26,10 @@ internal class TcpTlsTransport : ITransport
         Output = PipeWriter.Create(sslStream);
     }
 
-    public TransportConfiguration Configurations => new TransportConfiguration();
+    public TransportConfiguration Configurations => new TransportConfiguration()
+    {
+        DoNotPassFlushCancellationToken = true
+    };
 
     public ValueTask CloseAsync(bool linger)
     {
