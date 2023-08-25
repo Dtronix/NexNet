@@ -33,6 +33,8 @@ public class BaseTests
     protected List<INexusClient> Clients = new List<INexusClient>();
     private ConsoleLogger _logger = null!;
 
+    public ConsoleLogger Logger => _logger;
+
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {

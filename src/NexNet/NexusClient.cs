@@ -64,7 +64,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
 
     /// <summary>
-    /// Connects to the server and optionally waits for the ready signal.
+    /// Connects to the server and waits for the ready signal.
     /// </summary>
     /// <returns>Task for completion</returns>
     /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>

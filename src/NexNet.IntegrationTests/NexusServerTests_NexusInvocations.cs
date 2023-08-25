@@ -1,4 +1,6 @@
-﻿using NexNet.IntegrationTests.TestInterfaces;
+﻿using System.Buffers;
+using System.Collections;
+using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
@@ -102,6 +104,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await tcs1.Task.Timeout(1);
     }
 
+    //Write a C# function which takes a byte array and outputs each byte individually
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -110,9 +113,28 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [Repeat(10)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
+        var serverConfig = CreateServerConfig(type, true);
+        serverConfig.InternalOnSend = (session, bytes) =>
+        {
+            Logger.LogWarning("Server sending: " + string.Join(", ", bytes));
+        };
+        serverConfig.InternalOnReceive = async (session, bytes) =>
+        {
+            Logger.LogWarning("Server received: " + string.Join(", ", bytes.ToArray()));
+        };
+        var clientConfig = CreateClientConfig(type, true);
+        clientConfig.InternalOnSend = (session, bytes) =>
+        {
+            Logger.LogWarning("Client sending: " + string.Join(", ", bytes));
+        };
+        clientConfig.InternalOnReceive = async (session, bytes) =>
+        {
+            Logger.LogWarning("Client received: " + string.Join(", ", bytes.ToArray()));
+        };
+
         var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, true),
-            CreateClientConfig(type, true));
+            serverConfig,
+            clientConfig);
 
         clientNexus.ClientTaskValueEvent = _ => ValueTask.FromResult(54321);
 
