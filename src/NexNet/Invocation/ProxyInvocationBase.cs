@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -331,6 +332,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             case InvocationResultMessage.StateType.CompletedResult:
                 var result = state.Result.GetResult<TReturn>();
+                Console.WriteLine(result);
+                Console.WriteLine($"Invocation returned {string.Join(", ", state.Result.Result?.ToArray() ?? Array.Empty<byte>())}");
                 ReturnState(state);
                 return result;
 
