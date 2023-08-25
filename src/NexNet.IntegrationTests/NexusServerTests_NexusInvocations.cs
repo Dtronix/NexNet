@@ -113,24 +113,24 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [Repeat(20)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
-        var serverConfig = CreateServerConfig(type, true);
-        serverConfig.InternalOnSend = (session, bytes) =>
-        {
-            Logger.LogWarning("Server sending: " + string.Join(", ", bytes));
-        };
-        serverConfig.InternalOnReceive = async (session, bytes) =>
-        {
-            Logger.LogWarning("Server received: " + string.Join(", ", bytes.ToArray()));
-        };
-        var clientConfig = CreateClientConfig(type, true);
-        clientConfig.InternalOnSend = (session, bytes) =>
-        {
-            Logger.LogWarning("Client sending: " + string.Join(", ", bytes));
-        };
-        clientConfig.InternalOnReceive = async (session, bytes) =>
-        {
-            Logger.LogWarning("Client received: " + string.Join(", ", bytes.ToArray()));
-        };
+        var serverConfig = CreateServerConfig(type);
+        //serverConfig.InternalOnSend = (session, bytes) =>
+        //{
+        //    Logger.LogWarning("Server sending: " + string.Join(", ", bytes));
+        //};
+        //serverConfig.InternalOnReceive = async (session, bytes) =>
+        //{
+        //    Logger.LogWarning("Server received: " + string.Join(", ", bytes.ToArray()));
+        //};
+        var clientConfig = CreateClientConfig(type);
+        //clientConfig.InternalOnSend = (session, bytes) =>
+        //{
+        //    Logger.LogWarning("Client sending: " + string.Join(", ", bytes));
+        //};
+        //clientConfig.InternalOnReceive = async (session, bytes) =>
+        //{
+        //    Logger.LogWarning("Client received: " + string.Join(", ", bytes.ToArray()));
+        //};
 
         var (server, _, client, clientNexus) = CreateServerClient(
             serverConfig,

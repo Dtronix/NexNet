@@ -43,8 +43,6 @@ internal class SessionInvocationStateManager
 
         state.Result = message;
 
-        Console.WriteLine($"UpdateInvocationResult result: {message.GetResult<int>()}");
-
         switch (message.State)
         {
             //case InvocationProxyResultMessage.StateType.RequestCancel:

@@ -37,27 +37,23 @@ internal partial class InvocationResultMessage : IMessageBase
     public ReadOnlySequence<byte>? Result
     {
         get => _result;
-        set
-        {
-            _result = value;
-            Console.WriteLine(new System.Diagnostics.StackTrace());
-        }
+        set => _result = value;
     }
 
     public T? GetResult<T>()
     {
-        if (Result == null)
+        if (_result == null)
             return default;
 
-        return MemoryPackSerializer.Deserialize<T>(Result.Value);
+        return MemoryPackSerializer.Deserialize<T>(_result.Value);
     }
 
     public object? GetResult(Type? type)
     {
-        if (Result == null || type == null)
+        if (_result == null || type == null)
             return default;
 
-        return MemoryPackSerializer.Deserialize(type, Result.Value);
+        return MemoryPackSerializer.Deserialize(type, _result.Value);
     }
 
     public void Dispose()
@@ -67,7 +63,7 @@ internal partial class InvocationResultMessage : IMessageBase
         if (cache == null)
             return;
 
-        Result = null;
+        _result = null;
 
         cache.Return(this);
     }

@@ -216,7 +216,6 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     case MessageType.ServerGreeting:
                     case MessageType.ClientGreeting:
-                    
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState: 
                         // TODO: Review transitioning this to a simple message instead of a full message.
@@ -424,7 +423,6 @@ internal partial class NexusSession<TNexus, TProxy>
             case MessageType.InvocationResult:
             {
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
-                Console.WriteLine($"Session Received: {invocationProxyResultMessage.GetResult<int>()}");
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
                 break;
             }
