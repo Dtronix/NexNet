@@ -16,7 +16,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
         
-        // Ensure that the ids will properly wrap around.
+        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
         const int iterations = 10;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
