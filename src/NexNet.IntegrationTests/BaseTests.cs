@@ -32,7 +32,7 @@ public class BaseTests
     protected List<INexusServer> Servers = new List<INexusServer>();
     protected List<INexusClient> Clients = new List<INexusClient>();
     private ConsoleLogger _logger = null!;
-
+    public bool BlockForClose { get; set; }
     public ConsoleLogger Logger => _logger;
 
     [OneTimeSetUp]
@@ -56,6 +56,7 @@ public class BaseTests
     public virtual void SetUp()
     {
         _logger = new ConsoleLogger();
+        BlockForClose = false;
     }
 
     [TearDown]
@@ -64,7 +65,8 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
-        _logger.LogEnabled = false;
+
+        _logger.LogEnabled = BlockForClose;
         
         foreach (var nexusClient in Clients)
         {
@@ -72,7 +74,9 @@ public class BaseTests
                 continue;
 
             _ = nexusClient.DisconnectAsync();
-            //nexusClient.DisconnectedTask?.Wait();
+
+            if(BlockForClose)
+                nexusClient.DisconnectedTask?.Wait();
         }
         Clients.Clear();
 
@@ -82,7 +86,9 @@ public class BaseTests
                 continue;
 
             _ = nexusServer.StopAsync();
-            //nexusServer.StoppedTask?.Wait();
+
+            if (BlockForClose)
+                nexusServer.StoppedTask?.Wait();
         }
 
         Servers.Clear();

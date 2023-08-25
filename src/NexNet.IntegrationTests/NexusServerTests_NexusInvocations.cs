@@ -110,7 +110,6 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(20)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);

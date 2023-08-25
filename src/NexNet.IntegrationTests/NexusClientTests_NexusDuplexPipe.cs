@@ -12,6 +12,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
+        BlockForClose = true;
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
         
