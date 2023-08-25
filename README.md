@@ -1,65 +1,69 @@
 # <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)  [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator)
 
-NexNet is a .NET real-time asynchronous networking library that provides bidirectional communication between the server hub and multiple clients. The library manages connections and communication, allowing for seamless integration with new technologies.
+NexNet is a .NET real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.
 
 
- Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial) for Pipeline socket transports.
+ Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1)  with additional performance modifications for Pipeline socket transports.
 
 ## Usage
+
+#### Base classes
 ```csharp
-partial interface IClientHub
+interface IInvocationSampleClientNexus
 {
-    ValueTask<int> GetValue();
+    ValueTask<string> GetUserName();
 }
 
-partial interface IServerHub
+interface IInvocationSampleServerNexus
 {
-    ValueTask<int> GetValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
+    void UpdateInfo(int userId, int status, string? customStatus);
+    ValueTask UpdateInfoAndWait(int userId, int status, string? customStatus);
+    ValueTask<int> GetStatus(int userId);
 }
 
-[NexNetHub<IClientHub, IServerHub>(NexNetHubType.Client)]
-partial class ClientHub
+
+[Nexus<IInvocationSampleClientNexus, IInvocationSampleServerNexus>(NexusType = NexusType.Client)]
+partial class InvocationSampleClientNexus
 {
-    private int i = 0;
-
-    public ValueTask<int> GetValue()
+    public ValueTask<string> GetUserName()
     {
-        //Console.WriteLine(i++);
-        return ValueTask.FromResult(i);
-    }
-    
-    protected override async ValueTask OnConnected(bool isReconnected)
-    {
-        var reaultValue =  Context.Proxy.GetValueWithValueAndCancellation(321, CancellationToken.None);
-    }
-
-}
-
-[NexNetHub<IServerHub, IClientHub>(NexNetHubType.Server)]
-partial class ServerHub : IServerHub
-{
-    private int i2 = 0;
-
-    public async ValueTask<int> GetValueWithValueAndCancellation(int value, CancellationToken cancellationToken)
-    {
-        var i2 = Interlocked.Increment(ref i);
-        try
-        {
-            await Task.Delay(10, cancellationToken);
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-        return i2;
-    }
-
-    protected override ValueTask OnConnected(bool isReconnected)
-    {
-        return ValueTask.CompletedTask;
+        return new ValueTask<string>("Bill");
     }
 }
 
+[Nexus<IInvocationSampleServerNexus, IInvocationSampleClientNexus>(NexusType = NexusType.Server)]
+partial class InvocationSampleServerNexus
+{
+    private long _counter = 0;
+    public void UpdateInfo(int userId, int status, string? customStatus)
+    {
+        // Do something with the data.
+    }
+
+    public ValueTask UpdateInfoAndWait(int userId, int status, string? customStatus)
+    {
+        // Do something with the data.
+        if(_counter++ % 10000 == 0)
+            Console.WriteLine($"Counter: {_counter}");
+
+        return default;
+    }
+
+    public ValueTask<int> GetStatus(int userId)
+    {
+        return new ValueTask<int>(1);
+    }
+}
+```
+#### Usage
+```csharp
+var client = InvocationSampleClientNexus.CreateClient(ClientConfig, new InvocationSampleClientNexus());
+var server = InvocationSampleServerNexus.CreateServer(ServerConfig, () => new InvocationSampleServerNexus());
+
+await server.StartAsync();
+await client.ConnectAsync();
+
+await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 ```
 
 ## Method Invocation Table
@@ -77,10 +81,9 @@ Notes:
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
 ## Duplex Pipe Usage
-NexNet has built in handling of duplex pipes for sending and receiving of byte arrays.  This is useful when you want to stream data for long periods of time or have a large amount of data you want to transmit such as a file.  NexNet has a limitation of combined arguments passed at 65,535 bytes and when you want to send larger data, the NexusDuplexPipe is the method to facilitate this transmission.
+NexNet has a limitation where the total arguments passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
 
 ## Lifetimes
-
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
 
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
@@ -107,12 +110,15 @@ Each session is assigned a unique hub instance, ensuring that data is not shared
 - Unix Domain Sockets (UDS)
 - TCP
 - TLS over TCP
+- QUIC (UDP)
 
 **Unix Domain Sockets** are the most efficient as they encounter the least overhead and is  a good candidate for inter process communication.
 
 **TCP** allows for network and internet communication. Fastest option next to a UDS.
 
 **TLS over TCP** allows for TLS encryption provided by the SslStream on both the server and client. This is still fast, but not as fast as either prior options as it creates a Socket, wrapped by a Network stream wrapped by a SslStream.
+
+**QUIC (UDP)** s a  UDP protocol which guarantees packet transmission, order and survives a connection IP and port change such as a connection switching from WiFi to celular.  It requires the `libmsquic` library which can be installed on linux/unix based systems via the local app pacakge manager.  Ubuntu: `sudo apt install libmsquic`
 
 Additional transports can be added easily as long as the transports guarantees order and transmission.
 
