@@ -40,7 +40,10 @@ internal class SessionInvocationStateManager
         // If we can not remove the state any longer, then it has already been handled.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
             return;
+
         state.Result = message;
+
+        Console.WriteLine($"UpdateInvocationResult result: {message.GetResult<int>()}");
 
         switch (message.State)
         {
