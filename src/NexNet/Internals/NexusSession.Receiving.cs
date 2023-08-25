@@ -419,6 +419,7 @@ internal partial class NexusSession<TNexus, TProxy>
             case MessageType.InvocationResult:
             {
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
+                Console.WriteLine($"Session Received: {invocationProxyResultMessage.GetResult<int>()}");
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
                 break;
             }
