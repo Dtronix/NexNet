@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
@@ -28,9 +29,9 @@ public sealed class UdsClientConfig : ClientConfig
     public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.IP);
+        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.IP, cancellationToken);
     }
 }
 
@@ -58,8 +59,8 @@ public sealed class UdsServerConfig : ServerConfig
     public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
-    protected override ITransportListener OnCreateServerListener()
+    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.IP);
+        return new ValueTask<ITransportListener>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.IP));
     }
 }

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Buffers;
+using System.Threading;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Messages;
 
@@ -16,6 +18,15 @@ internal partial class InvocationResultMessage : IMessageBase
 
     public static MessageType Type { get; } = MessageType.InvocationResult;
 
+    private ICachedMessage? _messageCache = null!;
+    private ReadOnlySequence<byte>? _result;
+
+    [MemoryPackIgnore]
+    public ICachedMessage? MessageCache
+    {
+        set => _messageCache = value;
+    }
+
     [MemoryPackOrder(0)]
     public int InvocationId { get; set; }
 
@@ -23,26 +34,37 @@ internal partial class InvocationResultMessage : IMessageBase
     public StateType State { get; set; }
 
     [MemoryPackOrder(2)]
-    public ReadOnlySequence<byte>? Result { get; set; }
+    public ReadOnlySequence<byte>? Result
+    {
+        get => _result;
+        set => _result = value;
+    }
 
     public T? GetResult<T>()
     {
-        if (Result == null)
+        if (_result == null)
             return default;
 
-        return MemoryPackSerializer.Deserialize<T>(Result.Value);
+        return MemoryPackSerializer.Deserialize<T>(_result.Value);
     }
 
     public object? GetResult(Type? type)
     {
-        if (Result == null || type == null)
+        if (_result == null || type == null)
             return default;
 
-        return MemoryPackSerializer.Deserialize(type, Result.Value);
+        return MemoryPackSerializer.Deserialize(type, _result.Value);
     }
 
-    public void Reset()
+    public void Dispose()
     {
-        Result = null;
+        var cache = Interlocked.Exchange(ref _messageCache, null);
+
+        if (cache == null)
+            return;
+
+        _result = null;
+
+        cache.Return(this);
     }
 }

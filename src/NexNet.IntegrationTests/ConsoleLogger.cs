@@ -1,61 +1,52 @@
 ﻿using System.Diagnostics;
+using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
 public class ConsoleLogger : INexusLogger
 {
-    private readonly string _prefix;
-    private DateTime _startTime = DateTime.Now;
-
-    public ConsoleLogger(string prefix)
-    {
-        _prefix = prefix;
-    }
-    public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
-    {
-        Console.WriteLine($"[{DateTime.Now - _startTime:c}]{_prefix}: {message} {exception}");
-    }
-}
-
-
-public class StreamLogger : INexusLogger
-{
-    public Stream? BaseStream { get; }
-    private readonly string _prefix;
-    //private DateTime _startTime = DateTime.Now;
+    private readonly string _prefix = "";
     private readonly Stopwatch _sw;
-    private readonly StreamWriter _logFile;
+    private readonly TextWriter _outWriter;
 
-    public StreamLogger(Stream? baseStream = null)
+    public string? Category { get; }
+
+    public bool LogEnabled { get; set; } = true;
+
+    private readonly ConsoleLogger _baseLogger;
+
+    public ConsoleLogger()
     {
-        _prefix = "";
-        baseStream ??= new MemoryStream(new byte[1024 * 1024]);
-        BaseStream = baseStream;
+        _baseLogger = this;
         _sw = Stopwatch.StartNew();
-        _logFile = new StreamWriter(baseStream);
+        _outWriter = TestContext.Out;
     }
 
-    private StreamLogger(string prefix, StreamWriter sw, Stopwatch stopwatch)
+    private ConsoleLogger(ConsoleLogger baseLogger, string? category, string prefix = "")
     {
-        _sw = stopwatch;
-        _logFile = sw;
+        _baseLogger = baseLogger;
         _prefix = prefix;
-    }
-    public void Log(INexusLogger.LogLevel logLevel, Exception? exception, string message)
-    {
-        lock (_logFile)
-        {
-            _logFile.WriteLine($"[{_sw.ElapsedTicks:000000000}]{_prefix}: {message} {exception}");
-        }
+        Category = category;
+        _sw = baseLogger._sw;
+        _outWriter = baseLogger._outWriter;
     }
 
-    public void Flush()
+
+    public void Log(INexusLogger.LogLevel logLevel, string? category, Exception? exception, string message)
     {
-        _logFile.Flush();
+        if (!_baseLogger.LogEnabled)
+            return;
+
+        _outWriter.WriteLine($"[{_sw.ElapsedTicks/(double)Stopwatch.Frequency:0.000000}]{_prefix} [{category}]: {message} {exception}");
     }
 
-    public StreamLogger CreateSubLogger(string prefix)    
+    public INexusLogger CreateLogger(string? category)
     {
-        return new StreamLogger(prefix, _logFile, _sw);
+        return new ConsoleLogger(_baseLogger, category, _prefix);
+    }
+
+    public INexusLogger CreateLogger(string? category, string prefix)
+    {
+        return new ConsoleLogger(_baseLogger, category, prefix);
     }
 }

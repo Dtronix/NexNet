@@ -5,8 +5,10 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Quic;
 using NexNet.Transports;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests;
 
@@ -16,7 +18,8 @@ public class BaseTests
     {
         Uds,
         Tcp,
-        TcpTls
+        TcpTls,
+        Quic
     }
 
     private int _counter;
@@ -24,6 +27,13 @@ public class BaseTests
     protected UnixDomainSocketEndPoint? CurrentPath;
     //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
+    protected int? CurrentUdpPort;
+    //protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
+    protected List<INexusServer> Servers = new List<INexusServer>();
+    protected List<INexusClient> Clients = new List<INexusClient>();
+    private ConsoleLogger _logger = null!;
+    public bool BlockForClose { get; set; }
+    public ConsoleLogger Logger => _logger;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -42,11 +52,46 @@ public class BaseTests
         Trace.Flush();
     }
 
+    [SetUp]
+    public virtual void SetUp()
+    {
+        _logger = new ConsoleLogger();
+        BlockForClose = false;
+    }
+
     [TearDown]
     public virtual void TearDown()
     {
         CurrentPath = null;
         CurrentTcpPort = null;
+        CurrentUdpPort = null;
+
+        _logger.LogEnabled = BlockForClose;
+        
+        foreach (var nexusClient in Clients)
+        {
+            if(nexusClient.State != ConnectionState.Connected)
+                continue;
+
+            _ = nexusClient.DisconnectAsync();
+
+            if(BlockForClose)
+                nexusClient.DisconnectedTask?.Wait();
+        }
+        Clients.Clear();
+
+        foreach (var nexusServer in Servers)
+        {
+            if(!nexusServer.IsStarted)
+                continue;
+
+            _ = nexusServer.StopAsync();
+
+            if (BlockForClose)
+                nexusServer.StoppedTask?.Wait();
+        }
+
+        Servers.Clear();
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -93,13 +138,32 @@ public class BaseTests
                 },
             };
         }
+        else if (type == Type.Quic)
+        {
+            CurrentUdpPort ??= FreeUdpPort();
+
+            return new QuicServerConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentUdpPort.Value),
+                Logger = logger,
+                SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
+                {
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    ClientCertificateRequired = false,
+                    AllowRenegotiation = false,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                },
+            };
+        }
+
 
         throw new InvalidOperationException();
     }
 
     protected ServerConfig CreateServerConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("SV") : null;
+        var logger = log ? _logger.CreateLogger(null, "SV") : null;
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -137,7 +201,24 @@ public class BaseTests
                 Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    EnabledSslProtocols = SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    AllowRenegotiation = false,
+                    RemoteCertificateValidationCallback = (_, _, _, _) => true
+                }
+            };
+        }
+        else if (type == Type.Quic)
+        {
+            CurrentUdpPort ??= FreeUdpPort();
+
+            return new QuicClientConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentUdpPort.Value),
+                Logger = logger,
+                SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
+                {
+                    EnabledSslProtocols = SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,
                     RemoteCertificateValidationCallback = (_, _, _, _) => true
@@ -150,7 +231,8 @@ public class BaseTests
 
     protected ClientConfig CreateClientConfig(Type type, bool log = false)
     {
-        var logger = log ? new ConsoleLogger("CL") : null;
+        var logger = log ? _logger.CreateLogger(null, "CL") : null;
+
         return CreateClientConfigWithLog(type, logger);
     }
 
@@ -162,6 +244,8 @@ public class BaseTests
         var clientNexus = new ClientNexus();
         var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Servers.Add(server);
+        Clients.Add(client);
 
         return (server, serverNexus, client, clientNexus);
     }
@@ -174,7 +258,9 @@ public class BaseTests
             var nexus = new ServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        });
+        }); 
+        Servers.Add(server);
+
         return server;
     }
 
@@ -183,6 +269,7 @@ public class BaseTests
     {
         var clientNexus = new ClientNexus();
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Clients.Add(client);
 
         return (client, clientNexus);
     }
@@ -194,6 +281,15 @@ public class BaseTests
         int port = ((IPEndPoint)l.LocalEndpoint).Port;
         l.Stop();
         return port;
+    }
+
+    private int FreeUdpPort()
+    {
+        IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+        using var udpServer = new UdpClient();
+        udpServer.ExclusiveAddressUse = true;
+        udpServer.Client.Bind(localEndPoint);
+        return ((IPEndPoint)udpServer.Client.LocalEndPoint!).Port;
     }
 
     public static async Task AssertThrows<T>(Func<Task> task)

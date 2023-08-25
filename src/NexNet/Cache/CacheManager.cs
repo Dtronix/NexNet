@@ -1,80 +1,85 @@
 ﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Cache;
 
 internal class CacheManager
 {
+
+    /// <summary>
+    /// MessageCacheOffsetModifier is a constant used in the CacheManager class to offset the index of the _messageCaches array.
+    /// This offset is applied when accessing the cache for a specific message type. The offset reduces the staring offset of the array by 100.
+    /// </summary>
+    private const int MessageCacheOffsetModifier = 100;
+
     public readonly CachedResettableItem<RegisteredInvocationState> RegisteredInvocationStateCache = new();
     public readonly CachedPipeManager PipeManagerCache = new();
     public readonly CachedCts CancellationTokenSourceCache = new();
     public readonly CachedDuplexPipe NexusDuplexPipeCache = new();
+    public readonly CachedRentedDuplexPipe NexusRentedDuplexPipeCache = new();
+    public readonly ConcurrentBag<BufferWriter<byte>> BufferWriterCache = new();
 
-    private readonly ICachedDeserializer?[] _cachedMessageDeserializers = new ICachedDeserializer?[50];
+    private readonly ICachedMessage?[] _messageCaches = new ICachedMessage?[50];
 
     public CacheManager()
     {
-        // This is an integer modifier to reduce the maximum array needed.
-        const int modifier = 100;
+        // 
+        _messageCaches[((int)ClientGreetingMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<ClientGreetingMessage>();
 
-        _cachedMessageDeserializers[((int)ClientGreetingMessage.Type - modifier)] =
-            new CachedDeserializer<ClientGreetingMessage>();
+        _messageCaches[((int)ServerGreetingMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<ServerGreetingMessage>();
 
-        _cachedMessageDeserializers[((int)ServerGreetingMessage.Type - modifier)] =
-            new CachedDeserializer<ServerGreetingMessage>();
+        _messageCaches[((int)InvocationMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<InvocationMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationMessage.Type - modifier)] =
-            new CachedDeserializer<InvocationMessage>();
+        _messageCaches[((int)InvocationCancellationMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<InvocationCancellationMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationCancellationMessage.Type - modifier)] =
-            new CachedDeserializer<InvocationCancellationMessage>();
+        _messageCaches[((int)InvocationResultMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<InvocationResultMessage>();
 
-        _cachedMessageDeserializers[((int)InvocationResultMessage.Type - modifier)] =
-            new CachedDeserializer<InvocationResultMessage>();
-
-        _cachedMessageDeserializers[((int)DuplexPipeUpdateStateMessage.Type - modifier)] =
-            new CachedDeserializer<DuplexPipeUpdateStateMessage>();
+        _messageCaches[((int)DuplexPipeUpdateStateMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<DuplexPipeUpdateStateMessage>();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public CachedDeserializer<T> Cache<T>()
-        where T : IMessageBase, new()
+    public CachedCachedMessage<T> Cache<T>()
+        where T : class, IMessageBase, new()
     {
         // Offset the messages -100 for a smaller array.
-        return Unsafe.As<CachedDeserializer<T>>(_cachedMessageDeserializers[((int)T.Type) - 100])!;
+        return Unsafe.As<CachedCachedMessage<T>>(_messageCaches[((int)T.Type) - MessageCacheOffsetModifier])!;
     }
 
-    public ICachedDeserializer Cache(MessageType type)
+    public ICachedMessage Cache(MessageType type)
     {
-        return _cachedMessageDeserializers[((int)type) - 100]!;
+        return _messageCaches[((int)type) - MessageCacheOffsetModifier]!;
     }
 
     public T Rent<T>()
-        where T : IMessageBase, new()
+        where T : class, IMessageBase, new()
     {
         return Cache<T>().Rent();
     }
 
-    public void Return<T>(T message)
-        where T : IMessageBase, new()
-    {
-        Cache<T>().Return(message);
-    }
-
     public IMessageBase Deserialize(MessageType type, ReadOnlySequence<byte> sequence)
     {
-        return _cachedMessageDeserializers[((int)type) - 100]!.DeserializeInterface(sequence);
+        return _messageCaches[((int)type) - MessageCacheOffsetModifier]!.DeserializeInterface(sequence);
     }
 
     public virtual void Clear()
     {
-        for (int i = 0; i < _cachedMessageDeserializers.Length; i++)
-            _cachedMessageDeserializers[i]?.Clear();
+        foreach (var t in _messageCaches)
+            t?.Clear();
 
         RegisteredInvocationStateCache.Clear();
         CancellationTokenSourceCache.Clear();
         PipeManagerCache.Clear();
+        NexusDuplexPipeCache.Clear();
+        NexusRentedDuplexPipeCache.Clear();
     }
 }

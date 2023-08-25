@@ -1,11 +1,12 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
+using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
 internal class BasePipeTests : BaseTests
 {
     protected byte[] Data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-
+    
     protected async Task<(
         NexusServer<ServerNexus,
             ServerNexus.ClientProxy> server,
@@ -20,8 +21,8 @@ internal class BasePipeTests : BaseTests
         var (server, sNexus, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, log),
             CreateClientConfig(type, log));
-        server.Start();
-        await client.ConnectAsync(true).Timeout(1);
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
         return (server, sNexus, client, cNexus, tcs);
     }
 }

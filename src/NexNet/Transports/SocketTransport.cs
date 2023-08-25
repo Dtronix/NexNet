@@ -1,10 +1,12 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Net;
+using System.Net.Quic;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace NexNet.Transports;
 
@@ -24,22 +26,25 @@ internal class SocketTransport : ITransport
         Output = socketConnection.Output;
     }
 
-    public void Close(bool linger)
+    public TransportConfiguration Configurations => new TransportConfiguration();
+
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _socketConnection.Dispose();
+        return ValueTask.CompletedTask;
     }
 
 
     public void Dispose()
     {
-        Close(true);
+        CloseAsync(true);
     }
 
     /// <summary>
@@ -60,7 +65,8 @@ internal class SocketTransport : ITransport
     /// Open a new or existing socket as a client
     /// </summary>
     /// 
-    public static async ValueTask<ITransport> ConnectAsync(ClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
+    public static async ValueTask<ITransport> ConnectAsync(ClientConfig clientConfig, EndPoint endPoint,
+        SocketType socketType, ProtocolType protocolType, CancellationToken cancellationToken)
     {
         var socket = new Socket(endPoint.AddressFamily, socketType, protocolType);
 
@@ -77,6 +83,7 @@ internal class SocketTransport : ITransport
             try
             {
                 using var timeoutCancellation = new CancellationTokenSource();
+                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
                 // Connection timeout task.
                 async Task ConnectionTimeout()
                 {
@@ -99,17 +106,18 @@ internal class SocketTransport : ITransport
 
                 if (!socket.ConnectAsync(args))
                     args.Complete();
+
                 await args;
 
                 timeoutCancellation.Cancel();
             }
-            catch (SocketException)
+            catch (SocketException e)
             {
-                throw;
+                throw new TransportException(e.SocketErrorCode, e.Message, e);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new SocketException((int)SocketError.NotConnected);
+                throw new TransportException(SocketError.ConnectionRefused, e.Message, e);
             }
 
         }

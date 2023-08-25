@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Messages;
 
@@ -15,6 +17,14 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     /// </summary>
     private bool _isArgumentPoolArray;
     public static MessageType Type { get; } = MessageType.Invocation;
+
+    private ICachedMessage? _messageCache = null!;
+
+    [MemoryPackIgnore]
+    public ICachedMessage? MessageCache
+    {
+        set => _messageCache = value;
+    }
 
     [MemoryPackOrder(0)]
     public int InvocationId { get; set; }
@@ -45,7 +55,6 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     }
 
     /*
-
     TODO: Review custom serialization for the arguments.
     [MemoryPackOnSerializing]
     static void WriteArguments<TBufferWriter>(ref MemoryPackWriter<TBufferWriter> writer, ref InvocationMessage? value)
@@ -71,16 +80,21 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         _isArgumentPoolArray = true;
     }
 
-    public void Reset()
+    public void Dispose()
     {
-        if (!_isArgumentPoolArray)
+        var cache = Interlocked.Exchange(ref _messageCache, null);
+
+        if (cache == null)
             return;
 
-        // Reset the pool flag.
-        _isArgumentPoolArray = false;
+        if (_isArgumentPoolArray)
+        {
+            // Reset the pool flag.
+            _isArgumentPoolArray = false;
+            IMessageBase.Return(Arguments);
+            Arguments = default;
+        }
 
-        IMessageBase.Return(Arguments); 
-        Arguments = default;
+        cache.Return(this);
     }
-
 }

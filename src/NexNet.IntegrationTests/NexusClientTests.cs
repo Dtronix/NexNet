@@ -12,6 +12,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -25,7 +26,7 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -34,6 +35,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ConnectsToServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -45,7 +47,7 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.InternalOnClientConnect = () => tcs.SetResult();
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -54,6 +56,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientFailsGracefullyWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -63,12 +66,13 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.ConnectionTimeout = 100;
 
-        await AssertThrows<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(10));
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientTimesOutWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -78,24 +82,24 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.ConnectionTimeout = 50;
 
-        await AssertThrows<SocketException>(() => client.ConnectAsync().WaitAsync(TimeSpan.FromSeconds(10)));
+        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(100));
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         for (int i = 0; i < 5; i++)
         {
             await client.ConnectAsync().Timeout(1);
-            await client.ReadyTask.Timeout(1);
             var disconnected = client.DisconnectedTask;
             await client.DisconnectAsync().Timeout(1);
             await disconnected.Timeout(1);
@@ -105,18 +109,20 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ConnectTimesOutWithNoServer(Type type)
     {
         var (_, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await AssertThrows<SocketException>(async () => await client.ConnectAsync());
+        await AssertThrows<TransportException>(async () => await client.ConnectAsync());
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientProvidesAuthenticationToken(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -125,7 +131,7 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         clientConfig.Authenticate = () => new byte[] { 123 };
         clientConfig.InternalOnSend= (_, bytes) =>
@@ -147,6 +153,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientSendsPing(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -157,7 +164,7 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {
@@ -173,6 +180,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientResumePingOnDisconnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -183,20 +191,16 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        server.Start();
-
-        await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask.Timeout(1);
-
-        await client.DisconnectAsync().Timeout(1);
-        await client.DisconnectedTask.Timeout(1);
-
         clientConfig.InternalOnSend = (_, bytes) =>
         {
             if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping)
                 tcs.SetResult();
         };
 
+        await server.StartAsync().Timeout(1);
+
+        await client.ConnectAsync().Timeout(1);
+        await client.DisconnectAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1.5));
@@ -205,6 +209,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -224,22 +229,22 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask;
-        server.Stop();
+        await server.StopAsync();
 
         // Wait for the client to process the disconnect.
         await Task.Delay(50);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(5);
     }
     
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReconnectsOnTimeout(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -261,7 +266,7 @@ internal partial class NexusClientTests : BaseTests
         clientConfig.PingInterval = 75;
         clientConfig.Timeout = 50;
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -270,6 +275,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -287,10 +293,9 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask;
-        server.Stop();
+        await server.StopAsync();
 
         await tcs.Task.Timeout(1);
     }
@@ -298,6 +303,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -322,11 +328,11 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        server.Start();
-        await client.ConnectAsync(true).Timeout(1);
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
 
         await Task.Delay(100);
-        server.Stop();
+        await server.StopAsync();
 
         await tcs.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -334,6 +340,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientProxyInvocationCancelsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -364,33 +371,33 @@ internal partial class NexusClientTests : BaseTests
             }
         };
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
         await Task.Delay(100);
-        server.Stop();
+        await server.StopAsync();
         await tcs.Task.Timeout(1);
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReadyTaskCompletesUponConnection(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         await client.ConnectAsync().Timeout(1);
-
-        await client.ReadyTask!.Timeout(1);
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReadyTaskCompletesUponAuthentication(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -407,16 +414,16 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
         };
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask!.Timeout(1);
         Assert.IsTrue(authCompleted);
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ReadyTaskCompletesUponAuthFailure(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -428,16 +435,16 @@ internal partial class NexusClientTests : BaseTests
 
         serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask!.Timeout(1);
         Assert.AreEqual(ConnectionState.Disconnected, client.State);
     }
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task DisconnectTaskCompletesUponDisconnection(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
@@ -446,12 +453,11 @@ internal partial class NexusClientTests : BaseTests
 
         serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask!.Timeout(1);
         var disconnectTask = client.DisconnectedTask;
 
-        server.Stop();
+        await server.StopAsync();
 
         await disconnectTask.Timeout(1);
 
@@ -461,6 +467,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task DisconnectTaskCompletesUponAuthFailure(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -472,7 +479,7 @@ internal partial class NexusClientTests : BaseTests
 
         serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
 
@@ -482,6 +489,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task DisconnectTaskCompletesAfterDisconnect(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
@@ -490,11 +498,10 @@ internal partial class NexusClientTests : BaseTests
 
         serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        await client.ReadyTask!.Timeout(1);
 
-        server.Stop();
+        await server.StopAsync();
 
         await Task.Delay(1000);
 

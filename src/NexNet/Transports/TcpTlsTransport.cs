@@ -26,18 +26,24 @@ internal class TcpTlsTransport : ITransport
         Output = PipeWriter.Create(sslStream);
     }
 
-    public void Close(bool linger)
+    public TransportConfiguration Configurations => new TransportConfiguration()
+    {
+        DoNotPassFlushCancellationToken = true
+    };
+
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _sslStream.Dispose();
         _networkStream.Dispose();
         _socket.Close();
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -60,7 +66,8 @@ internal class TcpTlsTransport : ITransport
     /// <summary>
     /// Open a new or existing socket as a client
     /// </summary>
-    public static async ValueTask<ITransport> ConnectAsync(TcpTlsClientConfig clientConfig, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
+    public static async ValueTask<ITransport> ConnectAsync(TcpTlsClientConfig clientConfig, EndPoint endPoint,
+        SocketType socketType, ProtocolType protocolType, CancellationToken cancellationToken)
     {
         using var timeoutCancellation = new CancellationTokenSource(clientConfig.ConnectionTimeout);
 
@@ -75,20 +82,21 @@ internal class TcpTlsTransport : ITransport
             var networkStream = new NetworkStream(socket, false);
             var sslStream = new SslStream(networkStream, true);
 
-            var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
+            using var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
+            await using var cancellationTokenRegistration = cancellationToken.Register(sslTimeout.Cancel);
 
             await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token)
                 .ConfigureAwait(false);
 
             return new TcpTlsTransport(socket, networkStream, sslStream);
         }
-        catch (SocketException)
+        catch (SocketException e)
         {
-            throw;
+            throw new TransportException(e.SocketErrorCode, e.Message, e);
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            throw new SocketException((int)SocketError.NotConnected);
+            throw new TransportException(TransportError.ConnectionRefused, "Connection failed to connect.", e);
         }
 
     }

@@ -13,8 +13,7 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync()
     {
-        _config.Logger?.LogTrace($"NexNetSession.StartReadAsync()");
-        State = ConnectionState.Connected;
+        _state = (int)ConnectionState.Connected;
         try
         {
             while (true)
@@ -28,11 +27,12 @@ internal partial class NexusSession<TNexus, TProxy>
                 LastReceived = Environment.TickCount64;
 
                 // Terribly inefficient and only used for testing
-                Config.InternalOnReceive?.Invoke(this, result.Buffer);
+                if(Config.InternalOnReceive != null)
+                    await Config.InternalOnReceive.Invoke(this, result.Buffer);
 
                 var processResult = await Process(result.Buffer).ConfigureAwait(false);
 
-                _config.Logger?.LogTrace($"Reading completed.");
+                //_config.Logger?.LogTrace($"Reading completed.");
 
                 if (processResult.DisconnectReason != DisconnectReason.None)
                 {
@@ -42,11 +42,11 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 if (result.IsCompleted || result.IsCanceled)
                 {
-                    _config.Logger?.LogTrace($"Reading completed with IsCompleted: {result.IsCompleted} and IsCanceled: {result.IsCanceled}.");
+                    Logger?.LogTrace($"Reading completed with IsCompleted: {result.IsCompleted} and IsCanceled: {result.IsCanceled}.");
 
                     if (_registeredDisconnectReason == DisconnectReason.None)
                     {
-                        _config.Logger?.LogTrace("Disconnected without a reason.");
+                        Logger?.LogTrace("Disconnected without a reason.");
 
                         // If there is not a disconnect reason, then we disconnected for an unknown reason and should 
                         // be allowed to reconnect.
@@ -62,8 +62,11 @@ internal partial class NexusSession<TNexus, TProxy>
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _config.Logger?.LogError(ex, "Reading exited with exception.");
-            await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+            if (State != ConnectionState.Disconnecting)
+            {
+                Logger?.LogError(ex, "Reading exited with exception.");
+                await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+            }
         }
     }
 
@@ -82,13 +85,13 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     if (position >= maxLength)
                     {
-                        _config.Logger?.LogTrace($"Could not read next header type. No more data.");
+                        //_config.Logger?.LogTrace($"Could not read next header type. No more data.");
                         break;
                     }
 
                     _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
                     position++;
-                    _config.Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
+                    //Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
 
                     switch (_recMessageHeader.Type)
                     {
@@ -111,7 +114,6 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.DisconnectServerShutdown:
                         case MessageType.DisconnectAuthentication:
                         case MessageType.DisconnectServerRestarting:
-                            _config.Logger?.LogTrace($"Received disconnect message.");
                             // Translate the type over to the reason.
                             disconnect = (DisconnectReason)_recMessageHeader.Type;
                             issueDisconnectMessage = false;
@@ -125,17 +127,16 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
                         case MessageType.DuplexPipeUpdateState:
-                            _config.Logger?.LogTrace($"Message has a standard body.");
+                            //Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
 
                         case MessageType.DuplexPipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
-                            _config.Logger?.LogTrace($"DuplexNexusPipe received data.");
                             break;
 
                         default:
-                            _config.Logger?.LogTrace($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
+                            Logger?.LogTrace($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
                             // If we are outside of the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
@@ -148,7 +149,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 // If the whole header can't be read, loop back around.
                 if (position + _recMessageHeader.TotalHeaderLength > maxLength)
                 {
-                    _config.Logger?.LogTrace(
+                    Logger?.LogTrace(
                         $"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
                     break;
                 }
@@ -159,12 +160,12 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out var bodyLength))
                     {
-                        _config.Logger?.LogTrace($"Could not read body length.");
+                        Logger?.LogTrace($"Could not read body length.");
                         disconnect = DisconnectReason.ProtocolError;
                         break;
                     }
 
-                    _config.Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
+                    //Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
                     _recMessageHeader.BodyLength = bodyLength;
                 }
 
@@ -176,15 +177,15 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.DuplexPipeWrite:
                             if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexPipeId))
                             {
-                                _config.Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
+                                Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
                                 disconnect = DisconnectReason.ProtocolError;
                                 break;
                             }
 
-                            _config.Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
+                            Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
                             break;
                         default:
-                            _config.Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
+                            Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
                             // If we are outside of the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
@@ -198,43 +199,48 @@ internal partial class NexusSession<TNexus, TProxy>
             // Read the body.
             if (position + _recMessageHeader.BodyLength > maxLength)
             {
-                _config.Logger?.LogTrace($"Could not read all the {_recMessageHeader.BodyLength} body bytes.");
+                Logger?.LogTrace($"Could not read all the {_recMessageHeader.BodyLength} body bytes.");
                 break;
             }
 
-            _config.Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
+            //Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
 
             var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
 
             position += _recMessageHeader.BodyLength;
+            IMessageBase? messageBody = null;
+            bool disposeMessage = true;
             try
             {
-                IMessageBase? messageBody = null;
                 switch (_recMessageHeader.Type)
                 {
                     case MessageType.ServerGreeting:
                     case MessageType.ClientGreeting:
-                    case MessageType.Invocation:
-                    case MessageType.InvocationResult:
                     case MessageType.InvocationCancellation:
-                    case MessageType.DuplexPipeUpdateState:
+                    case MessageType.DuplexPipeUpdateState: 
+                        // TODO: Review transitioning this to a simple message instead of a full message.
+                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        break;
+
+                    case MessageType.Invocation:
+                        // Special case for invocation result, as it is passed to the method and handled/disposed there.
+                        disposeMessage = false;
+                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        break;
+
+                    case MessageType.InvocationResult:
+                        disposeMessage = false;
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        var bufferDuplexPipeResult = await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
-                        if (bufferDuplexPipeResult == NexusPipeBufferResult.HighCutoffReached)
-                        {
-                            disconnect = DisconnectReason.NexusPipeHighWaterCutoffReached;
-                        }
-
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
                         break;
                     }
 
                     default:
-                        _config.Logger?.LogError(
-                            $"Deserialized type not recognized. {_recMessageHeader.Type}.");
+                        Logger?.LogError($"Deserialized type not recognized. {_recMessageHeader.Type}.");
                         disconnect = DisconnectReason.ProtocolError;
                         break;
                 }
@@ -246,27 +252,31 @@ internal partial class NexusSession<TNexus, TProxy>
                 // If we have a message body in the form of a MemoryPack, pass it to the message handler.
                 if (messageBody != null)
                 {
-                    _config.Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
+                    Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
                     disconnect = await MessageHandler(messageBody!, _recMessageHeader.Type).ConfigureAwait(false);
                 }
 
                 if (disconnect != DisconnectReason.None)
                 {
-                    _config.Logger?.LogTrace(
-                        $"Message could not be handled and disconnected with {disconnect}");
+                    Logger?.LogTrace($"Message could not be handled and disconnected with {disconnect}");
                     break;
                 }
 
-                _config.Logger?.LogTrace($"Resetting header.");
+                //_config.Logger?.LogTrace($"Resetting header.");
                 // Reset the header.
                 _recMessageHeader.Reset();
             }
             catch (Exception e)
             {
-                _config.Logger?.LogTrace(e, "Could not deserialize body.");
+                Logger?.LogTrace(e, "Could not deserialize body.");
                 //_logger?.LogError(e, $"Could not deserialize body..");
                 disconnect = DisconnectReason.ProtocolError;
                 break;
+            }
+            finally
+            {
+                if(disposeMessage)
+                    messageBody?.Dispose();
             }
 
             _recMessageHeader.Reset();
@@ -285,7 +295,19 @@ internal partial class NexusSession<TNexus, TProxy>
         static async void InvokeOnConnected(object? sessionObj)
         {
             var session = Unsafe.As<NexusSession<TNexus, TProxy>>(sessionObj)!;
-            await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
+
+            try
+            {
+                await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException e)
+            {
+                session.Logger?.LogTrace(e, "OnConnected was canceled.");
+            }
+            catch (Exception e)
+            {
+                session.Logger?.LogError(e, "OnConnected threw an exception.");
+            }
 
             // Reset the value;
             session._isReconnected = false;
@@ -303,13 +325,11 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Verify what the greeting method hashes matches this nexus's and proxy's
                 if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
                 {
-                    CacheManager.Return(cGreeting);
                     return DisconnectReason.ServerMismatch;
                 }
 
                 if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
                 {
-                    CacheManager.Return(cGreeting);
                     return DisconnectReason.ClientMismatch;
                 }
 
@@ -329,24 +349,20 @@ internal partial class NexusSession<TNexus, TProxy>
                     // If the token is not good, disconnect.
                     if (Identity == null)
                     {
-                        CacheManager.Return(cGreeting);
                         return DisconnectReason.Authentication;
                     }
                 }
 
-                var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
+                using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
                 serverGreeting.Version = 0;
 
                 await SendMessage(serverGreeting).ConfigureAwait(false);
 
-                _cacheManager.Return(serverGreeting);
                 _sessionManager!.RegisterSession(this);
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
-                _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in server.");
                 _readyTaskCompletionSource?.TrySetResult();
-                CacheManager.Return(cGreeting);
                 break;
             }
 
@@ -358,10 +374,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
-                _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in client.");
                 _readyTaskCompletionSource?.TrySetResult();
-
-                CacheManager.Return(Unsafe.As<ServerGreetingMessage>(message));
                 break;
 
             }
@@ -425,7 +438,6 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
                 PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
-                _cacheManager.Return(updateStateMessage);
                 break;
             }
 

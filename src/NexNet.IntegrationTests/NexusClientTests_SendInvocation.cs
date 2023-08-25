@@ -11,6 +11,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerVoid(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -26,6 +27,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerVoidWithParam(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -41,6 +43,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTask(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -56,6 +59,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskWithParam(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -71,6 +75,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskValue(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -86,6 +91,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskValueWithParam(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -102,6 +108,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskWithCancellation(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -117,6 +124,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskWithValueAndCancellation(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -132,6 +140,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskValueWithCancellation(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -147,6 +156,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientSendsInvocationFor_ServerTaskValueWithValueAndCancellation(Type type)
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
@@ -160,13 +170,13 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
 
     private async Task InvokeFromClientAndVerifySent(Type type, InvocationMessage expectedMessage, Action<NexusClient<ClientNexus, ClientNexus.ServerProxy>> action)
     {
-        var clientConfig = CreateClientConfig(type, false);
+        var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
+            CreateServerConfig(type),
             clientConfig);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {

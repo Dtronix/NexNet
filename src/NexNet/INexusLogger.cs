@@ -7,6 +7,10 @@ namespace NexNet;
 /// </summary>
 public interface INexusLogger
 {
+    /// <summary>
+    /// Category for the log event.
+    /// </summary>
+    public string? Category { get; }
 
     /// <summary>
     /// Level for the log event.
@@ -55,12 +59,20 @@ public interface INexusLogger
     }
 
     /// <summary>
-    /// Log event invoked on each log occurrence.
+    /// Logs a message with a specified level, category, and associated exception.
     /// </summary>
-    /// <param name="logLevel">Level of the log event.</param>
-    /// <param name="exception">Optional exception associated with this event.</param>
-    /// <param name="message">Message for this log event.</param>
-    void Log(LogLevel logLevel, Exception? exception, string message);
+    /// <param name="logLevel">The severity level of the log message.</param>
+    /// <param name="category">The optional category of the log message.</param>
+    /// <param name="exception">The exception related to this log event, if any.</param>
+    /// <param name="message">The log message to be written.</param>
+    void Log(LogLevel logLevel, string? category, Exception? exception, string message);
+
+    /// <summary>
+    /// Creates a new instance of INexusLogger with the specified category.
+    /// </summary>
+    /// <param name="category">The category name for the logger. This value is used to organize and filter log messages.</param>
+    /// <returns>A new instance of INexusLogger with the specified category.</returns>
+    INexusLogger CreateLogger(string? category);
 }
 
 /// <summary>
@@ -68,6 +80,15 @@ public interface INexusLogger
 /// </summary>
 public static class NexusLoggerExtensions
 {
+    /// <summary>
+    /// Creates a new instance of INexusLogger with the category name derived from the type parameter.
+    /// </summary>
+    /// <typeparam name="T">The type from which the category name is derived.</typeparam>
+    /// <returns>A new instance of INexusLogger with the category name derived from the type parameter.</returns>
+    public static INexusLogger CreateLogger<T>(this INexusLogger logger)
+    {
+        return logger.CreateLogger(typeof(T).Name);
+    }
 
     /// <summary>
     /// Log a trace event.
@@ -87,7 +108,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogTrace(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Trace, ex, message);
+        logger.Log(INexusLogger.LogLevel.Trace, logger.Category, ex, message);
     }
 
     /// <summary>
@@ -109,7 +130,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogDebug(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Debug, ex, message);
+        logger.Log(INexusLogger.LogLevel.Debug, logger.Category, ex, message);
     }
 
 
@@ -131,7 +152,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogInfo(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Information, ex, message);
+        logger.Log(INexusLogger.LogLevel.Information, logger.Category, ex, message);
     }
 
     /// <summary>
@@ -152,7 +173,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogWarning(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Warning, ex, message);
+        logger.Log(INexusLogger.LogLevel.Warning, logger.Category, ex, message);
     }
 
     /// <summary>
@@ -173,7 +194,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogError(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Error, ex, message);
+        logger.Log(INexusLogger.LogLevel.Error, logger.Category, ex, message);
     }
 
     /// <summary>
@@ -194,7 +215,7 @@ public static class NexusLoggerExtensions
     /// <param name="message">Log message.</param>
     public static void LogCritical(this INexusLogger logger, Exception? ex, string message)
     {
-        logger.Log(INexusLogger.LogLevel.Critical, ex, message);
+        logger.Log(INexusLogger.LogLevel.Critical, logger.Category, ex, message);
     }
 
 }
