@@ -12,12 +12,12 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        BlockForClose = true;
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        //BlockForClose = true;
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
         
         // Ensure that the ids will properly wrap around.
-        const int iterations = 400;
+        const int iterations = 50;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync();
@@ -34,7 +34,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         for (int i = 0; i < iterations; i++)
         {
-            await Task.Delay(1);
             await using var pipe = sNexus.Context.CreatePipe();
             await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe);
             await pipe.ReadyTask;

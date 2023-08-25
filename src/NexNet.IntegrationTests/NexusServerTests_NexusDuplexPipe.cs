@@ -16,7 +16,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         int count = 0;
 
         // Ensure that the ids will properly wrap around.
-        const int iterations = 20;
+        const int iterations = 50;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync();
@@ -33,7 +33,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         for (int i = 0; i < iterations; i++)
         {
-            await Task.Delay(1);
             await using var pipe = cNexus.Context.CreatePipe();
             await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe);
             await pipe.ReadyTask;
