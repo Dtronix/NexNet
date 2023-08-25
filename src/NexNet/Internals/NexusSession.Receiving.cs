@@ -216,7 +216,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     case MessageType.ServerGreeting:
                     case MessageType.ClientGreeting:
-                    case MessageType.InvocationResult:
+                    
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState: 
                         // TODO: Review transitioning this to a simple message instead of a full message.
@@ -225,6 +225,11 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.Invocation:
                         // Special case for invocation result, as it is passed to the method and handled/disposed there.
+                        disposeMessage = false;
+                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        break;
+
+                    case MessageType.InvocationResult:
                         disposeMessage = false;
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
