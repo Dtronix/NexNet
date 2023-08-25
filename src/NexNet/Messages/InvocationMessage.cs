@@ -91,7 +91,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         {
             // Reset the pool flag.
             _isArgumentPoolArray = false;
-
+            Console.WriteLine("----------Returning to pool");
             IMessageBase.Return(Arguments);
             Arguments = default;
         }
