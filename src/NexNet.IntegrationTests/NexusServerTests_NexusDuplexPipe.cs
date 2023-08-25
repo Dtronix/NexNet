@@ -10,6 +10,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [Repeat(50)]
     public async Task Server_PipeReaderReceivesDataMultipleTimes(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
