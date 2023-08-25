@@ -12,7 +12,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
         int count = 0;
 
         // Ensure that the ids will properly wrap around.
