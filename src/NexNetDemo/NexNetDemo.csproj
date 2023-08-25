@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EventSourceSupport>false</EventSourceSupport>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
   <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">
@@ -14,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+    <ProjectReference Include="..\NexNet.Quic\NexNet.Quic.csproj" />
   </ItemGroup>
 
   <ItemGroup>

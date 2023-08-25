@@ -64,10 +64,15 @@ public enum MessageType : byte
     /// </summary>
     DisconnectServerRestarting = 30,
 
+    // <summary>
+    // The high water cutoff was reached on a duplex pipe. No body.
+    // </summary>
+    //DisconnectNexusPipeHighWaterCutoffReached = 31,
+
     /// <summary>
-    /// The high water cutoff was reached on a duplex pipe. No body.
+    /// The socket was closed while attempting to write. No body.
     /// </summary>
-    DisconnectNexusPipeHighWaterCutoffReached = 31,
+    DisconnectSocketClosedWhenWriting = 32,
 
     /// <summary>
     /// Header for data sent to a pipe.

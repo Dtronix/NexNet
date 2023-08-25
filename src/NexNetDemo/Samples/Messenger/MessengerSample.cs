@@ -2,6 +2,7 @@
 using System.Net;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using NexNet.Quic;
 using NexNet.Transports;
 
 namespace NexNetDemo.Samples.Messenger;
@@ -11,10 +12,10 @@ public class MessengerSample : SampleBase
     public MessengerSample(string serverIpAddress)
         : base(false, TransportMode.TlsTcp)
     {
-        ServerConfig = new TcpTlsServerConfig()
+        ServerConfig = new QuicServerConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Parse(serverIpAddress), 4236),
-            Logger = new SampleLogger("Server"),
+            //Logger = new SampleLogger("Server"),
             SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
             {
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -24,10 +25,10 @@ public class MessengerSample : SampleBase
                 ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
             },
         };
-        ClientConfig = new TcpTlsClientConfig()
+        ClientConfig = new QuicClientConfig()
         {
             EndPoint = new IPEndPoint(IPAddress.Parse(serverIpAddress), 4236),
-            Logger = new SampleLogger("Client"),
+            //Logger = new SampleLogger("Client"),
             SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
             {
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
@@ -41,7 +42,7 @@ public class MessengerSample : SampleBase
     public async Task RunServer()
     {
         var server = MessengerSampleServerNexus.CreateServer(ServerConfig, () => new MessengerSampleServerNexus());
-        server.Start();
+        await server.StartAsync();
 
         if(server.StoppedTask != null)
             await server.StoppedTask;
@@ -57,7 +58,7 @@ public class MessengerSample : SampleBase
             TimeSpan.FromSeconds(5),
         }, true);
         var client = MessengerSampleClientNexus.CreateClient(ClientConfig, new MessengerSampleClientNexus());
-        await client.ConnectAsync(true);
+        await client.ConnectAsync();
     }
 
 

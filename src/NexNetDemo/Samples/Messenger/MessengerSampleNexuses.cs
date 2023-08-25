@@ -24,18 +24,21 @@ partial class MessengerSampleClientNexus
         return default;
     }
 
-    protected override async ValueTask OnConnected(bool isReconnected)
+    protected override ValueTask OnConnected(bool isReconnected)
     {
-        Task.Run(async () =>
+        _ = Task.Run(async () =>
         {
-            await Task.Delay(1000);
+            //await Task.Delay(1000);
             int count = 0;
             while (true)
             {
                 await Context.Proxy.BroadcastMessage($"Message {count++}");
                 await Task.Delay(1000);
             }
+            // ReSharper disable once FunctionNeverReturns
         });
+
+        return default;
     }
 }
 

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
@@ -60,9 +61,9 @@ public class TcpClientConfig : ClientConfig
     public required EndPoint EndPoint { get; set; }
 
     /// <inheritdoc />
-    protected override ValueTask<ITransport> OnConnectTransport()
+    protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
-        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
+        return SocketTransport.ConnectAsync(this, EndPoint, SocketType.Stream, ProtocolType.Tcp, cancellationToken);
     }
 }
 
@@ -137,8 +138,8 @@ public class TcpServerConfig : ServerConfig
 
 
     /// <inheritdoc />
-    protected override ITransportListener OnCreateServerListener()
+    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp);
+        return new ValueTask<ITransportListener>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
     }
 }

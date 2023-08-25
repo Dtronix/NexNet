@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
@@ -17,14 +18,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
-    
+
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
+
     private readonly InvokeMethodCoreDelegate _invokeMethodCoreDelegate;
 
     internal SessionContext<TProxy> SessionContext { get; set; } = null!;
-
-    // ReSharper disable once StaticMemberInGenericType
-    private static readonly ConcurrentBag<BufferWriter<byte>> _bufferWriters = new ConcurrentBag<BufferWriter<byte>>();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusBase{TProxy}"/> class.
@@ -85,7 +84,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
     /// <param name="returnBuffer"></param>
     /// <returns></returns>
     protected abstract ValueTask InvokeMethodCore(IInvocationMessage message, IBufferWriter<byte>? returnBuffer);
-   
+
     /// <summary>
     /// Invoked when a hub has it's connection established and ready for usage.
     /// </summary>
@@ -143,7 +142,8 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
 
         try
         {
-            if (!_bufferWriters.TryTake(out var bufferWriter))
+            var bufferWriterCache = requestArgs.SessionContext.CacheManager.BufferWriterCache;
+            if (!bufferWriterCache.TryTake(out var bufferWriter))
                 bufferWriter = BufferWriter<byte>.Create();
 
             await requestArgs.InvokeMethodCore(requestArgs.Message, bufferWriter).ConfigureAwait(false);
@@ -162,10 +162,10 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
             message.State = InvocationResultMessage.StateType.CompletedResult;
             await context.Session.SendMessage(message).ConfigureAwait(false);
 
-            if(bufferResult != null)
+            if (bufferResult != null)
                 bufferWriter.Deallocate(bufferResult.Value);
 
-            _bufferWriters.Add(bufferWriter);
+            bufferWriterCache.Add(bufferWriter);
         }
         catch (TaskCanceledException)
         {
@@ -182,14 +182,14 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
         finally
         {
             message.Result = null;
-            context.CacheManager.Return(message);
+            message?.Dispose();
             ReturnArgsToCache(context, requestArgs);
         }
 
         static void ReturnArgsToCache(SessionContext<TProxy> context, InvokeMethodCoreArgs args)
         {
             //args.Message.Arguments = Memory<byte>.Empty;
-            context.CacheManager.Return(args.Message);
+            args.Message?.Dispose();
             InvokeMethodCoreArgs.Return(args);
         }
     }
@@ -211,7 +211,5 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
             args.SessionContext = null!;
             _cache.Add(args);
         }
-
-        //public static void Clear() => _cache.Clear();
     }
 }

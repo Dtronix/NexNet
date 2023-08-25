@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
@@ -35,18 +36,20 @@ public abstract class ClientConfig : ConfigBase
     /// Returns the transport configured and connected for the overridden configurations.
     /// </summary>
     /// <returns>Connected transport.</returns>
-    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
-    internal ValueTask<ITransport> ConnectTransport()
+    /// <param name="cancellationToken">Cancellation token used to cancel the connection.</param>
+    /// <exception cref="TransportException">Throws socket exception upon failure to connect.</exception>
+    internal ValueTask<ITransport> ConnectTransport(CancellationToken cancellationToken)
     {
-        return OnConnectTransport();
+        return OnConnectTransport(cancellationToken);
     }
 
     /// <summary>
     /// Override to return the transport configured and connected for the overridden configurations.
     /// </summary>
     /// <returns>Connected transport.</returns>
-    /// <exception cref="SocketException">Throws socket exception upon failure to connect.</exception>
-    protected abstract ValueTask<ITransport> OnConnectTransport();
+    /// <param name="cancellationToken">Cancellation token used to cancel the connection.</param>
+    /// <exception cref="TransportException">Throws socket exception upon failure to connect.</exception>
+    protected abstract ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken);
 
     internal Action? InternalOnClientConnect;
 

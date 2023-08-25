@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Threading;
+using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
@@ -7,7 +8,6 @@ namespace NexNet.Transports;
 /// </summary>
 public interface ITransportListener
 {
-
     /// <summary>
     /// Closes the listener.
     /// </summary>
@@ -15,11 +15,12 @@ public interface ITransportListener
     /// Set to true to let the connection linger to allow for sending of last second packets.
     /// False if the connection is to close as soon as possible and possibly cut off any packets in the queue.
     /// </param>
-    public void Close(bool linger);
+    public ValueTask CloseAsync(bool linger);
 
     /// <summary>
     /// Listens and accepts new transport connections.
     /// </summary>
-    /// <returns></returns>
-    public Task<ITransport?> AcceptTransportAsync();
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>New transport connection.  Null if the listener is closed.</returns>
+    public ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken);
 }

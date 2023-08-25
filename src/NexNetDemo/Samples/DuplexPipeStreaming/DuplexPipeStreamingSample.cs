@@ -13,8 +13,8 @@ public class DuplexPipeStreamingSample : SampleBase
     {
         var client = DuplexPipeStreamingClientNexus.CreateClient(ClientConfig, new DuplexPipeStreamingClientNexus());
         var server = DuplexPipeStreamingServerNexus.CreateServer(ServerConfig, () => new DuplexPipeStreamingServerNexus());
-        server.Start();
-        await client.ConnectAsync(true);
+        await server.StartAsync();
+        await client.ConnectAsync();
 
         // Create the client pipe.
         var pipe = client.CreatePipe();

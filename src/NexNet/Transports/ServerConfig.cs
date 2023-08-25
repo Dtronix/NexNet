@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace NexNet.Transports;
 
@@ -28,12 +30,13 @@ public abstract class ServerConfig : ConfigBase
     /// <summary>
     /// Creates the listener and starts.
     /// </summary>
+    /// <param name="cancellationToken"></param>
     /// <returns>Listener interface.</returns>
-    protected abstract ITransportListener OnCreateServerListener();
+    protected abstract ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken);
 
-    internal ITransportListener CreateServerListener()
+    internal ValueTask<ITransportListener> CreateServerListener(CancellationToken cancellationToken)
     {
-        return OnCreateServerListener();
+        return OnCreateServerListener(cancellationToken);
     }
 
     internal Action? InternalOnConnect;

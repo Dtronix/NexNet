@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
 
@@ -17,27 +18,33 @@ internal class SocketTransportListener : ITransportListener
         _socket = socket;
     }
 
-    public void Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _socket.Close();
+
+        return ValueTask.CompletedTask;
     }
 
-    public async Task<ITransport?> AcceptTransportAsync()
+    public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        var clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
-
-        SocketConnection.SetRecommendedServerOptions(clientSocket);
-
+        Socket clientSocket = null!;
         try
         {
+            clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
+
+            SocketConnection.SetRecommendedServerOptions(clientSocket);
             return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // noop.
         }
         catch (Exception e)
         {

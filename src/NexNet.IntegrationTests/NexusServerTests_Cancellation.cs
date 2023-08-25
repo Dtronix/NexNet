@@ -13,6 +13,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ClientTaskValueWithParam(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -42,6 +43,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -72,6 +74,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -98,6 +101,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -123,6 +127,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
         var tcs = await ServerSendsMessage<Messages.InvocationCancellationMessage>(
@@ -144,13 +149,13 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         where T : IMessageBase
     {
         var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type, false);
+        var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         setup.Invoke(clientNexus);
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         serverConfig.InternalOnSend = (_, bytes) =>
         {

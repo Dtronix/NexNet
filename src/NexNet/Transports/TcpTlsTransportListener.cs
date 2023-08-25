@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
 
@@ -17,27 +18,32 @@ internal class TcpTlsTransportListener : ITransportListener
         _socket = socket;
     }
 
-    public void Close(bool linger)
+    public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return;
+            return ValueTask.CompletedTask;
         }
 
         _socket.Close();
+        return ValueTask.CompletedTask;
     }
 
-    public async Task<ITransport?> AcceptTransportAsync()
+    public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        var clientSocket = await _socket.AcceptAsync().ConfigureAwait(false);
-
-        SocketConnection.SetRecommendedServerOptions(clientSocket);
-
+        Socket clientSocket = null!;
         try
         {
+            clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
+            SocketConnection.SetRecommendedServerOptions(clientSocket);
+
             return await TcpTlsTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // noop.
         }
         catch (Exception e)
         {
@@ -51,6 +57,14 @@ internal class TcpTlsTransportListener : ITransportListener
         return null;
     }
 
+    /// <summary>
+    /// Creates a new <see cref="ITransportListener"/> for the given <see cref="TcpTlsServerConfig"/>.
+    /// </summary>
+    /// <param name="config">Configuration for the listener.</param>
+    /// <param name="endPoint">Connection endpoint.</param>
+    /// <param name="socketType">Type of socket.</param>
+    /// <param name="protocolType">Protocol type.</param>
+    /// <returns>Configured Transport listener.</returns>
     public static ITransportListener Create(TcpTlsServerConfig config, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
     {
         Socket listener = new Socket(endPoint.AddressFamily, socketType, protocolType);

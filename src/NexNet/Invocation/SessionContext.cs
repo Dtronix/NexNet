@@ -42,9 +42,9 @@ public abstract class SessionContext<TProxy>
     /// Creates a pipe for use with the current session.
     /// </summary>
     /// <returns>Pipe for communication over teh current session.</returns>
-    public INexusDuplexPipe CreatePipe()
+    public IRentedNexusDuplexPipe CreatePipe()
     {
-        return Session.PipeManager.GetPipe() 
+        return Session.PipeManager.RentPipe() 
                ?? throw new InvalidOperationException("Can't create a pipe due to session being closed.");
     }
 

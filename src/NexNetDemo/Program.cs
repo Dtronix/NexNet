@@ -11,7 +11,7 @@ internal class Program
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 
-        var messengerSample = new MessengerSample("192.168.2.110");
+        var messengerSample = new MessengerSample("127.0.0.1");
 
         if (args.Length == 1 && args[0] == "server")
         {

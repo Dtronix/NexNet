@@ -1,4 +1,6 @@
-﻿using MemoryPack;
+﻿using System.Threading;
+using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Messages;
 
@@ -6,6 +8,14 @@ namespace NexNet.Messages;
 internal partial class InvocationCancellationMessage : IMessageBase
 {
     public static MessageType Type { get; } = MessageType.InvocationCancellation;
+
+    private ICachedMessage? _messageCache = null!;
+
+    [MemoryPackIgnore]
+    public ICachedMessage? MessageCache
+    {
+        set => _messageCache = value;
+    }
 
     [MemoryPackOrder(0)]
     public int InvocationId { get; set; }
@@ -20,8 +30,14 @@ internal partial class InvocationCancellationMessage : IMessageBase
     {
         InvocationId = invocationId;
     }
-    public void Reset()
+
+    public void Dispose()
     {
-        // Noop
+        var cache = Interlocked.Exchange(ref _messageCache, null);
+
+        if (cache == null)
+            return;
+
+        cache.Return(this);
     }
 }

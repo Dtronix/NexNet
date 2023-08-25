@@ -48,6 +48,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
+    private volatile int _state; 
+    
+    /// <summary>
+    /// If true, the transport will not pass the flush cancellation token to the underlying transport.
+    /// Currently exists due to an issue in the QUIC implementation.  Should be removed once the issue is fixed.
+    /// https://github.com/dotnet/runtime/issues/82704
+    /// https://github.com/dotnet/runtime/pull/90253
+    /// </summary>
+    private readonly bool _configDoNotPassFlushCancellationToken;
 
     public NexusPipeManager PipeManager { get; }
 
@@ -57,7 +66,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public SessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
-    public INexusLogger? Logger => _config.Logger;
+    public INexusLogger? Logger { get; }
     CacheManager INexusSession.CacheManager => CacheManager;
 
     public List<int> RegisteredGroups { get; } = new List<int>();
@@ -71,18 +80,22 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public Action? OnSent { get; set; }
 
-    public ConnectionState State { get; private set; }
+    public ConnectionState State
+    {
+        get => (ConnectionState)_state;
+    }
 
     public ConfigBase Config { get; }
     public bool IsServer { get; }
 
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
-        State = ConnectionState.Connecting;
+        _state = (int)ConnectionState.Connecting;
         Id = configurations.Id;
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
+        _configDoNotPassFlushCancellationToken = _transportConnection.Configurations.DoNotPassFlushCancellationToken;
         Config = _config = configurations.Configs;
         _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
@@ -93,6 +106,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _nexus.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
+
+        Logger = configurations.Configs.Logger?.CreateLogger<NexusSession<TNexus, TProxy>>();
 
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);
@@ -111,18 +126,18 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public Task DisconnectAsync(DisconnectReason reason)
     {
-        return DisconnectCore(reason, true);
+        return DisconnectCore(reason, true).AsTask();
     }
 
 
     public bool DisconnectIfTimeout(long timeoutTicks)
     {
-        if (State != ConnectionState.Connected)
+        if (_state != (int)ConnectionState.Connected)
             return false;
 
         if (timeoutTicks > LastReceived)
         {
-            _config.Logger?.LogTrace($"Timed out session {Id}");
+            Logger?.LogTrace($"Timed out session {Id}");
             DisconnectAsync(DisconnectReason.Timeout);
             return true;
         }
@@ -132,20 +147,19 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public async ValueTask StartAsClient()
     {
-        _config.Logger?.LogTrace("NexNetSession.StartAsClient()");
+
+        Logger?.LogTrace("StartAsClient()");
         var clientConfig = Unsafe.As<ClientConfig>(_config);
-        var greetingMessage = _cacheManager.Rent<ClientGreetingMessage>();
+        using var greetingMessage = _cacheManager.Rent<ClientGreetingMessage>();
 
         greetingMessage.Version = 0;
         greetingMessage.ServerNexusMethodHash = TProxy.MethodHash;
         greetingMessage.ClientNexusMethodHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
 
-        State = ConnectionState.Connected;
+        _state = (int)ConnectionState.Connected;
 
         await SendMessage(greetingMessage).ConfigureAwait(false);
-
-        _cacheManager.Return(greetingMessage);
 
         // ReSharper disable once MethodSupportsCancellation
         _ = Task.Factory.StartNew(StartReadAsync, TaskCreationOptions.LongRunning);
@@ -154,7 +168,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private async ValueTask<bool> TryReconnectAsClient()
     {
-        _config.Logger?.LogTrace("NexNetSession.TryReconnectAsClient()");
+        Logger?.LogTrace("TryReconnectAsClient()");
         if (IsServer)
             return false;
 
@@ -164,7 +178,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (clientConfig.ReconnectionPolicy == null)
             return false;
 
-        State = ConnectionState.Reconnecting;
+        _state = (int)ConnectionState.Reconnecting;
 
         // Notify the hub.
         await clientHub.Reconnecting().ConfigureAwait(false);
@@ -183,16 +197,16 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 await Task.Delay(delay.Value).ConfigureAwait(false);
 
-                _config.Logger?.LogTrace($"Reconnection attempt {count}");
+                Logger?.LogTrace($"Reconnection attempt {count}");
 
-                transport = await clientConfig.ConnectTransport().ConfigureAwait(false);
-                State = ConnectionState.Connecting;
+                transport = await clientConfig.ConnectTransport(default).ConfigureAwait(false);
+                _state = (int)ConnectionState.Connecting;
 
                 _pipeInput = transport.Input;
                 _pipeOutput = transport.Output;
                 _transportConnection = transport;
 
-                _config.Logger?.LogTrace($"Reconnection succeeded.");
+                Logger?.LogTrace($"Reconnection succeeded.");
 
                 _isReconnected = true;
                 await StartAsClient().ConfigureAwait(false);
@@ -200,24 +214,25 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
             catch (Exception e)
             {
-                _config.Logger?.LogError(e, "Reconnection failed with exception.");
-                transport?.Close(true);
+                Logger?.LogError(e, "Reconnection failed with exception.");
+                if(transport != null)
+                    await transport.CloseAsync(true).ConfigureAwait(false);
             }
         }
 
     }
 
-    private async Task DisconnectCore(DisconnectReason reason, bool sendDisconnect)
+    private async ValueTask DisconnectCore(DisconnectReason reason, bool sendDisconnect)
     {
         // If we are already disconnecting, don't do anything
-        if (State == ConnectionState.Disconnecting || State == ConnectionState.Disconnected)
-            return;
+        var state = Interlocked.Exchange(ref _state, (int)ConnectionState.Disconnecting);
 
-        State = ConnectionState.Disconnecting;
+        if (state == (int)ConnectionState.Disconnecting || state == (int)ConnectionState.Disconnected)
+            return;
 
         _registeredDisconnectReason = reason;
 
-        _config.Logger?.LogTrace($"NexNetSession.DisconnectCore({reason}, {sendDisconnect})");
+        Logger?.LogTrace($"DisconnectCore({reason}, {sendDisconnect})");
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
@@ -238,7 +253,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (_config.InternalNoLingerOnShutdown)
         {
-            _transportConnection.Close(false);
+            await _transportConnection.CloseAsync(false).ConfigureAwait(false);
             return;
         }
         else
@@ -255,9 +270,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             {
                 //noop
             }
+            catch (Exception e)
+            {
+                Logger?.LogError(e, "Error while completing output pipe.");
+            }
 
             _pipeOutput = null;
-            _transportConnection.Close(true);
+            await _transportConnection.CloseAsync(true);
         }
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client
@@ -274,7 +293,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 return;
         }
 
-        State = ConnectionState.Disconnected;
+        state = (int)ConnectionState.Disconnected;
 
         // Cancel all pipe manager pipes and return to the cache.
         PipeManager.CancelAll();
@@ -291,7 +310,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _disconnectedTaskCompletionSource?.TrySetResult();
 
-        _config.Logger?.LogTrace("ReadyTaskCompletionSource fired in DisconnectCore");
+        Logger?.LogTrace("ReadyTaskCompletionSource fired in DisconnectCore");
         _readyTaskCompletionSource?.TrySetResult();
     }
 

@@ -10,6 +10,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientVoid(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -26,6 +27,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientVoidWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -46,6 +48,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTask(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -63,6 +66,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -81,6 +85,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -97,6 +102,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValue_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -115,6 +121,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -133,6 +140,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithParam_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -152,6 +160,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskWithCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -169,6 +178,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskWithValueAndCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -186,6 +196,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -202,6 +213,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -219,6 +231,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -237,6 +250,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -255,10 +269,10 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     {
         var tcs = new TaskCompletionSource();
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, false),
-            CreateClientConfig(type, false));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
-        server.Start();
+        await server.StartAsync().Timeout(1);
 
         action(serverNexus, clientNexus, tcs);
 
