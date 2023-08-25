@@ -104,7 +104,7 @@ Each session is assigned a unique hub instance, ensuring that data is not shared
 - Ping system to detect timeouts from cline tand server side.
 - No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
 - Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
-- Minimal package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack) and [Pipelines.Sockets.Unofficial](https://github.com/mgravell/Pipelines.Sockets.Unofficial)
+- Minimal package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack)
 
 ## Transports Supported
 - Unix Domain Sockets (UDS)
