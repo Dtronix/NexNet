@@ -62,9 +62,13 @@ public class BaseTests
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
+        _logger.LogEnabled = false;
         
         foreach (var nexusClient in Clients)
         {
+            if(nexusClient.State != ConnectionState.Connected)
+                continue;
+
             _ = nexusClient.DisconnectAsync();
             //nexusClient.DisconnectedTask?.Wait();
         }
@@ -72,6 +76,9 @@ public class BaseTests
 
         foreach (var nexusServer in Servers)
         {
+            if(!nexusServer.IsStarted)
+                continue;
+
             _ = nexusServer.StopAsync();
             //nexusServer.StoppedTask?.Wait();
         }
