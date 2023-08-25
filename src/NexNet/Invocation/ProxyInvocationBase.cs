@@ -418,7 +418,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
 
             await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
-
+            Console.WriteLine($"Proxy Received: {state.Result.GetResult<int>()}");
             if (state.IsCanceled)
             {
                 if (state.NotifyConnection)
