@@ -117,7 +117,7 @@ internal class SocketTransport : ITransport
             }
             catch (Exception e)
             {
-                throw new TransportException(SocketError.NotConnected, e.Message, e);
+                throw new TransportException(SocketError.ConnectionRefused, e.Message, e);
             }
 
         }

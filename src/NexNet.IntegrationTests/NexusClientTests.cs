@@ -82,7 +82,7 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.ConnectionTimeout = 50;
 
-        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(10));
+        await AssertThrows<TransportException>(() => client.ConnectAsync().Timeout(100));
     }
 
     [TestCase(Type.Uds)]

@@ -102,6 +102,10 @@ internal class QuicTransport : ITransport
 
             throw new TransportException(error, e.Message, e);
         }
+        catch (Exception e)
+        {
+            throw new TransportException(TransportError.ConnectionRefused, e.Message, e);
+        }
 
         var mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token);
 
