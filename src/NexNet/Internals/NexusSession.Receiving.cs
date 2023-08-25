@@ -291,7 +291,19 @@ internal partial class NexusSession<TNexus, TProxy>
         static async void InvokeOnConnected(object? sessionObj)
         {
             var session = Unsafe.As<NexusSession<TNexus, TProxy>>(sessionObj)!;
-            await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
+
+            try
+            {
+                await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException e)
+            {
+                session.Logger?.LogTrace(e, "OnConnected was canceled.");
+            }
+            catch (Exception e)
+            {
+                session.Logger?.LogError(e, "OnConnected threw an exception.");
+            }
 
             // Reset the value;
             session._isReconnected = false;
