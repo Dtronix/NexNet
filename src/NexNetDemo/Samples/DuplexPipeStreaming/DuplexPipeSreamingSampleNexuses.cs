@@ -11,6 +11,7 @@ interface IDuplexPipeStreamingClientNexus
 interface IDuplexPipeStreamingServerNexus
 {
     ValueTask StreamToAndFrom(INexusDuplexPipe pipe);
+    ValueTask StreamTo(INexusDuplexPipe pipe);
 }
 
 [Nexus<IDuplexPipeStreamingClientNexus, IDuplexPipeStreamingServerNexus>(NexusType = NexusType.Client)]
@@ -69,6 +70,41 @@ partial class DuplexPipeStreamingServerNexus
                 sentBytes = 0;
                 loopNumber = 0;
                 //Console.SetCursorPosition(0, 0);
+            }
+        }
+    }
+
+    public async ValueTask StreamTo(INexusDuplexPipe pipe)
+    {
+        int loopNumber = 0;
+        AverageRate = 0;
+        var sw = new Stopwatch();
+        var receivedBytes = 0L;
+        ReadOnlyMemory<byte> data = new byte[1024 * 16];
+        while (true)
+        {
+            sw.Start();
+            var readData = await pipe.Input.ReadAsync();
+
+            if (readData.IsCanceled || readData.IsCompleted)
+                return;
+
+            var length = readData.Buffer.Length;
+            if (length == 0)
+            {
+                continue;
+            }
+            receivedBytes += length;
+            pipe.Input.AdvanceTo(readData.Buffer.End);
+
+            if (loopNumber++ == 3000)
+            {
+                var value = ((receivedBytes / 1024d / 1024d) / (sw.ElapsedMilliseconds / 1000d));
+                sw.Restart();
+                receivedBytes = 0;
+                loopNumber = 0;
+
+                Console.WriteLine($"Server Rec:{DuplexPipeStreamingServerNexus.AverageRate:F} MBps; Client Rec:{value:F} MBps;");
             }
         }
     }

@@ -18,7 +18,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "github", "github", "{AFD63E
 		..\.github\workflows\dotnet.yml = ..\.github\workflows\dotnet.yml
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNet.Quic", "NexNet.Quic\NexNet.Quic.csproj", "{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NexNet.Quic", "NexNet.Quic\NexNet.Quic.csproj", "{AB75B6D0-0DC0-4E3A-A3A7-320DFB6B09C5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{4EEEFB00-3BF5-4A0C-8DF6-8B405BD2E2A5}"
+	ProjectSection(SolutionItems) = preProject
+		NexNet.props = NexNet.props
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

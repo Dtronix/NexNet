@@ -3,6 +3,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using NexNet.Quic;
 using NexNet.Transports;
 
 namespace NexNetDemo.Samples;
@@ -13,7 +14,8 @@ public class SampleBase
     {
         Uds,
         Tcp,
-        TlsTcp
+        TlsTcp,
+        Quic
     }
 
     protected ServerConfig ServerConfig { get; set; } = null!;
@@ -76,6 +78,35 @@ public class SampleBase
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,
                     RemoteCertificateValidationCallback = (sender, certificate, chain, errors) => true
+                }
+            };
+        }       
+        else if (transportMode == TransportMode.Quic)
+        {
+
+            ServerConfig = new QuicServerConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, 6321),
+                Logger = log ? new SampleLogger("Server") : null,
+                SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
+                {
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    ClientCertificateRequired = false,
+                    AllowRenegotiation = false,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                },
+            };
+            ClientConfig = new QuicClientConfig()
+            {
+                EndPoint = new IPEndPoint(IPAddress.Loopback, 6321),
+                Logger = log ? new SampleLogger("Server") : null,
+                SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
+                {
+                    EnabledSslProtocols = SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+                    AllowRenegotiation = false,
+                    RemoteCertificateValidationCallback = (_, _, _, _) => true
                 }
             };
         }

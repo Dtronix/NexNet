@@ -1,6 +1,10 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Net.Quic;
 using System.Net.Security;
+using System.Threading;
+using System.Threading.Tasks;
 using NexNet.Transports;
 
 #pragma warning disable CA1416

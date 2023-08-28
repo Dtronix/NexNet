@@ -1,4 +1,6 @@
-﻿using NexNetDemo.Samples.InvocationSample;
+﻿using NexNetDemo.Samples;
+using NexNetDemo.Samples.DuplexPipeStreaming;
+using NexNetDemo.Samples.InvocationSample;
 using NexNetDemo.Samples.Messenger;
 
 namespace NexNetDemo;
@@ -8,8 +10,12 @@ internal class Program
     static async Task Main(string[] args)
     {
         //await new DuplexPipeSimpleSample().UploadSample();
+        //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).UploadStreamingSample();
+        await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).DuplexStreamingSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
+
+        return;
 
         var messengerSample = new MessengerSample("127.0.0.1");
 
