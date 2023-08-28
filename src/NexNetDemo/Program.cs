@@ -15,8 +15,7 @@ internal class Program
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 
-        return;
-
+        /*
         var messengerSample = new MessengerSample("127.0.0.1");
 
         if (args.Length == 1 && args[0] == "server")
@@ -32,7 +31,7 @@ internal class Program
             _ = Task.Factory.StartNew(() => messengerSample.RunServer(), TaskCreationOptions.LongRunning);
             await messengerSample.RunClient();
         }
-
+        */
 
 
         Console.ReadLine();
