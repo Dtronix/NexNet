@@ -1,5 +1,11 @@
 <Project>
   <PropertyGroup>
+    <Version>0.2.0</Version>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TargetFramework>net7.0</TargetFramework>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Company>Dtronix</Company>
     <Product>NexNet</Product>
     <Copyright>Copyright © Dtronix 2023</Copyright>
@@ -8,6 +14,10 @@
     <RepositoryUrl>https://github.com/Dtronix/NexNet</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <PackageTags>rpc sockets uds tcp tls secure source generator</PackageTags>
+    <PackageTags>rpc sockets uds tcp tls quic secure source generator</PackageTags>
+    <PackageIcon>logo-128.png</PackageIcon>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="../../docs/images/logo-128.png" Pack="True" PackagePath="/" />
+  </ItemGroup>
 </Project>

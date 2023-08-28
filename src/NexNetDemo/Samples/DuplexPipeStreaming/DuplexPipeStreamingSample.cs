@@ -65,4 +65,31 @@ public class DuplexPipeStreamingSample : SampleBase
                 return;
         }
     }
+
+    public async Task UploadStreamingSample()
+    {
+        var client = DuplexPipeStreamingClientNexus.CreateClient(ClientConfig, new DuplexPipeStreamingClientNexus());
+        var server = DuplexPipeStreamingServerNexus.CreateServer(ServerConfig, () => new DuplexPipeStreamingServerNexus());
+        await server.StartAsync();
+        await client.ConnectAsync();
+
+        // Create the client pipe.
+        var pipe = client.CreatePipe();
+
+        // Invoke the method on the server and pass the pipe.
+        await client.Proxy.StreamTo(pipe);
+
+        // Wait for the pipe to be ready for wiring & reading.
+        await pipe.ReadyTask;
+        
+        ReadOnlyMemory<byte> randomData = new byte[1024 * 16];
+
+        while (true)
+        {
+            var result = await pipe.Output.WriteAsync(randomData);
+
+            if (result.IsCanceled || result.IsCompleted)
+                return;
+        }
+    }
 }

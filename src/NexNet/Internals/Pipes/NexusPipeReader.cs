@@ -113,9 +113,13 @@ internal class NexusPipeReader : PipeReader
             {
                 //_logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low water mark completion. Loop {i++}");
                 // Do a short delay to allow the other side to process the data and progressively increase the delay.
-                if (loopCount < 10)
+                if (loopCount < 2)
                 {
                     await Task.Delay(1).ConfigureAwait(false);
+                }
+                else if (loopCount < 10)
+                {
+                    await Task.Delay(5).ConfigureAwait(false);
                 }
                 else if (loopCount < 50)
                 {
