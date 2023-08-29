@@ -1,37 +1,37 @@
 ﻿namespace NexNet;
 
 /// <summary>
-/// State for the connection.
+/// Internal State int used for interlocked operations.
 /// </summary>
-public enum ConnectionState : int
+internal static class ConnectionStateInternal
 {
     /// <summary>
     /// Unset state.  Unused.
     /// </summary>
-    Unset = 0,
+    public const int Unset = 0;
 
     /// <summary>
     /// Connection has been established but but setup
     /// </summary>
-    Connecting = 1,
+    public const int Connecting = 1;
 
     /// <summary>
     /// Connection has been setup and ready for usage.
     /// </summary>
-    Connected = 2,
+    public const int Connected = 2;
 
     /// <summary>
     /// Connection has been lost but the client is attempting reconnection.
     /// </summary>
-    Reconnecting = 3,
+    public const int Reconnecting = 3;
 
     /// <summary>
     /// Connection is in the process of closing.
     /// </summary>
-    Disconnecting = 4,
+    public const int Disconnecting = 4;
 
     /// <summary>
     /// Connection has been closed.
     /// </summary>
-    Disconnected = 5
+    public const int Disconnected = 5;
 }

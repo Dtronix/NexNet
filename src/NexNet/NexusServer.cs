@@ -20,11 +20,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
-    private enum State
+    private static class State
     {
-        Stopped,
-        Running,
-        Disposed
+        public const int Stopped = 0;
+        public const int Running = 1;
+        public const int Disposed = 2;
     }
 
     private readonly SessionManager _sessionManager = new();
@@ -35,7 +35,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private ITransportListener? _listener;
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
     private TaskCompletionSource? _stoppedTcs;
-    private volatile int _state = (int)State.Stopped;
+    private volatile int _state = State.Stopped;
     private CancellationTokenSource? _cancellationTokenSource;
     /// <summary>
     /// Cache for all the server nexus contexts.
@@ -45,6 +45,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
+    private readonly INexusLogger? _logger;
 
     /// <summary>
     /// True if the server is running, false otherwise.
@@ -70,11 +71,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         _config = config;
         _nexusFactory = nexusFactory;
-
+        _logger = config.Logger?.CreateLogger<NexusServer<TServerNexus, TClientProxy>>();
         _cacheManager = new SessionCacheManager<TClientProxy>();
-
         _watchdogTimer = new Timer(ConnectionWatchdog);
-
     }
 
     /// <summary>
@@ -95,10 +94,21 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        // Only execute if the server is stopped and not disposed.
-        var previousState = Interlocked.CompareExchange(ref _state, (int)State.Running, (int)State.Stopped);
+        static void FireAndForget(Task? task)
+        {
+            // make sure that any exception is observed
+            if (task == null) return;
+            if (task.IsCompleted)
+            {
+                GC.KeepAlive(task.Exception);
+                return;
+            }
 
-        if (previousState != (int)State.Stopped)
+            task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        // Only execute if the server is stopped and not disposed.
+        if (Interlocked.CompareExchange(ref _state, State.Running, State.Stopped) != State.Stopped)
             return;
 
         if (_listener != null) throw new InvalidOperationException("Server is already running");
@@ -117,38 +127,39 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     public async Task StopAsync()
     {
-        if(Interlocked.CompareExchange(ref _state, (int)State.Stopped, (int)State.Running) != (int)State.Running)
+        if (Interlocked.CompareExchange(ref _state, State.Stopped, State.Running) != State.Running)
             return;
 
-        var listener = Interlocked.Exchange(ref _listener, null);
-        if (listener != null)
+        _logger?.LogInfo("Stopping server");
+
+        var listener = _listener!;
+        _listener = null;
+
+        try
         {
-            try
+            _cancellationTokenSource?.Cancel();
+            _cacheManager.Clear();
+            _watchdogTimer.Change(-1, -1);
+
+            foreach (var session in _sessionManager.Sessions)
             {
-                _cancellationTokenSource?.Cancel();
-                _cacheManager.Clear();
-                _watchdogTimer.Change(-1, -1);
-
-                foreach (var session in _sessionManager.Sessions)
+                try
                 {
-                    try
-                    {
-                        await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
-                    }
-                    catch (Exception e)
-                    {
-                        // Ignore exceptions
-                        _config.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
-                    }
-
+                    await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    // Ignore exceptions
+                    _config.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
                 }
 
-                await listener.CloseAsync(!_config.InternalNoLingerOnShutdown).ConfigureAwait(false);
             }
-            catch
-            {
-                // ignored
-            }
+
+            await listener.CloseAsync(!_config.InternalNoLingerOnShutdown).ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignored
         }
 
         _stoppedTcs?.TrySetResult();
@@ -160,9 +171,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <returns>Value task which completes upon disposal.</returns>
     public async ValueTask DisposeAsync()
     {
-        var previousState = Interlocked.Exchange(ref _state, (int)State.Disposed);
+        var previousState = Interlocked.Exchange(ref _state, State.Disposed);
 
-        if (previousState == (int)State.Disposed)
+        if (previousState == State.Disposed || previousState == State.Stopped)
             return;
 
         await StopAsync().ConfigureAwait(false);
@@ -236,7 +247,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         try
         {
-            while (_state == (int)State.Running)
+            _logger?.LogInfo("Listening for connections");
+            while (_state == State.Running)
             {
                 var clientTransport = await _listener!.AcceptTransportAsync(_cancellationTokenSource!.Token).ConfigureAwait(false);
 
@@ -281,17 +293,5 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);
     }
 
-    private static void FireAndForget(Task? task)
-    {
-        // make sure that any exception is observed
-        if (task == null) return;
-        if (task.IsCompleted)
-        {
-            GC.KeepAlive(task.Exception);
-            return;
-        }
-
-        task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
-    }
 
 }

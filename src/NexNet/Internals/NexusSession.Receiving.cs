@@ -13,6 +13,7 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync()
     {
+        Logger?.LogTrace($"Reading");
         _state = (int)ConnectionState.Connected;
         try
         {
