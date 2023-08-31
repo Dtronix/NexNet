@@ -88,6 +88,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public ConfigBase Config { get; }
     public bool IsServer { get; }
 
+    public DisconnectReason DisconnectReason { get; private set; } = DisconnectReason.None;
+
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
         _state = ConnectionStateInternal.Connecting;
@@ -235,13 +237,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (state == ConnectionStateInternal.Disconnecting || state == ConnectionStateInternal.Disconnected)
             return;
 
+        DisconnectReason = reason;
+
         _registeredDisconnectReason = reason;
 
         Logger?.LogInfo($"Session disconnected with reason: {reason}");
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
-            await SendHeaderCore((MessageType)reason, false).ConfigureAwait(false);
+            await SendHeaderCore((MessageType)reason, true).ConfigureAwait(false);
 
             if (_config.DisconnectDelay > 0)
             {
