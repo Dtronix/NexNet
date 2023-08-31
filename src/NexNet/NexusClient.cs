@@ -8,6 +8,7 @@ using NexNet.Internals;
 using NexNet.Invocation;
 
 namespace NexNet;
+
 /// <summary>
 /// Main client class which facilitates the communication with a matching NexNet server.
 /// </summary>
@@ -62,13 +63,14 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _pingTimer = new Timer(PingTimer);
     }
 
-
-    /// <summary>
-    /// Connects to the server and waits for the ready signal.
-    /// </summary>
-    /// <returns>Task for completion</returns>
-    /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
+    /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
+    {
+        await TryConnectAsync(cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
     {
         if (_session != null)
             throw new InvalidOperationException("Client is already connected.");
@@ -96,23 +98,32 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource
         };
 
-        _session = new NexusSession<TClientNexus, TServerProxy>(config)
+        var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
             OnSent = OnSent
         };
 
-        Proxy.Configure(_session, null, ProxyInvocationMode.Caller, null);
+        Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
-        await _session.StartAsClient().ConfigureAwait(false);
+        await session.StartAsClient().ConfigureAwait(false);
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
+
+        if (session.DisconnectReason != DisconnectReason.None)
+        {
+            return session.DisconnectReason switch
+            {
+                DisconnectReason.Timeout => ConnectionResult.Timeout,
+                DisconnectReason.Authentication => ConnectionResult.AuthenticationFailed,
+                _ => ConnectionResult.Exception
+            };
+        }
+
+        return ConnectionResult.Success;
     }
 
-    /// <summary>
-    /// Disconnects from the server.
-    /// </summary>
-    /// <returns>Task which completes upon disconnection.</returns>
+    /// <inheritdoc />
     public async Task DisconnectAsync()
     {
         if (_session == null)
@@ -134,10 +145,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         await DisconnectAsync().ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Creates a pipe for sending and receiving byte arrays.
-    /// </summary>
-    /// <returns>Pipe to use.</returns>
+    /// <inheritdoc />
     public INexusDuplexPipe CreatePipe()
     {
         var pipe = _session?.PipeManager.RentPipe();

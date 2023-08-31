@@ -29,6 +29,14 @@ public interface INexusClient : IAsyncDisposable
     /// Connects to the server.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for the connection.</param>
+    /// <returns>Result of the connection attempt.</returns>
+    /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
+    Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Connects to the server.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the connection.</param>
     /// <returns>Task for completion</returns>
     /// <exception cref="InvalidOperationException">Throws when the client is already connected to the server.</exception>
     Task ConnectAsync(CancellationToken cancellationToken = default);
@@ -38,4 +46,10 @@ public interface INexusClient : IAsyncDisposable
     /// </summary>
     /// <returns>Task which completes upon disconnection.</returns>
     Task DisconnectAsync();
+
+    /// <summary>
+    /// Creates a pipe for sending and receiving byte arrays.
+    /// </summary>
+    /// <returns>Pipe to use.</returns>
+    INexusDuplexPipe CreatePipe();
 }
