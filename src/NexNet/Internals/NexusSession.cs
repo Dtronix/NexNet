@@ -82,8 +82,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public ConnectionState State
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => (ConnectionState)_state;
     }
+
+    public Action<ConnectionState>? OnStateChanged;
 
     public ConfigBase Config { get; }
     public bool IsServer { get; }
@@ -161,6 +164,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
 
         _state = ConnectionStateInternal.Connected;
+        OnStateChanged?.Invoke(State);
 
         await SendMessage(greetingMessage).ConfigureAwait(false);
 
@@ -185,6 +189,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             return false;
 
         _state = ConnectionStateInternal.Reconnecting;
+        OnStateChanged?.Invoke(State);
 
         // Notify the hub.
         await clientHub.Reconnecting().ConfigureAwait(false);
@@ -207,6 +212,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
                 transport = await clientConfig.ConnectTransport(default).ConfigureAwait(false);
                 _state = ConnectionStateInternal.Connecting;
+                OnStateChanged?.Invoke(State);
 
                 _pipeInput = transport.Input;
                 _pipeOutput = transport.Output;
@@ -236,6 +242,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (state == ConnectionStateInternal.Disconnecting || state == ConnectionStateInternal.Disconnected)
             return;
+
+        OnStateChanged?.Invoke(State);
 
         DisconnectReason = reason;
 
@@ -303,6 +311,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
 
         _state = ConnectionStateInternal.Disconnected;
+        OnStateChanged?.Invoke(State);
 
         // Cancel all pipe manager pipes and return to the cache.
         PipeManager.CancelAll();

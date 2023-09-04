@@ -27,7 +27,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     }
 
     [MemoryPackOrder(0)]
-    public int InvocationId { get; set; }
+    public ushort InvocationId { get; set; }
 
     [MemoryPackOrder(1)]
     public ushort MethodId { get; set; }

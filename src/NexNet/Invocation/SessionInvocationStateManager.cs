@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,7 +14,8 @@ internal class SessionInvocationStateManager
 {
     private readonly CacheManager _cacheManager;
     private readonly INexusLogger? _logger;
-    private int _invocationId = 0;
+    private ushort _invocationId = 0;
+    private readonly List<ushort> _currentInvocations = new List<ushort>();
 
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
     //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
@@ -26,13 +28,34 @@ internal class SessionInvocationStateManager
         _logger = logger;
     }
 
+
+    /// <summary>
+    /// Generates a unique invocation ID for the current session.
+    /// </summary>
+    /// <remarks>
+    /// This method is thread-safe and ensures that the returned ID is not currently in use by any other invocation in the same session.
+    /// </remarks>
+    /// <param name="addToCurrentInvocations">If true, the invocation ID will be added to the current invocations list.  If false, it will not.</param>
+    /// <returns>
+    /// A unique ushort value representing the invocation ID.
+    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetNextId()
+    public ushort GetNextId(bool addToCurrentInvocations)
     {
-        // TODO: Review adding a list of currently invoked invocations so that when
-        // we circle back around to the beginning and we have some long running invocation, we do not 
-        // override or send data to it erroneously.
-        return Interlocked.Increment(ref _invocationId);
+        lock (_currentInvocations)
+        {
+            // If we are not adding to the current invocations, then we can just return the next ID.
+            _invocationId++;
+            if(!addToCurrentInvocations)
+                return _invocationId;
+
+            while (_currentInvocations.Contains(_invocationId))
+                _invocationId++;
+
+            _currentInvocations.Add(_invocationId);
+
+            return _invocationId;
+        }
     }
 
     public void UpdateInvocationResult(InvocationResultMessage message)
@@ -40,6 +63,12 @@ internal class SessionInvocationStateManager
         // If we can not remove the state any longer, then it has already been handled.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
             return;
+
+        // Remove the invocation from the current invocations list.
+        lock (_currentInvocations)
+        {
+            _currentInvocations.Remove(message.InvocationId);
+        }
 
         state.Result = message;
 
@@ -73,7 +102,7 @@ internal class SessionInvocationStateManager
 
         using var message = _cacheManager.Rent<InvocationMessage>();
 
-        message.InvocationId = GetNextId();
+        message.InvocationId = GetNextId(true);
         message.MethodId = methodId;
         message.Flags = InvocationFlags.None;
 
@@ -126,6 +155,7 @@ internal class SessionInvocationStateManager
             invocationState.Value.TrySetCanceled(false);
 
         _invocationStates.Clear();
+        _currentInvocations.Clear();
 
         //foreach (var invocationState in _waitingPipes)
         //    invocationState.Value.Pipe.UpstreamComplete(PipeCompleteMessage.Flags.Canceled);
