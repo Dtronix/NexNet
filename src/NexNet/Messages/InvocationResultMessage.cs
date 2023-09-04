@@ -28,7 +28,7 @@ internal partial class InvocationResultMessage : IMessageBase
     }
 
     [MemoryPackOrder(0)]
-    public int InvocationId { get; set; }
+    public ushort InvocationId { get; set; }
 
     [MemoryPackOrder(1)]
     public StateType State { get; set; }

@@ -33,6 +33,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
 
     /// <summary>
+    /// Event which is raised when the connection state changes.
+    /// </summary>
+    public event EventHandler<ConnectionState>? StateChanged;
+
+    /// <summary>
     /// Proxy used for invoking remote methods on the server.
     /// </summary>
     public TServerProxy Proxy { get; private set; }
@@ -101,7 +106,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
-            OnSent = OnSent
+            OnSent = OnSent,
+            OnStateChanged = (state) => StateChanged?.Invoke(this, state)
         };
 
         Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
@@ -112,6 +118,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         if (session.DisconnectReason != DisconnectReason.None)
         {
+            session.OnStateChanged = null;
             return session.DisconnectReason switch
             {
                 DisconnectReason.Timeout => ConnectionResult.Timeout,
@@ -136,7 +143,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <summary>
-    /// Disposes the client and disconnects if the client is connected to a server.
+    /// Disposes the client and disconnects if the client is connected to a server. 
     /// Same as <see cref="DisconnectAsync()"/>.
     /// </summary>
     /// <returns></returns>

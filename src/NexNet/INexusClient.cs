@@ -52,4 +52,9 @@ public interface INexusClient : IAsyncDisposable
     /// </summary>
     /// <returns>Pipe to use.</returns>
     INexusDuplexPipe CreatePipe();
+
+    /// <summary>
+    /// Event which is raised when the connection state changes.
+    /// </summary>
+    event EventHandler<ConnectionState>? StateChanged;
 }

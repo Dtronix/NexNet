@@ -123,7 +123,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                 foreach (var (_, session) in _sessionManager.Sessions)
                 {
-                    message.InvocationId = session.SessionInvocationStateManager.GetNextId();
+                    message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
                     try
                     {
                         await session.SendMessage(message).ConfigureAwait(false);

@@ -11,8 +11,8 @@ public interface IInvocationMessage
     /// <summary>
     /// Max length allowed: ushort.MaxValue - (Type:byte) - (InvocationId:int) - (MethodId:ushort) - (Flags:byte) = 65527;
     /// </summary>
-    public const int MaxArgumentSize = 65519;/*ushort.MaxValue
-                                         - sizeof(int) // InvocationId
+    public const int MaxArgumentSize = 65521;/*ushort.MaxValue
+                                         - sizeof(ushort) // InvocationId
                                          - sizeof(ushort) // MethodId
                                          - sizeof(InvocationFlags) // Flags
                                          - sizeof(MessageType) // header Type
@@ -20,7 +20,7 @@ public interface IInvocationMessage
     /// <summary>
     /// Unique invocation ID.
     /// </summary>
-    int InvocationId { get; set; }
+    ushort InvocationId { get; set; }
 
     /// <summary>
     /// Method ID to invoke.
