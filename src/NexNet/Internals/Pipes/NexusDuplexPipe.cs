@@ -59,7 +59,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     }
 
     //private readonly Pipe _inputPipe = new Pipe();
-    private readonly NexusPipeReader _inputNexusPipeReader;
+    private readonly NexusPipeReader _inputPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
     private TaskCompletionSource? _readyTcs;
 
@@ -92,7 +92,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// <summary>
     /// Gets the pipe reader for this connection.
     /// </summary>
-    public PipeReader Input => _inputNexusPipeReader;
+    public PipeReader Input => _inputPipeReader;
 
     /// <summary>
     /// Gets the pipe writer for this connection.
@@ -121,7 +121,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
     internal NexusDuplexPipe()
     {
-        _inputNexusPipeReader = new NexusPipeReader(this);
+        _inputPipeReader = new NexusPipeReader(this);
         _outputPipeWriter = new NexusPipeWriter(this);
     }
 
@@ -136,6 +136,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         return default;
     }
+
+    NexusPipeWriter INexusDuplexPipe.WriterCore => _outputPipeWriter;
+    NexusPipeReader INexusDuplexPipe.ReaderCore => _inputPipeReader;
 
     /// <summary>
     /// Sets up the duplex pipe with the given parameters.
@@ -157,7 +160,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             _session.IsServer,
             _session.Config.NexusPipeFlushChunkSize);
 
-        _inputNexusPipeReader.Setup(
+        _inputPipeReader.Setup(
             _logger,
             _session.IsServer,
             _session.Config.NexusPipeHighWaterMark,
@@ -199,7 +202,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         // Set the task to canceled in case the pipe was reset before it was ready.
         _readyTcs?.TrySetCanceled();
 
-        _inputNexusPipeReader.Reset();
+        _inputPipeReader.Reset();
         _outputPipeWriter.Reset();
 
         Interlocked.Increment(ref StateId);
@@ -221,7 +224,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             || (!_session.IsServer && currentState.HasFlag(State.ClientReaderServerWriterComplete)))
             return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
 
-        return _inputNexusPipeReader.BufferData(data);
+        return _inputPipeReader.BufferData(data);
     }
 
 
@@ -306,7 +309,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             else
             {
                 // Close input pipe.
-                _inputNexusPipeReader.Complete();
+                _inputPipeReader.Complete();
             }
         }
 
@@ -315,7 +318,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             if (_session.IsServer)
             {
                 // Close input pipe.
-                _inputNexusPipeReader.Complete();
+                _inputPipeReader.Complete();
             }
             else
             {

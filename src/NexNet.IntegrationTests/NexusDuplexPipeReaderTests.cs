@@ -21,13 +21,12 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReaderPushesData()
+    public async Task BufferData()
     {
         var tcs = new TaskCompletionSource();
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
         await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
-
 
         _ = Task.Run(async () =>
         {
@@ -40,7 +39,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task WaitsForData()
+    public async Task ReadAsyncWaitsForData()
     {
         var tcs = new TaskCompletionSource();
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
@@ -49,6 +48,25 @@ internal class NexusDuplexPipeReaderTests
         _ = Task.Run(async () =>
         {
             var readData = await reader.ReadAsync();
+            Assert.AreEqual(10, readData.Buffer.Length);
+            tcs.SetResult();
+        });
+
+        await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
+
+        await tcs.Task.Timeout(1);
+    }
+
+    [Test]
+    public async Task TryReadWaitsForData()
+    {
+        var tcs = new TaskCompletionSource();
+        var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var reader = CreateReader();
+
+        _ = Task.Run(() =>
+        {
+            Assert.True(reader.TryRead(out var readData));
             Assert.AreEqual(10, readData.Buffer.Length);
             tcs.SetResult();
         });
@@ -119,10 +137,10 @@ internal class NexusDuplexPipeReaderTests
 
         await tcs.Task.Timeout(1);
     }
-
+    
 
     [Test]
-    public async Task CancelPendingReadCancelsReadBeforeRead()
+    public async Task CancelPendingReadCancelsReadBeforeReadAsync()
     {
         var tcs = new TaskCompletionSource();
         var reader = CreateReader();
@@ -132,6 +150,24 @@ internal class NexusDuplexPipeReaderTests
         _ = Task.Run(async () =>
         {
             var data = await reader.ReadAsync();
+            Assert.IsTrue(data.IsCanceled);
+            tcs.SetResult();
+        });
+
+        await tcs.Task.Timeout(1);
+    }
+
+    [Test]
+    public async Task CancelPendingReadCancelsReadBeforeTryRead()
+    {
+        var tcs = new TaskCompletionSource();
+        var reader = CreateReader();
+
+        reader.CancelPendingRead();
+
+        _ = Task.Run(() =>
+        {
+            Assert.IsTrue(reader.TryRead(out var data));
             Assert.IsTrue(data.IsCanceled);
             tcs.SetResult();
         });
@@ -160,7 +196,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task CancelPendingReadCancelsAllowsReadingAfter()
+    public async Task CancelPendingReadCancelsAllowsReadAsyncAfter()
     {
         var tcs = new TaskCompletionSource();
         var reader = CreateReader();
@@ -186,7 +222,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task CancelPendingReadPreCancelsAllowsReadingAfter()
+    public async Task CancelPendingReadPreCancelsAllowsReadAsyncAfter()
     {
         var tcs = new TaskCompletionSource();
         var reader = CreateReader();
@@ -211,7 +247,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReadIsCanceledByCancellationToken_PriorToRead()
+    public async Task ReadAsyncIsCanceledByCancellationToken_PriorToRead()
     {
         var reader = CreateReader();
 
@@ -224,11 +260,10 @@ internal class NexusDuplexPipeReaderTests
 
             Assert.IsTrue(result.IsCanceled);
         }
-
     }
 
     [Test]
-    public async Task ReadIsCanceledByCancellationToken_PostRead()
+    public async Task ReadAsyncIsCanceledByCancellationToken_PostRead()
     {
         var reader = CreateReader();
 
@@ -249,7 +284,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReadWillContinueAfterCancelByCancellationToken_Pre()
+    public async Task ReadAsyncWillContinueAfterCancelByCancellationToken_Pre()
     {
         var reader = CreateReader();
 
@@ -268,7 +303,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReadWillContinueAfterCancelByCancellationToken_Post()
+    public async Task ReadAsyncWillContinueAfterCancelByCancellationToken_Post()
     {
         var reader = CreateReader();
         var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
@@ -293,19 +328,44 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReadAdvance()
+    public async Task ReadAsyncAdvance()
     {
         var reader = CreateReader();
         var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+        var length = data.Length * 9000;
         for (int i = 0; i < 9000; i++)
         {
             await reader.BufferData(data);
         }
         var result = await reader.ReadAsync();
+        Assert.AreEqual(length, result.Buffer.Length);
 
         var position = result.Buffer.GetPosition(3000 * 16);
-
         reader.AdvanceTo(position);
+
+        result = await reader.ReadAsync();
+        Assert.AreEqual(length - (3000 * 16), result.Buffer.Length);
+    }
+
+    [Test]
+    public async Task TryReadAdvance()
+    {
+        var reader = CreateReader();
+        var data = new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+        var length = data.Length * 9000;
+        for (int i = 0; i < 9000; i++)
+        {
+            await reader.BufferData(data);
+        }
+        
+        Assert.IsTrue(reader.TryRead(out var result));
+        Assert.AreEqual(length, result.Buffer.Length);
+
+        var position = result.Buffer.GetPosition(3000 * 16);
+        reader.AdvanceTo(position);
+
+        Assert.IsTrue(reader.TryRead(out result));
+        Assert.AreEqual(length - (3000 * 16), result.Buffer.Length);
     }
 
     [Test]
@@ -348,7 +408,7 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task ReaderNotifiesBackPressure_ReachesLowWaterMark()
+    public async Task ReadAsyncNotifiesBackPressure_ReachesLowWaterMark()
     {
         var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
         var data = new ReadOnlySequence<byte>(new byte[1024]);
@@ -385,7 +445,44 @@ internal class NexusDuplexPipeReaderTests
             }
 
         }
-       
     }
 
+
+    [Test]
+    public void TryReadReturnsFalseWithNoData()
+    {
+        var reader = CreateReader();
+
+        Assert.IsFalse(reader.TryRead(out var readData));
+        Assert.AreEqual(0, readData.Buffer.Length);
+    }
+
+    [Test]
+    public async Task TryReadReturnsTrueWithNewData()
+    {
+        var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var reader = CreateReader();
+        await reader.BufferData(new ReadOnlySequence<byte>(simpleData));
+        Assert.IsTrue(reader.TryRead(out var readData));
+    }
+
+    [Test]
+    public void TryReadReturnsTrueWhenCanceled()
+    {
+        var reader = CreateReader();
+        reader.CancelPendingRead();
+        Assert.IsTrue(reader.TryRead(out var readData));
+        Assert.IsTrue(readData.IsCanceled);
+        Assert.False(readData.IsCompleted);
+    }
+
+    [Test]
+    public void TryReadReturnsTrueWhenCompleted()
+    {
+        var reader = CreateReader();
+        reader.Complete();
+        Assert.IsTrue(reader.TryRead(out var readData));
+        Assert.IsFalse(readData.IsCanceled);
+        Assert.IsTrue(readData.IsCompleted);
+    }
 }

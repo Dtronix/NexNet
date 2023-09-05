@@ -30,7 +30,7 @@ internal class NexusPipeWriter : PipeWriter
     }
 
     /// <summary>
-    /// Set to true to pause writing to the pipe.  The flush
+    /// Set to true to pause writing to the pipe.
     /// </summary>
     public bool PauseWriting
     {

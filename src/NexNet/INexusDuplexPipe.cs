@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipes;
 
 namespace NexNet;
 
@@ -25,6 +26,9 @@ public interface INexusDuplexPipe : IDuplexPipe
     /// </summary>
     /// <returns>Task which completes when the pipe is closed.</returns>
     ValueTask CompleteAsync();
+
+    internal NexusPipeWriter WriterCore { get; }
+    internal NexusPipeReader ReaderCore { get; }
 }
 
 /// <summary>
