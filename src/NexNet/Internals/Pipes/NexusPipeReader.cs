@@ -199,8 +199,85 @@ internal class NexusPipeReader : PipeReader
 
     public override bool TryRead(out ReadResult result)
     {
-        // Todo: implement
-        throw new NotImplementedException();
+        if (_isCompleted)
+        {
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, false, _isCompleted);
+            return false;
+        }
+
+        if (_isCanceled)
+        {
+            _isCanceled = false;
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
+            return true;
+        }
+
+        if (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false)
+        {
+            try
+            {
+                // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
+                do
+                {
+                    _readSemaphore.Wait();
+                } while (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false);
+            }
+            catch (OperationCanceledException)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
+                return true;
+            }
+        }
+        else
+        {
+            // ReSharper disable once MethodHasAsyncOverloadWithCancellation
+            _readSemaphore.Wait(0);
+
+        }
+
+        // Check again for common cases.
+        if (_isCompleted)
+        {
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, false, _isCompleted);
+            return false;
+        }
+
+        if (_isCanceled)
+        {
+            _isCanceled = false;
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
+            return true;
+        }
+
+        ReadOnlySequence<byte> readOnlySequence;
+        long bufferLength;
+        lock (_buffer)
+        {
+            readOnlySequence = _buffer.GetBuffer();
+            bufferLength = _buffer.Length;
+        }
+
+        // If we currently have back pressure, and the buffer length is below the low water mark, then we need to
+        // notify the other side that we are ready to receive more data.
+        if (_lowWaterMark != 0
+            && _stateManager.CurrentState.HasFlag(_backPressureFlag)
+            && bufferLength <= _lowWaterMark)
+        {
+            // Remove the flag and notify the other side.
+            if (_stateManager.UpdateState(_backPressureFlag, true))
+            {
+                await _stateManager.NotifyState().ConfigureAwait(false);
+
+                //_logger?.LogInfo("Allow");
+                // Set the task completion source to allow the next write to continue then assign a new one.
+                //_allowBuffer.TrySetResult();
+            }
+
+
+        }
+
+        result = new ReadResult(readOnlySequence, false, _isCompleted);
+        return true;
     }
 
 
