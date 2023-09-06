@@ -30,7 +30,7 @@ internal  class NexusChannelWriterUnmanaged<T>
         if(_duplexPipe.WriterCore.PauseWriting)
             return false;
 
-        _duplexPipe.WriterCore.
-        
+        return true;
+
     }
 }

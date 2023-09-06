@@ -4,6 +4,7 @@ using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using NexNet.Quic;
 using NexNet.Transports;
+using NexNetDemo.Samples.Streamer;
 
 namespace NexNetDemo.Samples.Messenger;
 
