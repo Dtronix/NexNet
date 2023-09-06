@@ -23,7 +23,6 @@ public class NexusChannelReader<T> :IDisposable
     internal readonly NexusPipeReader Reader;
     internal List<T>? List;
 
-    private static readonly int _tSize = 24;
     /// <summary>
     /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
     /// </summary>
@@ -60,19 +59,30 @@ public class NexusChannelReader<T> :IDisposable
         if(IsComplete)
             return Enumerable.Empty<T>();
 
+        List?.Clear();
+
         // Read the data from the pipe reader.
-        var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken);
-
-        // Check if the result is completed or canceled.
-        if (result.IsCompleted)
+        while (true)
         {
-            IsComplete = true;
-            return Enumerable.Empty<T>();
-        }
+            var result = await Reader.ReadAsync(cancellationToken);
 
-        return result.IsCanceled 
-            ? Enumerable.Empty<T>()
-            : Read(result.Buffer, Reader, List!);
+            // Check if the result is completed or canceled.
+            if (result.IsCompleted)
+            {
+                IsComplete = true;
+                return Enumerable.Empty<T>();
+            }
+
+            if (result.IsCanceled)
+                return Enumerable.Empty<T>();
+
+            Read(result.Buffer, Reader, List!);
+
+            if(List!.Count == 0)
+                continue;
+
+            return List!;
+        }
     }
 
     /// <summary>
@@ -82,20 +92,30 @@ public class NexusChannelReader<T> :IDisposable
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
-    private static IEnumerable<T> Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
+    private static void Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
     {
         var length = buffer.Length;
         
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
-            
-        while ((length - reader.Consumed) >= _tSize)
+        int successfulConsumedCount = 0;
+        while ((length - reader.Consumed) > 0)
         {
-            list.Add(reader.ReadValue<T>());
+            try
+            {
+                list.Add(reader.ReadValue<T>()!);
+                successfulConsumedCount += reader.Consumed;
+            }
+            catch
+            {
+                break;
+            }
         }
-            
-        pipeReader.AdvanceTo(reader.Consumed);
-        return list;
+
+        if (successfulConsumedCount > 0)
+        {
+            pipeReader.AdvanceTo(successfulConsumedCount);
+        }
     }
 
     /// <summary>

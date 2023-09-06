@@ -8,7 +8,7 @@ interface IStreamerSampleClientNexus
 
 interface IStreamerSampleServerNexus
 {
-    ValueTask BroadcastMessage(INexusDuplexPipe message);;
+    ValueTask BroadcastMessage(INexusDuplexPipe message);
 }
 
 

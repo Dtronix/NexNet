@@ -13,13 +13,13 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.IntegrationTests;
 
-internal class NexusChannelReaderWriterUnmanagedTests
+internal class NexusChannelReaderWriterTests
 {
     [Test]
     public async Task WritesAndReadsData()
     {
-        var (writer, reader) = GetReaderWriter<long>();
-        var value = 123456789L;
+        var (writer, reader) = GetReaderWriter<ComplexMessage>();
+        var value = ComplexMessage.Random();
         await writer.WriteAsync(value);
         var result = await reader.ReadAsync().AsTask().Timeout(1);
         Assert.AreEqual(value, result.Single());
@@ -28,25 +28,60 @@ internal class NexusChannelReaderWriterUnmanagedTests
     [Test]
     public async Task WritesAndReadsMultipleData()
     {
-        var (writer, reader) = GetReaderWriter<long>();
+        var (writer, reader) = GetReaderWriter<ComplexMessage>();
         var iterations = 1000;
+        var value = ComplexMessage.Random();
         for (int i = 0; i < iterations; i++)
         {
-            await writer.WriteAsync(i);
+            await writer.WriteAsync(value);
         }
 
-        var count = 0L;
         var result = await reader.ReadAsync().AsTask().Timeout(1);
-        foreach (var l in result)
+        foreach (var complexMessage in result)
         {
-            Assert.AreEqual(count++, l);
+            Assert.AreEqual(value, complexMessage);
         }
 
-        Assert.AreEqual(iterations, count);
+        Assert.AreEqual(iterations, result.Count());
     }
 
-    private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()
-        where T : unmanaged
+    [Test]
+    public async Task WritesAndReadsMultipleDataParallel()
+    {
+        var (writer, reader) = GetReaderWriter<ComplexMessage>();
+        var iterations = 100000;
+        var value = ComplexMessage.Random();
+        var count = 0;
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                await writer.WriteAsync(value);
+            }
+        });
+
+        await Task.Run(async () =>
+        {
+            while (true)
+            {
+                var result = await reader.ReadAsync().AsTask().Timeout(1);
+                foreach (var complexMessage in result)
+                {
+                    Assert.AreEqual(value, complexMessage);
+                    count++;
+                }
+
+                if (count == iterations)
+                {
+                    break;
+                }
+            }
+        });
+
+        Assert.AreEqual(iterations, count);
+
+    }
+    private (NexusChannelWriter<T>, NexusChannelReader<T>) GetReaderWriter<T>()
     {
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager());
         var nexusPipeReader = new NexusPipeReader(new DummyPipeStateManager());
@@ -59,8 +94,8 @@ internal class NexusChannelReaderWriterUnmanagedTests
         };
         nexusPipeWriter.Setup(new ConsoleLogger(), messenger, true, ushort.MaxValue);
 
-        var writer = new NexusChannelWriterUnmanaged<T>(nexusPipeWriter);
-        var reader = new NexusChannelReaderUnmanaged<T>(nexusPipeReader);
+        var writer = new NexusChannelWriter<T>(nexusPipeWriter);
+        var reader = new NexusChannelReader<T>(nexusPipeReader);
 
         return (writer, reader);
     }

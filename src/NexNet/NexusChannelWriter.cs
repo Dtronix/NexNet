@@ -1,7 +1,13 @@
-﻿using System.Threading;
+﻿using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals.Pipes;
+using Pipelines.Sockets.Unofficial.Arenas;
+using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet;
 
@@ -12,7 +18,7 @@ namespace NexNet;
 public class NexusChannelWriter<T>
 {
     // ReSharper disable once StaticMemberInGenericType
-    internal readonly NexusPipeWriter Writer;
+    internal NexusPipeWriter Writer;
 
     /// <summary>
     /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
@@ -24,9 +30,8 @@ public class NexusChannelWriter<T>
     /// </summary>
     /// <param name="pipe">The duplex pipe to be used for writing.</param>
     public NexusChannelWriter(INexusDuplexPipe pipe)
-        : this(pipe.WriterCore)
     {
-
+        Writer = pipe.WriterCore;
     }
 
     internal NexusChannelWriter(NexusPipeWriter writer)
@@ -43,7 +48,7 @@ public class NexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
-        MemoryPackSerializer.Serialize<T, NexusPipeWriter>(Writer, item);
+        Write(ref item, ref Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken);
 
@@ -57,5 +62,48 @@ public class NexusChannelWriter<T>
             return false;
 
         return true;
+    }
+
+    /// <summary>
+    /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
+    /// </summary>
+    /// <param name="items">The items of unmanaged type to be written to the NexusPipeWriter.</param>
+    /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
+    /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
+    public virtual async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
+    {
+        WriteEnumerable(items, ref Writer);
+
+        var flushResult = await Writer.FlushAsync(cancellationToken);
+
+        if (flushResult.IsCompleted)
+        {
+            IsComplete = true;
+            return false;
+        }
+
+        if (flushResult.IsCanceled)
+            return false;
+
+        return true;
+    }
+
+
+    private static void Write(ref T item, ref NexusPipeWriter nexusPipeWriter)
+    {
+        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
+        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
+        memoryPackWriter.WriteValue(item);
+        memoryPackWriter.Flush();
+    }
+
+    private static void WriteEnumerable(IEnumerable<T> items, ref NexusPipeWriter nexusPipeWriter)
+    {
+        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
+        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
+        foreach (var item in items)
+            memoryPackWriter.WriteValue(item);
+
+        memoryPackWriter.Flush();
     }
 }

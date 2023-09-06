@@ -57,6 +57,8 @@ public class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
         if(IsComplete)
             return Enumerable.Empty<T>();
 
+        List?.Clear();
+
         // Read the data from the pipe reader.
         var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken);
 

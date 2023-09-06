@@ -158,7 +158,7 @@ internal class NexusPipeWriter : PipeWriter
             {
                 await _pauseSemaphore.WaitAsync(_flushCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException e)
+            catch (OperationCanceledException)
             {
                 // Ensure the cancellation token is canceled null so it will be created again.
                 _flushCts.Dispose();

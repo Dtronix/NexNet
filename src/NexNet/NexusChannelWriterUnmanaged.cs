@@ -1,4 +1,7 @@
-﻿using System.Threading;
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals.Pipes;
@@ -38,7 +41,7 @@ public class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public override async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
-        MemoryPackSerializer.Serialize<T, NexusPipeWriter>(Writer, item);
+        Write(ref item, ref Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken);
 
@@ -52,5 +55,47 @@ public class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
             return false;
 
         return true;
+    }
+
+    /// <summary>
+    /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
+    /// </summary>
+    /// <param name="items">The items of unmanaged type to be written to the NexusPipeWriter.</param>
+    /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
+    /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
+    public override async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
+    {
+        WriteEnumerable(items, ref Writer);
+
+        var flushResult = await Writer.FlushAsync(cancellationToken);
+
+        if (flushResult.IsCompleted)
+        {
+            IsComplete = true;
+            return false;
+        }
+
+        if (flushResult.IsCanceled)
+            return false;
+
+        return true;
+    }
+
+    private static void Write(ref T item, ref NexusPipeWriter writer)
+    {
+        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
+        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref writer, writerState);
+        memoryPackWriter.WriteUnmanaged(item);
+        memoryPackWriter.Flush();
+    }
+
+    private static void WriteEnumerable(IEnumerable<T> items, ref NexusPipeWriter writer)
+    {
+        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
+        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref writer, writerState);
+        foreach (var item in items)
+            memoryPackWriter.WriteUnmanaged(item);
+
+        memoryPackWriter.Flush();
     }
 }
