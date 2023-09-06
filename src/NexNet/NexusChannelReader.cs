@@ -18,30 +18,33 @@ namespace NexNet;
 /// This structure provides asynchronous methods for reading data from the duplex pipe and converting it into an enumerable collection of type T.
 /// It uses a <see cref="NexNet.INexusDuplexPipe"/> for reading data.
 /// </remarks>
-public class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
-    where T : unmanaged
+public class NexusChannelReader<T> :IDisposable
 {
-    // ReSharper disable once StaticMemberInGenericType
-    private static readonly int _tSize;
+    internal readonly NexusPipeReader Reader;
+    internal List<T>? List;
 
-    static unsafe NexusChannelReaderUnmanaged()
-    {
-        _tSize = sizeof(T);
-    }
+    private static readonly int _tSize = 24;
+    /// <summary>
+    /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
+    /// </summary>
+    public bool IsComplete { get; protected set; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
-    public NexusChannelReaderUnmanaged(INexusDuplexPipe pipe)
+    public NexusChannelReader(INexusDuplexPipe pipe)
     : this(pipe.ReaderCore)
     {
 
     }
 
-    internal NexusChannelReaderUnmanaged(NexusPipeReader reader)
-        : base(reader)
+    internal NexusChannelReader(NexusPipeReader reader)
     {
+        Reader = reader;
+
+        // TODO: Review changing this out to another collection so that reallocation does not occur.
+        List = new List<T>();
     }
 
     /// <summary>
@@ -52,7 +55,7 @@ public class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
     /// If the read operation is completed or canceled, the returned task will contain an empty collection.
     /// </returns>
-    public override async ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default)
+    public virtual async ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default)
     {
         if(IsComplete)
             return Enumerable.Empty<T>();
@@ -93,5 +96,18 @@ public class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
             
         pipeReader.AdvanceTo(reader.Consumed);
         return list;
+    }
+
+    /// <summary>
+    /// Releases all resources used by the instance.
+    /// </summary>
+    public void Dispose()
+    {
+        var list = Interlocked.Exchange(ref List, null);
+        if (list == null)
+            return;
+
+        list.Clear();
+        list.TrimExcess();
     }
 }

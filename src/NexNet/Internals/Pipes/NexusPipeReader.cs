@@ -99,12 +99,9 @@ internal class NexusPipeReader : PipeReader
 
         if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
         {
-
-            
             // Ensure the connection is not completed.
             if (_isCompleted)
                 return NexusPipeBufferResult.DataIgnored;
-
 
             //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
             //Todo: Review changing this out for a latch instead of a loop.
