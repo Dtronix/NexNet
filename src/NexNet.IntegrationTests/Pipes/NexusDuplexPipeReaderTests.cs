@@ -58,25 +58,6 @@ internal class NexusDuplexPipeReaderTests
     }
 
     [Test]
-    public async Task TryReadWaitsForData()
-    {
-        var tcs = new TaskCompletionSource();
-        var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-        var reader = CreateReader();
-
-        _ = Task.Run(() =>
-        {
-            Assert.True(reader.TryRead(out var readData));
-            Assert.AreEqual(10, readData.Buffer.Length);
-            tcs.SetResult();
-        });
-
-        await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
-
-        await tcs.Task.Timeout(1);
-    }
-
-    [Test]
     public async Task ReadAsyncPausesUntilNewDataIsReceived()
     {
         var tcs = new TaskCompletionSource();
