@@ -23,11 +23,11 @@ public class ChannelSample : SampleBase
         var client = ChannelSampleClientNexus.CreateClient(ClientConfig, new ChannelSampleClientNexus());
         await client.ConnectAsync();
 
-        var pipe = client.CreatePipe();
+        await using var channel = client.CreateUnmanagedChannel<int>();
 
-        await client.Proxy.IntegerChannel(pipe);
+        await client.Proxy.IntegerChannel(channel);
 
-        var reader = await pipe.GetUnmanagedChannelReader<int>();
+        using var reader = await channel.GetReaderAsync();
 
         while (!reader.IsComplete)
         {
@@ -46,11 +46,11 @@ public class ChannelSample : SampleBase
         var client = ChannelSampleClientNexus.CreateClient(ClientConfig, new ChannelSampleClientNexus());
         await client.ConnectAsync();
 
-        var pipe = client.CreatePipe();
+        await using var pipe = client.CreateUnmanagedChannel<ChannelSampleStruct>();
 
         await client.Proxy.StructChannel(pipe);
 
-        var reader = await pipe.GetUnmanagedChannelReader<ChannelSampleStruct>();
+        using var reader = await pipe.GetReaderAsync();
 
         while (!reader.IsComplete)
         {
@@ -61,7 +61,7 @@ public class ChannelSample : SampleBase
         }
     }
 
-    public async Task ClassStructSample()
+    public async Task ClassSample()
     {
         var server = ChannelSampleServerNexus.CreateServer(ServerConfig, () => new ChannelSampleServerNexus());
         await server.StartAsync();
@@ -69,11 +69,11 @@ public class ChannelSample : SampleBase
         var client = ChannelSampleClientNexus.CreateClient(ClientConfig, new ChannelSampleClientNexus());
         await client.ConnectAsync();
 
-        var pipe = client.CreatePipe();
+        await using var pipe = client.CreateChannel<ComplexMessage>();
 
-        await client.Proxy.StructChannel(pipe);
+        await client.Proxy.ClassChannel(pipe);
 
-        var reader = await pipe.GetChannelReader<ComplexMessage>();
+        using var reader = await pipe.GetReaderAsync();
 
         while (!reader.IsComplete)
         {

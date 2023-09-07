@@ -254,7 +254,7 @@ partial class MethodMeta
         }
 
         // Register the duplex pipe if we have one.
-        if (DuplexPipeParameter != null)
+        if (UtilizesPipes)
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
             sb.Append(DuplexPipeParameter.SerializedId);
@@ -306,6 +306,20 @@ partial class MethodMeta
             if (methodParameterMeta.IsDuplexPipe)
             {
                 sb.Append("duplexPipe, ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.IsDuplexUnmanagedChannel)
+            {
+                sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetUnmanagedChannel<");
+                sb.Append(methodParameterMeta.ChannelType);
+                sb.Append(">(duplexPipe), ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.IsDuplexChannel)
+            {
+                sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetChannel<");
+                sb.Append(methodParameterMeta.ChannelType);
+                sb.Append(">(duplexPipe), ");
                 addedParam = true;
             }
             else if (methodParameterMeta.SerializedValue != null)

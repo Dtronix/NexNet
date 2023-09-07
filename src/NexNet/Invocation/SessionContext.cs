@@ -50,6 +50,34 @@ public abstract class SessionContext<TProxy>
     }
 
     /// <summary>
+    /// Creates an unmanaged duplex channel for the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type of unmanaged data to be transmitted through the channel.</typeparam>
+    /// <returns>An instance of <see cref="INexusDuplexUnmanagedChannel{T}"/> that allows for bidirectional communication of unmanaged data.</returns>
+    /// <remarks>
+    /// This method is optimized for unmanaged types and should be used over the non-unmanaged version when possible.
+    /// </remarks>
+    public INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
+        where T : unmanaged
+    {
+        return CreatePipe().GetUnmanagedChannel<T>();
+    }
+
+
+    /// <summary>
+    /// Creates a duplex channel for the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type of data to be transmitted through the channel.</typeparam>
+    /// <returns>An instance of <see cref="INexusDuplexChannel{T}"/> that allows for bidirectional communication of data.</returns>
+    /// <remarks>
+    /// This method creates a channel from a rented pipe and is suitable for any MessagePack data type.
+    /// </remarks>
+    public INexusDuplexChannel<T> CreateChannel<T>()
+    {
+        return CreatePipe().GetChannel<T>();
+    }
+
+    /// <summary>
     /// Disconnect the current connection.
     /// </summary>
     public Task DisconnectAsync()

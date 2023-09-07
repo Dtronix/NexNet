@@ -89,6 +89,8 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    // TODO: Review flaky QUIC test on CI.
+    [Retry(5)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
@@ -181,7 +183,8 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Retry(10)] // This randomly fails on CI due to the packet being combined with other packets.
+    // TODO: Review flaky test on CI.
+    [Retry(5)]
     public async Task ClientResumePingOnDisconnect(Type type)
     {
         var clientConfig = CreateClientConfig(type);

@@ -9,9 +9,9 @@ interface IChannelSampleClientNexus
 
 interface IChannelSampleServerNexus
 {
-    ValueTask IntegerChannel(INexusDuplexPipe message);
-    ValueTask StructChannel(INexusDuplexPipe message);
-    ValueTask ClassChannel(INexusDuplexPipe message);
+    ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel);
+    ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
+    ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
 }
 
 
@@ -24,24 +24,24 @@ partial class ChannelSampleClientNexus
 [Nexus<IChannelSampleServerNexus, IChannelSampleClientNexus>(NexusType = NexusType.Server)]
 partial class ChannelSampleServerNexus
 {
-    public async ValueTask IntegerChannel(INexusDuplexPipe message)
+    public async ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel)
     {
-        var channel = await message.GetUnmanagedChannelWriter<int>();
+        var writer = await channel.GetWriterAsync();
         var count = 0;
-        while(!channel.IsComplete)
+        while(!writer.IsComplete)
         {
-            await channel.WriteAsync(count++);
+            await writer.WriteAsync(count++);
             await Task.Delay(10);
         }
     }
 
-    public async ValueTask StructChannel(INexusDuplexPipe message)
+    public async ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel)
     {
-        var channel = await message.GetUnmanagedChannelWriter<ChannelSampleStruct>();
+        var writer = await channel.GetWriterAsync();
         var count = 0;
-        while (!channel.IsComplete)
+        while (!writer.IsComplete)
         {
-            await channel.WriteAsync(new ChannelSampleStruct()
+            await writer.WriteAsync(new ChannelSampleStruct()
             {
                 Id = count++,
                 Counts = count * 2
@@ -51,14 +51,17 @@ partial class ChannelSampleServerNexus
         }
     }
 
-    public async ValueTask ClassChannel(INexusDuplexPipe message)
+    public async ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel)
     {
-        var channel = await message.GetChannelWriter<ComplexMessage>();
-        while (!channel.IsComplete)
+        var writer = await channel.GetWriterAsync();
+        var count = 0;
+        while (!writer.IsComplete)
         {
-            await channel.WriteAsync(ComplexMessage.Random());
+            await writer.WriteAsync(ComplexMessage.Random());
             await Task.Delay(10);
 
+            if (count++ > 100)
+                return;
         }
     }
 }

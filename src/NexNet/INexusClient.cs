@@ -12,6 +12,11 @@ namespace NexNet;
 public interface INexusClient : IAsyncDisposable
 {
     /// <summary>
+    /// Event which is raised when the connection state changes.
+    /// </summary>
+    event EventHandler<ConnectionState>? StateChanged;
+
+    /// <summary>
     /// Current state of the connection
     /// </summary>
     ConnectionState State { get; }
@@ -52,10 +57,26 @@ public interface INexusClient : IAsyncDisposable
     /// Creates a pipe for sending and receiving byte arrays.
     /// </summary>
     /// <returns>Pipe to use.</returns>
-    INexusDuplexPipe CreatePipe();
+    IRentedNexusDuplexPipe CreatePipe();
 
     /// <summary>
-    /// Event which is raised when the connection state changes.
+    /// Creates an unmanaged duplex channel for the specified type.
     /// </summary>
-    event EventHandler<ConnectionState>? StateChanged;
+    /// <typeparam name="T">The type of unmanaged data to be transmitted through the channel.</typeparam>
+    /// <returns>An instance of <see cref="INexusDuplexUnmanagedChannel{T}"/> that allows for bidirectional communication of unmanaged data.</returns>
+    /// <remarks>
+    /// This method is optimized for unmanaged types and should be used over the non-unmanaged version when possible.
+    /// </remarks>
+    INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
+        where T : unmanaged;
+
+    /// <summary>
+    /// Creates a duplex channel for the specified type.
+    /// </summary>
+    /// <typeparam name="T">The type of data to be transmitted through the channel.</typeparam>
+    /// <returns>An instance of <see cref="INexusDuplexChannel{T}"/> that allows for bidirectional communication of data.</returns>
+    /// <remarks>
+    /// This method creates a channel from a rented pipe and is suitable for any MessagePack data type.
+    /// </remarks>
+    INexusDuplexChannel<T> CreateChannel<T>();
 }

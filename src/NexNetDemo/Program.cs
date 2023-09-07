@@ -15,7 +15,7 @@ internal class Program
         //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).DuplexStreamingSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructSample();
-        await new ChannelSample(SampleBase.TransportMode.Uds).ClassStructSample();
+        await new ChannelSample(SampleBase.TransportMode.Uds).ClassSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 

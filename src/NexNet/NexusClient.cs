@@ -33,9 +33,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// </summary>
     public ConnectionState State => _session?.State ?? ConnectionState.Disconnected;
 
-    /// <summary>
-    /// Event which is raised when the connection state changes.
-    /// </summary>
+    /// <inheritdoc />
     public event EventHandler<ConnectionState>? StateChanged;
 
     /// <summary>
@@ -43,14 +41,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// </summary>
     public TServerProxy Proxy { get; private set; }
 
-    /// <summary>
-    /// Configurations used for this session.  Should not be changed once connection has been established.
-    /// </summary>
+    /// <inheritdoc />
     public ClientConfig Config => _config;
 
-    /// <summary>
-    /// Task which completes upon the disconnection of the client.
-    /// </summary>
+    /// <inheritdoc />
     public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
 
     /// <summary>
@@ -145,7 +139,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     /// <summary>
     /// Disposes the client and disconnects if the client is connected to a server. 
-    /// Same as <see cref="DisconnectAsync()"/>.
+    /// Same as <see cref="DisconnectAsync"/>.
     /// </summary>
     /// <returns></returns>
     public async ValueTask DisposeAsync()
@@ -154,13 +148,26 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <inheritdoc />
-    public INexusDuplexPipe CreatePipe()
+    public IRentedNexusDuplexPipe CreatePipe()
     {
         var pipe = _session?.PipeManager.RentPipe();
         if (pipe == null)
             throw new InvalidOperationException("Client is not connected.");
 
         return pipe;
+    }
+
+    /// <inheritdoc />
+    public INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
+        where T : unmanaged
+    {
+        return CreatePipe().GetUnmanagedChannel<T>();
+    }
+
+    /// <inheritdoc />
+    public INexusDuplexChannel<T> CreateChannel<T>()
+    {
+        return CreatePipe().GetChannel<T>();
     }
 
     private void PingTimer(object? state)
