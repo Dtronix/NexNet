@@ -1,18 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals.Pipes;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
 /// </summary>
 /// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
-public class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
+internal class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     where T : unmanaged
 {
 
@@ -41,6 +38,7 @@ public class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public override async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
+        
         Write(ref item, ref Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken);

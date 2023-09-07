@@ -1,21 +1,15 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.ComponentModel;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals.Pipes;
-using Pipelines.Sockets.Unofficial.Arenas;
-using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
 /// </summary>
 /// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
-public class NexusChannelWriter<T>
+internal class NexusChannelWriter<T> : INexusChannelWriter<T>
 {
     // ReSharper disable once StaticMemberInGenericType
     internal NexusPipeWriter Writer;

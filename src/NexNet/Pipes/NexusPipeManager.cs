@@ -2,13 +2,12 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using static NexNet.Internals.Pipes.NexusDuplexPipe;
+using NexNet.Internals;
+using static NexNet.Pipes.NexusDuplexPipe;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeManager
 {

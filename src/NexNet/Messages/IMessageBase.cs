@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
-using MemoryPack;
 using NexNet.Cache;
 
 namespace NexNet.Messages;

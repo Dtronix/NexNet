@@ -5,7 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 using NUnit.Framework;
 using Pipelines.Sockets.Unofficial.Buffers;
 
@@ -163,7 +163,6 @@ internal class NexusChannelReaderTests
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
         var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
-        long count = 0;
 
         for (int i = 0; i < iterations; i++)
         {

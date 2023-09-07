@@ -1,5 +1,5 @@
 ﻿using System.Buffers;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 

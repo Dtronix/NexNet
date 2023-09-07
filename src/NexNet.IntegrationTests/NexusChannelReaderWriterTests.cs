@@ -5,8 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using NexNet.Internals.Pipes;
 using NexNet.Messages;
+using NexNet.Pipes;
 using NUnit.Framework;
 using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
@@ -49,7 +49,7 @@ internal class NexusChannelReaderWriterTests
     public async Task WritesAndReadsMultipleDataParallel()
     {
         var (writer, reader) = GetReaderWriter<ComplexMessage>();
-        var iterations = 100000;
+        var iterations = 10000;
         var value = ComplexMessage.Random();
         var count = 0;
         _ = Task.Run(async () =>

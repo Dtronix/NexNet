@@ -1,10 +1,7 @@
-﻿using System;
-using System.IO.Pipelines;
-using System.Runtime.CompilerServices;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class RentedNexusDuplexPipe : NexusDuplexPipe, IRentedNexusDuplexPipe
 {

@@ -1,4 +1,5 @@
 ﻿using NexNetDemo.Samples;
+using NexNetDemo.Samples.Channel;
 using NexNetDemo.Samples.DuplexPipeStreaming;
 using NexNetDemo.Samples.InvocationSample;
 using NexNetDemo.Samples.Messenger;
@@ -11,7 +12,10 @@ internal class Program
     {
         //await new DuplexPipeSimpleSample().UploadSample();
         //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).UploadStreamingSample();
-        await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).DuplexStreamingSample();
+        //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).DuplexStreamingSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructSample();
+        await new ChannelSample(SampleBase.TransportMode.Uds).ClassStructSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 

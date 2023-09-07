@@ -4,10 +4,11 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeReader : PipeReader
 {

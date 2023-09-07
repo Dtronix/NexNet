@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
-using NexNet.Internals.Pipes;
 using NexNet.Messages;
+using NexNet.Pipes;
 
 namespace NexNet.Invocation;
 

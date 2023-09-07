@@ -3,6 +3,7 @@ using System;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
+using NexNet.Pipes;
 
 namespace NexNet.Invocation;
 

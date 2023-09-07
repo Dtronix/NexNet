@@ -5,7 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 using NUnit.Framework;
 using Pipelines.Sockets.Unofficial.Buffers;
 

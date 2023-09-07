@@ -1,13 +1,11 @@
-﻿using System;
-using System.Buffers;
+﻿using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals.Pipes;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// Represents a structure for reading unmanaged data from a duplex pipe in the Nexus system.
@@ -16,9 +14,9 @@ namespace NexNet;
 /// <typeparam name="T">The type of unmanaged data to be read from the duplex pipe. This type parameter is contravariant.</typeparam>
 /// <remarks>
 /// This structure provides asynchronous methods for reading data from the duplex pipe and converting it into an enumerable collection of type T.
-/// It uses a <see cref="NexNet.INexusDuplexPipe"/> for reading data.
+/// It uses a <see cref="INexusDuplexPipe"/> for reading data.
 /// </remarks>
-public class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
+internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     where T : unmanaged
 {
     // ReSharper disable once StaticMemberInGenericType

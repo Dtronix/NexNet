@@ -3,10 +3,11 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeWriter : PipeWriter
 {

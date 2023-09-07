@@ -6,6 +6,7 @@ using NexNet.Transports;
 using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Invocation;
+using NexNet.Pipes;
 
 namespace NexNet;
 

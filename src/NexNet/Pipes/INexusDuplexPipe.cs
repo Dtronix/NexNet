@@ -1,9 +1,8 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipes;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// Main interface for duplex pipe interaction with the Nexus system.

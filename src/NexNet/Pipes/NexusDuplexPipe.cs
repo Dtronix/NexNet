@@ -4,9 +4,10 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using NexNet.Messages;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// Pipe used for transmission of binary data from a one nexus to another.

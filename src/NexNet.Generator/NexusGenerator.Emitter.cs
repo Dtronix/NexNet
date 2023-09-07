@@ -147,7 +147,7 @@ namespace {{Symbol.ContainingNamespace}}
         protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
             global::System.Threading.CancellationTokenSource? cts = null;
-            global::NexNet.INexusDuplexPipe? duplexPipe = null;
+            global::NexNet.Pipes.INexusDuplexPipe? duplexPipe = null;
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker>(this);
             try
             {

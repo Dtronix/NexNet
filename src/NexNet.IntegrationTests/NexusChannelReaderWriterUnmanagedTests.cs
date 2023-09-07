@@ -5,8 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using NexNet.Internals.Pipes;
 using NexNet.Messages;
+using NexNet.Pipes;
 using NUnit.Framework;
 using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
@@ -43,6 +43,42 @@ internal class NexusChannelReaderWriterUnmanagedTests
         }
 
         Assert.AreEqual(iterations, count);
+    }
+
+
+    [Test]
+    public async Task WritesAndReadsMultipleDataParallel()
+    {
+        var (writer, reader) = GetReaderWriter<long>();
+        var iterations = 10000;
+        var count = 0;
+        _ = Task.Run(async () =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                await writer.WriteAsync(i);
+            }
+        });
+
+        await Task.Run(async () =>
+        {
+            while (true)
+            {
+                var result = await reader.ReadAsync().AsTask().Timeout(1);
+                foreach (var l in result)
+                {
+                    Assert.AreEqual(count++, l);
+                }
+
+                if (count == iterations)
+                {
+                    break;
+                }
+            }
+        });
+
+        Assert.AreEqual(iterations, count);
+
     }
 
     private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()

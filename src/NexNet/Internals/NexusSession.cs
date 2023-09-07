@@ -11,7 +11,7 @@ using System.Collections.Concurrent;
 using Pipelines.Sockets.Unofficial.Threading;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 
 namespace NexNet.Internals;
 
