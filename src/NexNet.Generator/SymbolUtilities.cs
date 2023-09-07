@@ -29,8 +29,11 @@ internal class SymbolUtilities
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers
                               | SymbolDisplayMiscellaneousOptions.UseErrorTypeSymbolName);
 
-    public static string GetFullSymbolType(ITypeSymbol typeSymbol, bool extractValueTask)
+    public static string GetFullSymbolType(ITypeSymbol? typeSymbol, bool extractValueTask)
     {
+        if(typeSymbol == null)
+            return "UNKNOWN TYPE";
+
         if (extractValueTask)
         {
             if (typeSymbol is INamedTypeSymbol namedTypeSymbol)

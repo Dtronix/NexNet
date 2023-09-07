@@ -1,4 +1,6 @@
 ﻿using NexNet.Messages;
+using NexNet.Pipes;
+
 // ReSharper disable InconsistentNaming
 #pragma warning disable CS8618
 #pragma warning disable VSTHRD200

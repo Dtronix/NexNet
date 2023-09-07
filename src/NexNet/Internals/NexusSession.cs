@@ -11,7 +11,7 @@ using System.Collections.Concurrent;
 using Pipelines.Sockets.Unofficial.Threading;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 
 namespace NexNet.Internals;
 
@@ -253,9 +253,18 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
-            await SendHeaderCore((MessageType)reason, true).ConfigureAwait(false);
+            var delay = false;
+            try
+            {
+                await SendHeaderCore((MessageType)reason, true).ConfigureAwait(false);
+                delay = true;
+            }
+            catch (Exception e)
+            {
+                Logger?.LogInfo(e, "Error while sending disconnect message.");
+            }
 
-            if (_config.DisconnectDelay > 0)
+            if (delay && _config.DisconnectDelay > 0)
             {
                 // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
                 await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);

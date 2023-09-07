@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal interface IPipeStateManager
 {

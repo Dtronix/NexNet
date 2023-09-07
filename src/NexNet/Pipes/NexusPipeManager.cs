@@ -2,13 +2,12 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using static NexNet.Internals.Pipes.NexusDuplexPipe;
+using NexNet.Internals;
+using static NexNet.Pipes.NexusDuplexPipe;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeManager
 {
@@ -81,12 +80,12 @@ internal class NexusPipeManager
         
         if(nexusPipe.CurrentState != State.Complete)
         {
-            await pipe.CompleteAsync();
+            await pipe.CompleteAsync().ConfigureAwait(false);
             // Return the pipe to the cache.
             nexusPipe.Reset();
         }
 
-        _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe);
+        _session.CacheManager.NexusRentedDuplexPipeCache.Return(nexusPipe);
 
         lock (_usedIds)
         {
@@ -107,7 +106,7 @@ internal class NexusPipeManager
 
         var id = GetCompleteId(otherId, out var thisId);
 
-        var pipe = _session.CacheManager.NexusRentedDuplexPipeCache.Rent(_session, thisId);
+        var pipe = _session.CacheManager.NexusDuplexPipeCache.Rent(_session, thisId);
 
 
         if (!_activePipes.TryAdd(id, new PipeAndState(pipe)))
@@ -127,7 +126,7 @@ internal class NexusPipeManager
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
 
-        await nexusPipe.Pipe.CompleteAsync();
+        await nexusPipe.Pipe.CompleteAsync().ConfigureAwait(false);
 
         // Return the pipe to the cache.
         nexusPipe.Pipe.Reset();

@@ -1,7 +1,7 @@
 ﻿using System.Threading;
 using MemoryPack;
 using NexNet.Cache;
-using NexNet.Internals.Pipes;
+using NexNet.Pipes;
 
 namespace NexNet.Messages;
 

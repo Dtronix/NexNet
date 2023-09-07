@@ -1,4 +1,4 @@
-﻿using NexNet.Internals.Pipes;
+﻿using NexNet.Pipes;
 
 namespace NexNet.IntegrationTests;
 

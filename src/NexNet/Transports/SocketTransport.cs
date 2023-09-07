@@ -1,12 +1,10 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Net;
-using System.Net.Quic;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Pipelines.Sockets.Unofficial;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace NexNet.Transports;
 

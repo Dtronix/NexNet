@@ -1,5 +1,6 @@
 ﻿using System.IO.Pipelines;
 using NexNet;
+using NexNet.Pipes;
 
 namespace NexNetDemo.Samples.DuplexPipe;
 

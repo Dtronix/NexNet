@@ -147,7 +147,7 @@ namespace {{Symbol.ContainingNamespace}}
         protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
         {
             global::System.Threading.CancellationTokenSource? cts = null;
-            global::NexNet.INexusDuplexPipe? duplexPipe = null;
+            global::NexNet.Pipes.INexusDuplexPipe? duplexPipe = null;
             var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker>(this);
             try
             {
@@ -254,10 +254,10 @@ partial class MethodMeta
         }
 
         // Register the duplex pipe if we have one.
-        if (DuplexPipeParameter != null)
+        if (UtilizesPipes)
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
-            sb.Append(DuplexPipeParameter.SerializedId);
+            sb.Append(DuplexPipeParameter!.SerializedId);
             sb.AppendLine(");");
         }
 
@@ -306,6 +306,20 @@ partial class MethodMeta
             if (methodParameterMeta.IsDuplexPipe)
             {
                 sb.Append("duplexPipe, ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.IsDuplexUnmanagedChannel)
+            {
+                sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetUnmanagedChannel<");
+                sb.Append(methodParameterMeta.ChannelType);
+                sb.Append(">(duplexPipe), ");
+                addedParam = true;
+            }
+            else if (methodParameterMeta.IsDuplexChannel)
+            {
+                sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetChannel<");
+                sb.Append(methodParameterMeta.ChannelType);
+                sb.Append(">(duplexPipe), ");
                 addedParam = true;
             }
             else if (methodParameterMeta.SerializedValue != null)

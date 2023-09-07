@@ -284,87 +284,86 @@ internal partial class NexusMeta
 
 
         var nexusSet = new HashSet<ushort>();
-        foreach (var nexusInterfaceMethod in this.NexusInterface.Methods)
+        foreach (var method in this.NexusInterface.Methods)
         {
             // Validate nexus method ids.
-            if (nexusSet.Contains(nexusInterfaceMethod.Id))
+            if (nexusSet.Contains(method.Id))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, method.GetLocation(syntax), method.Name));
                 return false;
             }
             else
             {
-                nexusSet.Add(nexusInterfaceMethod.Id);
+                nexusSet.Add(method.Id);
             }
 
             // Confirm the cancellation token parameter is the last parameter.
-            if (nexusInterfaceMethod.CancellationTokenParameter != null)
+            if (method.CancellationTokenParameter != null)
             {
-                if (!nexusInterfaceMethod.Parameters.Last().IsCancellationToken)
+                if (!method.Parameters.Last().IsCancellationToken)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken,
-                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                        method.GetLocation(syntax), method.Name));
                     return false;
                 }
             }
 
             // Confirm there is only one cancellation token parameter.
-            if (nexusInterfaceMethod.MultipleCancellationTokenParameter)
+            if (method.MultipleCancellationTokenParameter)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyCancellationTokens,
-                    nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    method.GetLocation(syntax), method.Name));
                 return false;
             }
 
             // Confirm there is only one pipe parameter.
-            if (nexusInterfaceMethod.MultiplePipeParameters)
+            if (method.MultiplePipeParameters)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyPipes,
-                    nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                    method.GetLocation(syntax), method.Name));
                 return false;
             }
 
             // Null return types.
-            if (nexusInterfaceMethod.IsReturnVoid)
+            if (method.IsReturnVoid)
             {
-                if (nexusInterfaceMethod.CancellationTokenParameter != null)
+                if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid,
-                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                        method.GetLocation(syntax), method.Name));
                     return false;
                 }
             }
 
             // Duplex pipe parameters.
-            if (nexusInterfaceMethod.DuplexPipeParameter != null)
+            if (method.UtilizesPipes)
             {
                 // Validates the return type of the Nexus Interface method and returns a valueless
                 // response if the method is async and has only one type argument or if the method has no
                 // return type at all.
-                if (nexusInterfaceMethod.IsReturnVoid
-                    || (nexusInterfaceMethod.IsAsync && nexusInterfaceMethod.ReturnArity == 1))
+                if (method.IsReturnVoid
+                    || (method.IsAsync && method.ReturnArity == 1))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoidOrReturnTask,
-                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                        method.GetLocation(syntax), method.Name));
                     return false;
                 }
 
                 // This code block checks if a method has both a duplex pipe parameter and a cancellation token parameter.
                 // This ensures that the method doesn't consume both a pipe and a cancellation token at the same time.
-                if (nexusInterfaceMethod.CancellationTokenParameter != null)
+                if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnMethodWithCancellationToken,
-                        nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name));
+                        method.GetLocation(syntax), method.Name));
                     return false;
                 }
             }
 
-            
             // Validate the return values.
-            if (!nexusInterfaceMethod.IsReturnVoid &&
-                !(nexusInterfaceMethod.IsAsync && nexusInterfaceMethod.ReturnArity <= 1))
+            if (!method.IsReturnVoid &&
+                !(method.IsAsync && method.ReturnArity <= 1))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, nexusInterfaceMethod.GetLocation(syntax), nexusInterfaceMethod.Name)); 
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, method.GetLocation(syntax), method.Name)); 
                 return false;
             }
         }
@@ -397,6 +396,14 @@ internal class MethodParameterMeta
 
     public bool IsArrayType { get; }
     public bool IsDuplexPipe { get; }
+    public bool IsDuplexUnmanagedChannel { get; }
+    public bool IsDuplexChannel { get; }
+    public string? ChannelType { get; }
+
+    /// <summary>
+    /// True if the parameter is a duplex pipe or duplex channel.
+    /// </summary>
+    public bool UtilizesDuplexPipe { get; }
 
     public bool IsCancellationToken { get; }
 
@@ -414,13 +421,23 @@ internal class MethodParameterMeta
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
-        this.IsDuplexPipe = ParamType == "global::NexNet.INexusDuplexPipe";
-
+        this.IsDuplexPipe = ParamType == "global::NexNet.Pipes.INexusDuplexPipe";
+        this.IsDuplexUnmanagedChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
+        this.IsDuplexChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
+        this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
         if (IsDuplexPipe)
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
             SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name})";
+        }
+        else if (IsDuplexUnmanagedChannel || IsDuplexChannel)
+        {
+            var returnSymbol = symbol.Type as INamedTypeSymbol;
+            ChannelType = SymbolUtilities.GetFullSymbolType(returnSymbol?.TypeArguments[0], false);
+            // Duplex Pipe is serialized as a byte.
+            SerializedType = "global::System.Byte";
+            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name}.BasePipe)";
         }
         else if(IsCancellationToken)
         {
@@ -436,6 +453,7 @@ internal class MethodParameterMeta
         }
 
     }
+
 }
 
 internal partial class MethodMeta
@@ -453,6 +471,7 @@ internal partial class MethodMeta
 
     public MethodParameterMeta? CancellationTokenParameter { get; }
     public MethodParameterMeta? DuplexPipeParameter { get; }
+    public bool UtilizesPipes { get; }
 
     public bool MultiplePipeParameters { get; }
     public bool MultipleCancellationTokenParameter { get; }
@@ -477,6 +496,7 @@ internal partial class MethodMeta
         Parameters = new MethodParameterMeta[paramsLength];
 
         var seralizedParamId = 1;
+        var pipeCount = 0;
         for (var i = 0; i < symbol.Parameters.Length; i++)
         {
             var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i);
@@ -491,12 +511,13 @@ internal partial class MethodMeta
 
                 CancellationTokenParameter = param;
             }
-            else if (param.IsDuplexPipe)
+            else if (param.UtilizesDuplexPipe)
             {
-                if (DuplexPipeParameter != null)
-                    MultiplePipeParameters = true;
-
                 DuplexPipeParameter = param;
+                UtilizesPipes = true;
+
+                if (pipeCount++ > 0)
+                    MultiplePipeParameters = true;
             }
 
             if (param.SerializedType != null)
