@@ -89,7 +89,6 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(10)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(

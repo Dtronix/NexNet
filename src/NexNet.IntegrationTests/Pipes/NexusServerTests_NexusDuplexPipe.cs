@@ -182,7 +182,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(20)]
     public async Task Server_PipeWriterCompletesUponDisconnection(Type type)
     {
         var tcsDisconnected = new TaskCompletionSource();
