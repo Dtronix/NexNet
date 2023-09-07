@@ -414,7 +414,7 @@ internal class MethodParameterMeta
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         this.IsParamsArray = symbol.IsParams;
         this.IsCancellationToken = symbol.Type.Name == "CancellationToken";
-        this.IsDuplexPipe = ParamType == "global::NexNet.INexusDuplexPipe";
+        this.IsDuplexPipe = ParamType == "global::NexNet.Pipes.INexusDuplexPipe";
 
         if (IsDuplexPipe)
         {
