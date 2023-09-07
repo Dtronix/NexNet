@@ -5,14 +5,14 @@ using NexNet.Pipes;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusDuplexPipeWriterTests
 {
     internal class SessionMessengerStub : ISessionMessenger
     {
 
-        public Func<MessageType, ReadOnlySequence<byte>, CancellationToken, ValueTask> OnSendHeaderWithBody = 
+        public Func<MessageType, ReadOnlySequence<byte>, CancellationToken, ValueTask> OnSendHeaderWithBody =
             (type, sequence, arg3) => ValueTask.CompletedTask;
 
         public Func<MessageType, ReadOnlyMemory<byte>?, ReadOnlySequence<byte>, CancellationToken, ValueTask> OnSendCustomHeaderWithBody =
@@ -73,7 +73,7 @@ internal class NexusDuplexPipeWriterTests
             return default;
         };
 
-        await writer.WriteAsync(simpleData, CancellationToken.None).AsTask().Timeout(1);
+        await writer.WriteAsync(simpleData, CancellationToken.None).Timeout(1);
         await tcs.Task.Timeout(1);
     }
 
@@ -88,17 +88,17 @@ internal class NexusDuplexPipeWriterTests
             messenger,
             true,
             1024);
-        int invocations = 0;
+        var invocations = 0;
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            if(++invocations == 2)
+            if (++invocations == 2)
                 tcs.SetResult();
 
             return default;
         };
 
-        await writer.WriteAsync(simpleData, CancellationToken.None).AsTask().Timeout(1);
+        await writer.WriteAsync(simpleData, CancellationToken.None).Timeout(1);
         await tcs.Task.Timeout(1);
     }
 
@@ -126,7 +126,7 @@ internal class NexusDuplexPipeWriterTests
             writer.PauseWriting = false;
         });
 
-        await writer.WriteAsync(simpleData, CancellationToken.None).AsTask().Timeout(1);
+        await writer.WriteAsync(simpleData, CancellationToken.None).Timeout(1);
     }
 
 }

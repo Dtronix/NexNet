@@ -1,17 +1,10 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Buffers;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NUnit.Framework;
-using Pipelines.Sockets.Unofficial.Arenas;
-using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusChannelReaderWriterTests
 {
@@ -20,8 +13,8 @@ internal class NexusChannelReaderWriterTests
     {
         var (writer, reader) = GetReaderWriter<ComplexMessage>();
         var value = ComplexMessage.Random();
-        await writer.WriteAsync(value);
-        var result = await reader.ReadAsync().AsTask().Timeout(1);
+        await writer.WriteAsync(value).Timeout(1);
+        var result = await reader.ReadAsync().Timeout(1);
         Assert.AreEqual(value, result.Single());
     }
 
@@ -31,12 +24,12 @@ internal class NexusChannelReaderWriterTests
         var (writer, reader) = GetReaderWriter<ComplexMessage>();
         var iterations = 1000;
         var value = ComplexMessage.Random();
-        for (int i = 0; i < iterations; i++)
+        for (var i = 0; i < iterations; i++)
         {
-            await writer.WriteAsync(value);
+            await writer.WriteAsync(value).Timeout(1);
         }
 
-        var result = await reader.ReadAsync().AsTask().Timeout(1);
+        var result = await reader.ReadAsync().Timeout(1);
         foreach (var complexMessage in result)
         {
             Assert.AreEqual(value, complexMessage);
@@ -54,9 +47,9 @@ internal class NexusChannelReaderWriterTests
         var count = 0;
         _ = Task.Run(async () =>
         {
-            for (int i = 0; i < iterations; i++)
+            for (var i = 0; i < iterations; i++)
             {
-                await writer.WriteAsync(value);
+                await writer.WriteAsync(value).Timeout(1);
             }
         });
 
@@ -64,7 +57,7 @@ internal class NexusChannelReaderWriterTests
         {
             while (true)
             {
-                var result = await reader.ReadAsync().AsTask().Timeout(1);
+                var result = await reader.ReadAsync().Timeout(1);
                 foreach (var complexMessage in result)
                 {
                     Assert.AreEqual(value, complexMessage);
@@ -76,7 +69,7 @@ internal class NexusChannelReaderWriterTests
                     break;
                 }
             }
-        });
+        }).Timeout(1);
 
         Assert.AreEqual(iterations, count);
 
@@ -89,7 +82,7 @@ internal class NexusChannelReaderWriterTests
         {
             OnMessageSent = async (type, memory, arg3) =>
             {
-                await nexusPipeReader.BufferData(arg3);
+                await nexusPipeReader.BufferData(arg3).Timeout(1);
             }
         };
         nexusPipeWriter.Setup(new ConsoleLogger(), messenger, true, ushort.MaxValue);
@@ -119,8 +112,9 @@ internal class NexusChannelReaderWriterTests
 
     private class DummySessionMessenger : ISessionMessenger
     {
-        public Func<MessageType, ReadOnlyMemory<byte>?, ReadOnlySequence<byte>, ValueTask> 
-            OnMessageSent { get; set; } = null!;
+        public Func<MessageType, ReadOnlyMemory<byte>?, ReadOnlySequence<byte>, ValueTask>
+            OnMessageSent
+        { get; set; } = null!;
         public ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default) where TMessage : IMessageBase
         {
             throw new NotImplementedException();

@@ -1,6 +1,6 @@
 ﻿using MemoryPack;
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 [MemoryPackable]
 public partial class ComplexMessage

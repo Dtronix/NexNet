@@ -1,15 +1,10 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Buffers;
 using MemoryPack;
 using NexNet.Pipes;
 using NUnit.Framework;
 using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusChannelReaderTests
 {
@@ -30,11 +25,11 @@ internal class NexusChannelReaderTests
 
         using (var buffer = bufferWriter.Flush())
         {
-            await pipeReader.BufferData(buffer);
+            await pipeReader.BufferData(buffer).Timeout(1);
         }
 
 
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(10000);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(baseObject, result.Single());
 
@@ -42,10 +37,10 @@ internal class NexusChannelReaderTests
 
         using (var buffer = bufferWriter.Flush())
         {
-            await pipeReader.BufferData(buffer);
+            await pipeReader.BufferData(buffer).Timeout(1);
         }
 
-        var result2 = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(10000);
+        var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(baseObject, result.Single());
     }
@@ -69,11 +64,11 @@ internal class NexusChannelReaderTests
 
         using (var buffer = bufferWriter.Flush())
         {
-            await pipeReader.BufferData(buffer);
+            await pipeReader.BufferData(buffer).Timeout(1);
         }
 
 
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(10000);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(10000);
 
         Assert.AreEqual(baseObject, result.Single());
 
@@ -82,10 +77,10 @@ internal class NexusChannelReaderTests
 
         using (var buffer = bufferWriter.Flush())
         {
-            await pipeReader.BufferData(buffer);
+            await pipeReader.BufferData(buffer).Timeout(1);
         }
 
-        var result2 = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(10000);
+        var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(baseObject, result.Single());
     }
@@ -96,7 +91,7 @@ internal class NexusChannelReaderTests
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var cts = new CancellationTokenSource(100);
-        var result = await reader.ReadAsync(cts.Token).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
         Assert.IsTrue(cts.IsCancellationRequested);
         Assert.NotNull(result);
@@ -110,7 +105,7 @@ internal class NexusChannelReaderTests
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var cts = new CancellationTokenSource(100);
         cts.Cancel();
-        var result = await reader.ReadAsync(cts.Token).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
         Assert.IsTrue(cts.IsCancellationRequested);
         Assert.NotNull(result);
@@ -124,7 +119,7 @@ internal class NexusChannelReaderTests
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         // ReSharper disable once MethodHasAsyncOverload
         pipeReader.Complete();
-        var result = await reader.ReadAsync().AsTask().Timeout(1);
+        var result = await reader.ReadAsync().Timeout(1);
 
         Assert.IsTrue(reader.IsComplete);
         Assert.NotNull(result);
@@ -142,15 +137,15 @@ internal class NexusChannelReaderTests
         var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
         _ = Task.Run(async () =>
         {
-            await tcs.Task;
-            for (int i = 0; i < bytes.Length; i++)
+            await tcs.Task.Timeout(1);
+            for (var i = 0; i < bytes.Length; i++)
             {
-                await pipeReader.BufferData(bytes.Slice(i, 1));
+                await pipeReader.BufferData(bytes.Slice(i, 1)).Timeout(1);
             }
         });
 
         tcs.SetResult();
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(baseObject, result.Single());
     }
@@ -164,12 +159,12 @@ internal class NexusChannelReaderTests
         var baseObject = ComplexMessage.Random();
         var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
 
-        for (int i = 0; i < iterations; i++)
+        for (var i = 0; i < iterations; i++)
         {
-            await pipeReader.BufferData(bytes);
+            await pipeReader.BufferData(bytes).Timeout(1);
         }
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
-        
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
+
         foreach (var complexMessage in result)
         {
             Assert.AreEqual(baseObject, complexMessage);

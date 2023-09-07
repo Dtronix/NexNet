@@ -257,7 +257,7 @@ partial class MethodMeta
         if (UtilizesPipes)
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
-            sb.Append(DuplexPipeParameter.SerializedId);
+            sb.Append(DuplexPipeParameter!.SerializedId);
             sb.AppendLine(");");
         }
 

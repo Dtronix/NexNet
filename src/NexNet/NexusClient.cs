@@ -101,7 +101,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
-            OnSent = OnSent,
             OnStateChanged = (state) => StateChanged?.Invoke(this, state)
         };
 
@@ -121,6 +120,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
                 _ => ConnectionResult.Exception
             };
         }
+
+        _pingTimer.Change(_config.PingInterval, _config.PingInterval);
 
         return ConnectionResult.Success;
     }
@@ -186,11 +187,5 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         //_receiveLoopThread = null;
         _pingTimer.Change(-1, -1);
         _session = null;
-    }
-
-    private void OnSent()
-    {
-        // Can reset the ping interval since we just sent.
-        _pingTimer.Change(_config.PingInterval, _config.PingInterval);
     }
 }

@@ -1,15 +1,7 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
-using NexNet.Pipes;
+﻿using NexNet.Pipes;
 using NUnit.Framework;
-using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusChannelReaderUnmanagedTests
 {
@@ -17,13 +9,13 @@ internal class NexusChannelReaderUnmanagedTests
     [TestCase((byte)200)]
     [TestCase((short)22584)]
     [TestCase((ushort)62584)]
-    [TestCase((int)65122584)]
-    [TestCase((uint)616322584)]  
-    [TestCase((long)92175120571057)]
+    [TestCase(65122584)]
+    [TestCase((uint)616322584)]
+    [TestCase(92175120571057)]
     [TestCase((ulong)6163225235237523984)]
-    [TestCase((char)'n')]
+    [TestCase('n')]
     [TestCase((float)9873571.1922)]
-    [TestCase((double)9851512573571.198422)]
+    [TestCase(9851512573571.198422)]
     public async Task ReadsData<T>(T inputData)
         where T : unmanaged
     {
@@ -32,7 +24,7 @@ internal class NexusChannelReaderUnmanagedTests
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         await pipeReader.BufferData(Utilities.GetBytes(inputData));
 
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(inputData, result.Single());
     }
@@ -43,7 +35,7 @@ internal class NexusChannelReaderUnmanagedTests
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
         var cts = new CancellationTokenSource(100);
-        var result = await reader.ReadAsync(cts.Token).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
         Assert.IsTrue(cts.IsCancellationRequested);
         Assert.NotNull(result);
@@ -57,7 +49,7 @@ internal class NexusChannelReaderUnmanagedTests
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
         var cts = new CancellationTokenSource(100);
         cts.Cancel();
-        var result = await reader.ReadAsync(cts.Token).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
         Assert.IsTrue(cts.IsCancellationRequested);
         Assert.NotNull(result);
@@ -72,7 +64,7 @@ internal class NexusChannelReaderUnmanagedTests
 
         // ReSharper disable once MethodHasAsyncOverload
         pipeReader.Complete();
-        var result = await reader.ReadAsync().AsTask().Timeout(1);
+        var result = await reader.ReadAsync().Timeout(1);
 
         Assert.IsTrue(reader.IsComplete);
         Assert.NotNull(result);
@@ -84,13 +76,13 @@ internal class NexusChannelReaderUnmanagedTests
     [TestCase((byte)200)]
     [TestCase((short)22584)]
     [TestCase((ushort)62584)]
-    [TestCase((int)65122584)]
+    [TestCase(65122584)]
     [TestCase((uint)616322584)]
-    [TestCase((long)92175120571057)]
+    [TestCase(92175120571057)]
     [TestCase((ulong)6163225235237523984)]
-    [TestCase((char)'n')]
+    [TestCase('n')]
     [TestCase((float)9873571.1922)]
-    [TestCase((double)9851512573571.198422)]
+    [TestCase(9851512573571.198422)]
     public async Task WaitsForFullData<T>(T inputData)
         where T : unmanaged
     {
@@ -100,16 +92,16 @@ internal class NexusChannelReaderUnmanagedTests
 
         _ = Task.Run(async () =>
         {
-            await tcs.Task;
+            await tcs.Task.Timeout(1);
             var data = Utilities.GetBytes(inputData);
-            for (int i = 0; i < data.Length; i++)
+            for (var i = 0; i < data.Length; i++)
             {
-                await pipeReader.BufferData(data.Slice(i, 1));
+                await pipeReader.BufferData(data.Slice(i, 1)).Timeout(1);
             }
         });
 
         tcs.SetResult();
-        var result = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(inputData, result.Single());
     }
@@ -118,13 +110,13 @@ internal class NexusChannelReaderUnmanagedTests
     [TestCase((byte)200)]
     [TestCase((short)22584)]
     [TestCase((ushort)62584)]
-    [TestCase((int)65122584)]
+    [TestCase(65122584)]
     [TestCase((uint)616322584)]
-    [TestCase((long)92175120571057)]
+    [TestCase(92175120571057)]
     [TestCase((ulong)6163225235237523984)]
-    [TestCase((char)'n')]
+    [TestCase('n')]
     [TestCase((float)9873571.1922)]
-    [TestCase((double)9851512573571.198422)]
+    [TestCase(9851512573571.198422)]
     public async Task ReadsMultiple<T>(T inputData)
         where T : unmanaged
     {
@@ -134,11 +126,11 @@ internal class NexusChannelReaderUnmanagedTests
         var data = Utilities.GetBytes(inputData);
         var count = 0;
 
-        for (int i = 0; i < iterations; i++)
+        for (var i = 0; i < iterations; i++)
         {
-            await pipeReader.BufferData(data);
+            await pipeReader.BufferData(data).Timeout(1);
         }
-        var results = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+        var results = await reader.ReadAsync(CancellationToken.None).Timeout(1);
         foreach (var result in results)
         {
             count++;
@@ -152,13 +144,13 @@ internal class NexusChannelReaderUnmanagedTests
     [TestCase((byte)200)]
     [TestCase((short)22584)]
     [TestCase((ushort)62584)]
-    [TestCase((int)65122584)]
+    [TestCase(65122584)]
     [TestCase((uint)616322584)]
-    [TestCase((long)92175120571057)]
+    [TestCase(92175120571057)]
     [TestCase((ulong)6163225235237523984)]
-    [TestCase((char)'n')]
+    [TestCase('n')]
     [TestCase((float)9873571.1922)]
-    [TestCase((double)9851512573571.198422)]
+    [TestCase(9851512573571.198422)]
     public async Task ReadsMultipleParallel<T>(T inputData)
         where T : unmanaged
     {
@@ -170,9 +162,9 @@ internal class NexusChannelReaderUnmanagedTests
 
         _ = Task.Run(async () =>
         {
-            for (int i = 0; i < iterations; i++)
+            for (var i = 0; i < iterations; i++)
             {
-                await pipeReader.BufferData(data);
+                await pipeReader.BufferData(data).Timeout(1);
             }
         });
 
@@ -180,14 +172,14 @@ internal class NexusChannelReaderUnmanagedTests
         {
             while (true)
             {
-                var results = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+                var results = await reader.ReadAsync(CancellationToken.None).Timeout(1);
                 foreach (var result in results)
                 {
                     count++;
                     Assert.AreEqual(inputData, result);
                 }
 
-                if(count == iterations)
+                if (count == iterations)
                     break;
             }
         }).Timeout(1);
@@ -200,13 +192,13 @@ internal class NexusChannelReaderUnmanagedTests
     //[TestCase((byte)200)]
     [TestCase((short)22584)]
     [TestCase((ushort)62584)]
-    [TestCase((int)65122584)]
+    [TestCase(65122584)]
     [TestCase((uint)616322584)]
-    [TestCase((long)92175120571057)]
+    [TestCase(92175120571057)]
     [TestCase((ulong)6163225235237523984)]
-    [TestCase((char)'n')]
+    [TestCase('n')]
     [TestCase((float)9873571.1922)]
-    [TestCase((double)9851512573571.198422)]
+    [TestCase(9851512573571.198422)]
     public async Task ReadsWithPartialWrites<T>(T inputData)
         where T : unmanaged
     {
@@ -214,11 +206,11 @@ internal class NexusChannelReaderUnmanagedTests
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         var data = Utilities.GetBytes(inputData);
 
-        await pipeReader.BufferData(data);
+        await pipeReader.BufferData(data).Timeout(1);
 
         // Provide the next data short one byte.
-        await pipeReader.BufferData(data.Slice(0, data.Length - 1));
-        var results = await reader.ReadAsync(CancellationToken.None).AsTask().Timeout(1);
+        await pipeReader.BufferData(data.Slice(0, data.Length - 1)).Timeout(1);
+        var results = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(1, results.Count());
     }
