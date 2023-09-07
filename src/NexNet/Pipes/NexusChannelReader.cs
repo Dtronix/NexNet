@@ -61,7 +61,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         // Read the data from the pipe reader.
         while (true)
         {
-            var result = await Reader.ReadAsync(cancellationToken);
+            var result = await Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
             // Check if the result is completed or canceled.
             if (result.IsCompleted)

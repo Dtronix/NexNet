@@ -52,7 +52,7 @@ public static class NexusDuplexPipeExtensions
     public static async ValueTask<INexusChannelReader<T>> GetUnmanagedChannelReader<T>(this INexusDuplexPipe pipe)
         where T : unmanaged
     {
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
         return new NexusChannelReaderUnmanaged<T>(pipe.ReaderCore);
     }
 
@@ -72,7 +72,7 @@ public static class NexusDuplexPipeExtensions
     public static async ValueTask<INexusChannelWriter<T>> GetUnmanagedChannelWriter<T>(this INexusDuplexPipe pipe)
         where T : unmanaged
     {
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
         return new NexusChannelWriterUnmanaged<T>(pipe.WriterCore);
     }
 
@@ -88,7 +88,7 @@ public static class NexusDuplexPipeExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static async ValueTask<INexusChannelReader<T>> GetChannelReader<T>(this INexusDuplexPipe pipe)
     {
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
         return new NexusChannelReader<T>(pipe.ReaderCore);
     }
 
@@ -105,7 +105,7 @@ public static class NexusDuplexPipeExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static async ValueTask<INexusChannelWriter<T>> GetChannelWriter<T>(this INexusDuplexPipe pipe)
     {
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
         return new NexusChannelWriter<T>(pipe.WriterCore);
     }
 }

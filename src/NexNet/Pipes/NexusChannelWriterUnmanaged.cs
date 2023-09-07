@@ -41,7 +41,7 @@ internal class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
         
         Write(ref item, ref Writer);
 
-        var flushResult = await Writer.FlushAsync(cancellationToken);
+        var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
         if (flushResult.IsCompleted)
         {
@@ -65,7 +65,7 @@ internal class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     {
         WriteEnumerable(items, ref Writer);
 
-        var flushResult = await Writer.FlushAsync(cancellationToken);
+        var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
         if (flushResult.IsCompleted)
         {

@@ -58,7 +58,7 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
         List?.Clear();
 
         // Read the data from the pipe reader.
-        var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken);
+        var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken).ConfigureAwait(false);
 
         // Check if the result is completed or canceled.
         if (result.IsCompleted)

@@ -184,7 +184,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     // TODO: Review flaky QUIC test on CI.
-    [Retry(5)]
+    [Repeat(10)]
     public async Task Server_PipeWriterCompletesUponDisconnection(Type type)
     {
         var tcsDisconnected = new TaskCompletionSource();

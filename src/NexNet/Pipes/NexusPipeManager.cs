@@ -80,7 +80,7 @@ internal class NexusPipeManager
         
         if(nexusPipe.CurrentState != State.Complete)
         {
-            await pipe.CompleteAsync();
+            await pipe.CompleteAsync().ConfigureAwait(false);
             // Return the pipe to the cache.
             nexusPipe.Reset();
         }
@@ -126,7 +126,7 @@ internal class NexusPipeManager
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
 
-        await nexusPipe.Pipe.CompleteAsync();
+        await nexusPipe.Pipe.CompleteAsync().ConfigureAwait(false);
 
         // Return the pipe to the cache.
         nexusPipe.Pipe.Reset();
