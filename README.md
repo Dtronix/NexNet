@@ -83,6 +83,19 @@ Notes:
 ## Duplex Pipe Usage
 NexNet has a limitation where the total arguments passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
 
+## Channels
+Building upon the Duplex Pipes infrastructure, NexNet prvoides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
+
+#### INexusDuplexChannel<T>
+The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be seralized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine tuned for performance of those simple types
+
+Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
+
+#### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
+The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine tuned for performance.
+
+Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
+
 ## Lifetimes
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
 
