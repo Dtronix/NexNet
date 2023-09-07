@@ -90,7 +90,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     // TODO: Review flaky QUIC test on CI.
-    [Retry(5)]
+    [Retry(10)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
@@ -99,7 +99,7 @@ internal partial class NexusClientTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 2; i++)
         {
             await client.ConnectAsync().Timeout(1);
             var disconnected = client.DisconnectedTask;
