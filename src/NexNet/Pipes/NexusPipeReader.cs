@@ -4,10 +4,11 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using Pipelines.Sockets.Unofficial.Arenas;
 using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeReader : PipeReader
 {
@@ -99,12 +100,9 @@ internal class NexusPipeReader : PipeReader
 
         if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
         {
-
-            
             // Ensure the connection is not completed.
             if (_isCompleted)
                 return NexusPipeBufferResult.DataIgnored;
-
 
             //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
             //Todo: Review changing this out for a latch instead of a loop.
@@ -199,8 +197,31 @@ internal class NexusPipeReader : PipeReader
 
     public override bool TryRead(out ReadResult result)
     {
-        // Todo: implement
-        throw new NotImplementedException();
+        if (_isCompleted)
+        {
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, false, _isCompleted);
+            return true;
+        }
+
+        if (_isCanceled)
+        {
+            _isCanceled = false;
+            result = new ReadResult(ReadOnlySequence<byte>.Empty, true, _isCompleted);
+            return true;
+        }
+        
+        lock (_buffer)
+        {
+            if (_buffer.Length == 0)
+            {
+                result = new ReadResult(ReadOnlySequence<byte>.Empty, false, _isCompleted);
+                return false;
+            }
+
+            result = new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+        }
+        
+        return true;
     }
 
 
@@ -322,11 +343,17 @@ internal class NexusPipeReader : PipeReader
             }
         }
 
-
-
         lock (_buffer)
         {
             _buffer.ReleaseTo(consumed);
+        }
+    }
+
+    public void AdvanceTo(int count)
+    {
+        lock (_buffer)
+        {
+            _buffer.ReleaseTo(count);
         }
     }
 

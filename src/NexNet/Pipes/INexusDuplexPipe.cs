@@ -1,8 +1,7 @@
-﻿using System;
-using System.IO.Pipelines;
+﻿using System.IO.Pipelines;
 using System.Threading.Tasks;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 /// <summary>
 /// Main interface for duplex pipe interaction with the Nexus system.
@@ -25,13 +24,7 @@ public interface INexusDuplexPipe : IDuplexPipe
     /// </summary>
     /// <returns>Task which completes when the pipe is closed.</returns>
     ValueTask CompleteAsync();
-}
 
-/// <summary>
-/// Interface for rented duplex pipe.  This interface is used to return the pipe to
-/// the pipe manager once disposed via the <see cref="IAsyncDisposable.DisposeAsync"/> method.
-/// </summary>
-public interface IRentedNexusDuplexPipe : INexusDuplexPipe, IAsyncDisposable
-{
-
+    internal NexusPipeWriter WriterCore { get; }
+    internal NexusPipeReader ReaderCore { get; }
 }

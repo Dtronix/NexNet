@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using NexNet.Cache;
-using NexNet.Internals.Pipes;
 using NexNet.Invocation;
+using NexNet.Pipes;
 using NexNet.Transports;
 
 namespace NexNet.Internals;

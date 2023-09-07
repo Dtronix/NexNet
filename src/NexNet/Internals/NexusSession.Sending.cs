@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using NexNet.Messages;
-using NexNet.Invocation;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Threading;

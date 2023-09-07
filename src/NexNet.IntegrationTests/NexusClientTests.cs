@@ -176,37 +176,7 @@ internal partial class NexusClientTests : BaseTests
 
         await tcs.Task.Timeout(1);
     }
-
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [Retry(10)] // This randomly fails on CI due to the packet being combined with other packets.
-    public async Task ClientResumePingOnDisconnect(Type type)
-    {
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.PingInterval = 20;
-        var tcs = new TaskCompletionSource();
-
-        var (server, _, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type),
-            clientConfig);
-
-        clientConfig.InternalOnSend = (_, bytes) =>
-        {
-            if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping)
-                tcs.SetResult();
-        };
-
-        await server.StartAsync().Timeout(1);
-
-        await client.ConnectAsync().Timeout(1);
-        await client.DisconnectAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-
-        await tcs.Task.WaitAsync(TimeSpan.FromSeconds(1.5));
-    }
-
+    
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]

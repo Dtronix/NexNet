@@ -3,10 +3,11 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using NexNet.Messages;
 using Pipelines.Sockets.Unofficial.Buffers;
 
-namespace NexNet.Internals.Pipes;
+namespace NexNet.Pipes;
 
 internal class NexusPipeWriter : PipeWriter
 {
@@ -30,7 +31,7 @@ internal class NexusPipeWriter : PipeWriter
     }
 
     /// <summary>
-    /// Set to true to pause writing to the pipe.  The flush
+    /// Set to true to pause writing to the pipe.
     /// </summary>
     public bool PauseWriting
     {
@@ -151,8 +152,21 @@ internal class NexusPipeWriter : PipeWriter
         // TODO: Review only calling when the token can be canceled.
         using var reg = cancellationToken.Register(CancelCallback, _flushCts);
 
+        // If we are paused, wait for the semaphore to be released.
         if (PauseWriting)
-            await _pauseSemaphore.WaitAsync(_flushCts.Token).ConfigureAwait(false);
+        {
+            try
+            {
+                await _pauseSemaphore.WaitAsync(_flushCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Ensure the cancellation token is canceled null so it will be created again.
+                _flushCts.Dispose();
+                _flushCts = null;
+                return new FlushResult(true, _isCompleted);
+            }
+        }
 
         BitConverter.TryWriteBytes(_pipeId.Span, _stateManager.Id);
 

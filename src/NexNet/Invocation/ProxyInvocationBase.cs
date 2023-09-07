@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
-using NexNet.Internals.Pipes;
 using NexNet.Messages;
+using NexNet.Pipes;
 
 namespace NexNet.Invocation;
 
@@ -351,8 +350,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
      /// <param name="pipe">Pipe to retrieve the Id of.</param>
      /// <returns>Initial id of the pipe.</returns>
      [MethodImpl(MethodImplOptions.AggressiveInlining)]
-     protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe pipe)
+     protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
      {
+         ArgumentNullException.ThrowIfNull(pipe);
          return Unsafe.As<NexusDuplexPipe>(pipe).InitialId;
      }
      

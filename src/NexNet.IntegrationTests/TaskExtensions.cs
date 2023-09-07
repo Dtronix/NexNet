@@ -9,9 +9,19 @@ internal static class TaskExtensions
         return task.WaitAsync(TimeSpan.FromSeconds(seconds));
     }
 
+    public static Task Timeout(this ValueTask task, double seconds)
+    {
+        return task.AsTask().WaitAsync(TimeSpan.FromSeconds(seconds));
+    }
+
     public static Task<T> Timeout<T>(this Task<T> task, double seconds)
     {
         return task.WaitAsync(TimeSpan.FromSeconds(seconds));
+    }
+
+    public static Task<T> Timeout<T>(this ValueTask<T> task, double seconds)
+    {
+        return task.AsTask().WaitAsync(TimeSpan.FromSeconds(seconds));
     }
 
     public static async Task AssertTimeout(this Task task, double seconds)

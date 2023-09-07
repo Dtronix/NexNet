@@ -1,12 +1,11 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 
-namespace NexNet.IntegrationTests;
+namespace NexNet.IntegrationTests.Pipes;
 
 internal class BasePipeTests : BaseTests
 {
     protected byte[] Data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-    
+
     protected async Task<(
         NexusServer<ServerNexus,
             ServerNexus.ClientProxy> server,
