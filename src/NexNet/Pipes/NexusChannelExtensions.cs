@@ -71,9 +71,13 @@ public static class NexusChannelExtensions
     {
         using var reader = await channel.GetReaderAsync();
         var list = new List<T>(estimatedSize);
-        while (reader.IsComplete == false)
+        while (true)
         {
-            list.AddRange(await reader.ReadAsync(cancellationToken))
+            if(reader.IsComplete && reader.BufferedLength == 0)
+                break;
+
+            var readResult = await reader.ReadAsync(cancellationToken);
+            list.AddRange(readResult);
         }
 
         return list;

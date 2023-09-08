@@ -17,6 +17,11 @@ public interface INexusChannelReader<T> : IDisposable
     bool IsComplete { get; }
 
     /// <summary>
+    /// Gets a value indicating the number of bytes that are currently buffered in the underlying INexusPipeWriter.
+    /// </summary>
+    long BufferedLength { get; }
+
+    /// <summary>
     /// Asynchronously reads data from the duplex pipe.
     /// </summary>
     /// <param name="cancellationToken"></param>

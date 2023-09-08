@@ -20,10 +20,11 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     internal readonly NexusPipeReader Reader;
     internal List<T>? List;
 
-    /// <summary>
-    /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
-    /// </summary>
+    /// <inheritdoc/>
     public bool IsComplete { get; protected set; }
+
+    /// <inheritdoc/>
+    public long BufferedLength => Reader.BufferedLength;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
@@ -43,14 +44,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         List = new List<T>();
     }
 
-    /// <summary>
-    /// Asynchronously reads data from the duplex pipe.
-    /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns>
-    /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
-    /// If the read operation is completed or canceled, the returned task will contain an empty collection.
-    /// </returns>
+    /// <inheritdoc/>
     public virtual async ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default)
     {
         if(IsComplete)
@@ -64,7 +58,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             var result = await Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
             // Check if the result is completed or canceled.
-            if (result.IsCompleted)
+            if (result.IsCompleted && Reader.BufferedLength == 0)
             {
                 IsComplete = true;
                 return Enumerable.Empty<T>();
