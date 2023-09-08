@@ -461,7 +461,7 @@ internal class NexusDuplexPipeReaderTests
     public void TryReadReturnsTrueWhenCompleted()
     {
         var reader = CreateReader();
-        reader.Complete();
+        reader.CompleteNoNotify();
         Assert.IsTrue(reader.TryRead(out var readData));
         Assert.IsFalse(readData.IsCanceled);
         Assert.IsTrue(readData.IsCompleted);

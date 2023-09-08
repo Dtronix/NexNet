@@ -310,7 +310,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             else
             {
                 // Close input pipe.
-                _inputPipeReader.Complete();
+                _inputPipeReader.CompleteNoNotify();
             }
         }
 
@@ -319,7 +319,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             if (_session.IsServer)
             {
                 // Close input pipe.
-                _inputPipeReader.Complete();
+                _inputPipeReader.CompleteNoNotify();
             }
             else
             {

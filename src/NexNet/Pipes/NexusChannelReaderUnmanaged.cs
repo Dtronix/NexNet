@@ -50,10 +50,10 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
     /// If the read operation is completed or canceled, the returned task will contain an empty collection.
     /// </returns>
-    public override async ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default)
+    public override async ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
     {
-        if(IsComplete)
-            return Enumerable.Empty<T>();
+        if (IsComplete && BufferedLength == 0)
+            return EmptyList;
 
         List?.Clear();
 
@@ -61,15 +61,15 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
         var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken).ConfigureAwait(false);
 
         // Check if the result is completed or canceled.
-        if (result.IsCompleted)
-        {
-            IsComplete = true;
-            return Enumerable.Empty<T>();
-        }
+        if (result.IsCompleted && result.Buffer.Length == 0)
+            return EmptyList;
 
-        return result.IsCanceled 
-            ? Enumerable.Empty<T>()
-            : Read(result.Buffer, Reader, List!);
+        if (result.IsCanceled)
+            return EmptyList;
+            
+        Read(result.Buffer, Reader, List!);
+
+        return List!;
     }
 
     /// <summary>
@@ -79,7 +79,7 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
-    private static IEnumerable<T> Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
+    private static void Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
     {
         var length = buffer.Length;
         
@@ -92,6 +92,5 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
         }
             
         pipeReader.AdvanceTo(reader.Consumed);
-        return list;
     }
 }

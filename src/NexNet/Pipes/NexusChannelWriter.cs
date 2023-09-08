@@ -82,6 +82,12 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
         return true;
     }
 
+    /// <inheritdoc />
+    public ValueTask CompleteAsync()
+    {
+        return Writer.CompleteAsync();
+    }
+
 
     private static void Write(ref T item, ref NexusPipeWriter nexusPipeWriter)
     {
