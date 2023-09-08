@@ -86,6 +86,10 @@ NexNet has a limitation where the total arguments passed can't exceed 65,535 byt
 ## Channels
 Building upon the Duplex Pipes infrastructure, NexNet prvoides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
 
+Several extension methods have been provided to allow for ease of reading and writing of entire collections (eg. selected table rows).
+- `NexusChannelExtensions.WriteAndComplete<T>(...)`: Writing a collection to either a `INexusDuplexChannel<T>` or `INexusChannelWriter<T>` with optional batch sizes for optimized sending.
+- `NexusChannelExtensions.ReadUntilComplete<T>(...)`: Reads from either a `INexusDuplexChannel<T>` or a `INexusChannelReader<T>` with an optional initial collection size to reduce collection resizing.
+
 #### INexusDuplexChannel<T>
 The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be seralized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine tuned for performance of those simple types
 
