@@ -67,8 +67,7 @@ internal class NexusChannelReaderTests
             await pipeReader.BufferData(buffer).Timeout(1);
         }
 
-
-        var result = await reader.ReadAsync(CancellationToken.None).Timeout(10000);
+        var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.AreEqual(baseObject, result.Single());
 
@@ -118,7 +117,7 @@ internal class NexusChannelReaderTests
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         // ReSharper disable once MethodHasAsyncOverload
-        pipeReader.Complete();
+        await pipeReader.CompleteAsync();
         var result = await reader.ReadAsync().Timeout(1);
 
         Assert.IsTrue(reader.IsComplete);

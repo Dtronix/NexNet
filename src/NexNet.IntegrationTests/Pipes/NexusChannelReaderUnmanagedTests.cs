@@ -63,7 +63,7 @@ internal class NexusChannelReaderUnmanagedTests
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
 
         // ReSharper disable once MethodHasAsyncOverload
-        pipeReader.Complete();
+        await pipeReader.CompleteAsync();
         var result = await reader.ReadAsync().Timeout(1);
 
         Assert.IsTrue(reader.IsComplete);

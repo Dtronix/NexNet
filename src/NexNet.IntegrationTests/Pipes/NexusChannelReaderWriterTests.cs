@@ -72,7 +72,23 @@ internal class NexusChannelReaderWriterTests
         }).Timeout(1);
 
         Assert.AreEqual(iterations, count);
+    }
 
+    [Test]
+    public async Task ReaderCompletesOnPartialRead()
+    {
+        var (writer, reader) = GetReaderWriter<long>();
+        var value = ComplexMessage.Random();
+
+        _ = Task.Run(async () =>
+        {
+            await writer.Writer.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 1, 2, 3, 4 }));
+            await reader.Reader.CompleteAsync();
+        });
+        
+        var completeRead = await reader.ReadUntilComplete();
+
+        Assert.AreEqual(0, completeRead.Count);
     }
     private (NexusChannelWriter<T>, NexusChannelReader<T>) GetReaderWriter<T>()
     {
