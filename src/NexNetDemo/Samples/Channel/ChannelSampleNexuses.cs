@@ -12,6 +12,7 @@ interface IChannelSampleServerNexus
     ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel);
     ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
     ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
+    ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
 }
 
 
@@ -62,6 +63,22 @@ partial class ChannelSampleServerNexus
 
             if (count++ > 100)
                 return;
+        }
+    }
+
+    public async ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel)
+    {
+        await channel.WriteAndComplete(GetComplexMessages(), 100);
+    }
+
+    private static IEnumerable<ComplexMessage> GetComplexMessages()
+    {
+        var count = 0;
+        while (true)
+        {
+            yield return ComplexMessage.Random();
+            if (count++ > 1000)
+                yield break;
         }
     }
 }
