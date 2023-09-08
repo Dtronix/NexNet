@@ -11,7 +11,7 @@ namespace NexNetDemo.Samples.Channel;
 public class ChannelSample : SampleBase
 {
     public ChannelSample(TransportMode transportMode = TransportMode.Uds)
-        : base(false, transportMode)
+        : base(true, transportMode)
     {
 
     }
@@ -81,7 +81,7 @@ public class ChannelSample : SampleBase
 
         await client.Proxy.ClassChannelBatch(pipe);
 
-        var result = await pipe.ReadUntilComplete(100);
+        var result = await pipe.ReadUntilComplete(10000);
     }
 
     private async Task<(NexusServer<ChannelSampleServerNexus, ChannelSampleServerNexus.ClientProxy> server, NexusClient<ChannelSampleClientNexus, ChannelSampleClientNexus.ServerProxy> client)> Setup()

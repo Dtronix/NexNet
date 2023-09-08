@@ -29,5 +29,5 @@ public interface INexusChannelReader<T> : IDisposable
     /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
     /// If the read operation is completed or canceled, the returned task will contain an empty collection.
     /// </returns>
-    ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default);
+    ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default);
 }

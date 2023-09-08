@@ -46,6 +46,11 @@ internal class NexusPipeReader : PipeReader
         }
     }
 
+    /// <summary>
+    /// Gets a value that indicates whether the pipe reader has been marked as complete.
+    /// </summary>
+    public bool IsCompleted => _isCompleted;
+
     public NexusPipeReader(IPipeStateManager stateManager)
     {
         _stateManager = stateManager;
@@ -189,10 +194,28 @@ internal class NexusPipeReader : PipeReader
         _isCompleted = true;
 
         if (_stateManager.UpdateState(_writingCompleteFlag))
+        {
+            Utilities.TryReleaseSemaphore(_readSemaphore);
             return _stateManager.NotifyState();
+        }
+
+        Utilities.TryReleaseSemaphore(_readSemaphore);
 
         return default;
     }
+
+    public override void Complete(Exception? exception = null)
+    {
+        throw new NotImplementedException("Use CompleteAsync() instead.");
+    }
+
+    public void CompleteNoNotify()
+    {
+        _isCompleted = true;
+
+        Utilities.TryReleaseSemaphore(_readSemaphore);
+    }
+
 
 
     public override bool TryRead(out ReadResult result)
@@ -390,6 +413,7 @@ internal class NexusPipeReader : PipeReader
     {
         lock (_buffer)
         {
+            _examinedPosition += count;
             _buffer.ReleaseTo(count);
         }
     }
@@ -397,12 +421,6 @@ internal class NexusPipeReader : PipeReader
     public override void CancelPendingRead()
     {
         _isCanceled = true;
-        Utilities.TryReleaseSemaphore(_readSemaphore);
-    }
-
-    public override void Complete(Exception? exception = null)
-    {
-        _isCompleted = true;
         Utilities.TryReleaseSemaphore(_readSemaphore);
     }
 }

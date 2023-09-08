@@ -21,10 +21,12 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     internal List<T>? List;
 
     /// <inheritdoc/>
-    public bool IsComplete { get; protected set; }
+    public bool IsComplete => Reader.IsCompleted;
 
     /// <inheritdoc/>
     public long BufferedLength => Reader.BufferedLength;
+
+    protected static readonly List<T> EmptyList = new List<T>(0);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
@@ -45,10 +47,10 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     }
 
     /// <inheritdoc/>
-    public virtual async ValueTask<IEnumerable<T>> ReadAsync(CancellationToken cancellationToken = default)
+    public virtual async ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
     {
-        if(IsComplete)
-            return Enumerable.Empty<T>();
+        if (IsComplete && BufferedLength == 0)
+            return EmptyList;
 
         List?.Clear();
 
@@ -58,16 +60,16 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             var result = await Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
 
             // Check if the result is completed or canceled.
-            if (result.IsCompleted && Reader.BufferedLength == 0)
-            {
-                IsComplete = true;
-                return Enumerable.Empty<T>();
-            }
+            if (result.IsCompleted && result.Buffer.Length == 0)
+                return EmptyList;
 
             if (result.IsCanceled)
-                return Enumerable.Empty<T>();
+                return EmptyList;
 
-            Read(result.Buffer, Reader, List!);
+            var readAmount = Read(result.Buffer, Reader, List!);
+
+            if (result.IsCompleted && readAmount == 0)
+                return EmptyList;
 
             if(List!.Count == 0)
                 continue;
@@ -83,7 +85,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
-    private static void Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
+    private static int Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
     {
         var length = buffer.Length;
         
@@ -107,6 +109,8 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         {
             pipeReader.AdvanceTo(successfulConsumedCount);
         }
+
+        return successfulConsumedCount;
     }
 
     /// <summary>

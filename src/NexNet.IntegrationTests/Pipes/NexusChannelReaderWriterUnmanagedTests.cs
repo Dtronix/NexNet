@@ -74,6 +74,20 @@ internal class NexusChannelReaderWriterUnmanagedTests
 
     }
 
+    [Test]
+    public async Task ReaderCompletesOnPartialRead()
+    {
+        var (writer, reader) = GetReaderWriter<long>();
+        var value = ComplexMessage.Random();
+
+        await writer.Writer.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 1, 2, 3, 4 })).Timeout(1);
+        await reader.Reader.CompleteAsync();
+
+        var completeRead = await reader.ReadUntilComplete().Timeout(1);
+
+        Assert.AreEqual(0, completeRead.Count);
+    }
+
     private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()
         where T : unmanaged
     {

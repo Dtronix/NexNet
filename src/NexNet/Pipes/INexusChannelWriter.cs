@@ -30,4 +30,10 @@ public interface INexusChannelWriter<in T>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks the channel writer as complete, indicating that no more items will be written to it.
+    /// </summary>
+    /// <returns>A ValueTask that represents the asynchronous operation of marking the channel writer as complete.</returns>
+    public ValueTask CompleteAsync();
 }

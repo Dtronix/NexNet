@@ -61,14 +61,14 @@ partial class ChannelSampleServerNexus
             await writer.WriteAsync(ComplexMessage.Random());
             await Task.Delay(10);
 
-            if (count++ > 100)
+            if (++count >= 100)
                 return;
         }
     }
 
     public async ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel)
     {
-        await channel.WriteAndComplete(GetComplexMessages(), 100);
+        await channel.WriteAndComplete(GetComplexMessages(), 10);
     }
 
     private static IEnumerable<ComplexMessage> GetComplexMessages()
@@ -77,7 +77,7 @@ partial class ChannelSampleServerNexus
         while (true)
         {
             yield return ComplexMessage.Random();
-            if (count++ > 1000)
+            if (++count >= 10000)
                 yield break;
         }
     }
