@@ -12,7 +12,6 @@ namespace NexNet.Pipes;
 /// </summary>
 public static class NexusChannelExtensions
 {
-
     /// <summary>
     /// Writes the provided data to the given duplex channel in optional chunks and completes the channel.
     /// </summary>
@@ -26,7 +25,7 @@ public static class NexusChannelExtensions
     public static async ValueTask WriteAndComplete<T>(
         this INexusDuplexChannel<T> channel,
         IEnumerable<T> enumerableData,
-        int chunkSize = 1,
+        int chunkSize = 10,
         CancellationToken cancellationToken = default)
     {
         var writer = await channel.GetWriterAsync();
@@ -46,7 +45,7 @@ public static class NexusChannelExtensions
     public static async ValueTask WriteAndComplete<T>(
         this INexusChannelWriter<T> writer,
         IEnumerable<T> enumerableData,
-        int chunkSize = 1,
+        int chunkSize = 10,
         CancellationToken cancellationToken = default)
     {
         // If the chunk size is greater than 1, split the data into chunks and write them to the channel
