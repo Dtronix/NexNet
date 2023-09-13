@@ -40,20 +40,16 @@ internal partial class InvocationResultMessage : IMessageBase
         set => _result = value;
     }
 
-    public T? GetResult<T>()
+    public bool TryGetResult<T>(out T? result)
     {
         if (_result == null)
-            return default;
+        {
+            result = default;
+            return false;
+        }
 
-        return MemoryPackSerializer.Deserialize<T>(_result.Value);
-    }
-
-    public object? GetResult(Type? type)
-    {
-        if (_result == null || type == null)
-            return default;
-
-        return MemoryPackSerializer.Deserialize(type, _result.Value);
+        result = MemoryPackSerializer.Deserialize<T>(_result.Value);
+        return true;
     }
 
     public void Dispose()
