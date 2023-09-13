@@ -24,7 +24,7 @@ public class ChannelSample : SampleBase
 
         await client.Proxy.IntegerChannel(channel);
 
-        using var reader = await channel.GetReaderAsync();
+        var reader = await channel.GetReaderAsync();
 
         while (!reader.IsComplete)
         {
@@ -43,11 +43,47 @@ public class ChannelSample : SampleBase
 
         await client.Proxy.StructChannel(pipe);
 
-        using var reader = await pipe.GetReaderAsync();
+        var reader = await pipe.GetReaderAsync();
 
         while (!reader.IsComplete)
         {
             foreach (var channelSampleStruct in await reader.ReadAsync())
+            {
+                Console.WriteLine(channelSampleStruct);
+            }
+        }
+    }
+
+    private class ChannelSampleStruct2
+    {
+        public int Id { get; set; }
+        public long Counts { get; set; }
+
+        public override string ToString()
+        {
+            return $"ChannelSampleStruct2 Id: {Id}, Counts: {Counts}";
+        }
+    
+    }
+    public async Task ChannelStructConvertSample()
+    {
+        var (server, client) = await Setup();
+
+        await using var pipe = client.CreateUnmanagedChannel<ChannelSampleStruct>();
+
+
+        await client.Proxy.StructChannel(pipe);
+
+        var reader = await pipe.GetReaderAsync();
+
+        static ChannelSampleStruct2 Convert(in ChannelSampleStruct s) => new ChannelSampleStruct2()
+        {
+            Id = s.Id,
+            Counts = s.Counts
+        };
+        while (!reader.IsComplete)
+        {
+            foreach (var channelSampleStruct in await reader.ReadAsync(Convert))
             {
                 Console.WriteLine(channelSampleStruct);
             }
@@ -61,8 +97,8 @@ public class ChannelSample : SampleBase
         await using var pipe = client.CreateChannel<ComplexMessage>();
 
         await client.Proxy.ClassChannel(pipe);
-
-        using var reader = await pipe.GetReaderAsync();
+        
+        var reader = await pipe.GetReaderAsync();
 
         while (!reader.IsComplete)
         {

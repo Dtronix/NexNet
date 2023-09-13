@@ -1,9 +1,12 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Pipes;
 
@@ -18,15 +21,12 @@ namespace NexNet.Pipes;
 internal class NexusChannelReader<T> : INexusChannelReader<T>
 {
     internal readonly NexusPipeReader Reader;
-    internal List<T>? List;
 
     /// <inheritdoc/>
     public bool IsComplete => Reader.IsCompleted;
 
     /// <inheritdoc/>
     public long BufferedLength => Reader.BufferedLength;
-
-    protected static readonly List<T> EmptyList = new List<T>(0);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
@@ -35,24 +35,26 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     public NexusChannelReader(INexusDuplexPipe pipe)
     : this(pipe.ReaderCore)
     {
-
     }
 
     internal NexusChannelReader(NexusPipeReader reader)
     {
         Reader = reader;
-
-        // TODO: Review changing this out to another collection so that reallocation does not occur.
-        List = new List<T>();
     }
 
     /// <inheritdoc/>
-    public virtual async ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
+    public virtual ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
+    {
+        return ReadAsync(static (in T input) => input, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public virtual async ValueTask<IReadOnlyList<TTo>> ReadAsync<TTo>(Converter<T, TTo> converter, CancellationToken cancellationToken = default)
     {
         if (IsComplete && BufferedLength == 0)
-            return EmptyList;
+            return ListPool<TTo>.Empty;
 
-        List?.Clear();
+        var list = ListPool<TTo>.Rent();
 
         // Read the data from the pipe reader.
         while (true)
@@ -61,34 +63,37 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
 
             // Check if the result is completed or canceled.
             if (result.IsCompleted && result.Buffer.Length == 0)
-                return EmptyList;
+                return ListPool<TTo>.Empty;
 
             if (result.IsCanceled)
-                return EmptyList;
+                return ListPool<TTo>.Empty;
 
-            var readAmount = Read(result.Buffer, Reader, List!);
+            var readAmount = Read<TTo>(result.Buffer, Reader, list, converter);
 
             if (result.IsCompleted && readAmount == 0)
-                return EmptyList;
+                return ListPool<TTo>.Empty;
 
-            if(List!.Count == 0)
+            if (list.Count == 0)
                 continue;
 
-            return List!;
+            return list;
         }
     }
 
     /// <summary>
     /// Reads data from the buffer and converts it into an enumerable collection of type T.
     /// </summary>
+    /// <typeparam name="TTo">The type of the items that will be returned after conversion.</typeparam>
     /// <param name="buffer">The buffer containing the data to be read.</param>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.</param>
+    /// <param name="converter">The converter used to convert the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
-    private static int Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int Read<TTo>(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<TTo> list, Converter<T, TTo> converter)
     {
         var length = buffer.Length;
-        
+
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
         int successfulConsumedCount = 0;
@@ -96,7 +101,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         {
             try
             {
-                list.Add(reader.ReadValue<T>()!);
+                list.Add(converter.Invoke(reader.ReadValue<T>()!));
                 successfulConsumedCount = reader.Consumed;
             }
             catch
@@ -111,18 +116,5 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         }
 
         return successfulConsumedCount;
-    }
-
-    /// <summary>
-    /// Releases all resources used by the instance.
-    /// </summary>
-    public void Dispose()
-    {
-        var list = Interlocked.Exchange(ref List, null);
-        if (list == null)
-            return;
-
-        list.Clear();
-        list.TrimExcess();
     }
 }
