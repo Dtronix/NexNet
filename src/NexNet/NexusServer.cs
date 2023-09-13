@@ -16,7 +16,7 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>, INexusServer 
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -259,7 +259,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
-                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
+                var baseSessionId = _sessionIdIncrementer++;
 
                 // boxed, but only once per client
                 StartOnScheduler(
@@ -272,8 +272,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Configs = _config,
                         SessionManager = _sessionManager,
                         IsServer = true,
-                        // ReSharper disable once RedundantCast
-                        Id = (long)baseSessionId << 32 | (long)Environment.TickCount,
+                        Id = (long)baseSessionId << 32 | (long)Random.Shared.Next(),
                         Nexus = _nexusFactory.Invoke()
                     });
             }
