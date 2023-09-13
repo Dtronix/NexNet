@@ -101,14 +101,14 @@ public static class NexusChannelExtensions
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous read operation. The task result contains a List of type T with the data read from the channel.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<List<T>> ReadUntilComplete<T, TTo>(
+    public static async ValueTask<List<TTo>> ReadUntilComplete<T, TTo>(
         this INexusDuplexChannel<T> channel,
         Converter<T, TTo> converter,
         int estimatedSize = 0,
         CancellationToken cancellationToken = default)
     { 
         var reader = await channel.GetReaderAsync().ConfigureAwait(false);
-        return await ReadUntilComplete<T>(reader, estimatedSize, cancellationToken).ConfigureAwait(false);
+        return await ReadUntilComplete<T, TTo>(reader, converter, estimatedSize, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

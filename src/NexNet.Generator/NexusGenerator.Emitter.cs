@@ -378,7 +378,7 @@ partial class MethodMeta
 
         if (SerializedParameters > 0)
         {
-            sb.Append("                 var arguments = new global::System.ValueTuple<");
+            sb.Append("                 var __proxyInvocationArguments = new global::System.ValueTuple<");
             
             foreach (var p in Parameters)
             {
@@ -414,7 +414,7 @@ partial class MethodMeta
             sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
 
             sb.Append("__ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
-            sb.Append(SerializedParameters > 0 ? "arguments, " : "null, ");
+            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, ");
 
             // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
             sb.Append("global::NexNet.Messages.InvocationFlags.").Append(this.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
@@ -428,7 +428,7 @@ partial class MethodMeta
             }
 
             sb.Append("(").Append(this.Id).Append(", "); // methodId
-            sb.Append(SerializedParameters > 0 ? "arguments, " : "null, "); // arguments
+            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, "); // arguments
             sb.Append(CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
         }
 

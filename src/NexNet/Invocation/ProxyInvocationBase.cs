@@ -320,19 +320,28 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn?> __ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    protected async ValueTask<TReturn> __ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
-            return default;
+        {
+            if(cancellationToken?.IsCancellationRequested == true)
+                return default!;
+
+            throw new InvalidOperationException("Invocation state is null when it should not be.");
+        }
 
         switch (state.Result!.State)
         {
             case InvocationResultMessage.StateType.CompletedResult:
-                var result = state.Result.GetResult<TReturn>();
+                var success = state.Result.TryGetResult<TReturn>(out var result);
                 ReturnState(state);
-                return result;
+
+                if(!success)
+                    throw new InvalidOperationException($"Could not get result of type {typeof(TReturn)} from invocation result.");
+
+                return result!;
 
             case InvocationResultMessage.StateType.Exception:
                 ReturnState(state);
