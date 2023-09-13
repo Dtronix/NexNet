@@ -1,9 +1,12 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Pipes;
 
@@ -42,34 +45,33 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     {
     }
 
-    /// <summary>
-    /// Asynchronously reads data from the duplex pipe.
-    /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns>
-    /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
-    /// If the read operation is completed or canceled, the returned task will contain an empty collection.
-    /// </returns>
-    public override async ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
+    /// <inheritdoc/>
+    public override ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
+    {
+        return ReadAsync(static (in T t) => t, cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    public override async ValueTask<IReadOnlyList<TTo>> ReadAsync<TTo>(Converter<T, TTo> converter, CancellationToken cancellationToken = default)
     {
         if (IsComplete && BufferedLength == 0)
-            return EmptyList;
+            return ListPool<TTo>.Empty;
 
-        List?.Clear();
+        var list = ListPool<TTo>.Rent();
 
         // Read the data from the pipe reader.
         var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken).ConfigureAwait(false);
 
         // Check if the result is completed or canceled.
         if (result.IsCompleted && result.Buffer.Length == 0)
-            return EmptyList;
+            return ListPool<TTo>.Empty;
 
         if (result.IsCanceled)
-            return EmptyList;
-            
-        Read(result.Buffer, Reader, List!);
+            return ListPool<TTo>.Empty;
 
-        return List!;
+        Read(result.Buffer, Reader, list, converter);
+
+        return list;
     }
 
     /// <summary>
@@ -79,18 +81,34 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
     {
+        Read(buffer, pipeReader, list, static (in T t) => t);
+    }
+
+    /// <summary>
+    /// Reads data from the buffer and converts it into an enumerable collection of type T.
+    /// </summary>
+    /// <typeparam name="TTo">The type of the items that will be returned after conversion.</typeparam>
+    /// <param name="buffer">The buffer containing the data to be read.</param>
+    /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
+    /// <param name="list">The list used to store the data.</param>
+    /// <param name="converter">The converter used to convert the data.</param>
+    /// <returns>An enumerable collection of type T.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Read<TTo>(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<TTo> list, Converter<T, TTo> converter)
+    {
         var length = buffer.Length;
-        
+
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
-            
+
         while ((length - reader.Consumed) >= _tSize)
         {
-            list.Add(reader.ReadValue<T>());
+            list.Add(converter.Invoke(reader.ReadValue<T>()!));
         }
-            
+
         pipeReader.AdvanceTo(reader.Consumed);
     }
 }

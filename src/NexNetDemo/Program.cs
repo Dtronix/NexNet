@@ -11,12 +11,14 @@ internal class Program
     static async Task Main(string[] args)
     {
         //await new DuplexPipeSimpleSample().UploadSample();
-        //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).UploadStreamingSample();
+        await new DuplexPipeStreamingSample(SampleBase.TransportMode.Uds).UploadStreamingSample();
         //await new DuplexPipeStreamingSample(SampleBase.TransportMode.Quic).DuplexStreamingSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).ClassSample();
-        await new ChannelSample(SampleBase.TransportMode.Uds).ClassChannelBatchSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).ClassChannelBatchSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructConvertSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 
