@@ -81,8 +81,6 @@ internal class NexusPipeManager
         if(nexusPipe.CurrentState != State.Complete)
         {
             await pipe.CompleteAsync().ConfigureAwait(false);
-            // Return the pipe to the cache.
-            nexusPipe.Reset();
         }
 
         _session.CacheManager.NexusRentedDuplexPipeCache.Return(nexusPipe);
@@ -119,17 +117,17 @@ internal class NexusPipeManager
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        _logger?.LogTrace($"DeregisterPipe({pipe.Id});");
+        _logger?.LogError($"DeregisterPipe({pipe.Id});");
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
+        {
+            _logger?.LogError($"Cant Remove ({pipe.Id});");
             return;
+        }
 
         var (clientId, serverId) = GetClientAndServerId(pipe.Id);
 
         await nexusPipe.Pipe.CompleteAsync().ConfigureAwait(false);
-
-        // Return the pipe to the cache.
-        nexusPipe.Pipe.Reset();
 
         _session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe.Pipe);
 

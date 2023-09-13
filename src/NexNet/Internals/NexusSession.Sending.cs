@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Runtime.CompilerServices;
 using MemoryPack;
 using Pipelines.Sockets.Unofficial.Arenas;
 
@@ -40,6 +41,19 @@ internal partial class NexusSession<TNexus, TProxy>
 
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
 
+        if (mutexResult.Success != true)
+            throw new InvalidOperationException("Could not acquire write lock");
+
+        // Register a cancellation token to cancel the flush operation.
+        CancellationTokenRegistration? ctRegistration = null;
+        if (cancellationToken.CanBeCanceled)
+        {
+            ctRegistration = cancellationToken.Register(static obj =>
+            {
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput);
+        }
+
         var header = _bufferWriter.GetMemory(3);
         _bufferWriter.Advance(3);
         MemoryPackSerializer.Serialize(_bufferWriter, body);
@@ -66,13 +80,16 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = _configDoNotPassFlushCancellationToken
-                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
-                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
-
+            // noop
+        }
+        finally
+        {
+            if (ctRegistration != null)
+                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
         }
 
         OnSent?.Invoke();
@@ -116,6 +133,17 @@ internal partial class NexusSession<TNexus, TProxy>
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
+
+        // Register a cancellation token to cancel the flush operation.
+        CancellationTokenRegistration? ctRegistration = null;
+        if (cancellationToken.CanBeCanceled)
+        {
+            ctRegistration = cancellationToken.Register(static obj =>
+            {
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput);
+        }
+
         var length = (int)body.Length;
         var contentLength = checked((ushort)(length));
 
@@ -146,13 +174,16 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = _configDoNotPassFlushCancellationToken
-                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
-                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
-
+            // noop
+        }
+        finally
+        {
+            if (ctRegistration != null)
+                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
         }
 
         OnSent?.Invoke();
@@ -196,18 +227,27 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
     private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
     {
-
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
         //if (State != ConnectionState.Connected && State != ConnectionState.Disconnecting)
         if (State != ConnectionState.Connected && !force)
             return;
-
+        
         using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
+
+        // Register a cancellation token to cancel the flush operation.
+        CancellationTokenRegistration? ctRegistration = null;
+        if (cancellationToken.CanBeCanceled)
+        {
+            ctRegistration = cancellationToken.Register(static obj =>
+            {
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput);
+        }
 
         _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
 
@@ -220,13 +260,16 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = _configDoNotPassFlushCancellationToken
-                ? await _pipeOutput.FlushAsync().ConfigureAwait(false)
-                : await _pipeOutput.FlushAsync(cancellationToken).ConfigureAwait(false);
+            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
-
+            // noop
+        }
+        finally
+        {
+            if (ctRegistration != null)
+                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
         }
 
         OnSent?.Invoke();

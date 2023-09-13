@@ -38,7 +38,6 @@ public class BaseTests
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-
         //_logger = new ConsoleLogger();
         Trace.Listeners.Add(new ConsoleTraceListener());
         _socketDirectory = Directory.CreateTempSubdirectory("socketTests");

@@ -15,6 +15,8 @@ public class ConsoleLogger : INexusLogger
 
     private readonly ConsoleLogger _baseLogger;
 
+    public INexusLogger.LogLevel MinLogLevel { get; set; } = INexusLogger.LogLevel.Trace;
+
     public ConsoleLogger()
     {
         _baseLogger = this;
@@ -37,16 +39,19 @@ public class ConsoleLogger : INexusLogger
         if (!_baseLogger.LogEnabled)
             return;
 
+        if (logLevel < MinLogLevel)
+            return;
+
         _outWriter.WriteLine($"[{_sw.ElapsedTicks/(double)Stopwatch.Frequency:0.000000}]{_prefix} [{category}]: {message} {exception}");
     }
 
     public INexusLogger CreateLogger(string? category)
     {
-        return new ConsoleLogger(_baseLogger, category, _prefix);
+        return new ConsoleLogger(_baseLogger, category, _prefix) { MinLogLevel = MinLogLevel };
     }
 
     public INexusLogger CreateLogger(string? category, string prefix)
     {
-        return new ConsoleLogger(_baseLogger, category, prefix);
+        return new ConsoleLogger(_baseLogger, category, prefix) { MinLogLevel = MinLogLevel };
     }
 }

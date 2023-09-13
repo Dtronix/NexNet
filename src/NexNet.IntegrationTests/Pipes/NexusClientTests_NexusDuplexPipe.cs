@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -13,11 +14,11 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
         //BlockForClose = true;
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
         int count = 0;
         
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 10;
+        const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -40,7 +41,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await pipe.Output.WriteAsync(Data).Timeout(1);
         }
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(100);
     }
 
     [TestCase(Type.Uds)]

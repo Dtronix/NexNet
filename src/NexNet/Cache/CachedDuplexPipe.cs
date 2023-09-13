@@ -13,7 +13,7 @@ internal class CachedDuplexPipe
         if (!_cache.TryTake(out var cachedPipe))
             cachedPipe = new NexusDuplexPipe();
 
-        cachedPipe.IsInCached = false;
+        cachedPipe.IsInCache = false;
         cachedPipe.Setup(initialId, session);
 
         return cachedPipe;
@@ -21,10 +21,10 @@ internal class CachedDuplexPipe
 
     public void Return(NexusDuplexPipe pipe)
     {
-        if(pipe.IsInCached)
+        if(pipe.IsInCache)
             return;
 
-        pipe.IsInCached = true;
+        pipe.IsInCache = true;
         pipe.Reset();
         _cache.Add(pipe);
     }
