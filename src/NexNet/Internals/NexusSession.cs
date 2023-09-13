@@ -279,7 +279,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (_config.InternalNoLingerOnShutdown)
         {
-            await _transportConnection.CloseAsync(false).ConfigureAwait(false);
+            try
+            {
+                await _transportConnection.CloseAsync(false).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Logger?.LogError(e, "Error while closing transport connection.");
+            }
+            
             return;
         }
         else
@@ -302,7 +310,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
 
             _pipeOutput = null;
-            await _transportConnection.CloseAsync(true);
+            try
+            {
+                await _transportConnection.CloseAsync(true).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Logger?.LogError(e, "Error while closing transport connection.");
+            }
+
         }
 
         // If we match a limited type of disconnects, attempt to reconnect if we are the client

@@ -31,7 +31,7 @@ public static class NexusChannelExtensions
         CancellationToken cancellationToken = default)
     {
         var writer = await channel.GetWriterAsync();
-        await WriteAndComplete<T>(writer, enumerableData, chunkSize, cancellationToken);
+        await WriteAndComplete<T>(writer, enumerableData, chunkSize, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -58,19 +58,19 @@ public static class NexusChannelExtensions
 
             foreach (var chunk in dataChunks)
             {
-                await writer.WriteAsync(chunk, cancellationToken);
+                await writer.WriteAsync(chunk, cancellationToken).ConfigureAwait(false);
             }
         }
         else
         {
             foreach (var data in enumerableData)
             {
-                await writer.WriteAsync(data, cancellationToken);
+                await writer.WriteAsync(data, cancellationToken).ConfigureAwait(false);
             }
 
         }
 
-        await writer.CompleteAsync();
+        await writer.CompleteAsync().ConfigureAwait(false);
     }
 
     /// <summary>
@@ -107,8 +107,8 @@ public static class NexusChannelExtensions
         int estimatedSize = 0,
         CancellationToken cancellationToken = default)
     { 
-        var reader = await channel.GetReaderAsync();
-        return await ReadUntilComplete<T>(reader, estimatedSize, cancellationToken);
+        var reader = await channel.GetReaderAsync().ConfigureAwait(false);
+        return await ReadUntilComplete<T>(reader, estimatedSize, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -153,7 +153,8 @@ public static class NexusChannelExtensions
             if (reader.IsComplete && previousBufferLength == 0)
                 break;
 
-            var readResult = await reader.ReadAsync(converter, cancellationToken);
+            var readResult = await reader.ReadAsync(converter, cancellationToken)
+                .ConfigureAwait(false);
             var resultCount = readResult.Count;
             if (reader.IsComplete
                 && resultCount == 0
