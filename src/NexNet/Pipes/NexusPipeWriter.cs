@@ -134,10 +134,8 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         {
             cancellationTokenRegistration = cancellationToken.Register(static (object? ctsObject) =>
             {
-                var (cts, logger) = ((CancellationTokenSource, INexusLogger?))ctsObject!;
-                logger?.LogTrace("Canceled Nexus Pipe Writer");
-                cts.Cancel();
-            }, (_flushCts, _logger));
+                Unsafe.As<CancellationTokenSource?>(ctsObject)?.Cancel();
+            }, _flushCts);
         }
 
         // If we are paused, wait for the semaphore to be released.

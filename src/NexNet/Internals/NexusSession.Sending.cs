@@ -50,10 +50,8 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
-                logger?.LogTrace("Cancelling pending flush1");
-                pipeOutput?.CancelPendingFlush();
-            }, (_pipeOutput, Logger), false);
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput, false);
         }
 
         var header = _bufferWriter.GetMemory(3);
@@ -150,10 +148,8 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
-                logger?.LogTrace("Cancelling pending flush2");
-                pipeOutput?.CancelPendingFlush();
-            }, (_pipeOutput, Logger), false);
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput, false);
         }
 
         var length = (int)body.Length;
@@ -265,10 +261,8 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
-                logger?.LogTrace("Cancelling pending flush3");
-                pipeOutput?.CancelPendingFlush();
-            }, (_pipeOutput, Logger), false);
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, _pipeOutput, false);
         }
 
         _config.InternalOnSend?.Invoke(this, new[] { (byte)type });

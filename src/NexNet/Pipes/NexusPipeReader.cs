@@ -149,7 +149,6 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
             _logger?.LogTrace($"Pipe {_stateManager.Id} has buffered {length} new bytes.");
 
-
             // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
             _buffer.Advance(length);

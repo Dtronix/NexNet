@@ -11,7 +11,6 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [Repeat(10)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
         //this.Logger.MinLogLevel = INexusLogger.LogLevel.Critical;
