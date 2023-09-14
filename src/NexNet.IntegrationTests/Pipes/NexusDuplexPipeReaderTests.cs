@@ -10,8 +10,8 @@ internal class NexusDuplexPipeReaderTests
     private NexusPipeReader CreateReader(IPipeStateManager? stateManager = null)
     {
         stateManager ??= new PipeStateManagerStub();
-        var reader = new NexusPipeReader(stateManager);
-        reader.Setup(
+        var reader = new NexusPipeReader(
+            stateManager,
             null,//new ConsoleLogger(""),
             true,
             1024 * 128,
@@ -373,8 +373,9 @@ internal class NexusDuplexPipeReaderTests
     {
         var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
         var data = new ReadOnlySequence<byte>(new byte[1024]);
-        var reader = CreateReader(stateManager);
-        reader.Setup(
+        stateManager ??= new PipeStateManagerStub();
+        var reader = new NexusPipeReader(
+            stateManager,
             null,//new ConsoleLogger(""),
             true,
             1024 * 128,
@@ -393,13 +394,16 @@ internal class NexusDuplexPipeReaderTests
     {
         var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
         var data = new ReadOnlySequence<byte>(new byte[1024]);
-        var reader = CreateReader(stateManager);
-        reader.Setup(
+        stateManager ??= new PipeStateManagerStub();
+        var reader = new NexusPipeReader(
+            stateManager,
             null,//new ConsoleLogger(""),
             true,
             1024 * 128,
             1024 * 1024,
             1024 * 32);
+
+
 
         for (var j = 0; j < 10; j++)
         {

@@ -1,15 +1,14 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals;
 
 namespace NexNet.Pipes;
 
 internal class RentedNexusDuplexPipe : NexusDuplexPipe, IRentedNexusDuplexPipe
 {
-    private readonly int _rentedStateId;
-
-    public RentedNexusDuplexPipe()
+    public RentedNexusDuplexPipe(byte localId, INexusSession session)
+        : base(localId, session)
     {
-        _rentedStateId = StateId;
     }
 
     internal NexusPipeManager? Manager;
@@ -19,12 +18,7 @@ internal class RentedNexusDuplexPipe : NexusDuplexPipe, IRentedNexusDuplexPipe
         var manager = Interlocked.Exchange(ref Manager, null);
 
         if (manager == null)
-        {
-            //Logger?.LogError($"Failed to dispose rented pipe {_rentedStateId} {StateId}");
             return default;
-        }
-
-        //Logger?.LogError($"Returning rented pipe {_rentedStateId} {StateId}");
 
         return manager!.ReturnPipe(this);
     }

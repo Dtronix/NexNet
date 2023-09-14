@@ -13,9 +13,8 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesData()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager());
         var messenger = new DummySessionMessenger();
-        nexusPipeWriter.Setup(new ConsoleLogger(), messenger, true, ushort.MaxValue);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), messenger, true, ushort.MaxValue);
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -35,9 +34,8 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesDataWithPartialFlush()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager());
         var messenger = new DummySessionMessenger();
-        nexusPipeWriter.Setup(new ConsoleLogger(), messenger, true, 1);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), messenger, true, 1);
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -57,13 +55,12 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesCancels()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager())
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };
 
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
-        nexusPipeWriter.Setup(new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue);
 
         var cts = new CancellationTokenSource(100);
         var writeResult = await writer.WriteAsync(ComplexMessage.Random(), cts.Token).Timeout(1);
@@ -75,13 +72,12 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesCancelsImmediately()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager())
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };
 
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
-        nexusPipeWriter.Setup(new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue);
 
         var cts = new CancellationTokenSource();
         cts.Cancel();

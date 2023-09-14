@@ -11,14 +11,16 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [Repeat(10)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
+        //this.Logger.MinLogLevel = INexusLogger.LogLevel.Critical;
         //BlockForClose = true;
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
         
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 1000;
+        const int iterations = 8000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -41,7 +43,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await pipe.Output.WriteAsync(Data).Timeout(1);
         }
 
-        await tcs.Task.Timeout(100);
+        await tcs.Task.Timeout(10);
     }
 
     [TestCase(Type.Uds)]
@@ -75,7 +77,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeWriterSendsData(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
+        var (_, sNexus, _, cNexus, _) = await Setup(type, true);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {

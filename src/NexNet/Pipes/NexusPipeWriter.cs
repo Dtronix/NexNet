@@ -9,7 +9,7 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Pipes;
 
-internal class NexusPipeWriter : PipeWriter
+internal class NexusPipeWriter : PipeWriter, IDisposable
 {
     private readonly IPipeStateManager _stateManager;
 
@@ -18,17 +18,13 @@ internal class NexusPipeWriter : PipeWriter
     private bool _isCompleted;
     private CancellationTokenSource? _flushCts;
     private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
-    private int _chunkSize;
+    private readonly int _chunkSize;
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
     private bool _pauseWriting;
-    private INexusLogger? _logger;
-    private ISessionMessenger? _messenger;
-    private NexusDuplexPipe.State _completedFlag;
-
-    public NexusPipeWriter(IPipeStateManager stateManager)
-    {
-        _stateManager = stateManager;
-    }
+    private readonly INexusLogger? _logger;
+    private readonly ISessionMessenger? _messenger;
+    private readonly NexusDuplexPipe.State _completedFlag;
+    private bool _hasPipeId;
 
     /// <summary>
     /// Set to true to pause writing to the pipe.
@@ -46,11 +42,14 @@ internal class NexusPipeWriter : PipeWriter
         }
     }
 
-    /// <summary>
-    /// Sets up the pipe writer for use.
-    /// </summary>
-    public void Setup(INexusLogger? logger, ISessionMessenger sessionMessenger, bool isServer, int chunkSize)
+    public NexusPipeWriter(
+        IPipeStateManager stateManager, 
+        INexusLogger? logger,
+        ISessionMessenger sessionMessenger, 
+        bool isServer, int chunkSize)
     {
+        _stateManager = stateManager;
+
         _messenger = sessionMessenger ?? throw new ArgumentNullException(nameof(sessionMessenger));
         _logger = logger;
         _chunkSize = chunkSize; // _session.Config.NexusPipeFlushChunkSize;
@@ -59,23 +58,6 @@ internal class NexusPipeWriter : PipeWriter
             ? NexusDuplexPipe.State.ClientReaderServerWriterComplete
             : NexusDuplexPipe.State.ClientWriterServerReaderComplete;
     }
-
-    /// <summary>
-    /// Resets the pipe writer for reuse.
-    /// </summary>
-    public void Reset()
-    {
-        _bufferWriter.Reset();
-        _isCanceled = false;
-        _isCompleted = false;
-        _flushCts?.Dispose();
-        _flushCts = null;
-        PauseWriting = false;
-
-        // Reset the pause Semaphore back to 0.
-        _pauseSemaphore.Wait(0);
-    }
-
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override void Advance(int bytes)
@@ -126,16 +108,10 @@ internal class NexusPipeWriter : PipeWriter
         _isCompleted = true;
     }
 
-    public override async ValueTask<FlushResult> FlushAsync(
-        CancellationToken cancellationToken = new CancellationToken())
+    public override async ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
         if (_isCompleted)
             return new FlushResult(_isCanceled, _isCompleted);
-
-        static void CancelCallback(object? ctsObject)
-        {
-            Unsafe.As<CancellationTokenSource>(ctsObject)!.Cancel();
-        }
 
         if (_flushCts?.IsCancellationRequested == true)
             return new FlushResult(_isCanceled, _isCompleted);
@@ -150,7 +126,19 @@ internal class NexusPipeWriter : PipeWriter
 
         // ReSharper disable once UseAwaitUsing
         // TODO: Review only calling when the token can be canceled.
-        using var reg = cancellationToken.Register(CancelCallback, _flushCts);
+
+        CancellationTokenRegistration? cancellationTokenRegistration = null;
+
+        // Only register the cancellation token if it can be canceled.
+        if (cancellationToken.CanBeCanceled)
+        {
+            cancellationTokenRegistration = cancellationToken.Register(static (object? ctsObject) =>
+            {
+                var (cts, logger) = ((CancellationTokenSource, INexusLogger?))ctsObject!;
+                logger?.LogTrace("Canceled Nexus Pipe Writer");
+                cts.Cancel();
+            }, (_flushCts, _logger));
+        }
 
         // If we are paused, wait for the semaphore to be released.
         if (PauseWriting)
@@ -166,9 +154,18 @@ internal class NexusPipeWriter : PipeWriter
                 _flushCts = null;
                 return new FlushResult(true, _isCompleted);
             }
+            finally
+            {
+                if(cancellationTokenRegistration != null)
+                    await cancellationTokenRegistration.Value.DisposeAsync();
+            }
         }
 
-        BitConverter.TryWriteBytes(_pipeId.Span, _stateManager.Id);
+        if (!_hasPipeId)
+        {
+            BitConverter.TryWriteBytes(_pipeId.Span, _stateManager.Id);
+            _hasPipeId = true;
+        }
 
         var buffer = _bufferWriter.GetBuffer();
 
@@ -181,7 +178,12 @@ internal class NexusPipeWriter : PipeWriter
         var flushPosition = 0;
 
         if (_messenger == null)
+        {
+            if (cancellationTokenRegistration != null)
+                await cancellationTokenRegistration.Value.DisposeAsync();
+
             throw new InvalidOperationException("Session is null.");
+        }
 
         while (true)
         {
@@ -234,6 +236,16 @@ internal class NexusPipeWriter : PipeWriter
                 await _stateManager.NotifyState().ConfigureAwait(false);
         }
 
+        if(cancellationTokenRegistration != null)
+            await cancellationTokenRegistration.Value.DisposeAsync();
+
         return new FlushResult(_isCanceled, _isCompleted);
+    }
+
+    public void Dispose()
+    {
+        _bufferWriter.Dispose();
+        _flushCts?.Dispose();
+        _pauseSemaphore.Dispose();
     }
 }

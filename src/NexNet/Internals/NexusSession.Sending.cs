@@ -50,8 +50,10 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput);
+                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
+                logger?.LogTrace("Cancelling pending flush1");
+                pipeOutput?.CancelPendingFlush();
+            }, (_pipeOutput, Logger), false);
         }
 
         var header = _bufferWriter.GetMemory(3);
@@ -81,6 +83,10 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             // ReSharper disable once MethodSupportsCancellation
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+
+            // Return if the operation was canceled.
+            if (result.IsCanceled)
+                return;
         }
         catch (ObjectDisposedException)
         {
@@ -94,7 +100,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
         OnSent?.Invoke();
 
-        if (result.IsCanceled || result.IsCompleted)
+        if (result.IsCompleted)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
@@ -121,7 +127,11 @@ internal partial class NexusSession<TNexus, TProxy>
     /// | Body            | Variable     | The body of the message. Its length is specified by the 'Content Length'. 
     /// </remarks>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
-    public async ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
+    public async ValueTask SendHeaderWithBody(
+        MessageType type, 
+        ReadOnlyMemory<byte>? messageHeader, 
+        ReadOnlySequence<byte> body,
+        CancellationToken cancellationToken = default)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -140,8 +150,10 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput);
+                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
+                logger?.LogTrace("Cancelling pending flush2");
+                pipeOutput?.CancelPendingFlush();
+            }, (_pipeOutput, Logger), false);
         }
 
         var length = (int)body.Length;
@@ -175,10 +187,18 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             // ReSharper disable once MethodSupportsCancellation
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+
+            // Return if the operation was canceled.
+            if (result.IsCanceled)
+                return;
         }
         catch (ObjectDisposedException)
         {
             // noop
+        }
+        catch (Exception e)
+        {
+            Logger?.LogCritical(e, "Error while flushing");
         }
         finally
         {
@@ -188,7 +208,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
         OnSent?.Invoke();
 
-        if (result.IsCanceled || result.IsCompleted)
+        if (result.IsCompleted)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
@@ -245,8 +265,10 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             ctRegistration = cancellationToken.Register(static obj =>
             {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput);
+                var (pipeOutput, logger) = ((PipeWriter?, INexusLogger?))obj!;
+                logger?.LogTrace("Cancelling pending flush3");
+                pipeOutput?.CancelPendingFlush();
+            }, (_pipeOutput, Logger), false);
         }
 
         _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
@@ -261,6 +283,10 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             // ReSharper disable once MethodSupportsCancellation
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+
+            // Return if the operation was canceled.
+            if (result.IsCanceled)
+                return;
         }
         catch (ObjectDisposedException)
         {
@@ -274,7 +300,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
         OnSent?.Invoke();
 
-        if (result.IsCanceled || result.IsCompleted)
+        if (result.IsCompleted)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 }
