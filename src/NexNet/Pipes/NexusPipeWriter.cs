@@ -81,7 +81,14 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     public override void CancelPendingFlush()
     {
         _isCanceled = true;
-        _flushCts?.Cancel();
+        try
+        {
+            _flushCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // noop
+        }
     }
 
     public override ValueTask CompleteAsync(Exception? exception = null)

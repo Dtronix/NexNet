@@ -11,7 +11,11 @@
     <Optimize>true</Optimize>
     <Configuration>Release</Configuration>
     <IsPackable>false</IsPackable>
-  </PropertyGroup>    
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\NexNet.IntegrationTests\ConsoleLogger.cs" Link="ConsoleLogger.cs" />
+  </ItemGroup>    
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.13.8" />
     <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.13.8" />

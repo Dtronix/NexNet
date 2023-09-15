@@ -14,7 +14,7 @@ internal class NexusChannelWriterTests
     public async Task WritesData()
     {
         var messenger = new DummySessionMessenger();
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), messenger, true, ushort.MaxValue);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue);
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -35,7 +35,7 @@ internal class NexusChannelWriterTests
     public async Task WritesDataWithPartialFlush()
     {
         var messenger = new DummySessionMessenger();
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), messenger, true, 1);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1);
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -55,7 +55,7 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesCancels()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };
@@ -72,7 +72,7 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesCancelsImmediately()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };

@@ -52,7 +52,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
         where T : unmanaged
     {
         var messenger = new DummySessionMessenger();
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), messenger, true, 1);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1);
 
         var writer = new NexusChannelWriterUnmanaged<T>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
@@ -71,7 +71,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
     [Test]
     public async Task WritesCancels()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };
@@ -88,7 +88,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
     [Test]
     public async Task WritesCancelsImmediately()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), new ConsoleLogger(), new DummySessionMessenger(), true, ushort.MaxValue)
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
         {
             PauseWriting = true
         };

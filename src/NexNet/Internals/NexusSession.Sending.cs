@@ -82,7 +82,6 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             // ReSharper disable once MethodSupportsCancellation
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
-            Logger?.LogTrace($"FlushResult:  {result.IsCanceled}, {result.IsCompleted}");
 
             // Return if the operation was canceled.
             if (result.IsCanceled)

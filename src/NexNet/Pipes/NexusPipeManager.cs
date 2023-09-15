@@ -13,28 +13,21 @@ namespace NexNet.Pipes;
 
 internal class NexusPipeManager
 {
-
     private INexusLogger? _logger;
     private INexusSession _session = null!;
     private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
-    //private readonly ConcurrentDictionary<byte, NexusDuplexPipe> _initializingPipes = new();
-
-
     private readonly BitArray _usedIds = new(256, false);
-    //private readonly Stack<byte> _availableIds = new Stack<byte>();
-
     private int _currentId = 0;
-
     private bool _isCanceled;
 
     public void Setup(INexusSession session)
     {
+        _currentId = 0;
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
         _logger = session.Logger?.CreateLogger<NexusPipeManager>();
     }
-
 
     public IRentedNexusDuplexPipe? RentPipe()
     {
@@ -94,6 +87,7 @@ internal class NexusPipeManager
         var pipe = new NexusDuplexPipe(localId, _session)
         {
             InitiatingPipe = false,
+            Id = id
         };
 
         if (!_activePipes.TryAdd(id, pipe))
@@ -101,15 +95,14 @@ internal class NexusPipeManager
 
         // Signal that the pipe is ready to receive and send messages.
         pipe.UpdateState(State.Ready);
-        pipe.Id = id;
         await pipe.NotifyState().ConfigureAwait(false);
-
+        _logger?.LogError($"Sending Ready Notification");
         return pipe;
     }
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        _logger?.LogError($"DeregisterPipe({pipe.Id});");
+        _logger?.LogTrace($"DeregisterPipe({pipe.Id});");
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
         {
@@ -159,6 +152,7 @@ internal class NexusPipeManager
 
     public DisconnectReason UpdateState(ushort id, NexusDuplexPipe.State state)
     {
+        _logger?.LogError($"Pipe {id} update state {state}");
         if (_isCanceled)
             return DisconnectReason.None;
 
@@ -182,6 +176,7 @@ internal class NexusPipeManager
                 _activePipes.TryAdd(id, pipe);
                 pipe.Id = id;
                 pipe.UpdateState(state);
+                _logger?.LogError($"Readies pipe {id}");
                 return DisconnectReason.None;
             }
             else if (state == State.Complete)

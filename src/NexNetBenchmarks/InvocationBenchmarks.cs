@@ -1,81 +1,96 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using BenchmarkDotNet;
 using BenchmarkDotNet.Attributes;
 using NexNet;
+using NexNet.IntegrationTests;
 using NexNet.Transports;
 
-namespace NexNetBenchmarks
+namespace NexNetBenchmarks;
+
+public class InvocationBenchmarks
 {
-    public class InvocationBenchmarks
+    private NexusClient<ClientNexus, ClientNexus.ServerProxy> _client;
+    private NexusServer<ServerNexus, ServerNexus.ClientProxy> _server;
+    private ReadOnlyMemory<byte> _uploadBuffer;
+    private ConsoleLogger _log;
+    [GlobalSetup]
+    public async Task GlobalSetup()
     {
-        private NexusClient<ClientNexus, ClientNexus.ServerProxy> _client;
-        private NexusServer<ServerNexus, ServerNexus.ClientProxy> _server;
-        private ReadOnlyMemory<byte> _uploadBuffer;
+        _uploadBuffer = new byte[(1024 * 16)];
+        var path = $"test.sock";
+        if (File.Exists(path))
+            File.Delete(path);
 
-        [GlobalSetup]
-        public async Task GlobalSetup()
-        {
-            _uploadBuffer = new byte[1024 * 16];
-            var path = "test.sock";
-            if (File.Exists(path))
-                File.Delete(path);
-
-            var serverConfig = new UdsServerConfig()
-            {
-                EndPoint = new UnixDomainSocketEndPoint(path),
-            };
-            var clientConfig = new UdsClientConfig()
-            {
-                EndPoint = new UnixDomainSocketEndPoint(path),
-            };
-
-            _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
-            _server = ServerNexus.CreateServer(serverConfig, static () => new ServerNexus());
-            await _server.StartAsync();
-            await _client.ConnectAsync();
-        }
-
-        [GlobalCleanup]
-        public async Task GlobalCleanup()
-        {
-            await _client.DisconnectAsync();
-            await _server.StopAsync();
-        }
-
-        //[Benchmark]
-        public async ValueTask InvocationNoArgument()
-        {
-            await _client.Proxy.InvocationNoArgument();
-        }
-
-        //[Benchmark]
-        public async ValueTask InvocationUnmanagedArgument()
-        {
-            await _client.Proxy.InvocationUnmanagedArgument(12345);
-        }
-
-        //[Benchmark]
-        public async ValueTask InvocationUnmanagedMultipleArguments()
-        {
-            await _client.Proxy.InvocationUnmanagedMultipleArguments(12345, 128475129847, 24812, 298471920875185871, 19818479124.12871924821d);
-        }
-
-        //[Benchmark]
-        public async ValueTask InvocationNoArgumentWithResult()
-        {
-            await _client.Proxy.InvocationNoArgumentWithResult();
-        }  
+        _log = new ConsoleLogger(500) { MinLogLevel = INexusLogger.LogLevel.Information };
         
-        [Benchmark]
-        public async ValueTask InvocationWithDuplexPipe_Upload()
+        var serverConfig = new UdsServerConfig()
         {
-            await using var pipe = _client.CreatePipe();
-            await _client.Proxy.InvocationWithDuplexPipe_Upload(pipe);
-            await pipe.ReadyTask;
-            await pipe.Output.WriteAsync(_uploadBuffer);
+            EndPoint = new UnixDomainSocketEndPoint(path),
+            //Logger = _log.CreateLogger("SV"),
+        };
+        var clientConfig = new UdsClientConfig()
+        {
+            EndPoint = new UnixDomainSocketEndPoint(path),
+            //Logger = _log.CreateLogger("CL"),
+        };
+
+        _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
+        _server = ServerNexus.CreateServer(serverConfig, static () => new ServerNexus());
+        await _server.StartAsync();
+        await _client.ConnectAsync();
+    }
+
+    [GlobalCleanup]
+    public async Task GlobalCleanup()
+    {
+        await _client.DisconnectAsync();
+        await _server.StopAsync();
+    }
+
+    //[Benchmark]
+    public async ValueTask InvocationNoArgument()
+    {
+        await _client.Proxy.InvocationNoArgument();
+    }
+
+    //[Benchmark]
+    public async ValueTask InvocationUnmanagedArgument()
+    {
+        await _client.Proxy.InvocationUnmanagedArgument(12345);
+    }
+
+    //[Benchmark]
+    public async ValueTask InvocationUnmanagedMultipleArguments()
+    {
+        await _client.Proxy.InvocationUnmanagedMultipleArguments(12345, 128475129847, 24812, 298471920875185871, 19818479124.12871924821d);
+    }
+
+    //[Benchmark]
+    public async ValueTask InvocationNoArgumentWithResult()
+    {
+        await _client.Proxy.InvocationNoArgumentWithResult();
+    }  
+        
+    [Benchmark]
+    public async ValueTask InvocationWithDuplexPipe_Upload()
+    {
+        await using var pipe = _client.CreatePipe();
+        await _client.Proxy.InvocationWithDuplexPipe_Upload(pipe);
+        try
+        {
+            await pipe.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
         }
+        catch (Exception e)
+        {
+            _log.Flush(Console.Out);
+            throw;
+        }
+        
+        await pipe.Output.WriteAsync(_uploadBuffer);
     }
 }

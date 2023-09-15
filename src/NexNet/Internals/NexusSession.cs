@@ -241,7 +241,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _registeredDisconnectReason = reason;
 
-        Logger?.LogError($"Session disconnected with reason: {reason}");
+        Logger?.LogInfo($"Session disconnected with reason: {reason}");
 
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
