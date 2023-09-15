@@ -56,8 +56,6 @@ internal partial class ClientGreetingMessage : IMessageBase
         if (cache == null)
             return;
 
-        cache.Return(this);
-
         if (_isArgumentPoolArray)
         {
 
@@ -67,8 +65,10 @@ internal partial class ClientGreetingMessage : IMessageBase
             if (AuthenticationToken.IsEmpty)
                 return;
 
-            IMessageBase.Return(AuthenticationToken);
+            IMessageBase.ReturnMemoryPackMemory(AuthenticationToken);
             AuthenticationToken = default;
         }
+
+        cache.Return(this);
     }
 }
