@@ -2,6 +2,7 @@
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -60,7 +61,7 @@ internal class NexusChannelReaderWriterTestBase
         }
     }
 
-    protected (NexusPipeWriter, NexusPipeReader) GetConnectedPipeReaderWriter()
+    protected (NexusPipeWriter, NexusPipeReader) GetConnectedPipeReaderWriter(bool log = false)
     {
         NexusPipeWriter nexusPipeWriter = null!;
         NexusPipeReader nexusPipeReader = null!;
@@ -73,14 +74,14 @@ internal class NexusChannelReaderWriterTestBase
             }
         };
         nexusPipeWriter = new NexusPipeWriter(
-            new DummyPipeStateManager(),
-            new ConsoleLogger(),
+        new DummyPipeStateManager(),
+            log ? new ConsoleLogger() : null,
             messenger,
             true,
             ushort.MaxValue);
         nexusPipeReader = new NexusPipeReader(
             new DummyPipeStateManager(),
-            new ConsoleLogger(),
+            log ? new ConsoleLogger() : null,
             true,
             ushort.MaxValue,
             0,

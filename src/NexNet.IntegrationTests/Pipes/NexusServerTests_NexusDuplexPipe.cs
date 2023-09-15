@@ -16,7 +16,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         var count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 10;
+        const int iterations = 10000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -118,7 +118,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeWriterCompletesUponCompleteAsync(Type type)
     {
-        //Console.WriteLine("Starting test");
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var completedTcs = new TaskCompletionSource();
 
@@ -132,7 +131,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             {
                 result = await pipe.Output.WriteAsync(Data).Timeout(1);
 
-                //Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
                 if (result.IsCompleted)
                     break;
 

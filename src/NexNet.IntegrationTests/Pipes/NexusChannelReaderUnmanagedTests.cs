@@ -19,7 +19,7 @@ internal class NexusChannelReaderUnmanagedTests
     public async Task ReadsData<T>(T inputData)
         where T : unmanaged
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
 
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         await pipeReader.BufferData(Utilities.GetBytes(inputData));
@@ -32,7 +32,7 @@ internal class NexusChannelReaderUnmanagedTests
     public async Task CancelsReadDelayed<T>()
         where T : unmanaged
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
         var cts = new CancellationTokenSource(100);
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
@@ -45,7 +45,7 @@ internal class NexusChannelReaderUnmanagedTests
     [Test]
     public async Task CancelsReadImmediate()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
         var cts = new CancellationTokenSource(100);
         cts.Cancel();
@@ -59,7 +59,7 @@ internal class NexusChannelReaderUnmanagedTests
     [Test]
     public async Task Completes()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<long>(pipeReader);
 
         // ReSharper disable once MethodHasAsyncOverload
@@ -87,7 +87,7 @@ internal class NexusChannelReaderUnmanagedTests
         where T : unmanaged
     {
         var tcs = new TaskCompletionSource();
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
 
         _ = Task.Run(async () =>
@@ -121,7 +121,7 @@ internal class NexusChannelReaderUnmanagedTests
         where T : unmanaged
     {
         const int iterations = 1000;
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         var data = Utilities.GetBytes(inputData);
         var count = 0;
@@ -155,7 +155,7 @@ internal class NexusChannelReaderUnmanagedTests
         where T : unmanaged
     {
         const int iterations = 1000;
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         var data = Utilities.GetBytes(inputData);
         var count = 0;
@@ -202,7 +202,7 @@ internal class NexusChannelReaderUnmanagedTests
     public async Task ReadsWithPartialWrites<T>(T inputData)
         where T : unmanaged
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), new ConsoleLogger(), true, 0, 0, 0);
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
         var data = Utilities.GetBytes(inputData);
 

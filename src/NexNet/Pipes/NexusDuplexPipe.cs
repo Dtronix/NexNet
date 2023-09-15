@@ -65,7 +65,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     //private readonly Pipe _inputPipe = new Pipe();
     private readonly NexusPipeReader _inputPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
-    private readonly TaskCompletionSource? _readyTcs;
+    private readonly TaskCompletionSource _readyTcs;
     private readonly INexusSession? _session;
     private volatile State _currentState = State.Unset;
 
@@ -103,7 +103,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// <summary>
     /// Task which completes when the pipe is ready for usage on the invoking side.
     /// </summary>
-    public Task ReadyTask => _readyTcs!.Task;
+    public Task ReadyTask => _readyTcs.Task;
 
     /// <summary>
     /// State of the pipe.
@@ -222,17 +222,16 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
 
         var isServer = _session.IsServer;
 
-        Logger?.LogError($"{Id}: Current State: {currentState}; Update State: {updatedState}; From {new StackTrace().GetFrame(1).GetMethod().Name}");
+        Logger?.LogTrace($"{Id}: Current State: {currentState}; Update State: {updatedState};");
 
         if (currentState == State.Unset)
         {
             if (updatedState == State.Ready)
             {
-                Logger?.LogError($"--Updated {Id} state to ready from Unset to: {updatedState}");
                 _currentState = State.Ready;
 
                 // Set the ready task.
-                _readyTcs?.TrySetResult();
+                _readyTcs.TrySetResult();
 
                 return true;
             }
@@ -242,7 +241,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
                 // This normally happens when the pipe is reset before it is ready or after it has been reset.
                 // Honestly, we shouldn't reach here.
                 Logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
-                _readyTcs?.TrySetCanceled();
+                _readyTcs.TrySetCanceled();
                 return false;
             }
         }
@@ -326,6 +325,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
 
     public void Dispose()
     {
+        // Set the task to canceled in case the pipe was reset before it was ready.
+        _readyTcs.TrySetCanceled();
+
         _inputPipeReader.Dispose();
         _outputPipeWriter.Dispose();
 
@@ -335,9 +337,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             Logger?.LogError($"Resetting and Sending pipe: {Id} {_currentState}");
             UpdateState(State.Complete);
         }
-
-        // Set the task to canceled in case the pipe was reset before it was ready.
-        _readyTcs?.TrySetCanceled();
 
         return;
     }

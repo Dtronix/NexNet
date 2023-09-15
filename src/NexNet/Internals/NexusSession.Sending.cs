@@ -7,6 +7,7 @@ using System;
 using System.Runtime.CompilerServices;
 using MemoryPack;
 using Pipelines.Sockets.Unofficial.Arenas;
+using System.Diagnostics;
 
 namespace NexNet.Internals;
 
@@ -74,13 +75,14 @@ internal partial class NexusSession<TNexus, TProxy>
         _bufferWriter.Reset();
         _pipeOutput.Advance(length);
 
-        Logger?.LogTrace($"Sending {TMessage.Type} header and  body with {length} total bytes.");
+        Logger?.LogTrace($"Sending {TMessage.Type} header and body with {length} total bytes.");
 
         FlushResult result = default;
         try
         {
             // ReSharper disable once MethodSupportsCancellation
             result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            Logger?.LogTrace($"FlushResult:  {result.IsCanceled}, {result.IsCompleted}");
 
             // Return if the operation was canceled.
             if (result.IsCanceled)

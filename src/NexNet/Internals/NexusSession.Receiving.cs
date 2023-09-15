@@ -437,7 +437,9 @@ internal partial class NexusSession<TNexus, TProxy>
             case MessageType.DuplexPipeUpdateState:
             {
                 var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
-                PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
+                var updateStateResult = PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
+                if (updateStateResult != DisconnectReason.None)
+                    return updateStateResult;
                 break;
             }
 

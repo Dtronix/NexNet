@@ -6,6 +6,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Messages;
 using static NexNet.Pipes.NexusDuplexPipe;
 
 namespace NexNet.Pipes;
@@ -22,7 +23,7 @@ internal class NexusPipeManager
     private readonly BitArray _usedIds = new(256, false);
     //private readonly Stack<byte> _availableIds = new Stack<byte>();
 
-    private int _currentId = 1;
+    private int _currentId = 0;
 
     private bool _isCanceled;
 
@@ -156,10 +157,10 @@ internal class NexusPipeManager
         return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
-    public void UpdateState(ushort id, NexusDuplexPipe.State state)
+    public DisconnectReason UpdateState(ushort id, NexusDuplexPipe.State state)
     {
         if (_isCanceled)
-            return;
+            return DisconnectReason.None;
 
         if (_activePipes.TryGetValue(id, out var pipe))
         {
@@ -167,19 +168,32 @@ internal class NexusPipeManager
         }
         else
         {
-            var localIdByte = ExtractLocalId(id, _session.IsServer);
-            var partialId = GetPartialIdFromLocalId(localIdByte);
-            if (!_activePipes.TryRemove(partialId, out pipe))
+            if (state == State.Ready)
             {
-                _logger?.LogError($"Could not find pipe with initial ID of {localIdByte}");
-                return;
+                var localIdByte = ExtractLocalId(id, _session.IsServer);
+                var partialId = GetPartialIdFromLocalId(localIdByte);
+                if (!_activePipes.TryRemove(partialId, out pipe))
+                {
+                    _logger?.LogTrace($"Could not find pipe with Full ID of {id} and initial ID of {localIdByte}");
+                    return DisconnectReason.ProtocolError;
+                }
+
+                // Move the pipe to the main active pipes.
+                _activePipes.TryAdd(id, pipe);
+                pipe.Id = id;
+                pipe.UpdateState(state);
+                return DisconnectReason.None;
+            }
+            else if (state == State.Complete)
+            {
+                _logger?.LogTrace($"Pipe is already complete and ignored state update of {state} with Full ID of {id}");
+                return DisconnectReason.None;
             }
 
-            // Move the pipe to the main active pipes.
-            _activePipes.TryAdd(id, pipe);
-            pipe.Id = id;
-            pipe.UpdateState(state);
+            _logger?.LogTrace($"Ignored state update of {state} with Full ID of {id}");
         }
+
+        return DisconnectReason.None;
     }
 
     public void CancelAll()
@@ -245,6 +259,17 @@ internal class NexusPipeManager
         Span<byte> bytes = stackalloc byte[sizeof(ushort)];
         Unsafe.As<byte, ushort>(ref bytes[0]) = id;
         return isServer ? bytes[1] : bytes[0];
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsIdLocalIdOnly(ushort id, bool isServer, out byte localId)
+    {
+        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
+        Unsafe.As<byte, ushort>(ref bytes[0]) = id;
+        localId = isServer ? bytes[1] : bytes[0];
+
+        // If the other ID is 0, then this is a local ID only.
+        return (!isServer ? bytes[1] : bytes[0]) == 0;
     }
 
 

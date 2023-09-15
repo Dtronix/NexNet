@@ -190,11 +190,14 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
             try
             {
+                // We are passing the cancellation token from the method instead of the _flushCts due to
+                // the fact that the _flushCts can be canceled even after this method is completed due
+                // to some transport implementations such as QUIC.
                 await _messenger.SendHeaderWithBody(
                     MessageType.DuplexPipeWrite,
                     _pipeId,
                     sendingBuffer,
-                    _flushCts.Token).ConfigureAwait(false);
+                    cancellationToken).ConfigureAwait(false);
             }
             catch (InvalidOperationException)
             {

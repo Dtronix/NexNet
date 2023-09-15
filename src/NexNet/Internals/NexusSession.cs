@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Pipelines.Sockets.Unofficial.Threading;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
