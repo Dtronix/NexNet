@@ -12,7 +12,7 @@ public class ConsoleLogger : INexusLogger
     private int _currentLineIndex = 0;
     private int _totalLinesWritten = 0;
 
-    public string? Category { get; }
+    public string? Category { get; set; }
 
     public bool LogEnabled { get; set; } = true;
 

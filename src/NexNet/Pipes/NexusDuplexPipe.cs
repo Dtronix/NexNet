@@ -78,12 +78,22 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// <summary>
     /// True if this pipe is the pipe used for initiating the pipe connection.
     /// </summary>
-    internal bool InitiatingPipe;
+    internal readonly bool InitiatingPipe;
 
     /// <summary>
     /// Complete compiled ID containing the client bit and the server bit.
     /// </summary>
-    public ushort Id { get; set; }
+    public ushort Id
+    {
+        get => _id;
+        set
+        {
+            if(Logger != null)
+                Logger.Category = $"NexusDuplexPipe:S{_session!.Id}:P{value}";
+
+            _id = value;
+        }
+    }
 
     /// <summary>
     /// Initial ID of this side of the connection.
@@ -115,15 +125,27 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// </summary>
     protected INexusLogger? Logger;
 
+    private ushort _id;
+
     NexusPipeWriter INexusDuplexPipe.WriterCore => _outputPipeWriter;
     NexusPipeReader INexusDuplexPipe.ReaderCore => _inputPipeReader;
 
-    internal NexusDuplexPipe(byte localId, INexusSession session)
+    internal NexusDuplexPipe(ushort fullId, byte localId, INexusSession session)
     {
         _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
-        Logger = session.Logger?.CreateLogger<NexusDuplexPipe>();
+
+        if(fullId == 0)
+            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:L{localId:000}");
+        else
+        {
+            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:P{fullId:00000}");
+        }
         LocalId = localId;
+        _id = fullId;
+
+        if(fullId == 0)
+            InitiatingPipe = true;
 
         _inputPipeReader = new NexusPipeReader(
             this,
@@ -222,7 +244,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
 
         var isServer = _session.IsServer;
 
-        Logger?.LogTrace($"{Id}: Current State: {currentState}; Update State: {updatedState};");
+        Logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState};");
 
         if (currentState == State.Unset)
         {

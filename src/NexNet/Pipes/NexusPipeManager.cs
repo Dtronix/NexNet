@@ -26,7 +26,7 @@ internal class NexusPipeManager
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
-        _logger = session.Logger?.CreateLogger<NexusPipeManager>();
+        _logger = session.Logger?.CreateLogger($"NexusPipeManager:S{session.Id}");
     }
 
     public IRentedNexusDuplexPipe? RentPipe()
@@ -38,7 +38,6 @@ internal class NexusPipeManager
         var partialId = GetPartialIdFromLocalId(localId);
         var pipe = new RentedNexusDuplexPipe(localId, _session)
         {
-            InitiatingPipe = true,
             Manager = this
         };
 
@@ -84,11 +83,7 @@ internal class NexusPipeManager
 
         var id = GetCompleteId(otherId, out var localId);
 
-        var pipe = new NexusDuplexPipe(localId, _session)
-        {
-            InitiatingPipe = false,
-            Id = id
-        };
+        var pipe = new NexusDuplexPipe(id, localId, _session);
 
         if (!_activePipes.TryAdd(id, pipe))
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
@@ -174,7 +169,10 @@ internal class NexusPipeManager
 
                 // Move the pipe to the main active pipes.
                 _activePipes.TryAdd(id, pipe);
+
+                // Set the full ID of the pipe.
                 pipe.Id = id;
+
                 pipe.UpdateState(state);
                 _logger?.LogError($"Readies pipe {id}");
                 return DisconnectReason.None;

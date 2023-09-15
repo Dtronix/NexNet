@@ -104,7 +104,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession [{Id}]");
+        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession:S{Id}");
 
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);

@@ -7,7 +7,7 @@ namespace NexNet.Pipes;
 internal class RentedNexusDuplexPipe : NexusDuplexPipe, IRentedNexusDuplexPipe
 {
     public RentedNexusDuplexPipe(byte localId, INexusSession session)
-        : base(localId, session)
+        : base(0, localId, session)
     {
     }
 
