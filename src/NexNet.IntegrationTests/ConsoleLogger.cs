@@ -25,7 +25,7 @@ public class ConsoleLogger : INexusLogger
         get => _totalLinesWritten;
     }
 
-    public ConsoleLogger(int maxLines = 500)
+    public ConsoleLogger(int maxLines = 200)
     {
         _lines = new string[maxLines];
         _baseLogger = this;

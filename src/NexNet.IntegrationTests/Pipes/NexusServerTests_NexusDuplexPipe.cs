@@ -53,7 +53,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         var count = 0;
         var largeData = new byte[1024 * 32];
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 1000;
+        const int iterations = 10000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -71,8 +71,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         }
 
         await tcs.Task.Timeout(1);
-
-        Assert.Fail("Test is not complete");
     }
 
     [TestCase(Type.Uds)]
