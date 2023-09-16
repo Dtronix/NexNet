@@ -52,25 +52,25 @@ public class InvocationBenchmarks
         await _server.StopAsync();
     }
 
-    //[Benchmark]
+    [Benchmark]
     public async ValueTask InvocationNoArgument()
     {
         await _client.Proxy.InvocationNoArgument();
     }
 
-    //[Benchmark]
+    [Benchmark]
     public async ValueTask InvocationUnmanagedArgument()
     {
         await _client.Proxy.InvocationUnmanagedArgument(12345);
     }
 
-    //[Benchmark]
+    [Benchmark]
     public async ValueTask InvocationUnmanagedMultipleArguments()
     {
         await _client.Proxy.InvocationUnmanagedMultipleArguments(12345, 128475129847, 24812, 298471920875185871, 19818479124.12871924821d);
     }
 
-    //[Benchmark]
+    [Benchmark]
     public async ValueTask InvocationNoArgumentWithResult()
     {
         await _client.Proxy.InvocationNoArgumentWithResult();
