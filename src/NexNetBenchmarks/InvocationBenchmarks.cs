@@ -14,10 +14,10 @@ namespace NexNetBenchmarks;
 
 public class InvocationBenchmarks
 {
-    private NexusClient<ClientNexus, ClientNexus.ServerProxy> _client;
-    private NexusServer<ServerNexus, ServerNexus.ClientProxy> _server;
+    private NexusClient<ClientNexus, ClientNexus.ServerProxy> _client = null!;
+    private NexusServer<ServerNexus, ServerNexus.ClientProxy> _server = null!;
     private ReadOnlyMemory<byte> _uploadBuffer;
-    private ConsoleLogger _log;
+    private ConsoleLogger _log = null!;
     [GlobalSetup]
     public async Task GlobalSetup()
     {
@@ -26,7 +26,7 @@ public class InvocationBenchmarks
         if (File.Exists(path))
             File.Delete(path);
 
-        _log = new ConsoleLogger(200) { };
+        _log = new ConsoleLogger() { };
         
         var serverConfig = new UdsServerConfig()
         {

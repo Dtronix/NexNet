@@ -85,10 +85,12 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
         const int iterations = 10000;
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) =>
         {
             if (++count == iterations)
                 tcs.SetResult();
+
+            return ValueTask.CompletedTask;
         };
 
         for (var i = 0; i < iterations; i++)
