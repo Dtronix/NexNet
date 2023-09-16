@@ -26,17 +26,17 @@ public class InvocationBenchmarks
         if (File.Exists(path))
             File.Delete(path);
 
-        _log = new ConsoleLogger(500) { MinLogLevel = INexusLogger.LogLevel.Information };
+        _log = new ConsoleLogger(200) { };
         
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = _log.CreateLogger("SV"),
+            Logger = _log.CreateLogger(null, "SV"),
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            //Logger = _log.CreateLogger("CL"),
+            Logger = _log.CreateLogger(null, "CL"),
         };
 
         _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());

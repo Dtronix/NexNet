@@ -143,11 +143,11 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
             if (_isCompleted)
             {
-                _logger?.LogTrace($"Pipe {_stateManager.Id} has is already completed.  Cancelling.");
+                _logger?.LogTrace($"Already completed. Cancelling buffering.");
                 return NexusPipeBufferResult.DataIgnored;
             }
 
-            _logger?.LogTrace($"Pipe {_stateManager.Id} has buffered {length} new bytes.");
+            _logger?.LogTrace($"Buffered {length} new bytes.");
 
             // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
