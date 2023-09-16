@@ -5,6 +5,7 @@ using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace NexNet.Internals;
 
@@ -383,7 +384,10 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 var invocationRequestMessage = message.As<InvocationMessage>();
                 // Throttle invocations.
-                await _invocationSemaphore.WaitAsync().ConfigureAwait(false);
+
+                Logger?.LogTrace($"Started Invoking method {invocationRequestMessage.MethodId}.");
+                
+                await _invocationSemaphore.WaitAsync(_disconnectionCts.Token).ConfigureAwait(false);
 
                 if (!_invocationTaskArgumentsPool.TryTake(out var args))
                     args = new InvocationTaskArguments();
@@ -399,6 +403,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     var message = arguments.Message;
                     try
                     {
+                        arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
                         await session._nexus.InvokeMethod(message).ConfigureAwait(false);
                     }
                     catch (Exception e)

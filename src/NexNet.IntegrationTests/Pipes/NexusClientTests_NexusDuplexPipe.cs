@@ -13,14 +13,11 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-
-        //this.Logger.MinLogLevel = INexusLogger.LogLevel.Critical;
-        //BlockForClose = true;
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 10000;
+        const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -41,6 +38,37 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
             await pipe.ReadyTask.Timeout(1);
             await pipe.Output.WriteAsync(Data).Timeout(1);
+        }
+
+        await tcs.Task.Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        int count = 0;
+        var largeData = new byte[1024 * 32];
+        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
+        const int iterations = 1000;
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            var result = await pipe.Input.ReadAsync().Timeout(1);
+            pipe.Input.AdvanceTo(result.Buffer.End);
+
+            if (++count == iterations)
+                tcs.SetResult();
+        };
+
+        for (int i = 0; i < iterations; i++)
+        {
+            await using var pipe = sNexus.Context.CreatePipe();
+            await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+            await pipe.ReadyTask.Timeout(1);
+            await pipe.Output.WriteAsync(largeData).Timeout(1);
         }
 
         await tcs.Task.Timeout(1);

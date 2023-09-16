@@ -13,7 +13,7 @@ namespace NexNet.Pipes;
 internal class NexusPipeReader : PipeReader, IDisposable
 {
     //private readonly NexusDuplexPipe _nexusDuplexPipe;
-    private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
+    private SemaphoreSlim? _readSemaphore = new SemaphoreSlim(0, 1);
     private readonly CancellationRegistrationArgs _cancelReadingArgs;
 
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
@@ -177,11 +177,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
         if (_stateManager.UpdateState(_writingCompleteFlag))
         {
-            Utilities.TryReleaseSemaphore(_readSemaphore);
+            var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
+            Utilities.TryReleaseSemaphore(semaphore);
             return _stateManager.NotifyState();
         }
-
-        Utilities.TryReleaseSemaphore(_readSemaphore);
 
         return default;
     }
@@ -194,8 +193,8 @@ internal class NexusPipeReader : PipeReader, IDisposable
     public void CompleteNoNotify()
     {
         _isCompleted = true;
-
-        Utilities.TryReleaseSemaphore(_readSemaphore);
+        var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
+        Utilities.TryReleaseSemaphore(semaphore);
     }
 
 
@@ -286,6 +285,9 @@ internal class NexusPipeReader : PipeReader, IDisposable
                 // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
                 do
                 {
+                    if (_readSemaphore == null)
+                        return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+
                     await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 } while (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false);
             }
@@ -306,7 +308,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         else
         {
             // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-            _readSemaphore.Wait(0);
+            _readSemaphore?.Wait(0);
 
         }
 
@@ -408,7 +410,8 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
     public void Dispose()
     {
-        _readSemaphore.Dispose();
+        Interlocked.Exchange(ref _readSemaphore, null)?.Dispose();
+
         lock (_buffer)
         {
             _buffer.Reset();

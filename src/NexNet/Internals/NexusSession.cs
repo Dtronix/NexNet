@@ -49,8 +49,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
-    private volatile int _state; 
-    
+    private volatile int _state;
+
+    private readonly CancellationTokenSource _disconnectionCts;
+
     public NexusPipeManager PipeManager { get; }
 
     public long Id { get; }
@@ -80,6 +82,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
     public Action<ConnectionState>? OnStateChanged;
+    
 
     public ConfigBase Config { get; }
     public bool IsServer { get; }
@@ -100,6 +103,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _sessionManager = configurations.SessionManager;
         IsServer = configurations.IsServer;
         _nexus = configurations.Nexus;
+        _disconnectionCts = new CancellationTokenSource();
         _nexus.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
@@ -328,6 +332,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
 
         _state = ConnectionStateInternal.Disconnected;
+
+        _disconnectionCts.Cancel();
         OnStateChanged?.Invoke(State);
 
         // Cancel all pipe manager pipes and return to the cache.

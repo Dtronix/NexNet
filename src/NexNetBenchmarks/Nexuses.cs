@@ -63,7 +63,7 @@ partial class ServerNexus
         {
             var result = await reader.ReadAsync();
 
-            if(result.IsCompleted)
+            if(result.IsCompleted || result.IsCanceled)
                 break;
 
             reader.AdvanceTo(result.Buffer.End);

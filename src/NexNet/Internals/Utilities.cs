@@ -10,9 +10,9 @@ internal static class Utilities
     /// </summary>
     /// <param name="semaphore">The semaphore to release.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void TryReleaseSemaphore(SemaphoreSlim semaphore)
+    public static void TryReleaseSemaphore(SemaphoreSlim? semaphore)
     {
-        if (semaphore.CurrentCount == 0)
+        if (semaphore?.CurrentCount == 0)
         {
             try
             {

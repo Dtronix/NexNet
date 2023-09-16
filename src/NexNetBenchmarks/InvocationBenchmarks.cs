@@ -31,12 +31,12 @@ public class InvocationBenchmarks
         var serverConfig = new UdsServerConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = _log.CreateLogger(null, "SV"),
+            //Logger = _log.CreateLogger(null, "SV"),
         };
         var clientConfig = new UdsClientConfig()
         {
             EndPoint = new UnixDomainSocketEndPoint(path),
-            Logger = _log.CreateLogger(null, "CL"),
+            //Logger = _log.CreateLogger(null, "CL"),
         };
 
         _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
@@ -81,16 +81,7 @@ public class InvocationBenchmarks
     {
         await using var pipe = _client.CreatePipe();
         await _client.Proxy.InvocationWithDuplexPipe_Upload(pipe);
-        try
-        {
-            await pipe.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
-        }
-        catch (Exception e)
-        {
-            _log.Flush(Console.Out);
-            throw;
-        }
-        
+        await pipe.ReadyTask.WaitAsync(TimeSpan.FromSeconds(1));
         await pipe.Output.WriteAsync(_uploadBuffer);
     }
 }
