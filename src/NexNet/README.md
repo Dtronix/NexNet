@@ -8,7 +8,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Multiple transports and easy extensibility.
 - Server <-> Client communication
   - Cancellable Invocations
-  - Streaming byte data via `INexusDuplexPipe`
+  - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
   - Streaming classes/structs data via `NexusChannel<T>`
   - Proxies can return:
     - void for "fire and forget" invocation situations such as notifications.

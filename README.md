@@ -2,7 +2,25 @@
 
 NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional event-driven functionality into their applications. This framework streamlines the transmission of updates bidirectionally between server-side code and connected clients with resilient communication channels.
 
-Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1)  with additional performance modifications for Pipeline socket transports.
+## Features
+- Automatic reconnection upon timeout or socket losing connection.
+- High performance Socket and Pipeline usage.
+- Multiple transports and easy extensibility.
+- Server <-> Client communication
+  - Cancellable Invocations
+  - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
+  - Streaming classes/structs data via `NexusChannel<T>`
+  - Proxies can return:
+    - void for "fire and forget" invocation situations such as notifications.
+    - ValueTask whcih waiting for invocation completion.
+    - ValueTask<T> which will return a value from the remote invocation method.
+- Server can message multiple connected clients with a single invocation.
+- Automatic reconnection of clients upon timeout or loss of connection.
+- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
+- Ping system to detect timeouts from cline tand server side.
+- No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
+- Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
+- Minimal external package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack)
 
 ## Usage
 
@@ -119,26 +137,6 @@ New hub instances are created for each session that connects to the hub. The hub
 
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
 
-## Features
-- Automatic reconnection upon timeout or socket losing connection.
-- High performance Socket and Pipeline usage.
-- Multiple transports and easy extensibility.
-- Server <-> Client communication
-  - Cancellable Invocations
-  - Streaming byte data via `INexusDuplexPipe`
-  - Streaming classes/structs data via `NexusChannel<T>`
-  - Proxies can return:
-    - void for "fire and forget" invocation situations such as notifications.
-    - ValueTask whcih waiting for invocation completion.
-    - ValueTask<T> which will return a value from the remote invocation method.
-- Server can message multiple connected clients with a single invocation.
-- Automatic reconnection of clients upon timeout or loss of connection.
-- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
-- Ping system to detect timeouts from cline tand server side.
-- No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
-- Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
-- Minimal external package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack)
-
 ## Transports Supported
 - Unix Domain Sockets (UDS)
 - TCP
@@ -153,4 +151,9 @@ Each session is assigned a unique hub instance, ensuring that data is not shared
 
 **QUIC (UDP)** s a  UDP protocol which guarantees packet transmission, order and survives a connection IP and port change such as a connection switching from WiFi to celular.  It requires the `libmsquic` library which can be installed on linux/unix based systems via the local app pacakge manager.  Ubuntu: `sudo apt install libmsquic`.  Must install the `NexNet.Quic` Nuget package to add the Quic transport.
 
-Additional transports can be added easily as long as the transports guarantees order and transmission.
+## Dependencies
+- [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. 
+- Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for Pipeline socket transports.
+- Quic protocol requires `libmsquic` on *nix based systems. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
+
+Additional transports can be added easily as long as the new transport guarantees order and transmission.
