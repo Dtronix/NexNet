@@ -13,7 +13,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, LogMode.Always);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         int count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
