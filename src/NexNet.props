@@ -16,8 +16,10 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageTags>rpc sockets uds tcp tls quic secure source generator</PackageTags>
     <PackageIcon>logo-128.png</PackageIcon>
+	<PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
     <None Include="../../docs/images/logo-128.png" Pack="True" PackagePath="/" />
+    <None Include="README.md" Pack="True" PackagePath="/" />
   </ItemGroup>
 </Project>
