@@ -65,6 +65,25 @@ await client.ConnectAsync();
 
 await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 ```
+## Benchmarks
+```
+BenchmarkDotNet v0.13.8, Windows 11 (10.0.22621.2283/22H2/2022Update/SunValley2)
+AMD Ryzen 9 3900X, 1 CPU, 24 logical and 12 physical cores
+.NET SDK 8.0.100-rc.1.23455.8
+  [Host]     : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
+  Job-ASQQIE : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
+
+Platform=X64  Runtime=.NET 7.0  MaxIterationCount=5
+MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
+```
+
+| Method                               | Mean     | Error    | StdDev   | Op/s     | Gen0   | Gen1   | Allocated |
+|------------------------------------- |---------:|---------:|---------:|---------:|-------:|-------:|----------:|
+| InvocationNoArgument                 | 38.66 us | 2.070 us | 0.537 us | 25,867.9 | 0.0610 |      - |     681 B |
+| InvocationUnmanagedArgument          | 38.35 us | 2.496 us | 0.648 us | 26,078.6 | 0.0610 |      - |     737 B |
+| InvocationUnmanagedMultipleArguments | 38.98 us | 2.044 us | 0.531 us | 25,654.8 | 0.0610 |      - |     785 B |
+| InvocationNoArgumentWithResult       | 38.22 us | 0.752 us | 0.195 us | 26,166.8 | 0.0610 |      - |     721 B |
+| InvocationWithDuplexPipe_Upload      | 64.48 us | 2.690 us | 0.416 us | 15,509.1 | 2.0752 | 0.4883 |   14142 B |
 
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.

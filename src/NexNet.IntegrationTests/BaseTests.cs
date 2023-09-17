@@ -8,6 +8,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Quic;
 using NexNet.Transports;
 using NUnit.Framework;
+using NUnit.Framework.Interfaces;
 using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests;
@@ -38,7 +39,6 @@ public class BaseTests
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-
         //_logger = new ConsoleLogger();
         Trace.Listeners.Add(new ConsoleTraceListener());
         _socketDirectory = Directory.CreateTempSubdirectory("socketTests");
@@ -62,6 +62,11 @@ public class BaseTests
     [TearDown]
     public virtual void TearDown()
     {
+        if (TestContext.CurrentContext.Result.Outcome != ResultState.Success)
+        {
+            _logger.Flush(TestContext.Out);
+        }
+        
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;

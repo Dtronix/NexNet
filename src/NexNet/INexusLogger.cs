@@ -10,7 +10,7 @@ public interface INexusLogger
     /// <summary>
     /// Category for the log event.
     /// </summary>
-    public string? Category { get; }
+    public string? Category { get; set; }
 
     /// <summary>
     /// Level for the log event.

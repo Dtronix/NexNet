@@ -6,7 +6,7 @@ class SampleLogger : INexusLogger
 {
     private readonly string _prefix;
 
-    public string? Category { get; }
+    public string? Category { get; set; }
 
     public SampleLogger(string prefix, string? category = null)
     {

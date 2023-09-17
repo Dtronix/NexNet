@@ -26,11 +26,6 @@ internal partial class DuplexPipeUpdateStateMessage : IMessageBase
 
     public void Dispose()
     {
-        var cache = Interlocked.Exchange(ref _messageCache, null);
-
-        if (cache == null)
-            return;
-
-        cache.Return(this);
+        Interlocked.Exchange(ref _messageCache, null)?.Return(this);
     }
 }

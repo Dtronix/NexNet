@@ -362,7 +362,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
      protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
      {
          ArgumentNullException.ThrowIfNull(pipe);
-         return Unsafe.As<NexusDuplexPipe>(pipe).InitialId;
+         return Unsafe.As<NexusDuplexPipe>(pipe).LocalId;
      }
      
 

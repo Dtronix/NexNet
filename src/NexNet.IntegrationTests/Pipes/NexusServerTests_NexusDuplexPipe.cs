@@ -12,11 +12,11 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
         var count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 10;
+        const int iterations = 10000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -27,7 +27,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
                 Assert.AreEqual(Data, result.Buffer.ToArray());
             }
 
-            if (++count == iterations)
+            if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
         };
 
@@ -37,6 +37,67 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
             await pipe.ReadyTask.Timeout(1);
             await pipe.Output.WriteAsync(Data).Timeout(1);
+        }
+
+        await tcs.Task.Timeout(1);
+    }
+
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var count = 0;
+        var largeData = new byte[1024 * 32];
+        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
+        const int iterations = 1000;
+        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            var result = await pipe.Input.ReadAsync().Timeout(1);
+            pipe.Input.AdvanceTo(result.Buffer.End);
+
+            if (Interlocked.Increment(ref count) == iterations)
+                tcs.SetResult();
+        };
+
+        for (var i = 0; i < iterations; i++)
+        {
+            await using var pipe = cNexus.Context.CreatePipe();
+            await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+            await pipe.ReadyTask.Timeout(1);
+            await pipe.Output.WriteAsync(largeData).Timeout(1);
+        }
+
+        await tcs.Task.Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_PipeReaderCreatesAndDestroysPipeMultipleTimes(Type type)
+    {
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var count = 0;
+
+        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
+        const int iterations = 10000;
+        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) =>
+        {
+            if (Interlocked.Increment(ref count) == iterations)
+                tcs.SetResult();
+
+            return ValueTask.CompletedTask;
+        };
+
+        for (var i = 0; i < iterations; i++)
+        {
+            await using var pipe = cNexus.Context.CreatePipe();
+            await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+            await pipe.ReadyTask.Timeout(1);
         }
 
         await tcs.Task.Timeout(1);
@@ -118,7 +179,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeWriterCompletesUponCompleteAsync(Type type)
     {
-        //Console.WriteLine("Starting test");
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var completedTcs = new TaskCompletionSource();
 
@@ -132,7 +192,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             {
                 result = await pipe.Output.WriteAsync(Data).Timeout(1);
 
-                //Console.WriteLine($"Result Comp:{result.IsCompleted}, Can:{result.IsCanceled}");
                 if (result.IsCompleted)
                     break;
 

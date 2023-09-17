@@ -121,7 +121,6 @@ internal class SessionInvocationStateManager
         {
             static void Callback(object? arg)
             {
-                //Console.WriteLine("Canceled");
                 var state = (RegisteredInvocationState)arg!;
                 state.TrySetCanceled(true);
             }
