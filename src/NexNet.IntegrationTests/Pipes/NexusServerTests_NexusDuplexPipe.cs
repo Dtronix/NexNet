@@ -59,7 +59,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             var result = await pipe.Input.ReadAsync().Timeout(1);
             pipe.Input.AdvanceTo(result.Buffer.End);
 
-            if (++count == iterations)
+            if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
         };
 

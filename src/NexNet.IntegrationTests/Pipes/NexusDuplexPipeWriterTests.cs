@@ -89,7 +89,7 @@ internal class NexusDuplexPipeWriterTests
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            if (++invocations == 2)
+            if (Interlocked.Increment(ref invocations) == 2)
                 tcs.SetResult();
 
             return default;

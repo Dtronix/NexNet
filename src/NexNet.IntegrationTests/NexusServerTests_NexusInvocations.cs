@@ -161,7 +161,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 // Second connection
-                if (++connectedCount == 2)
+                if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     await nexus.Context.Clients.All.ClientTask();
                 }
@@ -199,7 +199,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             {
                 nexus.Context.Groups.Add("group");
                 // Second connection
-                if (++connectedCount == 2)
+                if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     await nexus.Context.Clients.Group("group").ClientTask();
                 }
@@ -234,7 +234,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
-                if (++connectedCount == 1) {
+                if (Interlocked.Increment(ref connectedCount) == 1) {
                     nexus.Context.Groups.Add("group");
                 }
                 // Second connection
@@ -276,7 +276,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 // Second connection
-                if (++connectedCount == 2)
+                if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     await nexus.Context.Clients.Others.ClientTask();
                     await Task.Delay(10);
@@ -288,8 +288,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
 #pragma warning disable CS1998
-        clientNexus1.ClientTaskEvent = async _ => invocationCount++;
-        clientNexus2.ClientTaskEvent = async _ => invocationCount++;
+        clientNexus1.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
+        clientNexus2.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
 #pragma warning restore CS1998
         await server.StartAsync().Timeout(1);
 
@@ -316,7 +316,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 // Second connection
-                if (++connectedCount == 2)
+                if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     await nexus.Context.Clients.Client(nexus.Context.Id).ClientTask();
                     await Task.Delay(10);
@@ -328,8 +328,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
 #pragma warning disable CS1998
-        clientNexus1.ClientTaskEvent = async _ => invocationCount++;
-        clientNexus2.ClientTaskEvent = async _ => invocationCount++;
+        clientNexus1.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
+        clientNexus2.ClientTaskEvent = async _ => Interlocked.Increment(ref invocationCount);
 #pragma warning restore CS1998
         await server.StartAsync().Timeout(1);
 
@@ -356,7 +356,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 // Second connection
-                if (++connectedCount == 2)
+                if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     // ReSharper disable once AccessToModifiedClosure
                     var clientIds = server!.GetContext().Clients.GetIds().ToArray();
