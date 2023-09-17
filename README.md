@@ -1,9 +1,26 @@
 # <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)  [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)
 
-NexNet is a .NET real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.
+NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional event-driven functionality into their applications. This framework streamlines the transmission of updates bidirectionally between server-side code and connected clients with resilient communication channels.
 
-
- Depends upon [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1)  with additional performance modifications for Pipeline socket transports.
+## Features
+- Automatic reconnection upon timeout or socket losing connection.
+- High performance Socket and Pipeline usage.
+- Multiple transports and easy extensibility.
+- Server <-> Client communication
+  - Cancellable Invocations
+  - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
+  - Streaming classes/structs data via `NexusChannel<T>`
+  - Proxies can return:
+    - void for "fire and forget" invocation situations such as notifications.
+    - ValueTask whcih waiting for invocation completion.
+    - ValueTask<T> which will return a value from the remote invocation method.
+- Server can message multiple connected clients with a single invocation.
+- Automatic reconnection of clients upon timeout or loss of connection.
+- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
+- Ping system to detect timeouts from cline tand server side.
+- No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
+- Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
+- Minimal external package requirements.
 
 ## Usage
 
@@ -34,7 +51,6 @@ partial class InvocationSampleClientNexus
 [Nexus<IInvocationSampleServerNexus, IInvocationSampleClientNexus>(NexusType = NexusType.Server)]
 partial class InvocationSampleServerNexus
 {
-    private long _counter = 0;
     public void UpdateInfo(int userId, int status, string? customStatus)
     {
         // Do something with the data.
@@ -43,9 +59,6 @@ partial class InvocationSampleServerNexus
     public ValueTask UpdateInfoAndWait(int userId, int status, string? customStatus)
     {
         // Do something with the data.
-        if(_counter++ % 10000 == 0)
-            Console.WriteLine($"Counter: {_counter}");
-
         return default;
     }
 
@@ -88,15 +101,15 @@ MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
 
-|                    | CancellationToken | NexusDuplexPipe | Args |
-|--------------------|-------------------|-----------------|------|
-| void               |                   |                 | X    |
-| ValueTask          | X                 |                 | X    |
-| ValueTask          |                   | X               | X    |
-| ValueTask&lt;T&gt; | X                 |                 | X    |
+|              | CancellationToken | INexusDuplexPipe | INexusChannel<T> | Args |
+|--------------|-------------------|------------------|------------------|------|
+| void         |                   |                  |                  | X    |
+| ValueTask    | X                 |                  |                  | X    |
+| ValueTask    |                   | X                | X                | X    |
+| ValueTask<T> | X                 |                  |                  | X    |
 
 Notes:
-- `CancellationToken`s can't be combined with `NexusDuplexPipe` due to pipes having built-in cancellation/completion notifications.
+- `CancellationToken`s can't be combined with `NexusDuplexPipe` nor `INexusChannel<T>` due to pipes/channels having built-in cancellation/completion notifications.
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
 ## Duplex Pipe Usage
@@ -124,24 +137,6 @@ New hub instances are created for each session that connects to the hub. The hub
 
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
 
-## Features
-- Automatic reconnection upon timeout or socket losing connection.
-- High performance Socket and Pipeline usage.
-- Multiple transports and easy extensibility.
-- Server <-> Client communication
-  - Cancellable Invocations
-  - Proxies can return:
-    - void for "fire and forget" invocation situations such as notifications.
-    - ValueTask whcih waiting for invocation completion.
-    - ValueTask<T> which will return a value from the remote invocation method.
-- Server can message multiple connected clients with a single invocation.
-- Automatic reconnection of clients upon timeout or loss of connection.
-- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
-- Ping system to detect timeouts from cline tand server side.
-- No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
-- Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
-- Minimal package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack)
-
 ## Transports Supported
 - Unix Domain Sockets (UDS)
 - TCP
@@ -156,7 +151,9 @@ Each session is assigned a unique hub instance, ensuring that data is not shared
 
 **QUIC (UDP)** s a  UDP protocol which guarantees packet transmission, order and survives a connection IP and port change such as a connection switching from WiFi to celular.  It requires the `libmsquic` library which can be installed on linux/unix based systems via the local app pacakge manager.  Ubuntu: `sudo apt install libmsquic`.  Must install the `NexNet.Quic` Nuget package to add the Quic transport.
 
-Additional transports can be added easily as long as the transports guarantees order and transmission.
+## Dependencies
+- [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. 
+- Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for Pipeline socket transports.
+- Quic protocol requires `libmsquic` on *nix based systems. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
 
-## Notes
-This project is in development and is subject to significant change.
+Additional transports can be added easily as long as the new transport guarantees order and transmission.
