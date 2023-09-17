@@ -20,7 +20,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Ping system to detect timeouts from cline tand server side.
 - No reflection. All hubs and proxies are created by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
 - Full asynchronous TPL useage throughout socket reading/writing, processing and execution of invocations and their return values.
-- Minimal external package requirements. [MemoryPack](https://github.com/Cysharp/MemoryPack)
+- Minimal external package requirements.
 
 ## Usage
 
