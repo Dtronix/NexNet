@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Logging;
 using Pipelines.Sockets.Unofficial;
 
 namespace NexNet.Transports;

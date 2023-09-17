@@ -6,6 +6,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 using static NexNet.Pipes.NexusDuplexPipe;
 
@@ -26,7 +27,7 @@ internal class NexusPipeManager
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
-        _logger = session.Logger?.CreateLogger($"NexusPipeManager:S{session.Id}");
+        _logger = session.Logger?.CreateLogger($"NexusPipeManager", session.Id.ToString());
     }
 
     public IRentedNexusDuplexPipe? RentPipe()
@@ -70,7 +71,6 @@ internal class NexusPipeManager
             _usedIds.Set(nexusPipe.LocalId, false);
         }
     }
-
 
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
     {
@@ -200,6 +200,12 @@ internal class NexusPipeManager
         }
 
         _activePipes.Clear();
+    }
+
+    public void SetSessionId(long value)
+    {
+        if(_logger != null)
+            _logger.SessionDetails = value.ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

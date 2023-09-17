@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using MemoryPack;
 using Pipelines.Sockets.Unofficial.Arenas;
 using System.Diagnostics;
+using NexNet.Logging;
 
 namespace NexNet.Internals;
 

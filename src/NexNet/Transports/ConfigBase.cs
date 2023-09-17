@@ -3,6 +3,7 @@ using System.Buffers;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Logging;
 
 namespace NexNet.Transports;
 
