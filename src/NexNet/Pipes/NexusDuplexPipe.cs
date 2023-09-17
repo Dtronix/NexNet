@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 using static System.Collections.Specialized.BitVector32;
 using static NexNet.Pipes.NexusDuplexPipe;
@@ -89,7 +90,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         set
         {
             if(Logger != null)
-                Logger.Category = $"NexusDuplexPipe:S{_session!.Id}:P{value}";
+                Logger.SessionDetails = $"{_session!.Id}:P{value:00000}";
 
             _id = value;
         }
@@ -135,12 +136,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
 
-        if(fullId == 0)
-            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:L{localId:000}");
-        else
-        {
-            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:P{fullId:00000}");
-        }
+        Logger = session.Logger?.CreateLogger("NexusDuplexPipe", fullId == 0 
+            ? $"{session.Id}:P{localId:000}"
+            : $"{session.Id}:P{fullId:00000}");
+
         LocalId = localId;
         _id = fullId;
 

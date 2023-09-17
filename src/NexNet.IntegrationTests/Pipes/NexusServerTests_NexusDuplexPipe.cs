@@ -12,7 +12,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
@@ -49,7 +49,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
         var largeData = new byte[1024 * 32];
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
@@ -80,7 +80,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Server_PipeReaderCreatesAndDestroysPipeMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.

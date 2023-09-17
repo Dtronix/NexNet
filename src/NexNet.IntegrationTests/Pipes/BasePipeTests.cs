@@ -4,6 +4,13 @@ namespace NexNet.IntegrationTests.Pipes;
 
 internal class BasePipeTests : BaseTests
 {
+
+    public enum LogMode
+    {
+        None,
+        OnTestFail,
+        Always
+    }
     protected byte[] Data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 
     protected async Task<(
@@ -13,7 +20,7 @@ internal class BasePipeTests : BaseTests
         NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         TaskCompletionSource tcs
-        )> Setup(Type type, bool log = false)
+        )> Setup(Type type, LogMode log = LogMode.None)
     {
         var tcs = new TaskCompletionSource();
 

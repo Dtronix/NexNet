@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using BenchmarkDotNet;
 using BenchmarkDotNet.Attributes;
 using NexNet;
-using NexNet.IntegrationTests;
+using NexNet.Logging;
 using NexNet.Transports;
 
 namespace NexNetBenchmarks;
@@ -26,7 +26,7 @@ public class InvocationBenchmarks
         if (File.Exists(path))
             File.Delete(path);
 
-        _log = new ConsoleLogger() { };
+        _log = new ConsoleLogger();
         
         var serverConfig = new UdsServerConfig()
         {

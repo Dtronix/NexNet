@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 
 namespace NexNet.Invocation;

@@ -20,6 +20,9 @@ internal partial class ServerGreetingMessage : IMessageBase
     [MemoryPackOrder(0)]
     public int Version { get; set; }
 
+    [MemoryPackOrder(1)]
+    public long ClientId { get; set; }
+
     public void Dispose()
     {
         Interlocked.Exchange(ref _messageCache, null)?.Return(this);

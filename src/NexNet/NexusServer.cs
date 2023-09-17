@@ -8,6 +8,7 @@ using NexNet.Invocation;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Logging;
 
 namespace NexNet;
 
@@ -71,7 +72,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         _config = config;
         _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger<NexusServer<TServerNexus, TClientProxy>>();
+        _logger = config.Logger?.CreateLogger("NexusServer");
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
     }

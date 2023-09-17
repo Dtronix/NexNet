@@ -13,6 +13,7 @@ using Pipelines.Sockets.Unofficial.Threading;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
+using NexNet.Logging;
 
 namespace NexNet.Internals;
 
@@ -40,6 +41,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     // mutable struct.  Don't set to readonly.
     private MessageHeader _recMessageHeader = new MessageHeader();
+    private long _id;
 
     private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
 
@@ -53,9 +55,24 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly CancellationTokenSource _disconnectionCts;
 
+    public Action<ConnectionState>? OnStateChanged;
+    
+
     public NexusPipeManager PipeManager { get; }
 
-    public long Id { get; }
+    public long Id
+    {
+        get => _id;
+        private set
+        {
+            _id = value;
+            if (Logger != null)
+                Logger.SessionDetails = value.ToString();
+
+            PipeManager.SetSessionId(value);
+
+        }
+    }
 
     public SessionManager? SessionManager => _sessionManager;
     public SessionInvocationStateManager SessionInvocationStateManager { get; }
@@ -80,10 +97,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => (ConnectionState)_state;
     }
-
-    public Action<ConnectionState>? OnStateChanged;
     
-
     public ConfigBase Config { get; }
     public bool IsServer { get; }
 
@@ -92,7 +106,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
         _state = ConnectionStateInternal.Connecting;
-        Id = configurations.Id;
+        _id = configurations.Id;
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
@@ -108,7 +122,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession:S{Id}");
+        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession:", Id.ToString());
 
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);

@@ -4,6 +4,7 @@ using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Logging;
 
 namespace NexNet.Invocation;
 

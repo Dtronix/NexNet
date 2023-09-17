@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using NexNet.Logging;
 
 namespace NexNet.Internals;
 
@@ -356,6 +357,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
                 serverGreeting.Version = 0;
+                serverGreeting.ClientId = Id;
 
                 await SendMessage(serverGreeting).ConfigureAwait(false);
 
@@ -372,6 +374,9 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Verify that this is the client
                 if (IsServer)
                     return DisconnectReason.ProtocolError;
+
+                // Set the server assigned client id.
+                Id = message.As<ServerGreetingMessage>().ClientId;
 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
