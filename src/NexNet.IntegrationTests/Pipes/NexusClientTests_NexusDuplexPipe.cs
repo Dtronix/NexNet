@@ -13,7 +13,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.Quic)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, true);
         int count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
@@ -22,14 +22,14 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
 
+            if (Interlocked.Increment(ref count) == iterations)
+                tcs.SetResult();
+
             // If the connection is still alive, the buffer should contain the data.
             if (!result.IsCompleted)
             {
                 Assert.AreEqual(Data, result.Buffer.ToArray());
             }
-
-            if (++count == iterations)
-                tcs.SetResult();
         };
 
         for (int i = 0; i < iterations; i++)
@@ -59,7 +59,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             var result = await pipe.Input.ReadAsync().Timeout(1);
             pipe.Input.AdvanceTo(result.Buffer.End);
 
-            if (++count == iterations)
+            if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
         };
 

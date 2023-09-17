@@ -27,7 +27,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
                 Assert.AreEqual(Data, result.Buffer.ToArray());
             }
 
-            if (++count == iterations)
+            if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
         };
 
@@ -87,7 +87,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         const int iterations = 10000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) =>
         {
-            if (++count == iterations)
+            if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
 
             return ValueTask.CompletedTask;
