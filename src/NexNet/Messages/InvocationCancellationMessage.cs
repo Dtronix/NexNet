@@ -9,7 +9,7 @@ internal partial class InvocationCancellationMessage : IMessageBase
 {
     public static MessageType Type { get; } = MessageType.InvocationCancellation;
 
-    private ICachedMessage? _messageCache = null!;
+    internal ICachedMessage? _messageCache = null!;
 
     [MemoryPackIgnore]
     public ICachedMessage? MessageCache
@@ -33,11 +33,6 @@ internal partial class InvocationCancellationMessage : IMessageBase
 
     public void Dispose()
     {
-        var cache = Interlocked.Exchange(ref _messageCache, null);
-
-        if (cache == null)
-            return;
-
-        cache.Return(this);
+        Interlocked.Exchange(ref _messageCache, null)?.Return(this);
     }
 }

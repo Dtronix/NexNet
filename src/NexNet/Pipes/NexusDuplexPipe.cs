@@ -1,18 +1,21 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Messages;
+using static System.Collections.Specialized.BitVector32;
+using static NexNet.Pipes.NexusDuplexPipe;
 
 namespace NexNet.Pipes;
 
 /// <summary>
 /// Pipe used for transmission of binary data from a one nexus to another.
 /// </summary>
-internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
+internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposable
 {
     /// <summary>
     /// Represents the state of a duplex pipe.
@@ -21,7 +24,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     internal enum State : byte
     {
         /// <summary>
-        /// Unset state.
+        /// Unset state. This is the default state and indicates that the pipe is ready for setup
         /// </summary>
         /// 
         Unset = 0,
@@ -62,33 +65,40 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     //private readonly Pipe _inputPipe = new Pipe();
     private readonly NexusPipeReader _inputPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
-    private TaskCompletionSource? _readyTcs;
-
-
-    private State _currentState = State.Unset;
-
-    private INexusSession? _session;
+    private readonly TaskCompletionSource _readyTcs;
+    private readonly INexusSession? _session;
+    private volatile State _currentState = State.Unset;
 
     // <summary>
     // Id which changes based upon completion of the pipe. Used to make sure the
     // Pipe is in the same state upon completion of writing/reading.
     // </summary>
-    internal int StateId;
+    //internal int StateId;
 
     /// <summary>
     /// True if this pipe is the pipe used for initiating the pipe connection.
     /// </summary>
-    internal bool InitiatingPipe;
+    internal readonly bool InitiatingPipe;
 
     /// <summary>
     /// Complete compiled ID containing the client bit and the server bit.
     /// </summary>
-    public ushort Id { get; set; }
+    public ushort Id
+    {
+        get => _id;
+        set
+        {
+            if(Logger != null)
+                Logger.Category = $"NexusDuplexPipe:S{_session!.Id}:P{value}";
+
+            _id = value;
+        }
+    }
 
     /// <summary>
     /// Initial ID of this side of the connection.
     /// </summary>
-    public byte InitialId { get; set; }
+    public byte LocalId { get; }
 
     /// <summary>
     /// Gets the pipe reader for this connection.
@@ -103,7 +113,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// <summary>
     /// Task which completes when the pipe is ready for usage on the invoking side.
     /// </summary>
-    public Task ReadyTask => _readyTcs!.Task;
+    public Task ReadyTask => _readyTcs.Task;
 
     /// <summary>
     /// State of the pipe.
@@ -113,22 +123,50 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     /// <summary>
     /// Logger.
     /// </summary>
-    private INexusLogger? _logger;
+    protected INexusLogger? Logger;
 
-    /// <summary>
-    /// True if the pipe is in the cache.
-    /// </summary>
-    internal bool IsInCached = false;
+    private ushort _id;
 
-    internal NexusDuplexPipe()
+    NexusPipeWriter INexusDuplexPipe.WriterCore => _outputPipeWriter;
+    NexusPipeReader INexusDuplexPipe.ReaderCore => _inputPipeReader;
+
+    internal NexusDuplexPipe(ushort fullId, byte localId, INexusSession session)
     {
-        _inputPipeReader = new NexusPipeReader(this);
-        _outputPipeWriter = new NexusPipeWriter(this);
+        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _session = session;
+
+        if(fullId == 0)
+            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:L{localId:000}");
+        else
+        {
+            Logger = session.Logger?.CreateLogger($"NexusDuplexPipe:S{session.Id}:P{fullId:00000}");
+        }
+        LocalId = localId;
+        _id = fullId;
+
+        if(fullId == 0)
+            InitiatingPipe = true;
+
+        _inputPipeReader = new NexusPipeReader(
+            this,
+            Logger,
+            _session.IsServer,
+            _session.Config.NexusPipeHighWaterMark,
+            _session.Config.NexusPipeHighWaterCutoff,
+            _session.Config.NexusPipeLowWaterMark);
+
+        _outputPipeWriter = new NexusPipeWriter(
+            this,
+            Logger,
+            _session,
+            _session.IsServer,
+            _session.Config.NexusPipeFlushChunkSize);
     }
 
     public ValueTask CompleteAsync()
     {
-        if (_currentState == State.Complete)
+        if (_currentState == State.Complete 
+            || _currentState == State.Unset)
             return default;
 
         var stateChanged = UpdateState(State.Complete);
@@ -136,77 +174,6 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             return NotifyState();
 
         return default;
-    }
-
-    NexusPipeWriter INexusDuplexPipe.WriterCore => _outputPipeWriter;
-    NexusPipeReader INexusDuplexPipe.ReaderCore => _inputPipeReader;
-
-    /// <summary>
-    /// Sets up the duplex pipe with the given parameters.
-    /// </summary>
-    /// <param name="initialId">The partial initial identifier.</param>
-    /// <param name="session">The Nexus session.</param>
-    public void Setup(byte initialId, INexusSession session)
-    {
-        if (_currentState != State.Unset)
-            throw new InvalidOperationException("Can't setup a pipe that is already in use.");
-
-        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _session = session;
-        _logger = session.Logger?.CreateLogger<NexusDuplexPipe>();
-        InitialId = initialId;
-        _outputPipeWriter.Setup(
-            _logger,
-            _session,
-            _session.IsServer,
-            _session.Config.NexusPipeFlushChunkSize);
-
-        _inputPipeReader.Setup(
-            _logger,
-            _session.IsServer,
-            _session.Config.NexusPipeHighWaterMark,
-            _session.Config.NexusPipeHighWaterCutoff,
-            _session.Config.NexusPipeLowWaterMark);
-    }
-
-
-    /// <summary>
-    /// Signals that the pipe is ready to receive and send messages.
-    /// </summary>
-    /// <param name="id">The ID of the pipe.</param>
-    public ValueTask PipeReady(ushort id)
-    {
-        if (_session == null)
-            return default;
-
-        Id = id;
-
-        if (UpdateState(State.Ready))
-            return NotifyState();
-
-        return default;
-    }
-    
-    /// <summary>
-    /// Resets the pipe to its initial state while incrementing the StateId to indicate that the pipe has been reset.
-    /// </summary>
-    public void Reset()
-    {
-        // Close everything.
-        if(_currentState != State.Complete)
-            UpdateState(State.Complete);
-
-        InitialId = 0;
-        _currentState = State.Unset;
-        InitiatingPipe = false;
-
-        // Set the task to canceled in case the pipe was reset before it was ready.
-        _readyTcs?.TrySetCanceled();
-
-        _inputPipeReader.Reset();
-        _outputPipeWriter.Reset();
-
-        Interlocked.Increment(ref StateId);
     }
 
     /// <summary>
@@ -250,7 +217,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         catch (Exception e)
         {
             // Possible that the session was closed before we could send the message.
-            _logger?.LogInfo(e, $"Exception occurred while updating state to: {currentState}. Closing pipe.");
+            Logger?.LogInfo(e, $"Exception occurred while updating state to: {currentState}. Closing pipe.");
 
             // Close the pipe.
             _currentState = State.Complete;
@@ -271,11 +238,13 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
             || (!remove && currentState.HasFlag(updatedState))
             || (remove && !currentState.HasFlag(updatedState)))
         {
-            _logger?.LogTrace($"Current State: {currentState}; Canceled state update of: {updatedState} because it is already set.");
+            Logger?.LogTrace($"Current State: {currentState}; Canceled state update of: {updatedState} because it is already set.");
             return false;
         }
 
-        _logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState}");
+        var isServer = _session.IsServer;
+
+        Logger?.LogTrace($"Current State: {currentState}; Update State: {updatedState};");
 
         if (currentState == State.Unset)
         {
@@ -284,7 +253,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
                 _currentState = State.Ready;
 
                 // Set the ready task.
-                _readyTcs?.TrySetResult();
+                _readyTcs.TrySetResult();
 
                 return true;
             }
@@ -293,15 +262,15 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
                 // If we are not ready, then we can't update the state.
                 // This normally happens when the pipe is reset before it is ready or after it has been reset.
                 // Honestly, we shouldn't reach here.
-                _logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
-                _readyTcs?.TrySetCanceled();
+                Logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
+                _readyTcs.TrySetCanceled();
                 return false;
             }
         }
 
         if (HasState(updatedState, currentState, State.ClientReaderServerWriterComplete))
         {
-            if (_session.IsServer)
+            if (isServer)
             {
                 // Close output pipe.
                 _outputPipeWriter.SetComplete();
@@ -316,7 +285,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
 
         if (HasState(updatedState, currentState, State.ClientWriterServerReaderComplete))
         {
-            if (_session.IsServer)
+            if (isServer)
             {
                 // Close input pipe.
                 _inputPipeReader.CompleteNoNotify();
@@ -330,27 +299,27 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
         }
 
         // Back pressure
-        if (HasState(updatedState, currentState, State.ClientWriterPause) && _session.IsServer)
+        if (HasState(updatedState, currentState, State.ClientWriterPause) && isServer)
         {
             // Back pressure was added
             _outputPipeWriter.PauseWriting = true;
         }
         else if (remove && currentState.HasFlag(State.ClientWriterPause)
                         && updatedState.HasFlag(State.ClientWriterPause)
-                        && _session.IsServer)
+                        && isServer)
         {
             // Back pressure was removed.
             _outputPipeWriter.PauseWriting = false;
         }
 
-        if (HasState(updatedState, currentState, State.ServerWriterPause) && !_session.IsServer)
+        if (HasState(updatedState, currentState, State.ServerWriterPause) && !isServer)
         {
             // Back pressure was added
             _outputPipeWriter.PauseWriting = true;
         }
         else if (remove && currentState.HasFlag(State.ServerWriterPause)
                         && updatedState.HasFlag(State.ServerWriterPause)
-                        && !_session.IsServer)
+                        && !isServer)
         {
             // Back pressure was removed.
             _outputPipeWriter.PauseWriting = false;
@@ -374,5 +343,23 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager
     private static bool HasState(State has, State notHave, State flag)
     {
         return has.HasFlag(flag) && !notHave.HasFlag(flag);
+    }
+
+    public void Dispose()
+    {
+        // Set the task to canceled in case the pipe was reset before it was ready.
+        _readyTcs.TrySetCanceled();
+
+        _inputPipeReader.Dispose();
+        _outputPipeWriter.Dispose();
+
+        // Close everything.
+        if (_currentState != State.Complete)
+        {
+            Logger?.LogError($"Resetting and Sending pipe: {Id} {_currentState}");
+            UpdateState(State.Complete);
+        }
+
+        return;
     }
 }

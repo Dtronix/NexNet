@@ -6,12 +6,12 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.IntegrationTests.Pipes;
 
-internal class NexusChannelReaderTests
+internal class NexusChannelReaderTests : NexusChannelTestBase
 {
     [Test]
     public async Task ReadsData()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
 
         var baseObject = ComplexMessage.Random();
@@ -48,7 +48,7 @@ internal class NexusChannelReaderTests
     [Test]
     public async Task ReadsPartialData()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
 
         var baseObject = ComplexMessage.Random();
@@ -87,7 +87,7 @@ internal class NexusChannelReaderTests
     [Test]
     public async Task CancelsReadDelayed()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var cts = new CancellationTokenSource(100);
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
@@ -100,7 +100,7 @@ internal class NexusChannelReaderTests
     [Test]
     public async Task CancelsReadImmediate()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var cts = new CancellationTokenSource(100);
         cts.Cancel();
@@ -114,7 +114,7 @@ internal class NexusChannelReaderTests
     [Test]
     public async Task Completes()
     {
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         // ReSharper disable once MethodHasAsyncOverload
         await pipeReader.CompleteAsync();
@@ -130,7 +130,7 @@ internal class NexusChannelReaderTests
     public async Task WaitsForFullData()
     {
         var tcs = new TaskCompletionSource();
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
         var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
@@ -153,7 +153,7 @@ internal class NexusChannelReaderTests
     public async Task ReadsMultiple()
     {
         const int iterations = 1000;
-        var pipeReader = new NexusPipeReader(new DummyPipeStateManager());
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
         var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
@@ -170,21 +170,5 @@ internal class NexusChannelReaderTests
         }
 
         Assert.AreEqual(iterations, result.Count());
-    }
-    private class DummyPipeStateManager : IPipeStateManager
-    {
-        public ushort Id { get; } = 0;
-        public ValueTask NotifyState()
-        {
-            return default;
-        }
-
-        public bool UpdateState(NexusDuplexPipe.State updatedState, bool remove = false)
-        {
-            CurrentState |= updatedState;
-            return true;
-        }
-
-        public NexusDuplexPipe.State CurrentState { get; private set; } = NexusDuplexPipe.State.Ready;
     }
 }

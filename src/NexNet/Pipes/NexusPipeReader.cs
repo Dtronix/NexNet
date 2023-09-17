@@ -10,10 +10,10 @@ using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Pipes;
 
-internal class NexusPipeReader : PipeReader
+internal class NexusPipeReader : PipeReader, IDisposable
 {
     //private readonly NexusDuplexPipe _nexusDuplexPipe;
-    private readonly SemaphoreSlim _readSemaphore = new SemaphoreSlim(0, 1);
+    private SemaphoreSlim? _readSemaphore = new SemaphoreSlim(0, 1);
     private readonly CancellationRegistrationArgs _cancelReadingArgs;
 
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
@@ -24,13 +24,13 @@ internal class NexusPipeReader : PipeReader
     private bool _isCompleted;
     private bool _isCanceled;
 
-    private int _highWaterMark;
-    private int _highWaterCutoff;
-    private int _lowWaterMark;
+    private readonly int _highWaterMark;
+    private readonly int _highWaterCutoff;
+    private readonly int _lowWaterMark;
 
-    private NexusDuplexPipe.State _backPressureFlag;
-    private NexusDuplexPipe.State _writingCompleteFlag;
-    private INexusLogger? _logger;
+    private readonly NexusDuplexPipe.State _backPressureFlag;
+    private readonly NexusDuplexPipe.State _writingCompleteFlag;
+    private readonly INexusLogger? _logger;
     private long _examinedPosition;
     private long _bufferTailPosition;
 
@@ -51,20 +51,20 @@ internal class NexusPipeReader : PipeReader
     /// </summary>
     public bool IsCompleted => _isCompleted;
 
-    public NexusPipeReader(IPipeStateManager stateManager)
+    public NexusPipeReader(
+        IPipeStateManager stateManager,
+        INexusLogger? logger,
+        bool isServer, 
+        int highWaterMark, 
+        int highWaterCutoff,
+        int lowWaterMark)
     {
         _stateManager = stateManager;
         _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
-    }
-
-    public void Setup(INexusLogger? logger, bool isServer, int highWaterMark, int highWaterCutoff, int lowWaterMark)
-    {
         _logger = logger;
         _highWaterMark = highWaterMark; //_session!.Config.NexusPipeHighWaterMark;
         _highWaterCutoff = highWaterCutoff; //_session!.Config.NexusPipeHighWaterCutoff;
         _lowWaterMark = lowWaterMark; //_session!.Config.NexusPipeLowWaterMark;
-        _examinedPosition = 0;
-        _bufferTailPosition = 0;
         _backPressureFlag = !isServer
             ? NexusDuplexPipe.State.ServerWriterPause
             : NexusDuplexPipe.State.ClientWriterPause;
@@ -72,24 +72,7 @@ internal class NexusPipeReader : PipeReader
         _writingCompleteFlag = isServer
             ? NexusDuplexPipe.State.ClientWriterServerReaderComplete
             : NexusDuplexPipe.State.ClientReaderServerWriterComplete;
-    }
 
-    /// <summary>
-    /// Resets the reader to it's initial state for reuse.
-    /// </summary>
-    public void Reset()
-    {
-        _isCompleted = false;
-        _isCanceled = false;
-        _logger = null;
-
-        lock (_buffer)
-        {
-            _buffer.Reset();
-        }
-
-        // Reset the semaphore to it's original state.
-        _readSemaphore.Wait(0);
     }
 
     /// <summary>
@@ -160,12 +143,11 @@ internal class NexusPipeReader : PipeReader
 
             if (_isCompleted)
             {
-                _logger?.LogTrace($"Pipe {_stateManager.Id} has is already completed.  Cancelling.");
+                _logger?.LogTrace($"Already completed. Cancelling buffering.");
                 return NexusPipeBufferResult.DataIgnored;
             }
 
-            _logger?.LogTrace($"Pipe {_stateManager.Id} has buffered {length} new bytes.");
-
+            _logger?.LogTrace($"Buffered {length} new bytes.");
 
             // Copy the data to the buffer.
             data.CopyTo(_buffer.GetSpan(length));
@@ -195,11 +177,10 @@ internal class NexusPipeReader : PipeReader
 
         if (_stateManager.UpdateState(_writingCompleteFlag))
         {
-            Utilities.TryReleaseSemaphore(_readSemaphore);
+            var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
+            Utilities.TryReleaseSemaphore(semaphore);
             return _stateManager.NotifyState();
         }
-
-        Utilities.TryReleaseSemaphore(_readSemaphore);
 
         return default;
     }
@@ -212,8 +193,8 @@ internal class NexusPipeReader : PipeReader
     public void CompleteNoNotify()
     {
         _isCompleted = true;
-
-        Utilities.TryReleaseSemaphore(_readSemaphore);
+        var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
+        Utilities.TryReleaseSemaphore(semaphore);
     }
 
 
@@ -304,6 +285,9 @@ internal class NexusPipeReader : PipeReader
                 // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
                 do
                 {
+                    if (_readSemaphore == null)
+                        return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+
                     await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 } while (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false);
             }
@@ -324,7 +308,7 @@ internal class NexusPipeReader : PipeReader
         else
         {
             // ReSharper disable once MethodHasAsyncOverloadWithCancellation
-            _readSemaphore.Wait(0);
+            _readSemaphore?.Wait(0);
 
         }
 
@@ -422,5 +406,15 @@ internal class NexusPipeReader : PipeReader
     {
         _isCanceled = true;
         Utilities.TryReleaseSemaphore(_readSemaphore);
+    }
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _readSemaphore, null)?.Dispose();
+
+        lock (_buffer)
+        {
+            _buffer.Reset();
+        }
     }
 }

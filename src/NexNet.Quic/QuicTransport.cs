@@ -29,10 +29,7 @@ internal class QuicTransport : ITransport
         Output = PipeWriter.Create(stream);
     }
 
-    public TransportConfiguration Configurations => new TransportConfiguration()
-    {
-        DoNotPassFlushCancellationToken = true
-    };
+    public TransportConfiguration Configurations => new TransportConfiguration();
 
     public ValueTask CloseAsync(bool linger)
     {

@@ -22,8 +22,8 @@ internal interface IMessageBase : IDisposable
     ///// </summary>
     //public void Reset();
 
-    protected static void Return<T>(Memory<T> memory) => Return((ReadOnlyMemory<T>)memory);
-    protected static void Return<T>(ReadOnlyMemory<T> memory)
+    protected static void ReturnMemoryPackMemory<T>(Memory<T> memory) => ReturnMemoryPackMemory((ReadOnlyMemory<T>)memory);
+    protected static void ReturnMemoryPackMemory<T>(ReadOnlyMemory<T> memory)
     {
         if (MemoryMarshal.TryGetArray(memory, out var segment) && segment.Array is { Length: > 0 })
         {

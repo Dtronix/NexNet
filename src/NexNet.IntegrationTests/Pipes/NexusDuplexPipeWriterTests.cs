@@ -50,8 +50,9 @@ internal class NexusDuplexPipeWriterTests
     {
         stateManager ??= new PipeStateManagerStub();
         messenger ??= new SessionMessengerStub();
-        var writer = new NexusPipeWriter(stateManager);
-        writer.Setup(null,
+        var writer = new NexusPipeWriter(
+            stateManager,
+            null,
             messenger,
             true,
             1024);
@@ -84,15 +85,11 @@ internal class NexusDuplexPipeWriterTests
         var simpleData = new byte[512 * 3];
         var messenger = new SessionMessengerStub();
         var writer = CreateWriter(messenger);
-        writer.Setup(null,
-            messenger,
-            true,
-            1024);
         var invocations = 0;
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            if (++invocations == 2)
+            if (Interlocked.Increment(ref invocations) == 2)
                 tcs.SetResult();
 
             return default;

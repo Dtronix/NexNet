@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Pipelines.Sockets.Unofficial.Threading;
 using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
@@ -48,15 +49,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly TaskCompletionSource? _readyTaskCompletionSource;
     private readonly TaskCompletionSource? _disconnectedTaskCompletionSource;
-    private volatile int _state; 
-    
-    /// <summary>
-    /// If true, the transport will not pass the flush cancellation token to the underlying transport.
-    /// Currently exists due to an issue in the QUIC implementation.  Should be removed once the issue is fixed.
-    /// https://github.com/dotnet/runtime/issues/82704
-    /// https://github.com/dotnet/runtime/pull/90253
-    /// </summary>
-    private readonly bool _configDoNotPassFlushCancellationToken;
+    private volatile int _state;
+
+    private readonly CancellationTokenSource _disconnectionCts;
 
     public NexusPipeManager PipeManager { get; }
 
@@ -87,6 +82,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
     public Action<ConnectionState>? OnStateChanged;
+    
 
     public ConfigBase Config { get; }
     public bool IsServer { get; }
@@ -100,7 +96,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _pipeInput = configurations.Transport.Input;
         _pipeOutput = configurations.Transport.Output;
         _transportConnection = configurations.Transport;
-        _configDoNotPassFlushCancellationToken = _transportConnection.Configurations.DoNotPassFlushCancellationToken;
         Config = _config = configurations.Configs;
         _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
@@ -108,11 +103,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _sessionManager = configurations.SessionManager;
         IsServer = configurations.IsServer;
         _nexus = configurations.Nexus;
+        _disconnectionCts = new CancellationTokenSource();
         _nexus.SessionContext = configurations.IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession [{Id}]");
+        Logger = configurations.Configs.Logger?.CreateLogger($"NexusSession:S{Id}");
 
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);
@@ -336,6 +332,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
 
         _state = ConnectionStateInternal.Disconnected;
+
+        _disconnectionCts.Cancel();
         OnStateChanged?.Invoke(State);
 
         // Cancel all pipe manager pipes and return to the cache.

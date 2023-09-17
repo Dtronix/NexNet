@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
 
-internal class NexusChannelReaderWriterUnmanagedTests
+internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriterTestBase
 {
     [Test]
     public async Task WritesAndReadsData()
@@ -91,72 +91,11 @@ internal class NexusChannelReaderWriterUnmanagedTests
     private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()
         where T : unmanaged
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager());
-        var nexusPipeReader = new NexusPipeReader(new DummyPipeStateManager());
-        var messenger = new DummySessionMessenger()
-        {
-            OnMessageSent = async (type, memory, arg3) =>
-            {
-                await nexusPipeReader.BufferData(arg3).Timeout(1);
-            }
-        };
-        nexusPipeWriter.Setup(new ConsoleLogger(), messenger, true, ushort.MaxValue);
+        var (pipeWriter, pipeReader) = GetConnectedPipeReaderWriter();
 
-        var writer = new NexusChannelWriterUnmanaged<T>(nexusPipeWriter);
-        var reader = new NexusChannelReaderUnmanaged<T>(nexusPipeReader);
+        var writer = new NexusChannelWriterUnmanaged<T>(pipeWriter);
+        var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
 
         return (writer, reader);
-    }
-
-    private class DummyPipeStateManager : IPipeStateManager
-    {
-        public ushort Id { get; } = 0;
-        public ValueTask NotifyState()
-        {
-            return default;
-        }
-
-        public bool UpdateState(NexusDuplexPipe.State updatedState, bool remove = false)
-        {
-            CurrentState |= updatedState;
-            return true;
-        }
-
-        public NexusDuplexPipe.State CurrentState { get; private set; } = NexusDuplexPipe.State.Ready;
-    }
-
-    private class DummySessionMessenger : ISessionMessenger
-    {
-        public Func<MessageType, ReadOnlyMemory<byte>?, ReadOnlySequence<byte>, ValueTask>
-            OnMessageSent
-        { get; set; } = null!;
-        public ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default) where TMessage : IMessageBase
-        {
-            throw new NotImplementedException();
-        }
-
-        public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
-        {
-            throw new NotImplementedException();
-        }
-
-        public ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body,
-            CancellationToken cancellationToken = default)
-        {
-            if (OnMessageSent == null)
-                throw new InvalidOperationException("No handler for OnMessageSent");
-
-            return OnMessageSent.Invoke(type, messageHeader, body);
-        }
-
-        public Task DisconnectAsync(DisconnectReason reason)
-        {
-            throw new NotImplementedException();
-        }
     }
 }
