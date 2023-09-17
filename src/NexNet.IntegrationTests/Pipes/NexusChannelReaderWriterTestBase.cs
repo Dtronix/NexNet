@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NUnit.Framework;

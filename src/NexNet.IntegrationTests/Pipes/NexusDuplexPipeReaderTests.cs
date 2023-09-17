@@ -12,7 +12,7 @@ internal class NexusDuplexPipeReaderTests
         stateManager ??= new PipeStateManagerStub();
         var reader = new NexusPipeReader(
             stateManager,
-            null,//new ConsoleLogger(""),
+            null,
             true,
             1024 * 128,
             1024 * 1024,
@@ -376,7 +376,7 @@ internal class NexusDuplexPipeReaderTests
         stateManager ??= new PipeStateManagerStub();
         var reader = new NexusPipeReader(
             stateManager,
-            null,//new ConsoleLogger(""),
+            null,
             true,
             1024 * 128,
             1024 * 1024,
@@ -397,7 +397,7 @@ internal class NexusDuplexPipeReaderTests
         stateManager ??= new PipeStateManagerStub();
         var reader = new NexusPipeReader(
             stateManager,
-            null,//new ConsoleLogger(""),
+            null,
             true,
             1024 * 128,
             1024 * 1024,

@@ -4,7 +4,9 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -13,7 +15,7 @@ using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests;
 
-public class BaseTests
+internal class BaseTests
 {
     public enum Type
     {
@@ -26,20 +28,18 @@ public class BaseTests
     private int _counter;
     private DirectoryInfo? _socketDirectory;
     protected UnixDomainSocketEndPoint? CurrentPath;
-    //private ConsoleLogger _logger;
     protected int? CurrentTcpPort;
     protected int? CurrentUdpPort;
-    //protected List<ConsoleLogger> Loggers = new List<ConsoleLogger>();
     protected List<INexusServer> Servers = new List<INexusServer>();
     protected List<INexusClient> Clients = new List<INexusClient>();
-    private ConsoleLogger _logger = null!;
+    private RollingLogger _logger = null!;
+    private BasePipeTests.LogMode _loggerMode;
     public bool BlockForClose { get; set; }
-    public ConsoleLogger Logger => _logger;
+    public RollingLogger Logger => _logger;
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
     {
-        //_logger = new ConsoleLogger();
         Trace.Listeners.Add(new ConsoleTraceListener());
         _socketDirectory = Directory.CreateTempSubdirectory("socketTests");
 
@@ -48,6 +48,7 @@ public class BaseTests
     [OneTimeTearDown]
     public virtual void OneTimeTearDown()
     {
+        _loggerMode = BasePipeTests.LogMode.None;
         _socketDirectory?.Delete(true);
         Trace.Flush();
     }
@@ -55,18 +56,25 @@ public class BaseTests
     [SetUp]
     public virtual void SetUp()
     {
-        _logger = new ConsoleLogger();
+        _logger = new RollingLogger();
         BlockForClose = false;
     }
 
     [TearDown]
     public virtual void TearDown()
     {
-        if (TestContext.CurrentContext.Result.Outcome != ResultState.Success)
+        if (_loggerMode == BasePipeTests.LogMode.OnTestFail)
+        {
+            if (TestContext.CurrentContext.Result.Outcome != ResultState.Success)
+            {
+                _logger.Flush(TestContext.Out);
+            }
+        }
+        if (_loggerMode == BasePipeTests.LogMode.Always)
         {
             _logger.Flush(TestContext.Out);
         }
-        
+
         CurrentPath = null;
         CurrentTcpPort = null;
         CurrentUdpPort = null;
@@ -166,9 +174,12 @@ public class BaseTests
         throw new InvalidOperationException();
     }
 
-    protected ServerConfig CreateServerConfig(Type type, bool log = false)
+    protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
     {
-        var logger = log ? _logger.CreateLogger(null, "SV") : null;
+        _loggerMode = log;
+        var logger = log != BasePipeTests.LogMode.None 
+            ? _logger.CreatePrefixedLogger(null, "SV")
+            : null;
         return CreateServerConfigWithLog(type, logger);
     }
 
@@ -234,9 +245,13 @@ public class BaseTests
         throw new InvalidOperationException();
     }
 
-    protected ClientConfig CreateClientConfig(Type type, bool log = false)
+    protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
     {
-        var logger = log ? _logger.CreateLogger(null, "CL") : null;
+        _loggerMode = log;
+
+        var logger = log != BasePipeTests.LogMode.None
+            ? _logger.CreatePrefixedLogger(null, "CL")
+            : null;
 
         return CreateClientConfigWithLog(type, logger);
     }

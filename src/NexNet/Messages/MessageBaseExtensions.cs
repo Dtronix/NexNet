@@ -3,7 +3,7 @@
 namespace NexNet.Messages;
 
 /// <summary>
-/// Helpers for <see cref="IMessageBase"/>.
+/// Extensions for <see cref="IMessageBase"/>.
 /// </summary>
 internal static class MessageBaseExtensions
 {

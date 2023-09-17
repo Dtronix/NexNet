@@ -1,4 +1,4 @@
-﻿using NexNet;
+﻿using NexNet.Pipes;
 using System.IO.Pipelines;
 
 namespace NexNetDemo.Samples.DuplexPipe;

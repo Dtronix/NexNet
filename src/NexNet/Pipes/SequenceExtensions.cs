@@ -3,13 +3,13 @@ using System.Buffers;
 using System.IO;
 using System.Runtime.CompilerServices;
 
-namespace NexNet;
+namespace NexNet.Pipes;
 
 
 /// <summary>
 /// Helpers for NexNet.
 /// </summary>
-public static class Helpers
+public static class SequenceExtensions
 {
 
     /// <summary>
@@ -32,8 +32,8 @@ public static class Helpers
 
     private static void CopyToMultiSegment(in ReadOnlySequence<byte> sequence, Stream destination)
     {
-        SequencePosition position = sequence.Start;
-        while (sequence.TryGet(ref position, out ReadOnlyMemory<byte> memory))
+        var position = sequence.Start;
+        while (sequence.TryGet(ref position, out var memory))
         {
             destination.Write(memory.Span);
         }
