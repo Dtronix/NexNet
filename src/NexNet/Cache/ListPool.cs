@@ -13,8 +13,8 @@ internal static class ListPool<T>
 
     public static void Return(List<T> list)
     {
-        list.Capacity = 0;
         list.Clear();
+        list.Capacity = 0;
         _pool.Add(list);
     }
 
