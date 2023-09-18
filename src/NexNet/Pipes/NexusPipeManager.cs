@@ -91,7 +91,7 @@ internal class NexusPipeManager
         // Signal that the pipe is ready to receive and send messages.
         pipe.UpdateState(State.Ready);
         await pipe.NotifyState().ConfigureAwait(false);
-        _logger?.LogError($"Sending Ready Notification");
+        _logger?.LogTrace($"Sending Ready Notification");
         return pipe;
     }
 
@@ -140,14 +140,14 @@ internal class NexusPipeManager
             return pipe.WriteFromUpstream(data);
         }
 
-        _logger?.LogError($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
+        _logger?.LogInfo($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
         //throw new InvalidOperationException($"No pipe exists for id: {id}.");
         return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
     public DisconnectReason UpdateState(ushort id, NexusDuplexPipe.State state)
     {
-        _logger?.LogError($"Pipe {id} update state {state}");
+        _logger?.LogTrace($"Pipe {id} update state {state}");
         if (_isCanceled)
             return DisconnectReason.None;
 
@@ -174,7 +174,6 @@ internal class NexusPipeManager
                 pipe.Id = id;
 
                 pipe.UpdateState(state);
-                _logger?.LogError($"Readies pipe {id}");
                 return DisconnectReason.None;
             }
             else if (state == State.Complete)
