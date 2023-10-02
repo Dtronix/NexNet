@@ -73,7 +73,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public async Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
     {
         if (_session != null)
-            throw new InvalidOperationException("Client is already connected.");
+            return ConnectionResult.Success;
 
         // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
