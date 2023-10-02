@@ -227,7 +227,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 _pipeInput = transport.Input;
                 _pipeOutput = transport.Output;
                 _transportConnection = transport;
-                
+                _registeredDisconnectReason = DisconnectReason.None;
                 _isReconnected = true;
 
                 Logger?.LogInfo($"Reconnected");
