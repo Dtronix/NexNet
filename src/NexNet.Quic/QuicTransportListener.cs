@@ -75,21 +75,33 @@ internal class QuicTransportListener : ITransportListener
             ServerAuthenticationOptions = config.SslServerAuthenticationOptions
         };
 
-        var listener = await QuicListener.ListenAsync(new QuicListenerOptions
+        try
         {
-            // Listening endpoint, port 0 means any port.
-            ListenEndPoint = config.EndPoint,
-            // List of all supported application protocols by this listener.
-            ApplicationProtocols = new List<SslApplicationProtocol>
+            var listener = await QuicListener.ListenAsync(new QuicListenerOptions
             {
-                new SslApplicationProtocol("nn1"),
-            },
+                // Listening endpoint, port 0 means any port.
+                ListenEndPoint = config.EndPoint,
+                // List of all supported application protocols by this listener.
+                ApplicationProtocols = new List<SslApplicationProtocol>
+                {
+                    new SslApplicationProtocol("nn1"),
+                },
 
-            // Callback to provide options for the incoming connections, it gets called once per each connection.
-            ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
-            ListenBacklog = config.AcceptorBacklog
-        }, cancellationToken);
+                // Callback to provide options for the incoming connections, it gets called once per each connection.
+                ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
+                ListenBacklog = config.AcceptorBacklog
+            }, cancellationToken);
 
-        return new QuicTransportListener(config, listener);
+            return new QuicTransportListener(config, listener);
+        }
+        catch (QuicException e)
+        {
+            throw new TransportException(QuicHelpers.GetTransportError(e.QuicError), e.Message, e);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
+
     }
 }

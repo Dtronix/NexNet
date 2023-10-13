@@ -1,4 +1,7 @@
-﻿using NUnit.Framework;
+﻿using System.Net.Quic;
+using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Transports;
+using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -99,5 +102,38 @@ internal partial class NexusServerTests : BaseTests
         await server.StopAsync();
 
         await server.StoppedTask!.Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task ThrowsWhenServerIsAlreadyOpenOnSameTransport(Type type)
+    {
+        var config = CreateServerConfig(type);
+
+        var server1 = this.CreateServer(config, null);
+        var server2 = this.CreateServer(config, null);
+
+        await server1.StartAsync();
+
+        try
+        {
+            await server2.StartAsync();
+        }
+        catch (TransportException e)
+        {
+            // Quic does not return information if a UDP port is already in use or not.
+            Assert.AreEqual(
+                e.InnerException is QuicException 
+                    ? TransportError.InternalError 
+                    : TransportError.AddressInUse,
+                e.Error);
+        }
+        catch (Exception e)
+        {
+            Assert.Fail($"Expected {nameof(TransportException)} but got {e.GetType().Name}");
+        }
+
     }
 }

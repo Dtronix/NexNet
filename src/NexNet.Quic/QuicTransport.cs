@@ -84,24 +84,7 @@ internal class QuicTransport : ITransport
         }
         catch (QuicException e)
         {
-            var error = e.QuicError switch
-            {
-                QuicError.InternalError => TransportError.InternalError,
-                QuicError.ConnectionAborted => TransportError.ConnectionAborted,
-                QuicError.StreamAborted => TransportError.StreamAborted,
-                QuicError.AddressInUse => TransportError.AddressInUse,
-                QuicError.InvalidAddress => TransportError.InvalidAddress,
-                QuicError.ConnectionTimeout => TransportError.ConnectionTimeout,
-                QuicError.HostUnreachable => TransportError.Unreachable,
-                QuicError.ConnectionRefused => TransportError.ConnectionRefused,
-                QuicError.VersionNegotiationError => TransportError.VersionNegotiationError,
-                QuicError.ConnectionIdle => TransportError.ConnectionIdle,
-                QuicError.ProtocolError => TransportError.ProtocolError,
-                QuicError.OperationAborted => TransportError.OperationAborted,
-                _ => TransportError.InternalError,
-            };
-
-            throw new TransportException(error, e.Message, e);
+            throw new TransportException(QuicHelpers.GetTransportError(e.QuicError), e.Message, e);
         }
         catch (Exception e)
         {
