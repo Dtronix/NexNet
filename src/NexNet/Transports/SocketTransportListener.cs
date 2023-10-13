@@ -63,8 +63,19 @@ internal class SocketTransportListener : ITransportListener
     {
         Socket listener = new Socket(endPoint.AddressFamily, socketType, protocolType);
 
-        listener.Bind(endPoint);
-        listener.Listen(config.AcceptorBacklog);
+        try
+        {
+            listener.Bind(endPoint);
+            listener.Listen(config.AcceptorBacklog);
+        }
+        catch (SocketException e)
+        {
+            throw new TransportException(e.SocketErrorCode, e.Message, e);
+        }
+        catch (Exception)
+        {
+            throw;
+        }
 
         return new SocketTransportListener(config, listener);
     }
