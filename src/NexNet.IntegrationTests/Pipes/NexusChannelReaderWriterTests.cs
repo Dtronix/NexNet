@@ -83,7 +83,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
             await reader.Reader.CompleteAsync();
         });
         
-        var completeRead = await reader.ReadUntilComplete();
+        var completeRead = await reader.ReadUntilComplete().Timeout(1);
 
         Assert.AreEqual(0, completeRead.Count);
     }
