@@ -45,46 +45,30 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     {
     }
 
-    /// <inheritdoc/>
-    public override ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
-    {
-        return ReadAsync(static (in T t) => t, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public override async ValueTask<IReadOnlyList<TTo>> ReadAsync<TTo>(Converter<T, TTo> converter, CancellationToken cancellationToken = default)
+    public override async ValueTask<bool> ReadAsync<TTo>(List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default)
     {
         if (IsComplete && BufferedLength == 0)
-            return ListPool<TTo>.Empty;
-
-        var list = ListPool<TTo>.Rent();
+            return false;
 
         // Read the data from the pipe reader.
         var result = await Reader.ReadAtLeastAsync(_tSize, cancellationToken).ConfigureAwait(false);
 
+        var bufferLength = result.Buffer.Length;
         // Check if the result is completed or canceled.
-        if (result.IsCompleted && result.Buffer.Length == 0)
-            return ListPool<TTo>.Empty;
+        if (result.IsCompleted && bufferLength == 0)
+            return false;
 
         if (result.IsCanceled)
-            return ListPool<TTo>.Empty;
+            return false;
 
-        Read(result.Buffer, Reader, list, converter);
+        var consumed = Read(result.Buffer, Reader, list, converter);
 
-        return list;
-    }
+        // There is left over data in the buffer that is less than the size of T.
+        // Nothing can be done with this data, so return false.
+        if (result.IsCompleted && consumed == 0)
+            return false;
 
-    /// <summary>
-    /// Reads data from the buffer and converts it into an enumerable collection of type T.
-    /// </summary>
-    /// <param name="buffer">The buffer containing the data to be read.</param>
-    /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
-    /// <param name="list">The list used to store the data.</param>
-    /// <returns>An enumerable collection of type T.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Read(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T> list)
-    {
-        Read(buffer, pipeReader, list, static (in T t) => t);
+        return true;
     }
 
     /// <summary>
@@ -93,22 +77,29 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
     /// <typeparam name="TTo">The type of the items that will be returned after conversion.</typeparam>
     /// <param name="buffer">The buffer containing the data to be read.</param>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
-    /// <param name="list">The list used to store the data.</param>
-    /// <param name="converter">The converter used to convert the data.</param>
-    /// <returns>An enumerable collection of type T.</returns>
+    /// <param name="list">The list used to store the data.  Will append the </param>
+    /// <param name="converter">An optional converter used to convert the data.</param>
+    /// <returns>The consumed amount of bytes from the buffer.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Read<TTo>(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<TTo> list, Converter<T, TTo> converter)
+    private static int Read<TTo>(
+        ReadOnlySequence<byte> buffer,
+        NexusPipeReader pipeReader,
+        List<TTo> list,
+        Converter<T, TTo>? converter)
     {
         var length = buffer.Length;
-
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
 
         while ((length - reader.Consumed) >= _tSize)
         {
-            list.Add(converter.Invoke(reader.ReadValue<T>()!));
+            list.Add(converter == null 
+                ? reader.ReadValue<TTo>()! 
+                : converter.Invoke(reader.ReadValue<T>()!));
         }
 
         pipeReader.AdvanceTo(reader.Consumed);
+
+        return reader.Consumed;
     }
 }

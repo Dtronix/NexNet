@@ -67,8 +67,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     private readonly NexusPipeReader _inputPipeReader;
     private readonly NexusPipeWriter _outputPipeWriter;
     private readonly TaskCompletionSource _readyTcs;
+    private readonly TaskCompletionSource _completeTcs;
     private readonly INexusSession? _session;
-    private volatile State _currentState = State.Unset;
+    private State _currentState = State.Unset;
 
     // <summary>
     // Id which changes based upon completion of the pipe. Used to make sure the
@@ -101,25 +102,20 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// </summary>
     public byte LocalId { get; }
 
-    /// <summary>
-    /// Gets the pipe reader for this connection.
-    /// </summary>
     public PipeReader Input => _inputPipeReader;
 
-    /// <summary>
-    /// Gets the pipe writer for this connection.
-    /// </summary>
     public PipeWriter Output => _outputPipeWriter;
 
-    /// <summary>
-    /// Task which completes when the pipe is ready for usage on the invoking side.
-    /// </summary>
     public Task ReadyTask => _readyTcs.Task;
 
-    /// <summary>
-    /// State of the pipe.
-    /// </summary>
+    public Task CompleteTask => _completeTcs.Task;
+
     public State CurrentState => _currentState;
+
+    /// <summary>
+    /// Session associated with this pipe.
+    /// </summary>
+    public INexusSession? Session => _session;
 
     /// <summary>
     /// Logger.
@@ -134,6 +130,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     internal NexusDuplexPipe(ushort fullId, byte localId, INexusSession session)
     {
         _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _completeTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
 
         Logger = session.Logger?.CreateLogger("NexusDuplexPipe", fullId == 0 
@@ -263,6 +260,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
                 // Honestly, we shouldn't reach here.
                 Logger?.LogTrace($"Ignored update state of : {updatedState} because the pipe was never readied.");
                 _readyTcs.TrySetCanceled();
+                _completeTcs.TrySetCanceled();
                 return false;
             }
         }
@@ -335,6 +333,13 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _currentState |= updatedState;
         }
 
+        // Check if the pipe is complete.
+        if (_currentState.HasFlag(State.Complete))
+        {
+            // Set the complete task.
+            _completeTcs.TrySetResult();
+        }
+
         return true;
     }
 
@@ -348,6 +353,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     {
         // Set the task to canceled in case the pipe was reset before it was ready.
         _readyTcs.TrySetCanceled();
+        _completeTcs.TrySetCanceled();
 
         _inputPipeReader.Dispose();
         _outputPipeWriter.Dispose();

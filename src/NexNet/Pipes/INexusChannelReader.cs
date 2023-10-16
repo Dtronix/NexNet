@@ -22,24 +22,12 @@ public interface INexusChannelReader<T>
     long BufferedLength { get; }
 
     /// <summary>
-    /// Asynchronously reads data from the duplex pipe.
-    /// </summary>
-    /// <param name="cancellationToken"></param>
-    /// <returns>
-    /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type T.
-    /// If the read operation is completed or canceled, the returned task will contain an empty collection.
-    /// </returns>
-    ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default);
-
-    /// <summary>
     /// Asynchronously reads data from the duplex pipe and converts it using the provided converter function.
     /// </summary>
     /// <typeparam name="TTo">The type of the items that will be returned after conversion.</typeparam>
-    /// <param name="converter">A function that converts each item of type T to type TTo.</param>
+    /// <param name="list">The list to which the converted items will be added.</param>
+    /// <param name="converter">An optional converter function that converts each item of type T to type TTo.</param>
     /// <param name="cancellationToken">An optional token to cancel the read operation.</param>
-    /// <returns>
-    /// A task that represents the asynchronous read operation. The value of the TResult parameter contains an enumerable collection of type TTo.
-    /// If the read operation is completed or canceled, the returned task will contain an empty collection.
-    /// </returns>
-    ValueTask<IReadOnlyList<TTo>> ReadAsync<TTo>(Converter<T, TTo> converter, CancellationToken cancellationToken = default);
+    /// <returns>True if there is more data to be read from the channel, otherwise false when closed or completed.</returns>
+    ValueTask<bool> ReadAsync<TTo>(List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default);
 }
