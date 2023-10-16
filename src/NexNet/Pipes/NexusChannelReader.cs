@@ -43,18 +43,10 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     }
 
     /// <inheritdoc/>
-    public virtual ValueTask<IReadOnlyList<T>> ReadAsync(CancellationToken cancellationToken = default)
-    {
-        return ReadAsync(static (in T input) => input, cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public virtual async ValueTask<IReadOnlyList<TTo>> ReadAsync<TTo>(Converter<T, TTo> converter, CancellationToken cancellationToken = default)
+    public virtual async ValueTask<bool> ReadAsync<TTo>(List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default)
     {
         if (IsComplete && BufferedLength == 0)
-            return ListPool<TTo>.Empty;
-
-        var list = ListPool<TTo>.Rent();
+            return false;
 
         // Read the data from the pipe reader.
         while (true)
@@ -63,26 +55,27 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
 
             // Check if the result is completed or canceled.
             if (result.IsCompleted && result.Buffer.Length == 0)
-                return ListPool<TTo>.Empty;
+                return false;
 
             if (result.IsCanceled)
-                return ListPool<TTo>.Empty;
+                return false;
 
             var readAmount = Read<TTo>(result.Buffer, Reader, list, converter);
 
             if (result.IsCompleted && readAmount == 0)
-                return ListPool<TTo>.Empty;
+                return false;
 
             if (list.Count == 0)
                 continue;
 
-            return list;
+            return true;
         }
     }
 
     /// <summary>
     /// Reads data from the buffer and converts it into an enumerable collection of type T.
     /// </summary>
+    /// <remarks>The separation of the read method is needed due to the way MemoryPackReader works being a ref struct.</remarks>
     /// <typeparam name="TTo">The type of the items that will be returned after conversion.</typeparam>
     /// <param name="buffer">The buffer containing the data to be read.</param>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
@@ -90,7 +83,11 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     /// <param name="converter">The converter used to convert the data.</param>
     /// <returns>An enumerable collection of type T.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int Read<TTo>(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<TTo> list, Converter<T, TTo> converter)
+    private static int Read<TTo>(
+        ReadOnlySequence<byte> buffer,
+        NexusPipeReader pipeReader,
+        List<TTo> list,
+        Converter<T, TTo>? converter)
     {
         var length = buffer.Length;
 
@@ -101,7 +98,10 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         {
             try
             {
-                list.Add(converter.Invoke(reader.ReadValue<T>()!));
+                // If the converter is null, read the value directly. Otherwise read the value and convert it.
+                list.Add(converter == null 
+                    ? reader.ReadValue<TTo>()! 
+                    : converter.Invoke(reader.ReadValue<T>()!));
                 successfulConsumedCount = reader.Consumed;
             }
             catch

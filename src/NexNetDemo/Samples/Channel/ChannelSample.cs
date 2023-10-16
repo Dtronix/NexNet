@@ -45,13 +45,26 @@ public class ChannelSample : SampleBase
 
         var reader = await pipe.GetReaderAsync();
 
-        while (!reader.IsComplete)
+        await reader.ReadBatchUntilComplete(batch =>
         {
-            foreach (var channelSampleStruct in await reader.ReadAsync())
+            foreach (var channelSampleStruct in batch)
             {
                 Console.WriteLine(channelSampleStruct);
             }
+        });
+
+        // ---OR---
+        /*
+        var list = new List<ChannelSampleStruct>();
+        while (await reader.ReadAsync(list, null))
+        {
+            foreach (var channelSampleStruct in list)
+            {
+                Console.WriteLine(channelSampleStruct);
+            }
+            list.Clear();
         }
+        */
     }
 
     private class ChannelSampleStruct2
@@ -81,13 +94,28 @@ public class ChannelSample : SampleBase
             Id = s.Id,
             Counts = s.Counts
         };
-        while (!reader.IsComplete)
+
+        await reader.ReadBatchUntilComplete(batch =>
         {
-            foreach (var channelSampleStruct in await reader.ReadAsync(Convert))
+            foreach (var channelSampleStruct in batch)
             {
                 Console.WriteLine(channelSampleStruct);
             }
+        });
+
+        // ---OR---
+
+        /*
+        var list = new List<ChannelSampleStruct2>();
+        while (await reader.ReadAsync(list, Convert))
+        {
+            foreach (var channelSampleStruct in list)
+            {
+                Console.WriteLine(channelSampleStruct);
+            }
+            list.Clear();
         }
+        */
     }
 
     public async Task ClassSample()
@@ -100,13 +128,27 @@ public class ChannelSample : SampleBase
         
         var reader = await pipe.GetReaderAsync();
 
-        while (!reader.IsComplete)
+        await reader.ReadBatchUntilComplete(batch =>
         {
-            foreach (var channelSampleStruct in await reader.ReadAsync())
+            foreach (var channelSampleStruct in batch)
             {
                 Console.WriteLine(channelSampleStruct);
             }
+        });
+
+        // ---OR---
+
+        /*
+        var list = new List<ComplexMessage>();
+        while (await reader.ReadAsync(list, null))
+        {
+            foreach (var channelSampleStruct in list)
+            {
+                Console.WriteLine(channelSampleStruct);
+            }
+            list.Clear();
         }
+        */
     }
 
     public async Task ClassChannelBatchSample()
@@ -118,6 +160,11 @@ public class ChannelSample : SampleBase
         await client.Proxy.ClassChannelBatch(pipe);
 
         var result = await pipe.ReadUntilComplete(1000);
+
+        foreach (var complexMessage in result)
+        {
+            Console.WriteLine(complexMessage);
+        }
     }
 
     private async Task<(NexusServer<ChannelSampleServerNexus, ChannelSampleServerNexus.ClientProxy> server, NexusClient<ChannelSampleClientNexus, ChannelSampleClientNexus.ServerProxy> client)> Setup()

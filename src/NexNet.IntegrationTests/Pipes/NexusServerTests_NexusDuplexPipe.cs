@@ -15,7 +15,6 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
 
-        // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
         const int iterations = 10000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -432,6 +431,53 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(1);
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_PipeCompleteCancelsOnDisconnection(Type type)
+    {
+        var (_, sNexus, client, _, _) = await Setup(type);
+
+        var pipe = sNexus.Context.CreatePipe();
+
+        // Pause the receiving to test the cancellation
+        client.Config.InternalOnReceive = async (session, sequence) =>
+        {
+            await sNexus.Context.DisconnectAsync().Timeout(1);
+            await Task.Delay(100000);
+        };
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+
+        await AssertThrows<TaskCanceledException>(async () => await pipe.CompleteTask).Timeout(1);
+    }
+
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_PipeNotifiesWhenComplete(Type type)
+    {
+        var (_, sNexus, _, cNexus, _) = await Setup(type);
+
+        bool completedInvocation = false;
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            await Task.Delay(100);
+            completedInvocation = true;
+        };
+
+        var pipe = sNexus.Context.CreatePipe();
+
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.ReadyTask.Timeout(1);
+
+        await pipe.CompleteTask.Timeout(1);
+        Assert.IsTrue(completedInvocation);
+    }
+
     [Test]
     public async Task Server_PipesThrowWhenInvokingOnMultipleConnections()
     {
@@ -469,5 +515,45 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         await sNexus.Context.Clients.Client(1).ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe()).Timeout(1);
         await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(sNexus.Context.CreatePipe()).Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_ThrowsWhenPassingPipeFromWrongNexus(Type type)
+    {
+        var (_, sNexus, _, cNexus, _) = await Setup(type);
+
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+        };
+
+        var pipe = cNexus.Context.CreatePipe();
+
+        await AssertThrows<InvalidOperationException>(() =>
+            sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1)).Timeout(1);
+    }
+
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task Server_ThrowsWhenPassingUsedPipe(Type type)
+    {
+        var (_, sNexus, _, cNexus, _) = await Setup(type);
+
+
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+        };
+
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.CompleteTask.Timeout(1);
+
+        await AssertThrows<InvalidOperationException>(() =>
+            sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1)).Timeout(1);
     }
 }

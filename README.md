@@ -101,12 +101,12 @@ MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
 
-|              | CancellationToken | INexusDuplexPipe | INexusChannel<T> | Args |
-|--------------|-------------------|------------------|------------------|------|
-| void         |                   |                  |                  | X    |
-| ValueTask    | X                 |                  |                  | X    |
-| ValueTask    |                   | X                | X                | X    |
-| ValueTask<T> | X                 |                  |                  | X    |
+|                    | CancellationToken | INexusDuplexPipe | INexusChannel<T> | Args |
+|--------------------|-------------------|------------------|------------------|------|
+| void               |                   |                  |                  | X    |
+| ValueTask          | X                 |                  |                  | X    |
+| ValueTask          |                   | X                | X                | X    |
+| ValueTask&lt;T&gt; | X                 |                  |                  | X    |
 
 Notes:
 - `CancellationToken`s can't be combined with `NexusDuplexPipe` nor `INexusChannel<T>` due to pipes/channels having built-in cancellation/completion notifications.
