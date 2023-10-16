@@ -19,6 +19,11 @@ public interface INexusDuplexPipe : IDuplexPipe
     Task ReadyTask { get; }
 
     /// <summary>
+    /// Task which completes when the pipe has been completed on the invoking side.
+    /// </summary>
+    Task CompleteTask { get; }
+
+    /// <summary>
     /// Sets the pipe to the complete state and closes the other end of the connection.
     /// Do not use the pipe after calling this method.
     /// </summary>

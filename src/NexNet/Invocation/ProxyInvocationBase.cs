@@ -359,10 +359,22 @@ public abstract class ProxyInvocationBase : IProxyInvoker
      /// <param name="pipe">Pipe to retrieve the Id of.</param>
      /// <returns>Initial id of the pipe.</returns>
      [MethodImpl(MethodImplOptions.AggressiveInlining)]
-     protected static byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
+     protected byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
      {
          ArgumentNullException.ThrowIfNull(pipe);
-         return Unsafe.As<NexusDuplexPipe>(pipe).LocalId;
+         var nexusPipe = Unsafe.As<NexusDuplexPipe>(pipe);
+
+         if(nexusPipe.InitiatingPipe == false)
+             throw new InvalidOperationException(
+                 "Pipe is not from initiating side of the invocation. Usually this means the proxy was passed a pipe which is already open on another invocation. Pipes can only be used once.");
+
+         if(this._session != nexusPipe.Session)
+             throw new InvalidOperationException("Passed pipe from non-initiating side of duplex pipe.  Usually means that a server pipe was passed to a client proxy or vice versa.");
+
+         if(nexusPipe.CurrentState != NexusDuplexPipe.State.Unset)
+             throw new InvalidOperationException("Pipe is already open on another invocation. Pipes can only be used once.");
+
+         return nexusPipe.LocalId;
      }
      
 
