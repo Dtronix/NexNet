@@ -95,7 +95,7 @@ public class ChannelSample : SampleBase
             Counts = s.Counts
         };
 
-        await reader.ReadBatchUntilComplete(batch =>
+        await reader.ReadBatchUntilComplete(Convert, batch =>
         {
             foreach (var channelSampleStruct in batch)
             {

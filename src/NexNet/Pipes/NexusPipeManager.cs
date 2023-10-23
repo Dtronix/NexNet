@@ -2,7 +2,6 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Internals;

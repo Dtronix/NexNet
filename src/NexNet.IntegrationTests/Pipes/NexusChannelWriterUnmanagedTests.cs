@@ -1,8 +1,8 @@
 ﻿using System.Buffers;
+using NexNet.Internals.Pipelines.Arenas;
+using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
 using NUnit.Framework;
-using Pipelines.Sockets.Unofficial.Arenas;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.IntegrationTests.Pipes;
 

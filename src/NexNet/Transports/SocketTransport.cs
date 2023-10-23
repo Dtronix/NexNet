@@ -4,7 +4,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Pipelines.Sockets.Unofficial;
+using NexNet.Internals.Pipelines;
+using NexNet.Pipelines;
 
 namespace NexNet.Transports;
 

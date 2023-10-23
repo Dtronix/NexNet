@@ -2,8 +2,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using NexNet.Internals;
+using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Cache;
 

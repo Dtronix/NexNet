@@ -449,9 +449,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     {
         var (_, sNexus, client, _, _) = await Setup(type);
 
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
-        {
-        };
+        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
 
         var pipe = sNexus.Context.CreatePipe();
 
@@ -469,9 +467,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         var (_, sNexus, client, _, _) = await Setup(type);
 
 
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
-        {
-        };
+        sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
 
         var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);

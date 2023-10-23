@@ -1,10 +1,10 @@
 ﻿using System.Buffers;
 using MemoryPack;
 using NexNet.Internals;
+using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NUnit.Framework;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.IntegrationTests.Pipes;
 
