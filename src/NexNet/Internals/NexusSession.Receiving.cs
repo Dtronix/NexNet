@@ -5,7 +5,6 @@ using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using NexNet.Logging;
 
 namespace NexNet.Internals;

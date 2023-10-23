@@ -4,9 +4,9 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Pipes;
 

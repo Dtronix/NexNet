@@ -1,5 +1,5 @@
-﻿using NUnit.Framework;
-using Pipelines.Sockets.Unofficial.Buffers;
+﻿using NexNet.Internals.Pipelines.Buffers;
+using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
 

@@ -1,15 +1,11 @@
 ﻿using System;
 using System.Buffers;
-using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
-using static System.Collections.Specialized.BitVector32;
-using static NexNet.Pipes.NexusDuplexPipe;
 
 namespace NexNet.Pipes;
 

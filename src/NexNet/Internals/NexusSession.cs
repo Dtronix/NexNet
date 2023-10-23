@@ -8,12 +8,11 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using Pipelines.Sockets.Unofficial.Threading;
-using Pipelines.Sockets.Unofficial.Buffers;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
 using NexNet.Logging;
+using NexNet.Pipelines.Threading;
+using NexNet.Internals.Pipelines.Buffers;
 
 namespace NexNet.Internals;
 

@@ -3,11 +3,11 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipelines.Arenas;
+using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
-using Pipelines.Sockets.Unofficial.Arenas;
-using Pipelines.Sockets.Unofficial.Buffers;
 
 namespace NexNet.Invocation;
 
