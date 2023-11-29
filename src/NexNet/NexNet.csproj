@@ -1,8 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
-    <Nullable>enable</Nullable>
     <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>A real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.</Description>
@@ -13,8 +11,8 @@
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MemoryPack" Version="1.9.16" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
-    <PackageReference Include="System.IO.Pipelines" Version="7.0.0" />
+    <PackageReference Include="MemoryPack" Version="1.10.0" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
   </ItemGroup>
 </Project>

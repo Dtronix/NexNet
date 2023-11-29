@@ -18,16 +18,16 @@ internal static class QuicHelpers
             QuicError.InternalError => TransportError.InternalError,
             QuicError.ConnectionAborted => TransportError.ConnectionAborted,
             QuicError.StreamAborted => TransportError.StreamAborted,
-            QuicError.AddressInUse => TransportError.AddressInUse,
-            QuicError.InvalidAddress => TransportError.InvalidAddress,
+            QuicError.AlpnInUse => TransportError.AddressInUse,
             QuicError.ConnectionTimeout => TransportError.ConnectionTimeout,
-            QuicError.HostUnreachable => TransportError.Unreachable,
             QuicError.ConnectionRefused => TransportError.ConnectionRefused,
             QuicError.VersionNegotiationError => TransportError.VersionNegotiationError,
             QuicError.ConnectionIdle => TransportError.ConnectionIdle,
-            QuicError.ProtocolError => TransportError.ProtocolError,
             QuicError.OperationAborted => TransportError.OperationAborted,
-            _ => TransportError.InternalError,
+            QuicError.Success => TransportError.Success,
+            QuicError.TransportError => TransportError.ProtocolError,
+            QuicError.CallbackError => TransportError.InternalError,
+            _ => TransportError.InternalError
         };
     }
 }

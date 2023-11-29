@@ -124,11 +124,7 @@ internal partial class NexusServerTests : BaseTests
         catch (TransportException e)
         {
             // Quic does not return information if a UDP port is already in use or not.
-            Assert.AreEqual(
-                e.InnerException is QuicException 
-                    ? TransportError.InternalError 
-                    : TransportError.AddressInUse,
-                e.Error);
+            Assert.AreEqual(TransportError.AddressInUse, e.Error);
         }
         catch (Exception e)
         {
