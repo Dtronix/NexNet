@@ -1,4 +1,4 @@
-# <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)  [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)
+﻿# <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)  [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)
 
 NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional event-driven functionality into their applications. This framework streamlines the transmission of updates bidirectionally between server-side code and connected clients with resilient communication channels.
 
@@ -80,23 +80,23 @@ await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 ```
 ## Benchmarks
 ```
-BenchmarkDotNet v0.13.8, Windows 11 (10.0.22621.2283/22H2/2022Update/SunValley2)
-AMD Ryzen 9 3900X, 1 CPU, 24 logical and 12 physical cores
-.NET SDK 8.0.100-rc.1.23455.8
-  [Host]     : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
-  Job-ASQQIE : .NET 7.0.10 (7.0.1023.36312), X64 RyuJIT AVX2
+BenchmarkDotNet v0.13.10, Windows 11 (10.0.23590.1000)
+Intel Core i7-10700 CPU 2.90GHz, 1 CPU, 16 logical and 8 physical cores
+.NET SDK 8.0.100
+  [Host]     : .NET 8.0.0 (8.0.23.53103), X64 RyuJIT AVX2
+  Job-JQCICL : .NET 8.0.0 (8.0.23.53103), X64 RyuJIT AVX2
 
-Platform=X64  Runtime=.NET 7.0  MaxIterationCount=5
+Platform=X64  Runtime=.NET 8.0  MaxIterationCount=5  
 MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ```
 
-| Method                               | Mean     | Error    | StdDev   | Op/s     | Gen0   | Gen1   | Allocated |
-|------------------------------------- |---------:|---------:|---------:|---------:|-------:|-------:|----------:|
-| InvocationNoArgument                 | 38.66 us | 2.070 us | 0.537 us | 25,867.9 | 0.0610 |      - |     681 B |
-| InvocationUnmanagedArgument          | 38.35 us | 2.496 us | 0.648 us | 26,078.6 | 0.0610 |      - |     737 B |
-| InvocationUnmanagedMultipleArguments | 38.98 us | 2.044 us | 0.531 us | 25,654.8 | 0.0610 |      - |     785 B |
-| InvocationNoArgumentWithResult       | 38.22 us | 0.752 us | 0.195 us | 26,166.8 | 0.0610 |      - |     721 B |
-| InvocationWithDuplexPipe_Upload      | 64.48 us | 2.690 us | 0.416 us | 15,509.1 | 2.0752 | 0.4883 |   14142 B |
+| Method                     | Mean     | Error  | StdDev  | Op/s   | Gen0 | Gen1| Allocated |
+|--------------------------- |---------:|-------:|--------:|-------:|-----:|----:|----------:|
+| NoArgument                 | 38.9 μs | 0.98 μs | 0.25 μs | 25,702 | 0.06 |   - |     632 B |
+| UnmanagedArgument          | 39.8 μs | 1.02 μs | 0.26 μs | 25,110 | 0.06 |   - |     689 B |
+| UnmanagedMultipleArguments | 38.6 μs | 2.62 μs | 0.40 μs | 25,894 | 0.06 |   - |     737 B |
+| NoArgumentWithResult       | 38.8 μs | 0.89 μs | 0.23 μs | 25,750 | 0.06 |   - |     673 B |
+| WithDuplexPipe_Upload      | 49.6 μs | 2.72 μs | 0.42 μs | 20,138 | 2.07 | 0.4 |   13987 B |
 
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
