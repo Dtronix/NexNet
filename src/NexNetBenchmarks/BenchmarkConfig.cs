@@ -23,7 +23,7 @@ namespace NexNetBenchmarks
             return ManualConfig.CreateEmpty()
                 // Jobs
                 .AddJob(Job.Default
-                    .WithRuntime(CoreRuntime.Core70)
+                    .WithRuntime(CoreRuntime.Core80)
                     .WithPlatform(Platform.X64)
                     .WithMinWarmupCount(1)
                     .WithMaxWarmupCount(3)
