@@ -10,4 +10,5 @@ internal enum ProxyInvocationMode
     Clients,
     //Group,
     Groups,
+    GroupsExceptCaller,
 }

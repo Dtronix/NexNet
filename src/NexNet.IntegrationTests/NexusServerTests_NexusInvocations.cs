@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Collections;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
@@ -259,6 +260,112 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs1.Task.Timeout(1);
         await tcs2.Task.Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task NexusInvokesOnGroupExceptCurrent(Type type)
+    {
+        var invocationCount = 0;
+        var tcs1 = new TaskCompletionSource();
+        int connectedCount = 0;
+
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
+        {
+            connectedNexus.OnConnectedEvent = async nexus =>
+            {
+                Interlocked.Increment(ref connectedCount);
+                nexus.Context.Groups.Add("group");
+
+                if (connectedCount == 1)
+                {
+                    _ = client2.ConnectAsync().Timeout(1);
+                } 
+                else if (connectedCount == 2)
+                {
+                    await nexus.Context.Clients.GroupExceptCaller("group").ClientTask();
+                }
+            };
+        });
+
+#pragma warning disable CS1998
+        clientNexus1.ClientTaskEvent = async _ =>
+        {
+            Interlocked.Increment(ref invocationCount);
+            tcs1.TrySetResult();
+        };
+        clientNexus2.ClientTaskEvent = async _ =>
+        {
+            Interlocked.Increment(ref invocationCount);
+        };
+
+#pragma warning restore CS1998
+        await server.StartAsync().Timeout(1);
+
+        await client1.ConnectAsync().Timeout(1);
+
+        await tcs1.Task.Timeout(1);
+        Assert.AreEqual(1, invocationCount);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task NexusInvokesOnGroupsExceptCurrent(Type type)
+    {
+        var invocationCount = 0;
+        var tcs1 = new TaskCompletionSource();
+        int connectedCount = 0;
+        var invocationOnFirstClient = 0;
+
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
+        {
+            connectedNexus.OnConnectedEvent = async nexus =>
+            {
+                Interlocked.Increment(ref connectedCount);
+                nexus.Context.Groups.Add("group");
+                nexus.Context.Groups.Add("group2");
+
+                if (connectedCount == 1)
+                {
+                    _ = client2.ConnectAsync().Timeout(1);
+                }
+                else if (connectedCount == 2)
+                {
+                    await nexus.Context.Clients.GroupsExceptCaller(new[] { "group", "group2" }).ClientTask();
+                }
+            };
+        });
+
+#pragma warning disable CS1998
+        clientNexus1.ClientTaskEvent = async _ =>
+        {
+            Interlocked.Increment(ref invocationCount);
+
+            if (++invocationOnFirstClient == 2)
+                tcs1.TrySetResult();
+        };
+        clientNexus2.ClientTaskEvent = async _ =>
+        {
+            Interlocked.Increment(ref invocationCount);
+        };
+
+#pragma warning restore CS1998
+        await server.StartAsync().Timeout(1);
+
+        await client1.ConnectAsync().Timeout(1);
+
+        await tcs1.Task.Timeout(1);
+        Assert.AreEqual(2, invocationCount);
     }
 
     [TestCase(Type.Uds)]
