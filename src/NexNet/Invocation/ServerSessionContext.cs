@@ -119,28 +119,12 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy Group(string groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
-                _context.Session.CacheManager,
-                ProxyInvocationMode.Groups,
-                new[] { groupName });
-            _instancedProxies.Push(proxy);
-
-            return proxy;
+            return Groups(new []{ groupName });
         }
 
         public TClientProxy GroupExceptCaller(string groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
-                _context.Session.CacheManager,
-                ProxyInvocationMode.GroupsExceptCaller,
-                new[] { groupName });
-            _instancedProxies.Push(proxy);
-
-            return proxy;
+            return Groups(new[] { groupName });
         }
 
         public TClientProxy Groups(string[] groupName)
@@ -158,15 +142,7 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy GroupsExceptCaller(string[] groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
-                _context.Session.CacheManager,
-                ProxyInvocationMode.GroupsExceptCaller,
-                groupName);
-            _instancedProxies.Push(proxy);
-
-            return proxy;
+            return Groups(groupName);
         }
 
         public IEnumerable<long> GetIds()
