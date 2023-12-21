@@ -13,6 +13,7 @@ interface IChannelSampleServerNexus
     ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
     ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
     ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
+    ValueTask DifferentTypesChannel(INexusDuplexPipe pipe);
 }
 
 
@@ -69,6 +70,22 @@ partial class ChannelSampleServerNexus
     public async ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel)
     {
         await channel.WriteAndComplete(GetComplexMessages());
+    }
+
+    public async ValueTask DifferentTypesChannel(INexusDuplexPipe pipe)
+    {
+        var reader = await pipe.GetChannelReader<long>();
+
+        var readValues = await reader.ReadUntilComplete();
+
+        var writer = await pipe.GetChannelWriter<string>();
+
+        foreach (var readValue in readValues)
+        {
+            await writer.WriteAsync("Squared Value: " + Math.Pow(readValue, 2));
+        }
+
+        await writer.CompleteAsync();
     }
 
     private static IEnumerable<ComplexMessage> GetComplexMessages()
