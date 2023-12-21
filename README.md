@@ -12,7 +12,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
   - Streaming classes/structs data via `NexusChannel<T>`
   - Proxies can return:
     - void for "fire and forget" invocation situations such as notifications.
-    - ValueTask whcih waiting for invocation completion.
+    - ValueTask for waiting for invocation completion.
     - ValueTask<T> which will return a value from the remote invocation method.
 - Server can message multiple connected clients with a single invocation.
 - Automatic reconnection of clients upon timeout or loss of connection.
