@@ -574,7 +574,7 @@ internal partial class MethodMeta
         {
             sb.Append("void");
         }
-        else if(IsAsync)
+        else if (IsAsync)
         {
             sb.Append("ValueTask");
 
@@ -585,7 +585,6 @@ internal partial class MethodMeta
         }
 
         sb.Append(" ");
-
         sb.Append(this.Name).Append("(");
 
         var paramsLength = this.Parameters.Length;
@@ -603,7 +602,7 @@ internal partial class MethodMeta
                 }
             }
         }
-        
+
         sb.Append(")");
 
         var stringMethod = sb.ToString();
