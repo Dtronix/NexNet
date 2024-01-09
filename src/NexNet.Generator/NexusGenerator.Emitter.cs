@@ -107,7 +107,7 @@ namespace {{Symbol.ContainingNamespace}}
     /// <summary>
     /// Nexus used for handling all {{EmitServerClientName()}} communications.
     /// </summary>
-    partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}NexusBase<{{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, {{this.NexusInterface.Namespace}}.{{this.NexusInterface.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
+    partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}NexusBase<{{this.Namespace}}.{{this.TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, {{this.NexusInterface.Namespace}}.{{this.NexusInterface.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
     {
 """);
         if (NexusAttribute.IsServer)
@@ -432,10 +432,11 @@ partial class MethodMeta
         
         sb.AppendLine(")");
         sb.AppendLine("             {");
-
+        sb.AppendLine("                 var __proxyInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this);");
         if (SerializedParameters > 0)
         {
             sb.Append("                 var __proxyInvocationArguments = new global::System.ValueTuple<");
+            
             
             foreach (var p in Parameters)
             {
@@ -461,6 +462,29 @@ partial class MethodMeta
             sb.AppendLine(");");
         }
 
+        // Logging
+        sb.Append("                 __proxyInvoker.Logger?.Log(global::NexNet.Logging.NexusLogLevel.Information, __proxyInvoker.Logger.Category, null, $\"Proxy Invoking Method: ");
+        sb.Append(this.Name).Append("(");
+        for (var i = 0; i < Parameters.Length; i++)
+        {
+            if (Parameters[i].IsCancellationToken)
+            {
+                sb.Append(Parameters[i].Name)
+                    .Append(", ");
+            }
+            else
+            {
+                sb.Append(Parameters[i].Name)
+                    .Append(" = ")
+                    .Append("{__proxyInvocationArguments.Item").Append(i + 1)
+                    .Append("}, ");
+            }
+        }
+
+        if (Parameters.Length > 0) 
+            sb.Remove(sb.Length - 2, 2);
+        
+        sb.AppendLine(");\");");
         sb.Append("                 ");
 
 
@@ -470,7 +494,7 @@ partial class MethodMeta
             // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
             sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
 
-            sb.Append("__ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
+            sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
             sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, ");
 
             // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
@@ -478,7 +502,7 @@ partial class MethodMeta
         }
         else if (this.IsAsync)
         {
-            sb.Append("return __ProxyInvokeAndWaitForResultCore");
+            sb.Append("return __proxyInvoker.ProxyInvokeAndWaitForResultCore");
             if (this.ReturnType != null)
             {
                 sb.Append("<").Append(this.ReturnType).Append(">");

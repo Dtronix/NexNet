@@ -429,7 +429,7 @@ internal class MethodParameterMeta
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
-            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name})";
+            SerializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({Name})";
         }
         else if (IsDuplexUnmanagedChannel || IsDuplexChannel)
         {
@@ -437,7 +437,7 @@ internal class MethodParameterMeta
             ChannelType = SymbolUtilities.GetFullSymbolType(returnSymbol?.TypeArguments[0], false);
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
-            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name}.BasePipe)";
+            SerializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({Name}.BasePipe)";
         }
         else if(IsCancellationToken)
         {
