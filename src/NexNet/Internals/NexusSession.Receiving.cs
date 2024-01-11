@@ -137,8 +137,8 @@ internal partial class NexusSession<TNexus, TProxy>
                             break;
 
                         default:
-                            Logger?.LogTrace($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
-                            // If we are outside of the acceptable messages, disconnect the connection.
+                            Logger?.LogInfo($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
+                            // If we are outside the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
                     }
@@ -187,7 +187,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             break;
                         default:
                             Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
-                            // If we are outside of the acceptable messages, disconnect the connection.
+                            // If we are outside the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
 
@@ -205,7 +205,6 @@ internal partial class NexusSession<TNexus, TProxy>
             }
 
             //Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
-
             var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
 
             position += _recMessageHeader.BodyLength;

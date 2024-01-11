@@ -11,7 +11,7 @@ namespace NexNetDemo.Samples.Channel;
 public class ChannelSample : SampleBase
 {
     public ChannelSample(TransportMode transportMode = TransportMode.Uds)
-        : base(true, transportMode)
+        : base(false, transportMode)
     {
 
     }
