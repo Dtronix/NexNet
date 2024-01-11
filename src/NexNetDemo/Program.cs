@@ -1,4 +1,5 @@
-﻿using NexNetDemo.Samples;
+﻿using NexNet.Logging;
+using NexNetDemo.Samples;
 using NexNetDemo.Samples.Channel;
 using NexNetDemo.Samples.DuplexPipeStreaming;
 using NexNetDemo.Samples.InvocationSample;
@@ -46,3 +47,4 @@ internal class Program
     }
     
 }
+

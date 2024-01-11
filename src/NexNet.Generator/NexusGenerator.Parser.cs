@@ -429,7 +429,7 @@ internal class MethodParameterMeta
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
-            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name})";
+            SerializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({Name})";
         }
         else if (IsDuplexUnmanagedChannel || IsDuplexChannel)
         {
@@ -437,7 +437,7 @@ internal class MethodParameterMeta
             ChannelType = SymbolUtilities.GetFullSymbolType(returnSymbol?.TypeArguments[0], false);
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
-            SerializedValue = $"__ProxyGetDuplexPipeInitialId({Name}.BasePipe)";
+            SerializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({Name}.BasePipe)";
         }
         else if(IsCancellationToken)
         {
@@ -574,7 +574,7 @@ internal partial class MethodMeta
         {
             sb.Append("void");
         }
-        else if(IsAsync)
+        else if (IsAsync)
         {
             sb.Append("ValueTask");
 
@@ -585,7 +585,6 @@ internal partial class MethodMeta
         }
 
         sb.Append(" ");
-
         sb.Append(this.Name).Append("(");
 
         var paramsLength = this.Parameters.Length;
@@ -603,7 +602,7 @@ internal partial class MethodMeta
                 }
             }
         }
-        
+
         sb.Append(")");
 
         var stringMethod = sb.ToString();

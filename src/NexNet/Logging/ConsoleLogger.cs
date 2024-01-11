@@ -34,13 +34,13 @@ public class ConsoleLogger : CoreLogger
         if (!_baseLogger.LogEnabled)
             return;
 
-        if (logLevel < MinLogLevel)
+        if (logLevel < _baseLogger.MinLogLevel)
             return;
         var time = _baseLogger.Sw.ElapsedTicks / (double)Stopwatch.Frequency;
 
         Console.WriteLine(Prefix != null
-            ? $"[{time:0.000000}]{Prefix} [{category}:{SessionDetails}] {message} {exception}"
-            : $"[{time:0.000000}] [{category}:{SessionDetails}] {message} {exception}");
+            ? $"[{time:0.000000}][{logLevel}] {Prefix} [{category}:{SessionDetails}] {message} {exception}"
+            : $"[{time:0.000000}][{logLevel}] [{category}:{SessionDetails}] {message} {exception}");
     }
 
     /// <inheritdoc/>
