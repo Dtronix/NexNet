@@ -26,7 +26,21 @@ public class SampleBase
 
     public SampleBase(bool log, TransportMode transportMode)
     {
-        var logger = log ? new ConsoleLogger() : null;
+        ConsoleLogger? logger;
+        if (log)
+        {
+            logger = new ConsoleLogger
+            {
+                MinLogLevel = NexusLogLevel.Information
+            };
+        }
+        else
+        {
+            logger = null;
+        }
+
+        
+        
         if (transportMode == TransportMode.Uds)
         {
             var path = "test.sock";

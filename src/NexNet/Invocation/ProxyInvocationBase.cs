@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
 
@@ -29,6 +30,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         get => _cacheManager;
         set => _cacheManager = value;
     }
+
+    /// <inheritdoc />
+    INexusLogger? IProxyInvoker.Logger => _session?.Logger;
 
     void IProxyInvoker.Configure(
         INexusSession? session,
@@ -82,16 +86,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
-    /// <summary>
-    /// Invokes the specified method on the connected session and waits until the message has been completely sent.
-    /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
-    /// </summary>
-    /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
-    /// <param name="flags">Special flags for the invocation of this method.</param>
-    /// <returns>Task which returns when the invocations messages have been issued.</returns>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    protected async ValueTask __ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
+    /// <inheritdoc />
+    async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
     {
         var message = _cacheManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
@@ -271,17 +267,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         message.Dispose();
     }
 
-    /// <summary>
-    /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
-    /// and waits the the completion of the invocation.
-    /// </summary>
-    /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
-    /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
-    /// <returns>ValueTask which completes upon remote invocation completion.</returns>
-    /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
-    /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask __ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    /// <inheritdoc />
+    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -304,18 +291,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
-    /// <summary>
-    /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token,
-    /// waits the the completion of the invocation and returns the value of the invocation.
-    /// </summary>
-    /// <typeparam name="TReturn">Expected type to be returned by the remote invocation proxy.</typeparam>
-    /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
-    /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
-    /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
-    /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
-    /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    protected async ValueTask<TReturn> __ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    /// <inheritdoc />
+    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -348,13 +325,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         }
     }
 
-    /// <summary>
-     /// Gets the Initial Id of the duplex pipe.
-     /// </summary>
-     /// <param name="pipe">Pipe to retrieve the Id of.</param>
-     /// <returns>Initial id of the pipe.</returns>
-     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-     protected byte __ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
+    /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+     byte IProxyInvoker.ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
      {
          ArgumentNullException.ThrowIfNull(pipe);
          var nexusPipe = Unsafe.As<NexusDuplexPipe>(pipe);
@@ -363,7 +336,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
              throw new InvalidOperationException(
                  "Pipe is not from initiating side of the invocation. Usually this means the proxy was passed a pipe which is already open on another invocation. Pipes can only be used once.");
 
-         if(this._session != nexusPipe.Session)
+         if(_session != nexusPipe.Session)
              throw new InvalidOperationException("Passed pipe from non-initiating side of duplex pipe.  Usually means that a server pipe was passed to a client proxy or vice versa.");
 
          if(nexusPipe.CurrentState != NexusDuplexPipe.State.Unset)
@@ -395,7 +368,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
         {
-            await __ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None).ConfigureAwait(false);
+            await Unsafe.As<IProxyInvoker>(this)
+                .ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None)
+                .ConfigureAwait(false);
             return null;
         }
 

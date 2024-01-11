@@ -1,4 +1,5 @@
-﻿using NexNetDemo.Samples;
+﻿using NexNet.Logging;
+using NexNetDemo.Samples;
 using NexNetDemo.Samples.Channel;
 using NexNetDemo.Samples.DuplexPipeStreaming;
 using NexNetDemo.Samples.InvocationSample;
@@ -18,7 +19,8 @@ internal class Program
         //await new ChannelSample(SampleBase.TransportMode.Uds).ClassSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).ClassChannelBatchSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
-        await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructConvertSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructConvertSample();
+        await new ChannelSample(SampleBase.TransportMode.Uds).DifferentTypesChannelSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 
@@ -45,3 +47,4 @@ internal class Program
     }
     
 }
+

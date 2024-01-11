@@ -166,6 +166,34 @@ public class ChannelSample : SampleBase
             Console.WriteLine(complexMessage);
         }
     }
+    
+    public async Task DifferentTypesChannelSample()
+    {
+        var (server, client) = await Setup();
+
+        await using var pipe = client.CreatePipe();
+
+        await client.Proxy.DifferentTypesChannel(pipe);
+
+        var writer = await pipe.GetChannelWriter<long>();
+
+        for (int i = 0; i < 50; i++)
+        {
+            await writer.WriteAsync(i);
+            Console.WriteLine("Sent " + i);
+        }
+
+        await writer.CompleteAsync();
+
+        var reader = await pipe.GetChannelReader<string>();
+
+        var readValues = await reader.ReadUntilComplete(50);
+
+        foreach (var readValue in readValues)
+        {
+            Console.WriteLine("Received: " + readValue);
+        }
+    }
 
     private async Task<(NexusServer<ChannelSampleServerNexus, ChannelSampleServerNexus.ClientProxy> server, NexusClient<ChannelSampleClientNexus, ChannelSampleClientNexus.ServerProxy> client)> Setup()
     {
