@@ -268,49 +268,51 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Quic)]
     public async Task NexusInvokesOnGroupExceptCurrent(Type type)
     {
-        var invocationCount = 0;
-        var tcs1 = new TaskCompletionSource();
+        var groupInvokedCount = 0;
+        var voidInvokedCount = 0;
         int connectedCount = 0;
+        var tcs1 = new TaskCompletionSource();
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always));
 
-        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.Always), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = async nexus =>
             {
                 Interlocked.Increment(ref connectedCount);
                 nexus.Context.Groups.Add("group");
-
-                if (connectedCount == 1)
-                {
-                    _ = client2.ConnectAsync().Timeout(1);
-                } 
-                else if (connectedCount == 2)
+                
+                if (connectedCount == 2)
                 {
                     await nexus.Context.Clients.GroupExceptCaller("group").ClientTask();
+                    nexus.Context.Clients.Group("group").ClientVoid();
                 }
             };
         });
 
-#pragma warning disable CS1998
-        clientNexus1.ClientTaskEvent = async _ =>
+        clientNexus1.ClientTaskEvent = clientNexus2.ClientTaskEvent = async _ =>
         {
-            Interlocked.Increment(ref invocationCount);
-            tcs1.TrySetResult();
-        };
-        clientNexus2.ClientTaskEvent = async _ =>
-        {
-            Interlocked.Increment(ref invocationCount);
+            Interlocked.Increment(ref groupInvokedCount);
         };
 
-#pragma warning restore CS1998
+        clientNexus1.ClientVoidEvent = clientNexus2.ClientVoidEvent = async _ =>
+        {
+            Interlocked.Increment(ref voidInvokedCount);
+
+            if (voidInvokedCount == 2)
+            {
+                tcs1.SetResult();
+            }
+        };
+
         await server.StartAsync().Timeout(1);
-
-        await client1.ConnectAsync().Timeout(1);
+        
+        await client1.ConnectAsync();
+        await client2.ConnectAsync();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(1, invocationCount);
+        Assert.AreEqual(1, groupInvokedCount);
     }
 
     [TestCase(Type.Uds)]
