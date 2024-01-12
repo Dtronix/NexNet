@@ -297,7 +297,8 @@ partial class MethodMeta
     /// Emits the invocation of the method on the nexus.
     /// </summary>
     /// <param name="sb"></param>
-    public void EmitNexusMethodInvocation(StringBuilder sb, bool writeParamNames)
+    /// <param name="forLog">Change the output to write the output params. Used for logging.</param>
+    public void EmitNexusMethodInvocation(StringBuilder sb, bool forLog)
     {
         sb.Append(this.Name).Append("(");
 
@@ -309,7 +310,7 @@ partial class MethodMeta
             // otherwise we need to pass the serialized value.
             if (methodParameterMeta.IsDuplexPipe)
             {
-                if (writeParamNames)
+                if (forLog)
                 {
                     sb.Append(methodParameterMeta.Name)
                         .Append(" = {arguments.Item")
@@ -325,7 +326,7 @@ partial class MethodMeta
             }
             else if (methodParameterMeta.IsDuplexUnmanagedChannel)
             {
-                if (writeParamNames)
+                if (forLog)
                 {
                     sb.Append(methodParameterMeta.Name)
                         .Append(" = {arguments.Item")
@@ -343,7 +344,7 @@ partial class MethodMeta
             }
             else if (methodParameterMeta.IsDuplexChannel)
             {
-                if (writeParamNames)
+                if (forLog)
                 {
                     sb.Append(methodParameterMeta.Name)
                         .Append(" = {arguments.Item")
@@ -361,7 +362,7 @@ partial class MethodMeta
             }
             else if (methodParameterMeta.SerializedValue != null)
             {
-                if (writeParamNames)
+                if (forLog)
                 {
                     sb.Append(methodParameterMeta.Name)
                         .Append(" = {arguments.Item")
@@ -379,7 +380,7 @@ partial class MethodMeta
 
         if (CancellationTokenParameter != null)
         {
-            if (writeParamNames)
+            if (forLog)
             {
                 sb.Append(CancellationTokenParameter.Name).Append(" = ct");
             }
@@ -396,7 +397,7 @@ partial class MethodMeta
 
         sb.Append(");");
 
-        if (!writeParamNames)
+        if (!forLog)
             sb.AppendLine();
     }
 

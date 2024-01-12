@@ -268,7 +268,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -292,7 +292,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
