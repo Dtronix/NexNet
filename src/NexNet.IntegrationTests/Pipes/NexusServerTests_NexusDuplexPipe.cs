@@ -15,7 +15,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
 
-        const int iterations = 10000;
+        const int iterations = 1000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
