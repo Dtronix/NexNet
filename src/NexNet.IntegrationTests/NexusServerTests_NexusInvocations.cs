@@ -270,46 +270,47 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     {
         var groupInvokedCount = 0;
         var voidInvokedCount = 0;
-        int connectedCount = 0;
         var tcs1 = new TaskCompletionSource();
 
-        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always));
-        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always));
+        var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
+        var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
 
-        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.Always), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
-            connectedNexus.OnConnectedEvent = async nexus =>
+            connectedNexus.ServerTaskEvent = async nexus =>
             {
-                Interlocked.Increment(ref connectedCount);
+                await nexus.Context.Clients.GroupExceptCaller("group").ClientTask();
+
+                // Delay to ensure the method has time to invoke on the client sessions.
+                await Task.Delay(50);
+                nexus.Context.Clients.Group("group").ClientVoid();
+            };
+
+            connectedNexus.OnConnectedEvent = nexus =>
+            {
                 nexus.Context.Groups.Add("group");
-                
-                if (connectedCount == 2)
-                {
-                    await nexus.Context.Clients.GroupExceptCaller("group").ClientTask();
-                    nexus.Context.Clients.Group("group").ClientVoid();
-                }
+                return ValueTask.CompletedTask;
             };
         });
 
-        clientNexus1.ClientTaskEvent = clientNexus2.ClientTaskEvent = async _ =>
+        clientNexus1.ClientTaskEvent = clientNexus2.ClientTaskEvent = _ =>
         {
             Interlocked.Increment(ref groupInvokedCount);
+            return ValueTask.CompletedTask;
         };
 
-        clientNexus1.ClientVoidEvent = clientNexus2.ClientVoidEvent = async _ =>
+        clientNexus1.ClientVoidEvent = clientNexus2.ClientVoidEvent = _ =>
         {
-            Interlocked.Increment(ref voidInvokedCount);
-
-            if (voidInvokedCount == 2)
-            {
+            if (Interlocked.Increment(ref voidInvokedCount) == 2)
                 tcs1.SetResult();
-            }
         };
 
         await server.StartAsync().Timeout(1);
         
-        await client1.ConnectAsync();
-        await client2.ConnectAsync();
+        await client1.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(1);
+
+        await client1.Proxy.ServerTask();
 
         await tcs1.Task.Timeout(1);
         Assert.AreEqual(1, groupInvokedCount);
@@ -321,53 +322,52 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Quic)]
     public async Task NexusInvokesOnGroupsExceptCurrent(Type type)
     {
-        var invocationCount = 0;
+        var groupInvokedCount = 0;
+        var voidInvokedCount = 0;
         var tcs1 = new TaskCompletionSource();
-        int connectedCount = 0;
-        var invocationOnFirstClient = 0;
 
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
 
         var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
-            connectedNexus.OnConnectedEvent = async nexus =>
+            connectedNexus.ServerTaskEvent = async nexus =>
             {
-                Interlocked.Increment(ref connectedCount);
-                nexus.Context.Groups.Add("group");
-                nexus.Context.Groups.Add("group2");
+                await nexus.Context.Clients.GroupsExceptCaller(["group1", "group2"]).ClientTask();
+                
+                // Delay to ensure the method has time to invoke on the client sessions.
+                await Task.Delay(50);
+                nexus.Context.Clients.Group("group1").ClientVoid();
+            };
 
-                if (connectedCount == 1)
-                {
-                    _ = client2.ConnectAsync().Timeout(1);
-                }
-                else if (connectedCount == 2)
-                {
-                    await nexus.Context.Clients.GroupsExceptCaller(new[] { "group", "group2" }).ClientTask();
-                }
+            connectedNexus.OnConnectedEvent = nexus =>
+            {
+                nexus.Context.Groups.Add(["group1", "group2"]);
+                return ValueTask.CompletedTask;
             };
         });
 
-#pragma warning disable CS1998
-        clientNexus1.ClientTaskEvent = async _ =>
+        clientNexus1.ClientTaskEvent = clientNexus2.ClientTaskEvent = _ =>
         {
-            Interlocked.Increment(ref invocationCount);
-
-            if (++invocationOnFirstClient == 2)
-                tcs1.TrySetResult();
-        };
-        clientNexus2.ClientTaskEvent = async _ =>
-        {
-            Interlocked.Increment(ref invocationCount);
+            Interlocked.Increment(ref groupInvokedCount);
+            return ValueTask.CompletedTask;
         };
 
-#pragma warning restore CS1998
+        clientNexus1.ClientVoidEvent = clientNexus2.ClientVoidEvent = _ =>
+        {
+            if (Interlocked.Increment(ref voidInvokedCount) == 2)
+                tcs1.SetResult();
+        };
+
         await server.StartAsync().Timeout(1);
 
         await client1.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(1);
+
+        await client1.Proxy.ServerTask();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(2, invocationCount);
+        Assert.AreEqual(2, groupInvokedCount);
     }
 
     [TestCase(Type.Uds)]
