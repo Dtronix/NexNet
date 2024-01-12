@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet.Invocation;
 /// <summary>
@@ -94,7 +95,11 @@ internal class SessionManager
         }
     }
 
-    public async ValueTask GroupChannelIterator<T>(string groupName, Func<INexusSession, T, ValueTask> channelIterator, T state)
+    public async ValueTask GroupChannelIterator<T>(
+        string groupName,
+        Func<INexusSession, T, ValueTask> channelIterator,
+        T state,
+        long? excludeSessionId)
     {
         if (!_groupIdDictionary.TryGetValue(groupName, out int id))
             return;
@@ -104,7 +109,17 @@ internal class SessionManager
 
         foreach (var nexNetSession in group.SessionDictionary)
         {
-            await channelIterator(nexNetSession.Value, state).ConfigureAwait(false);
+            if(nexNetSession.Key == excludeSessionId)
+                continue;
+
+            try
+            {
+                await channelIterator(nexNetSession.Value, state).ConfigureAwait(false);
+            }
+            catch
+            {
+                // We ignore exceptions here.
+            }
         }
     }
 

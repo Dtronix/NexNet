@@ -119,15 +119,12 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy Group(string groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
-                _context.Session,
-                _context.SessionManager,
-                _context.Session.CacheManager,
-                ProxyInvocationMode.Groups,
-                new[] { groupName });
-            _instancedProxies.Push(proxy);
+            return Groups(new[] { groupName });
+        }
 
-            return proxy;
+        public TClientProxy GroupExceptCaller(string groupName)
+        {
+            return GroupsExceptCaller(new[] { groupName });
         }
 
         public TClientProxy Groups(string[] groupName)
@@ -137,6 +134,19 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
                 _context.SessionManager,
                 _context.Session.CacheManager,
                 ProxyInvocationMode.Groups,
+                groupName);
+            _instancedProxies.Push(proxy);
+
+            return proxy;
+        }
+
+        public TClientProxy GroupsExceptCaller(string[] groupName)
+        {
+            var proxy = _cacheManager.ProxyCache.Rent(
+                _context.Session,
+                _context.SessionManager,
+                _context.Session.CacheManager,
+                ProxyInvocationMode.GroupsExceptCaller,
                 groupName);
             _instancedProxies.Push(proxy);
 

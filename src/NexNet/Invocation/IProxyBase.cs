@@ -36,11 +36,27 @@ public interface IProxyBase<out TProxy>
     TProxy Group(string groupName);
 
     /// <summary>
+    /// Proxy for all clients part of the specified group.
+    /// Will not send the invocation to the current calling session.
+    /// </summary>
+    /// <param name="groupName">Group name to get the proxy for.</param>
+    /// <returns>Proxy</returns>
+    TProxy GroupExceptCaller(string groupName);
+
+    /// <summary>
     /// Proxy for all clients part of the specified groups.
     /// </summary>
     /// <param name="groupName">Group names to get the proxies for.</param>
     /// <returns>Proxy</returns>
     TProxy Groups(string[] groupName);
+
+    /// <summary>
+    /// Proxy for all clients part of the specified groups.
+    /// Will not send the invocation to the current calling session.
+    /// </summary>
+    /// <param name="groupName">Group names to get the proxies for.</param>
+    /// <returns>Proxy</returns>
+    TProxy GroupsExceptCaller(string[] groupName);
 
     /// <summary>
     /// Gets all the connected client ids.
