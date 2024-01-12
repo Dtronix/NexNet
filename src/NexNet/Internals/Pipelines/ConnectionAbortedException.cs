@@ -24,6 +24,4 @@ internal sealed class ConnectionAbortedException : OperationCanceledException
     /// Create a new instance of ConnectionAbortedException
     /// </summary>
     public ConnectionAbortedException(string message, Exception inner) : base(message, inner) { }
-
-    private ConnectionAbortedException(SerializationInfo info, StreamingContext context) : base(info, context) { }
 }

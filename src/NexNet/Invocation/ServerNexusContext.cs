@@ -95,7 +95,34 @@ public class ServerNexusContext<TClientProxy> : IDisposable
             return proxy;
         }
 
+        public TClientProxy GroupExceptCaller(string groupName)
+        {
+            var proxy = _cacheManager.ProxyCache.Rent(
+                null,
+                _sessionManager,
+                _cacheManager,
+                ProxyInvocationMode.Groups,
+                new[] { groupName });
+            _instancedProxies.Push(proxy);
+
+            return proxy;
+        }
+
+
         public TClientProxy Groups(string[] groupName)
+        {
+            var proxy = _cacheManager.ProxyCache.Rent(
+                null,
+                _sessionManager,
+                _cacheManager,
+                ProxyInvocationMode.Groups,
+                groupName);
+            _instancedProxies.Push(proxy);
+
+            return proxy;
+        }
+
+        public TClientProxy GroupsExceptCaller(string[] groupName)
         {
             var proxy = _cacheManager.ProxyCache.Rent(
                 null,

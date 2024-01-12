@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <TargetFramework>net8.0</TargetFramework>
@@ -8,7 +8,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <Company>Dtronix</Company>
     <Product>NexNet</Product>
-    <Copyright>Copyright © Dtronix 2023</Copyright>
+    <Copyright>Copyright © Dtronix 2024</Copyright>
     <Authors>DJGosnell</Authors>
     <PackageProjectUrl>https://github.com/Dtronix/NexNet</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Dtronix/NexNet</RepositoryUrl>

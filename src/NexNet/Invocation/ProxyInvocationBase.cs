@@ -65,6 +65,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    break;
 
             case ProxyInvocationMode.Groups:
+            case ProxyInvocationMode.GroupsExceptCaller:
                 _modeGroupArguments = Unsafe.As<string[]>(modeArguments!);
                 break;
 
@@ -236,6 +237,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             //    }, message);
             //    break;
             case ProxyInvocationMode.Groups:
+            case ProxyInvocationMode.GroupsExceptCaller:
             {
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
                     throw new InvalidOperationException(
@@ -247,18 +249,11 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                 for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
-                    await _sessionManager.GroupChannelIterator(_modeGroupArguments[i],
-                        static async (session, message) =>
-                        {
-                            try
-                            {
-                                await session.SendMessage(message).ConfigureAwait(false);
-                            }
-                            catch
-                            {
-                                // Don't care if we can't invoke on another session here.
-                            }
-                        }, message).ConfigureAwait(false);
+                    await _sessionManager.GroupChannelIterator(
+                        _modeGroupArguments[i],
+                        static (session, message) => session.SendMessage(message),
+                        message,
+                        _mode == ProxyInvocationMode.GroupsExceptCaller ? _session?.Id : null).ConfigureAwait(false);
                 }
 
                 break;
@@ -273,7 +268,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -297,7 +292,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null)
+    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
@@ -368,6 +363,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         // on the results on this proxy invocation.
         if (_mode == ProxyInvocationMode.All
             || _mode == ProxyInvocationMode.Groups
+            || _mode == ProxyInvocationMode.GroupsExceptCaller
             || _mode == ProxyInvocationMode.AllExcept
             || _mode == ProxyInvocationMode.Clients
             || _mode == ProxyInvocationMode.Others)
