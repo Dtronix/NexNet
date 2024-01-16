@@ -74,4 +74,7 @@ public interface IProxyInvoker
     /// <param name="pipe">Pipe to retrieve the Id of.</param>
     /// <returns>Initial id of the pipe.</returns>
     byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe);
+
+    IRentedNexusDuplexPipe? GetDuplexPipe();
+    INexusEnumerableStream<T> GetNexusEnumerableStream<T>(IRentedNexusDuplexPipe pipe);
 }

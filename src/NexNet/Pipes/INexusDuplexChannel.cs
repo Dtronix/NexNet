@@ -1,4 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO.Pipelines;
+using System.Reflection.PortableExecutable;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Pipes;
@@ -39,4 +43,46 @@ public interface INexusDuplexChannel<T> : INexusDuplexChannel
     /// </summary>
     /// <returns>A ValueTask that represents the asynchronous operation. The task result contains the <see cref="INexusChannelReader{T}"/> instance.</returns>
     ValueTask<INexusChannelReader<T>> GetReaderAsync();
+}
+
+public class NexusEnumerableStream<T> :IAsyncEnumerable<T>
+{
+    private readonly IRentedNexusDuplexPipe _duplexPipe;
+
+    public NexusEnumerableStream(IEnumerable<T> enumerable, IRentedNexusDuplexPipe duplexPipe)
+    {
+        _duplexPipe = duplexPipe;
+    }
+    internal async ValueTask WriteAndComplete(IEnumerable<T> enumerable)
+    {
+        var writer = await _duplexPipe.GetChannelWriter<T>();
+        await writer.WriteAndComplete(enumerable);
+    }
+    
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = new CancellationToken())
+    {
+        return new Enumerator(_duplexPipe);
+    }
+
+    private struct Enumerator : IAsyncEnumerator<T>
+    {
+        private readonly NexusChannelReader<T> _reader;
+
+        public Enumerator(IRentedNexusDuplexPipe duplexPipe)
+        {
+            _reader = new NexusChannelReader<T>(duplexPipe.ReaderCore);
+        }
+
+        public T Current { get; set; }
+
+        public async ValueTask<bool> MoveNextAsync()
+        {
+            INexusChannelReader<T> reader = await _duplexPipe.GetChannelReader<T>();
+            throw new NotImplementedException();
+        }
+        public ValueTask DisposeAsync()
+        {
+            return _duplexPipe.Input.CompleteAsync();
+        }
+    }
 }

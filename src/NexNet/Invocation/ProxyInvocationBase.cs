@@ -33,7 +33,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     /// <inheritdoc />
     INexusLogger? IProxyInvoker.Logger => _session?.Logger;
-
+    
     void IProxyInvoker.Configure(
         INexusSession? session,
         SessionManager? sessionManager,
@@ -323,6 +323,16 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 ReturnState(state);
                 throw new InvalidOperationException($"Unknown state {state.Result.State}");
         }
+    }
+
+    IRentedNexusDuplexPipe? IProxyInvoker.GetDuplexPipe()
+    {
+        return _session?.PipeManager.RentPipe();
+    }
+
+    INexusEnumerableStream<T> IProxyInvoker.GetNexusEnumerableStream<T>(IRentedNexusDuplexPipe pipe)
+    {
+        return new NexusEnumerableStream<T>(pipe);
     }
 
     /// <inheritdoc />
