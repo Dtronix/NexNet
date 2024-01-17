@@ -45,11 +45,19 @@ public interface INexusDuplexChannel<T> : INexusDuplexChannel
     ValueTask<INexusChannelReader<T>> GetReaderAsync();
 }
 
+/// <summary>
+/// Represents a stream of objects that can be asynchronously enumerated.
+/// </summary>
+/// <typeparam name="T">The type of objects in the stream.</typeparam>
 public class NexusEnumerableStream<T> :IAsyncEnumerable<T>
 {
     private readonly IRentedNexusDuplexPipe _duplexPipe;
 
-    public NexusEnumerableStream(IEnumerable<T> enumerable, IRentedNexusDuplexPipe duplexPipe)
+    /// <summary>
+    /// Initializes a new instance of the NexusEnumerableStream class.
+    /// </summary>
+    /// <param name="duplexPipe">The IRentedNexusDuplexPipe to use for the stream.</param>
+    public NexusEnumerableStream(IRentedNexusDuplexPipe duplexPipe)
     {
         _duplexPipe = duplexPipe;
     }
@@ -64,19 +72,32 @@ public class NexusEnumerableStream<T> :IAsyncEnumerable<T>
         return new Enumerator(_duplexPipe);
     }
 
-    private struct Enumerator : IAsyncEnumerator<T>
+    private class Enumerator : IAsyncEnumerator<T>
     {
         private readonly NexusChannelReader<T> _reader;
+        private readonly INexusDuplexPipe _duplexPipe;
+        private readonly List<T>
 
+        /// <summary>
+        /// Creates an instance of the Enumerator class with the specified IRentedNexusDuplexPipe object.
+        /// </summary>
+        /// <param name="duplexPipe">The IRentedNexusDuplexPipe object to use for reading data.</param>
         public Enumerator(IRentedNexusDuplexPipe duplexPipe)
         {
-            _reader = new NexusChannelReader<T>(duplexPipe.ReaderCore);
+            _duplexPipe = duplexPipe;
+            _reader = new NexusChannelReader<T>(_duplexPipe.ReaderCore);
         }
 
+        /// <summary>
+        /// Gets or sets the current value of the property.
+        /// </summary>
+        /// <value>The current value of the property.</value>
         public T Current { get; set; }
 
         public async ValueTask<bool> MoveNextAsync()
         {
+            await _duplexPipe.ReadyTask;
+            _reader.ReadAsync()
             INexusChannelReader<T> reader = await _duplexPipe.GetChannelReader<T>();
             throw new NotImplementedException();
         }
