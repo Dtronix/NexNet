@@ -49,34 +49,42 @@ public interface INexusDuplexChannel<T> : INexusDuplexChannel
 /// Represents a stream of objects that can be asynchronously enumerated.
 /// </summary>
 /// <typeparam name="T">The type of objects in the stream.</typeparam>
-public class NexusEnumerableStream<T> :IAsyncEnumerable<T>
+public class NexusEnumerableChannel<T> :IAsyncEnumerable<T>
 {
-    private readonly IRentedNexusDuplexPipe _duplexPipe;
+    private readonly IEnumerable<T>? _writingEnumerable;
+    internal IRentedNexusDuplexPipe DuplexPipe;
 
     /// <summary>
     /// Initializes a new instance of the NexusEnumerableStream class.
     /// </summary>
-    /// <param name="duplexPipe">The IRentedNexusDuplexPipe to use for the stream.</param>
-    public NexusEnumerableStream(IRentedNexusDuplexPipe duplexPipe)
+    public NexusEnumerableChannel(IEnumerable<T> writingEnumerable)
     {
-        _duplexPipe = duplexPipe;
+        _writingEnumerable = writingEnumerable;
     }
-    internal async ValueTask WriteAndComplete(IEnumerable<T> enumerable)
+
+    internal NexusEnumerableChannel(IRentedNexusDuplexPipe duplexPipe)
     {
-        var writer = await _duplexPipe.GetChannelWriter<T>();
-        await writer.WriteAndComplete(enumerable);
+        _writingEnumerable = null;
+        DuplexPipe = duplexPipe;
+    }
+    
+    internal async ValueTask WriteAndComplete()
+    {
+        var writer = await DuplexPipe.GetChannelWriter<T>();
+        await writer.WriteAndComplete(_writingEnumerable);
     }
     
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = new CancellationToken())
     {
-        return new Enumerator(_duplexPipe);
+        return new Enumerator(DuplexPipe);
     }
 
     private class Enumerator : IAsyncEnumerator<T>
     {
-        private readonly NexusChannelReader<T> _reader;
+        private NexusChannelReader<T>? _reader;
         private readonly INexusDuplexPipe _duplexPipe;
-        private readonly List<T>
+        private List<T>? _list = null;
+        private int _readIndex = 0;
 
         /// <summary>
         /// Creates an instance of the Enumerator class with the specified IRentedNexusDuplexPipe object.
@@ -96,10 +104,53 @@ public class NexusEnumerableStream<T> :IAsyncEnumerable<T>
 
         public async ValueTask<bool> MoveNextAsync()
         {
-            await _duplexPipe.ReadyTask;
-            _reader.ReadAsync()
-            INexusChannelReader<T> reader = await _duplexPipe.GetChannelReader<T>();
-            throw new NotImplementedException();
+            // If the reader is null, the channel has been read to completion.
+            if (_reader == null)
+            {
+                // If the read index is -1, then the pipe reading has completed.
+                if (_readIndex == -1)
+                    return false;
+
+                if (_readIndex < _list!.Count)
+                {
+                    Current = _list[_readIndex++];
+                    return true;
+                }
+
+                // If we got here, we are at the end of the list and the channel has completed.
+                Current = default!;
+                _readIndex = -1;
+                _list.Clear();
+                _list.TrimExcess();
+                _list = null;
+                
+                return false;
+            }
+            
+            if (_list == null)
+            {
+                await _duplexPipe.ReadyTask;
+                _list = new List<T>();
+            }
+
+            if (_readIndex < _list.Count)
+            {
+                Current = _list[_readIndex++];
+                return true;
+            }
+
+            var result = await _reader.ReadAsync(_list, null);
+
+            // If false, then the reader has completed.
+            if (result == false)
+            {
+                _readIndex = -1;
+                return false;
+            }
+            
+            _readIndex = 1;
+            Current = _list[_readIndex];
+            return true;
         }
         public ValueTask DisposeAsync()
         {

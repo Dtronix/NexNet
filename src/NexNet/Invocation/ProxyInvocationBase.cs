@@ -330,9 +330,12 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         return _session?.PipeManager.RentPipe();
     }
 
-    INexusEnumerableStream<T> IProxyInvoker.GetNexusEnumerableStream<T>(IRentedNexusDuplexPipe pipe)
+    ValueTask IProxyInvoker.WriteNexusEnumerableChannel<T>(
+        IRentedNexusDuplexPipe rentedNexusDuplexPipe,
+        NexusEnumerableChannel<T> enumeratorChannel)
     {
-        return new NexusEnumerableStream<T>(pipe);
+        enumeratorChannel.DuplexPipe = rentedNexusDuplexPipe;
+        return enumeratorChannel.WriteAndComplete();
     }
 
     /// <inheritdoc />

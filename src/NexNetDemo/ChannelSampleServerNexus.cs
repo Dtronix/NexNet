@@ -209,21 +209,24 @@ namespace NexNetDemo.Samples.Channel
                 return __proxyInvoker.ProxyInvokeMethodCore(4, __proxyInvocationArguments, global::NexNet.Messages.InvocationFlags.DuplexPipe);
             }
 
-            public async global::System.Threading.Tasks.ValueTask Send(NexusEnumerableStream<global::NexNetDemo.Samples.Channel.ComplexMessage> enumerable)
+            public async global::System.Threading.Tasks.ValueTask Send(NexusEnumerableChannel<global::NexNetDemo.Samples.Channel.ComplexMessage> enumerable)
             {
                 var __proxyInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this);
                 
-                var __duplexPipeStream = __proxyInvoker.GetDuplexPipe();
+                var __duplexPipe = __proxyInvoker.GetDuplexPipe();
 
-                var __proxyInvocationArguments = new global::System.ValueTuple<global::System.Byte>(__proxyInvoker.ProxyGetDuplexPipeInitialId(__duplexPipeStream));
+                if (__duplexPipe == null)
+                    throw new InvalidOperationException("Could not create duplex pipe.  Session must be connected.");
+
+                var __proxyInvocationArguments = new global::System.ValueTuple<global::System.Byte>(__proxyInvoker.ProxyGetDuplexPipeInitialId(__duplexPipe));
                 __proxyInvoker.Logger?.Log(global::NexNet.Logging.NexusLogLevel.Information, __proxyInvoker.Logger.Category, null, $"Proxy Invoking Method: Send(channel = {__proxyInvocationArguments.Item1});");
                 await __proxyInvoker.ProxyInvokeMethodCore(5, __proxyInvocationArguments, global::NexNet.Messages.InvocationFlags.DuplexPipe);
 
-                var __argumentStream = __proxyInvoker.GetNexusEnumerableStream<global::NexNetDemo.Samples.Channel.ComplexMessage>(__duplexPipeStream)
+                await __proxyInvoker.WriteNexusEnumerableChannel<global::NexNetDemo.Samples.Channel.ComplexMessage>(__duplexPipe, enumerable);
 
-                await __argumentStream.Send(enumerable);
+                await __argumentStream(enumerable);
 
-                __duplexPipeStream.CompleteAsync();
+                __duplexPipe.CompleteAsync();
             }
 
             /// <summary>

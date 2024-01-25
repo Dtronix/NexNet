@@ -76,5 +76,8 @@ public interface IProxyInvoker
     byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe);
 
     IRentedNexusDuplexPipe? GetDuplexPipe();
-    INexusEnumerableStream<T> GetNexusEnumerableStream<T>(IRentedNexusDuplexPipe pipe);
+    
+    ValueTask WriteNexusEnumerableChannel<T>(
+        IRentedNexusDuplexPipe rentedNexusDuplexPipe,
+        NexusEnumerableChannel<T> pipe);
 }
