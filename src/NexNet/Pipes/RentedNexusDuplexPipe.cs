@@ -15,11 +15,6 @@ internal class RentedNexusDuplexPipe : NexusDuplexPipe, IRentedNexusDuplexPipe
 
     public ValueTask DisposeAsync()
     {
-        var manager = Interlocked.Exchange(ref Manager, null);
-
-        if (manager == null)
-            return default;
-
-        return manager!.ReturnPipe(this);
+        return Interlocked.Exchange(ref Manager, null)?.ReturnPipe(this) ?? default;
     }
 }
