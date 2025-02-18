@@ -16,7 +16,7 @@ jobs:
                              
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
         submodules: 'recursive'
@@ -25,7 +25,7 @@ jobs:
       run: sudo apt install libmsquic
 
     - name: Install .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: 8.0.*
         source-url: https://api.nuget.org/v3/index.json
@@ -51,7 +51,7 @@ jobs:
       run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
       
     - name: Export artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         path: artifacts/*
         
