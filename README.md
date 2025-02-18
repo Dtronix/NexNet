@@ -90,13 +90,13 @@ Platform=X64  Runtime=.NET 8.0  MaxIterationCount=5
 MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ```
 
-| Method                               | Mean     | Error     | StdDev   | Op/s     | Gen0   | Gen1   | Allocated |
-|------------------------------------- |---------:|----------:|---------:|---------:|-------:|-------:|----------:|
-| InvocationNoArgument                 | 27.10 us |  0.346 us | 0.054 us | 36,900.5 | 0.0610 |      - |     632 B |
-| InvocationUnmanagedArgument          | 27.71 us |  2.373 us | 0.616 us | 36,091.7 | 0.0610 |      - |     690 B |
-| InvocationUnmanagedMultipleArguments | 27.59 us |  0.861 us | 0.223 us | 36,250.8 | 0.0610 |      - |     737 B |
-| InvocationNoArgumentWithResult       | 27.65 us |  1.416 us | 0.368 us | 36,164.3 | 0.0610 |      - |     675 B |
-| InvocationWithDuplexPipe_Upload      | 45.77 us | 32.004 us | 4.953 us | 21,847.0 | 2.0752 | 0.4883 |   13998 B |
+| Method                               |    Mean |     Error |   StdDev | Op/s     | Gen0   |   Gen1 | Allocated |
+|------------------------------------- |--------:|----------:|---------:|---------:|-------:|-------:|----------:|
+| InvocationNoArgument                 | 27.1 us |   0.35 us |  0.05 us | 36,900.5 | 0.0610 |      - |     632 B |
+| InvocationUnmanagedArgument          | 27.7 us |   2.37 us |  0.62 us | 36,091.7 | 0.0610 |      - |     690 B |
+| InvocationUnmanagedMultipleArguments | 27.6 us |   0.86 us |  0.22 us | 36,250.8 | 0.0610 |      - |     737 B |
+| InvocationNoArgumentWithResult       | 27.7 us |   1.42 us |  0.37 us | 36,164.3 | 0.0610 |      - |     675 B |
+| InvocationWithDuplexPipe_Upload      | 45.8 us |  32.00 us |  4.95 us | 21,847.0 | 2.0752 |  0.488 |   13998 B |
 
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
