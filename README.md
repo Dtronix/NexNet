@@ -80,23 +80,23 @@ await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 ```
 ## Benchmarks
 ```
-BenchmarkDotNet v0.13.10, Windows 11 (10.0.23590.1000)
+BenchmarkDotNet v0.13.10, Windows 11 (10.0.26100.3194)
 Intel Core i7-10700 CPU 2.90GHz, 1 CPU, 16 logical and 8 physical cores
-.NET SDK 8.0.100
-  [Host]     : .NET 8.0.0 (8.0.23.53103), X64 RyuJIT AVX2
-  Job-JQCICL : .NET 8.0.0 (8.0.23.53103), X64 RyuJIT AVX2
+.NET SDK 8.0.400
+  [Host]     : .NET 8.0.13 (8.0.1325.6609), X64 RyuJIT AVX2
+  Job-XDUVQL : .NET 8.0.13 (8.0.1325.6609), X64 RyuJIT AVX2
 
-Platform=X64  Runtime=.NET 8.0  MaxIterationCount=5  
+Platform=X64  Runtime=.NET 8.0  MaxIterationCount=5
 MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ```
 
-| Method                     | Mean     | Error  | StdDev  | Op/s   | Gen0 | Gen1| Allocated |
-|--------------------------- |---------:|-------:|--------:|-------:|-----:|----:|----------:|
-| NoArgument                 | 38.9 μs | 0.98 μs | 0.25 μs | 25,702 | 0.06 |   - |     632 B |
-| UnmanagedArgument          | 39.8 μs | 1.02 μs | 0.26 μs | 25,110 | 0.06 |   - |     689 B |
-| UnmanagedMultipleArguments | 38.6 μs | 2.62 μs | 0.40 μs | 25,894 | 0.06 |   - |     737 B |
-| NoArgumentWithResult       | 38.8 μs | 0.89 μs | 0.23 μs | 25,750 | 0.06 |   - |     673 B |
-| WithDuplexPipe_Upload      | 49.6 μs | 2.72 μs | 0.42 μs | 20,138 | 2.07 | 0.4 |   13987 B |
+| Method                               | Mean     | Error     | StdDev   | Op/s     | Gen0   | Gen1   | Allocated |
+|------------------------------------- |---------:|----------:|---------:|---------:|-------:|-------:|----------:|
+| InvocationNoArgument                 | 27.10 us |  0.346 us | 0.054 us | 36,900.5 | 0.0610 |      - |     632 B |
+| InvocationUnmanagedArgument          | 27.71 us |  2.373 us | 0.616 us | 36,091.7 | 0.0610 |      - |     690 B |
+| InvocationUnmanagedMultipleArguments | 27.59 us |  0.861 us | 0.223 us | 36,250.8 | 0.0610 |      - |     737 B |
+| InvocationNoArgumentWithResult       | 27.65 us |  1.416 us | 0.368 us | 36,164.3 | 0.0610 |      - |     675 B |
+| InvocationWithDuplexPipe_Upload      | 45.77 us | 32.004 us | 4.953 us | 21,847.0 | 2.0752 | 0.4883 |   13998 B |
 
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
