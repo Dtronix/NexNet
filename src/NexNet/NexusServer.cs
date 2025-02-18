@@ -19,7 +19,7 @@ namespace NexNet;
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
 public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
-    where TClientProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+    where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     private static class State
     {
