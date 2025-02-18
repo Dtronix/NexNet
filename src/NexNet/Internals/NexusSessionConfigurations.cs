@@ -7,7 +7,7 @@ namespace NexNet.Internals;
 
 internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
-    where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+    where TProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     public required ConfigBase Configs { get; init; }
 
