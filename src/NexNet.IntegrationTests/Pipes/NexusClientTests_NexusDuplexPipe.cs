@@ -132,7 +132,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
             tcs.SetResult();
         };
 
@@ -165,7 +165,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
                 await Task.Delay(100);
             }
 
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
             tcs.SetResult();
         };
 
@@ -189,7 +189,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
             tcs.SetResult();
         };
 
@@ -217,7 +217,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await tcsDisconnected.Task.Timeout(1);
             await Task.Delay(150);
             var result = await pipe.Output.WriteAsync(Data).Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
             tcs.SetResult();
         };
 
@@ -243,7 +243,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
             tcs.SetResult();
         };
 
@@ -275,7 +275,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
                 await Task.Delay(1);
             }
 
-            Assert.IsTrue(result.Value.IsCompleted);
+            Assert.That(result.Value.IsCompleted, Is.True);
             tcs.SetResult();
 
         };
@@ -300,7 +300,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
 
             await pipe.Output.WriteAsync(Data).Timeout(1);
             await Task.Delay(1000);
@@ -330,7 +330,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await outputComplete.Task.Timeout(1);
             await Task.Delay(50);
             var result = await pipe.Output.WriteAsync(Data).Timeout(1);
-            Assert.IsTrue(result.IsCompleted);
+            Assert.That(result.IsCompleted, Is.True);
 
             var buffer = await pipe.Input.ReadAsync().Timeout(1);
             pipe.Input.AdvanceTo(buffer.Buffer.Start);
@@ -438,7 +438,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await pipe.ReadyTask.Timeout(1);
 
         await pipe.CompleteTask.Timeout(1);
-        Assert.IsTrue(completedInvocation);
+        Assert.That(completedInvocation, Is.True);
     }
 
     [TestCase(Type.Uds)]

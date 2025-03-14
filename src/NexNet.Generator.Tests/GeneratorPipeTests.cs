@@ -89,7 +89,7 @@ partial class ServerNexus : IServerNexus {
     public ValueTask Update(INexusDuplexPipe pipe) => ValueTask.CompletedTask;
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
 }

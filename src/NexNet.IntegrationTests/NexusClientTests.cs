@@ -388,7 +388,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         await client.ConnectAsync().Timeout(1);
-        Assert.IsTrue(authCompleted);
+        Assert.That(authCompleted, Is.True);
     }
 
     [TestCase(Type.Uds)]

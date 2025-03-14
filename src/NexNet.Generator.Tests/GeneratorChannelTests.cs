@@ -21,7 +21,7 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexUnmanagedChannel <int> pipe){ return default; }
   }
 ");
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -41,7 +41,7 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexChannel <int> pipe){ return default; }
   }
 ");
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]

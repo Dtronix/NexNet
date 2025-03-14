@@ -94,10 +94,10 @@ internal partial class NexusServerTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        
-        Assert.IsNull(server.StoppedTask);
+
+        Assert.That(server.StoppedTask, Is.Null);
         await server.StartAsync().Timeout(1);
-        Assert.IsFalse(server.StoppedTask!.IsCompleted);
+        Assert.That(server.StoppedTask!.IsCompleted, Is.False);
 
         await server.StopAsync();
 

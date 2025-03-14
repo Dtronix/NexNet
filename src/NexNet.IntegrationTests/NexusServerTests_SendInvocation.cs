@@ -184,7 +184,7 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
                     return;
 
                 var message = MemoryPackSerializer.Deserialize<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                Assert.NotNull(message);
+                Assert.That(message, Is.Not.Null);
 
                 if (message == null)
                     return;

@@ -209,7 +209,7 @@ partial class ClientNexus : IClientNexus
     public void Update() { }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
 
     }
 
@@ -310,7 +310,7 @@ partial class ServerNexus : IServerNexus
     public void Update(string arg) { }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -329,7 +329,7 @@ partial class ServerNexus : IServerNexus
 
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -428,7 +428,7 @@ namespace HubNameSpaces2.Seven.Eight
     }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
 }

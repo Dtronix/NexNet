@@ -62,7 +62,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await context.Clients.Clients(context.Clients.GetIds().ToArray()).ClientTask();
         await context.Clients.Group("myGroup").ClientTask();
         await context.Clients.Groups(new[] { "myGroup" }).ClientTask();
-        Assert.IsFalse(completed);
+        Assert.That(completed, Is.False);
     }
 
     [TestCase(Type.Uds)]
@@ -85,7 +85,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 await nexus.Context.Clients.Clients(server!.GetContext().Clients.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(new[] { "myGroup" }).ClientTask();
-                Assert.IsFalse(completed);
+                Assert.That(completed, Is.False);
                 tcs1.SetResult();
             };
         });

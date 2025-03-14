@@ -92,9 +92,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var cts = new CancellationTokenSource(100);
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.IsTrue(cts.IsCancellationRequested);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(cts.IsCancellationRequested, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -106,9 +106,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         cts.Cancel();
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.IsTrue(cts.IsCancellationRequested);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(cts.IsCancellationRequested, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -120,9 +120,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         await pipeReader.CompleteAsync();
         var result = await reader.ReadAsync().Timeout(1);
 
-        Assert.IsTrue(reader.IsComplete);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(reader.IsComplete, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
 

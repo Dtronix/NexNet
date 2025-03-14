@@ -81,8 +81,8 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
         var cts = new CancellationTokenSource(100);
         var writeResult = await writer.WriteAsync(123456789L, cts.Token).Timeout(1);
 
-        Assert.IsFalse(writeResult);
-        Assert.IsFalse(writer.IsComplete);
+        Assert.That(writeResult, Is.False);
+        Assert.That(writer.IsComplete, Is.False);
     }
 
     [Test]
@@ -99,7 +99,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
         cts.Cancel();
         var writeResult = await writer.WriteAsync(123456789L, cts.Token).Timeout(1);
 
-        Assert.IsFalse(writeResult);
-        Assert.IsFalse(writer.IsComplete);
+        Assert.That(writeResult, Is.False);
+        Assert.That(writer.IsComplete, Is.False);
     }
 }
