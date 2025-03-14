@@ -5,7 +5,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Pipelines;
+using NexNet.Internals.Pipelines;
 
 namespace NexNet.Transports;
 

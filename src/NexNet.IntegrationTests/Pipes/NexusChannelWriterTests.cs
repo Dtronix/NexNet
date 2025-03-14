@@ -28,7 +28,7 @@ internal class NexusChannelWriterTests
 
         var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.AreEqual(baseObject, message);
+        Assert.That(message, Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -49,7 +49,7 @@ internal class NexusChannelWriterTests
 
         var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.AreEqual(baseObject, message);
+        Assert.That(message, Is.EqualTo(baseObject));
     }
 
     [Test]

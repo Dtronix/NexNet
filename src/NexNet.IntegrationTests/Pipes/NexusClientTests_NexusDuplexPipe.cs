@@ -28,7 +28,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             // If the connection is still alive, the buffer should contain the data.
             if (!result.IsCompleted)
             {
-                Assert.AreEqual(Data, result.Buffer.ToArray());
+                Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
             }
         };
 
@@ -85,7 +85,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.AreEqual(Data, result.Buffer.ToArray());
+            Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
             tcs.SetResult();
         };
 
@@ -118,7 +118,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await pipe.ReadyTask.Timeout(1);
         var result = await pipe.Input.ReadAsync().Timeout(1);
-        Assert.AreEqual(Data, result.Buffer.ToArray());
+        Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
     }
 
     [TestCase(Type.Uds)]
@@ -313,7 +313,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await pipe.Output.CompleteAsync().Timeout(1);
 
         var result = await pipe.Input.ReadAsync().Timeout(1);
-        Assert.AreEqual(Data, result.Buffer.ToArray());
+        Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
     }
 
     [TestCase(Type.Uds)]
@@ -336,7 +336,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             pipe.Input.AdvanceTo(buffer.Buffer.Start);
 
             var readResult = await pipe.Input.ReadAsync().Timeout(1);
-            Assert.AreEqual(Data, readResult.Buffer.ToArray());
+            Assert.That(readResult.Buffer.ToArray(), Is.EqualTo(Data));
             tcs.SetResult();
         };
 

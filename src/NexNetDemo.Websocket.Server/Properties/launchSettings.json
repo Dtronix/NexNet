@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "NexNetAspDemo.Server": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:59854;http://localhost:59855"
+    }
+  }
+}

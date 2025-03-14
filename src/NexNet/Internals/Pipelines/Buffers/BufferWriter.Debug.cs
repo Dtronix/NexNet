@@ -1,7 +1,7 @@
 ﻿#if DEBUG
 using System.Threading;
 
-namespace NexNet.Pipelines.Buffers;
+namespace NexNet.Internals.Pipelines.Buffers;
 
 partial class BufferWriter<T>
 {

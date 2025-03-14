@@ -191,10 +191,10 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
                 if (message == null)
                     return;
 
-                Assert.AreEqual(expectedMessage.Arguments.ToArray(), message.Arguments.ToArray());
-                Assert.AreEqual(expectedMessage.Flags, message.Flags);
-                Assert.AreEqual(expectedMessage.InvocationId, message.InvocationId);
-                Assert.AreEqual(expectedMessage.MethodId, message.MethodId);
+                Assert.That(message.Arguments.ToArray(), Is.EqualTo(expectedMessage.Arguments.ToArray()));
+                Assert.That(message.Flags, Is.EqualTo(expectedMessage.Flags));
+                Assert.That(message.InvocationId, Is.EqualTo(expectedMessage.InvocationId));
+                Assert.That(message.MethodId, Is.EqualTo(expectedMessage.MethodId));
                 tcs.SetResult();
             }
             catch

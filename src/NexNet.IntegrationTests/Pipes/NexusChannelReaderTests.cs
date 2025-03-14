@@ -31,7 +31,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
 
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
 
@@ -42,7 +42,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -69,7 +69,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
 
         //Write the rest of the data
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
@@ -81,7 +81,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -146,7 +146,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         tcs.SetResult();
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -166,9 +166,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         foreach (var complexMessage in result)
         {
-            Assert.AreEqual(baseObject, complexMessage);
+            Assert.That(complexMessage, Is.EqualTo(baseObject));
         }
 
-        Assert.AreEqual(iterations, result.Count());
+        Assert.That(result.Count(), Is.EqualTo(iterations));
     }
 }

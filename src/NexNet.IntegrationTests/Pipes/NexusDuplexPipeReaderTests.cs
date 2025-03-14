@@ -31,7 +31,7 @@ internal class NexusDuplexPipeReaderTests
         _ = Task.Run(async () =>
         {
             var readData = await reader.ReadAsync().Timeout(1);
-            Assert.AreEqual(10, readData.Buffer.Length);
+            Assert.That(readData.Buffer.Length, Is.EqualTo(10));
             tcs.SetResult();
         });
 
@@ -48,7 +48,7 @@ internal class NexusDuplexPipeReaderTests
         _ = Task.Run(async () =>
         {
             var readData = await reader.ReadAsync().Timeout(1);
-            Assert.AreEqual(10, readData.Buffer.Length);
+            Assert.That(readData.Buffer.Length, Is.EqualTo(10));
             tcs.SetResult();
         });
 
@@ -68,7 +68,7 @@ internal class NexusDuplexPipeReaderTests
         {
             var readData = await reader.ReadAsync().Timeout(1);
             reader.AdvanceTo(readData.Buffer.Start, readData.Buffer.End);
-            Assert.AreEqual(10, readData.Buffer.Length);
+            Assert.That(readData.Buffer.Length, Is.EqualTo(10));
 
             await reader.ReadAsync().AsTask().AssertTimeout(0.1);
             tcs.SetResult();
@@ -107,7 +107,7 @@ internal class NexusDuplexPipeReaderTests
                 reader.AdvanceTo(task.Result.Buffer.Start, task.Result.Buffer.End);
               
                 var data = await task.Timeout(1);
-                Assert.AreEqual(i + 1, data.Buffer.Length);
+                Assert.That(data.Buffer.Length, Is.EqualTo(i + 1));
                 bufferSemaphore.Release(1);
                 //Console.WriteLine("Writer Released");
             }
@@ -189,7 +189,7 @@ internal class NexusDuplexPipeReaderTests
 
             data = await reader.ReadAsync().Timeout(1);
 
-            Assert.AreEqual(10, data.Buffer.Length);
+            Assert.That(data.Buffer.Length, Is.EqualTo(10));
 
             tcs.SetResult();
         });
@@ -219,7 +219,7 @@ internal class NexusDuplexPipeReaderTests
             await Task.Delay(10);
             data = await reader.ReadAsync().Timeout(1);
 
-            Assert.AreEqual(10, data.Buffer.Length);
+            Assert.That(data.Buffer.Length, Is.EqualTo(10));
 
             tcs.SetResult();
         });
@@ -280,7 +280,7 @@ internal class NexusDuplexPipeReaderTests
         // ReSharper disable once MethodSupportsCancellation
         result = await reader.ReadAsync().Timeout(1);
         Assert.IsFalse(result.IsCanceled);
-        Assert.AreEqual(10, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(10));
     }
 
     [Test]
@@ -305,7 +305,7 @@ internal class NexusDuplexPipeReaderTests
 
         result = await reader.ReadAsync().Timeout(1);
         Assert.IsFalse(result.IsCanceled);
-        Assert.AreEqual(10, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(10));
     }
 
     [Test]
@@ -319,13 +319,13 @@ internal class NexusDuplexPipeReaderTests
             await reader.BufferData(data).Timeout(1);
         }
         var result = await reader.ReadAsync().Timeout(1);
-        Assert.AreEqual(length, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(length));
 
         var position = result.Buffer.GetPosition(3000 * 16);
         reader.AdvanceTo(position);
 
         result = await reader.ReadAsync().Timeout(1);
-        Assert.AreEqual(length - 3000 * 16, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(length - 3000 * 16));
     }
 
     [Test]
@@ -340,13 +340,13 @@ internal class NexusDuplexPipeReaderTests
         }
 
         Assert.IsTrue(reader.TryRead(out var result));
-        Assert.AreEqual(length, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(length));
 
         var position = result.Buffer.GetPosition(3000 * 16);
         reader.AdvanceTo(position);
 
         Assert.IsTrue(reader.TryRead(out result));
-        Assert.AreEqual(length - 3000 * 16, result.Buffer.Length);
+        Assert.That(result.Buffer.Length, Is.EqualTo(length - 3000 * 16));
     }
 
     [Test]
@@ -439,7 +439,7 @@ internal class NexusDuplexPipeReaderTests
         var reader = CreateReader();
 
         Assert.IsFalse(reader.TryRead(out var readData));
-        Assert.AreEqual(0, readData.Buffer.Length);
+        Assert.That(readData.Buffer.Length, Is.EqualTo(0));
     }
 
     [Test]

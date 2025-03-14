@@ -145,7 +145,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         var result = await context.Clients.Client(context.Clients.GetIds().First()).ClientTaskValue();
 
-        Assert.AreEqual(54321, result);
+        Assert.That(result, Is.EqualTo(54321));
     }
 
     [TestCase(Type.Uds)]
@@ -313,7 +313,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await client1.Proxy.ServerTask();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(1, groupInvokedCount);
+        Assert.That(groupInvokedCount, Is.EqualTo(1));
     }
 
     [TestCase(Type.Uds)]
@@ -367,7 +367,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await client1.Proxy.ServerTask();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(2, groupInvokedCount);
+        Assert.That(groupInvokedCount, Is.EqualTo(2));
     }
 
     [TestCase(Type.Uds)]
@@ -417,7 +417,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         server.GetContext().Clients.GroupExceptCaller("group").ClientVoid();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(2, groupInvokedCount);
+        Assert.That(groupInvokedCount, Is.EqualTo(2));
     }
 
     [TestCase(Type.Uds, Ignore = "Flaky test on build server")]
@@ -467,7 +467,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         server.GetContext().Clients.GroupExceptCaller("group1").ClientVoid();
 
         await tcs1.Task.Timeout(1);
-        Assert.AreEqual(4, groupInvokedCount);
+        Assert.That(groupInvokedCount, Is.EqualTo(4));
     }
 
     [TestCase(Type.Uds)]
@@ -507,7 +507,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.AreEqual(1, invocationCount);
+        Assert.That(invocationCount, Is.EqualTo(1));
     }
 
     [TestCase(Type.Uds)]
@@ -547,7 +547,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.AreEqual(1, invocationCount);
+        Assert.That(invocationCount, Is.EqualTo(1));
     }
 
     [TestCase(Type.Uds)]

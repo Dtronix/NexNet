@@ -409,7 +409,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         await client.ConnectAsync().Timeout(1);
-        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
 
     [TestCase(Type.Uds)]
@@ -432,7 +432,7 @@ internal partial class NexusClientTests : BaseTests
 
         await disconnectTask.Timeout(1);
 
-        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
 
     [TestCase(Type.Uds)]
@@ -454,7 +454,7 @@ internal partial class NexusClientTests : BaseTests
         await client.ConnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
 
-        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
 
     [TestCase(Type.Uds)]
@@ -478,6 +478,6 @@ internal partial class NexusClientTests : BaseTests
 
         await client.DisconnectedTask.Timeout(1);
 
-        Assert.AreEqual(ConnectionState.Disconnected, client.State);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
 }

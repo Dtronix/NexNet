@@ -34,7 +34,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
 
         await writer.WriteAsync(inputData).Timeout(1);
 
-        Assert.AreEqual(inputData, Utilities.GetValue<T>(bufferWriter.GetBuffer().ToArray()));
+        Assert.That(Utilities.GetValue<T>(bufferWriter.GetBuffer().ToArray()), Is.EqualTo(inputData));
     }
 
     [TestCase((sbyte)-54)]
@@ -65,7 +65,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
 
         await writer.WriteAsync(inputData).Timeout(1);
 
-        Assert.AreEqual(inputData, Utilities.GetValue<T>(bufferWriter.GetBuffer().ToArray()));
+        Assert.That(Utilities.GetValue<T>(bufferWriter.GetBuffer().ToArray()), Is.EqualTo(inputData));
     }
 
     [Test]

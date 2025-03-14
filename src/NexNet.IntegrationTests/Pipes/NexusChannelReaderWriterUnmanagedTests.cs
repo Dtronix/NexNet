@@ -15,7 +15,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
         var value = 123456789L;
         await writer.WriteAsync(value).Timeout(1);
         var result = await reader.ReadAsync().Timeout(1);
-        Assert.AreEqual(value, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(value));
     }
 
     [Test]
@@ -32,10 +32,10 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
         var result = await reader.ReadAsync().Timeout(1);
         foreach (var l in result)
         {
-            Assert.AreEqual(count++, l);
+            Assert.That(l, Is.EqualTo(count++));
         }
 
-        Assert.AreEqual(iterations, count);
+        Assert.That(count, Is.EqualTo(iterations));
     }
 
 
@@ -60,7 +60,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
                 var result = await reader.ReadAsync().Timeout(1);
                 foreach (var l in result)
                 {
-                    Assert.AreEqual(count++, l);
+                    Assert.That(l, Is.EqualTo(count++));
                 }
 
                 if (count == iterations)
@@ -70,7 +70,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
             }
         }).Timeout(1);
 
-        Assert.AreEqual(iterations, count);
+        Assert.That(count, Is.EqualTo(iterations));
 
     }
 
@@ -85,7 +85,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
 
         var completeRead = await reader.ReadUntilComplete().Timeout(1);
 
-        Assert.AreEqual(0, completeRead.Count);
+        Assert.That(completeRead.Count, Is.EqualTo(0));
     }
 
     private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()

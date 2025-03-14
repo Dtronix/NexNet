@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <EventSourceSupport>false</EventSourceSupport>
     <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <GenerateRequiresPreviewFeaturesAttribute>true</GenerateRequiresPreviewFeaturesAttribute>
   </PropertyGroup>
   <ItemGroup>
     <None Include="..\server.pfx" Link="server.pfx">

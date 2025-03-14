@@ -325,6 +325,6 @@ internal class BaseTests
             thrown = e;
         }
 
-        Assert.AreEqual(typeof(T), thrown?.GetType());
+        Assert.That(thrown?.GetType(), Is.EqualTo(typeof(T)));
     }
 }

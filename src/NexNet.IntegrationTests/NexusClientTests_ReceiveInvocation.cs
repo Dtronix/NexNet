@@ -110,7 +110,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValue();
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueEvent = nexus => ValueTask.FromResult(54321);
@@ -148,7 +148,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithParam(12345);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
@@ -221,7 +221,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
@@ -258,7 +258,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);

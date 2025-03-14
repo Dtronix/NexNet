@@ -2,7 +2,8 @@
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
     <Description>Quic transport protocol for NexNet.</Description>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
+    <EnablePreviewFeatures>True</EnablePreviewFeatures>
+    <GenerateRequiresPreviewFeaturesAttribute>true</GenerateRequiresPreviewFeaturesAttribute>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />

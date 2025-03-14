@@ -24,7 +24,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client =>
@@ -54,7 +54,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client =>
@@ -86,7 +86,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             async client =>
@@ -113,7 +113,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             async client =>
@@ -135,7 +135,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             sNexus => sNexus.ServerTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(200).Token));

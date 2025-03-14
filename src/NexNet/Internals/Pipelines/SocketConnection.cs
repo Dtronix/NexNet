@@ -9,10 +9,9 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipelines;
 using NexNet.Internals.Pipelines.Internal;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 /// <summary>
 /// When possible, determines how the pipe first reached a close state

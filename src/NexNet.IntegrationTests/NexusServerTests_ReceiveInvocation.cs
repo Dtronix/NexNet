@@ -110,7 +110,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
             cNexus.OnConnectedEvent = async (nexus, _) =>
             {
                 var value = await nexus.Context.Proxy.ServerTaskValue();
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             sNexus.ServerTaskValueEvent = nexus => ValueTask.FromResult(54321);
@@ -148,7 +148,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
             cNexus.OnConnectedEvent = async (nexus, _) =>
             {
                 var value = await nexus.Context.Proxy.ServerTaskValueWithParam(12345);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             sNexus.ServerTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
@@ -222,7 +222,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
             cNexus.OnConnectedEvent = async (nexus, _) =>
             {
                 var value = await nexus.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             sNexus.ServerTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
@@ -259,7 +259,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
             cNexus.OnConnectedEvent = async (nexus, _) =>
             {
                 var value = await nexus.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             sNexus.ServerTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);

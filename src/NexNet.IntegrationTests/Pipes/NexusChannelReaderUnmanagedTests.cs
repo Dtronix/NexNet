@@ -26,7 +26,7 @@ internal class NexusChannelReaderUnmanagedTests
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(inputData, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(inputData));
     }
 
     public async Task CancelsReadDelayed<T>()
@@ -103,7 +103,7 @@ internal class NexusChannelReaderUnmanagedTests
         tcs.SetResult();
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(inputData, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(inputData));
     }
 
     [TestCase((sbyte)-54)]
@@ -134,10 +134,10 @@ internal class NexusChannelReaderUnmanagedTests
         foreach (var result in results)
         {
             count++;
-            Assert.AreEqual(inputData, result);
+            Assert.That(result, Is.EqualTo(inputData));
         }
 
-        Assert.AreEqual(iterations, count);
+        Assert.That(count, Is.EqualTo(iterations));
     }
 
     [TestCase((sbyte)-54)]
@@ -176,7 +176,7 @@ internal class NexusChannelReaderUnmanagedTests
                 foreach (var result in results)
                 {
                     count++;
-                    Assert.AreEqual(inputData, result);
+                    Assert.That(result, Is.EqualTo(inputData));
                 }
 
                 if (count == iterations)
@@ -184,7 +184,7 @@ internal class NexusChannelReaderUnmanagedTests
             }
         }).Timeout(1);
 
-        Assert.AreEqual(iterations, count);
+        Assert.That(count, Is.EqualTo(iterations));
     }
 
     // This does not apply to single byte types.
@@ -212,7 +212,7 @@ internal class NexusChannelReaderUnmanagedTests
         await pipeReader.BufferData(data.Slice(0, data.Length - 1)).Timeout(1);
         var results = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(1, results.Count());
+        Assert.That(results.Count(), Is.EqualTo(1));
     }
 
     private class DummyPipeStateManager : IPipeStateManager

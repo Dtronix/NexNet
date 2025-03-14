@@ -11,8 +11,8 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
 using NexNet.Logging;
-using NexNet.Pipelines.Threading;
 using NexNet.Internals.Pipelines.Buffers;
+using NexNet.Internals.Pipelines.Threading;
 
 namespace NexNet.Internals;
 

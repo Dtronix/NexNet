@@ -69,7 +69,7 @@ internal class NexusDuplexPipeWriterTests
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            Assert.AreEqual(simpleData, body.ToArray());
+            Assert.That(body.ToArray(), Is.EqualTo(simpleData));
             tcs.SetResult();
             return default;
         };
