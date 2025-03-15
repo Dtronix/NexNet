@@ -73,6 +73,6 @@ public class WebsocketServerConfig : ServerConfig
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return WebsocketTransportListener.Create(this, _connectionQueue, cancellationToken);
+        return ValueTask.FromResult(WebsocketTransportListener.Create(this, _connectionQueue));
     }
 }

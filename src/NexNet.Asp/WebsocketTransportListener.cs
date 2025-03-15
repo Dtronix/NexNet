@@ -62,10 +62,9 @@ internal class WebsocketTransportListener : ITransportListener
         return null;
     }
 
-    public static async ValueTask<ITransportListener> Create(
+    public static ITransportListener Create(
         WebsocketServerConfig config,
-        BufferBlock<WebsocketAcceptedConnection> connectionQueue, 
-        CancellationToken cancellationToken)
+        BufferBlock<WebsocketAcceptedConnection> connectionQueue)
     {
         return new WebsocketTransportListener(config, connectionQueue);
     }

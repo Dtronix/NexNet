@@ -7,7 +7,7 @@ namespace NexNet.Websocket;
 /// Basic implementation that simply wraps <see cref="WebSocket"/> and exposes 
 /// input and output pipes.
 /// </summary>
-public class SimpleWebSocketPipe : IWebSocketPipe
+internal class SimpleWebSocketPipe : IWebSocketPipe
 {
     // Wait 250 ms before giving up on a Close, same as SignalR WebSocketHandler
     static readonly TimeSpan closeTimeout = TimeSpan.FromMilliseconds(250);
