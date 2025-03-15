@@ -36,6 +36,10 @@ public class WebsocketServerConfig : ServerConfig
     
     private readonly BufferBlock<WebsocketAcceptedConnection> _connectionQueue = new();
     internal bool IsAccepting = true;
+    
+    /// <summary>
+    /// Path that the NexNet server binds to on the host.
+    /// </summary>
     public string Path
     {
         get => _path;

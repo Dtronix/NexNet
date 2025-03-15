@@ -34,7 +34,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNetDemo.Websocket.Shared
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNetDemo.Websocket.Client", "NexNetDemo.Websocket.Client\NexNetDemo.Websocket.Client.csproj", "{C026443E-31D2-4DCE-AD53-231E25AA7317}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNet.Websocket", "NexNet.Asp\NexNet.Websocket.csproj", "{0405FBC4-971D-4793-A53C-1CDBAE9AB47A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNet.Websocket", "NexNet.Websocket\NexNet.Websocket.csproj", "{0405FBC4-971D-4793-A53C-1CDBAE9AB47A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
