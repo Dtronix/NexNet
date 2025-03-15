@@ -9,6 +9,8 @@ public class Program
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
+
+        builder.Services.AddAuthorization();
         var app = builder.Build();
         
         app.MapGet("/", () => "Hello World!");
@@ -19,36 +21,11 @@ public class Program
         };
 
         var nexusServer = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
-        _ = Task.Run(async () => await nexusServer.StartAsync(app.Lifetime.ApplicationStopping));
 
         app.UseAuthorization();
-        app.UseWebSockets();
-        app.Use(serverConfig.Middleware);
-
-        
+        app.UseNexNetWebSockets(nexusServer, serverConfig);
         
         app.Run();
     }
 
-}
-
-public class LoggerNexusBridge : INexusLogger
-{
-    private readonly ILogger _logger;
-
-    public LoggerNexusBridge(ILogger logger)
-    {
-        _logger = logger;
-    }
-    public string? Category { get; set; }
-    public string? SessionDetails { get; set; }
-    public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
-    {
-        _logger.Log((LogLevel)logLevel, exception, message);
-    }
-
-    public INexusLogger CreateLogger(string? category, string? sessionDetails = null)
-    {
-        return this;
-    }
 }
