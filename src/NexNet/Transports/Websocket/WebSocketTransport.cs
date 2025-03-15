@@ -1,27 +1,29 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.IO.Pipelines;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Net.WebSockets;
-using Microsoft.AspNetCore.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using NexNet.Transports;
 
-namespace NexNet.Websocket;
+namespace NexNet.Transports.Websocket;
 
-internal class WebsocketTransport : ITransport
+public class WebSocketTransport : ITransport
 {
     private readonly IWebSocketPipe _pipe;
     private readonly ClientWebSocket? _client;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
 
-    private WebsocketTransport(IWebSocketPipe pipe)
+    private WebSocketTransport(IWebSocketPipe pipe)
     {
         _pipe = pipe;
         Input = pipe.Input;
         Output = pipe.Output;
     }
 
-    private WebsocketTransport(IWebSocketPipe pipe, ClientWebSocket client)
+    private WebSocketTransport(IWebSocketPipe pipe, ClientWebSocket client)
     {
         _pipe = pipe;
         Input = pipe.Input;
@@ -64,12 +66,12 @@ internal class WebsocketTransport : ITransport
             await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token);
 
             IWebSocketPipe pipe =
-                new SimpleWebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true });
+                new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true });
 
             // Run the receive loop.
             _ = Task.Run(async () => await pipe.RunAsync(CancellationToken.None), CancellationToken.None);
 
-            return new WebsocketTransport(pipe, client);
+            return new WebSocketTransport(pipe, client);
 
         }
         catch (WebSocketException e)
@@ -82,9 +84,9 @@ internal class WebsocketTransport : ITransport
         }
     }
 
-    internal static ITransport CreateFromConnection(IWebSocketPipe webSocketPipe)
+    public static ITransport CreateFromConnection(IWebSocketPipe webSocketPipe)
     {
-        return new WebsocketTransport(webSocketPipe);
+        return new WebSocketTransport(webSocketPipe);
     }
 
     private static TransportError GetTransportError(WebSocketError error)

@@ -1,7 +1,10 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace NexNet.Websocket;
+namespace NexNet.Transports.Websocket;
 
 /// <summary>
 /// A <see cref="IDuplexPipe"/> over a <see cref="WebSocket"/> which can be 
@@ -9,6 +12,13 @@ namespace NexNet.Websocket;
 /// </summary>
 public interface IWebSocketPipe : IDuplexPipe, IDisposable
 {
+    /// <summary>
+    /// Creates a new instance of a WebSocket pipe.
+    /// </summary>
+    /// <param name="webSocket">WebSocket to wrap.</param>
+    /// <param name="options">Pipe and socket configurations.</param>
+    /// <returns>New websocket</returns>
+    public static IWebSocketPipe Create(WebSocket webSocket, WebSocketPipeOptions options) => new WebSocketPipe(webSocket, options);
     /// <summary>
     /// Indicates the reason for the close handshake.
     /// </summary>

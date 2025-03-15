@@ -1,7 +1,7 @@
 ﻿using System.IO.Pipelines;
 using System.Net.WebSockets;
 
-namespace NexNet.Websocket;
+namespace NexNet.Transports.Websocket;
 
 /// <summary>
 /// Configures the behavior of <see cref="IWebSocketPipe"/>.

@@ -1,5 +1,6 @@
 ﻿using NexNet.Logging;
-using NexNet.Websocket;
+using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket.Asp;
 
 namespace NexNetDemo.Websocket.Server;
 
@@ -12,7 +13,7 @@ public class Program
         
         app.MapGet("/", () => "Hello World!");
 
-        var serverConfig = new WebsocketServerConfig()
+        var serverConfig = new WebSocketServerConfig()
         {
             Logger = new LoggerNexusBridge(app.Logger),
         };

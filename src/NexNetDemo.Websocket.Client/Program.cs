@@ -1,5 +1,5 @@
 ﻿using NexNet.Logging;
-using NexNet.Websocket;
+using NexNet.Transports.Websocket;
 
 namespace NexNetDemo.Websocket.Client;
 

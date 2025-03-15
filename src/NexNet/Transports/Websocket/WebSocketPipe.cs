@@ -1,13 +1,17 @@
-﻿using System.IO.Pipelines;
+﻿using System;
+using System.IO;
+using System.IO.Pipelines;
 using System.Net.WebSockets;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace NexNet.Websocket;
+namespace NexNet.Transports.Websocket;
 
 /// <summary>
 /// Basic implementation that simply wraps <see cref="WebSocket"/> and exposes 
 /// input and output pipes.
 /// </summary>
-internal class SimpleWebSocketPipe : IWebSocketPipe
+internal class WebSocketPipe : IWebSocketPipe
 {
     // Wait 250 ms before giving up on a Close, same as SignalR WebSocketHandler
     static readonly TimeSpan closeTimeout = TimeSpan.FromMilliseconds(250);
@@ -21,7 +25,7 @@ internal class SimpleWebSocketPipe : IWebSocketPipe
 
     bool completed;
 
-    public SimpleWebSocketPipe(WebSocket webSocket, WebSocketPipeOptions options)
+    public WebSocketPipe(WebSocket webSocket, WebSocketPipeOptions options)
     {
         this.webSocket = webSocket;
         this.options = options;

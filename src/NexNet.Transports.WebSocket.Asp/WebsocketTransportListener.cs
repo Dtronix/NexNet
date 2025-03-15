@@ -4,19 +4,20 @@ using System.Net.WebSockets;
 using System.Threading.Tasks.Dataflow;
 using NexNet.Logging;
 using NexNet.Transports;
+using NexNet.Transports.Websocket;
 
 #pragma warning disable CA1416
 
-namespace NexNet.Websocket;
+namespace NexNet.Transports.WebSocket.Asp;
 
 internal class WebsocketTransportListener : ITransportListener
 {
-    private readonly WebsocketServerConfig _config;
+    private readonly WebSocketServerConfig _config;
 
-    private readonly BufferBlock<WebsocketAcceptedConnection> _connectionQueue;
+    private readonly BufferBlock<WebSocketAcceptedConnection> _connectionQueue;
 
-    private WebsocketTransportListener(WebsocketServerConfig config, 
-        BufferBlock<WebsocketAcceptedConnection> connectionQueue)
+    private WebsocketTransportListener(WebSocketServerConfig config, 
+        BufferBlock<WebSocketAcceptedConnection> connectionQueue)
     {
         _config = config;
         _connectionQueue = connectionQueue;
@@ -34,12 +35,12 @@ internal class WebsocketTransportListener : ITransportListener
 
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        WebsocketAcceptedConnection? connection = null;
+        WebSocketAcceptedConnection? connection = null;
         try
         {
             connection = await _connectionQueue.ReceiveAsync(cancellationToken);
 
-            return WebsocketTransport.CreateFromConnection(connection.Pipe);
+            return WebSocketTransport.CreateFromConnection(connection.Pipe);
         }
         catch (OperationCanceledException)
         {
@@ -63,8 +64,8 @@ internal class WebsocketTransportListener : ITransportListener
     }
 
     public static ITransportListener Create(
-        WebsocketServerConfig config,
-        BufferBlock<WebsocketAcceptedConnection> connectionQueue)
+        WebSocketServerConfig config,
+        BufferBlock<WebSocketAcceptedConnection> connectionQueue)
     {
         return new WebsocketTransportListener(config, connectionQueue);
     }
