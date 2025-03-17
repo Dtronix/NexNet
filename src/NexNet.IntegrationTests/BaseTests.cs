@@ -27,13 +27,14 @@ internal class BaseTests
 
     private int _counter;
     private DirectoryInfo? _socketDirectory;
-    protected UnixDomainSocketEndPoint? CurrentPath;
-    protected int? CurrentTcpPort;
-    protected int? CurrentUdpPort;
-    protected List<INexusServer> Servers = new List<INexusServer>();
-    protected List<INexusClient> Clients = new List<INexusClient>();
+    private UnixDomainSocketEndPoint? CurrentPath;
+    private int? CurrentTcpPort;
+    private int? CurrentUdpPort;
+    private List<INexusServer> Servers = new List<INexusServer>();
+    private List<INexusClient> Clients = new List<INexusClient>();
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
+    private readonly List<WebApplication> AspServers = new List<WebApplication>();
     public bool BlockForClose { get; set; }
     public RollingLogger Logger => _logger;
 
@@ -262,9 +263,24 @@ internal class BaseTests
     {
         var serverNexus = new ServerNexus();
         var clientNexus = new ClientNexus();
+
+
+        if (sConfig is Transports.WebSocket.Asp.WebSocketServerConfig sWebSocketConfig)
+        {
+            var builder = WebApplication.CreateBuilder();
+            builder.Services.AddAuthorization();
+            var app = builder.Build();
+            app.UseAuthorization();
+            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, serverNexus, sWebSocketConfig);
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
+        
         var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
         Servers.Add(server);
+        AspServers.Add(server);
         Clients.Add(client);
 
         return (server, serverNexus, client, clientNexus);
