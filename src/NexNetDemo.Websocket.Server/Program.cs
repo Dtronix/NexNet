@@ -1,8 +1,5 @@
 ﻿using NexNet.Logging;
-using NexNet.Transports;
-using NexNet.Transports.WebSocket;
 using NexNet.Transports.WebSocket.Asp;
-using NexNetDemo.Websocket.Client;
 
 namespace NexNetDemo.Websocket.Server;
 
@@ -29,6 +26,8 @@ public class Program
         app.UseNexNetWebSockets(nexusServer, serverConfig);
         
         app.RunAsync();
+        
+        /*
 
         var clientConfig = new WebSocketClientConfig()
         {
@@ -44,7 +43,7 @@ public class Program
         var val = 1;
 
         await Task.Delay(3000);
-        val = await client.Proxy.ServerTaskValueWithParam(val);
+        val = await client.Proxy.ServerTaskValueWithParam(val);*/
         
         Console.ReadLine();
     }
