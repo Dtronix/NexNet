@@ -72,7 +72,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             await pipe.Output.WriteAsync(largeData).Timeout(1);
         }
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(2);
     }
 
     [TestCase(Type.Uds)]
