@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System;
+using Microsoft.Extensions.Logging;
 using NexNet.Logging;
 
 namespace NexNet.Transports.WebSocket.Asp;

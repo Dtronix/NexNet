@@ -1,9 +1,10 @@
-﻿using System.Threading.Tasks.Dataflow;
+﻿using System;
+using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebSockets;
 using NexNet.Logging;
-using NexNet.Transports.WebSocket;
 
 namespace NexNet.Transports.WebSocket.Asp;
 
@@ -24,6 +25,9 @@ public static class NexNetMiddlewareExtensions
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
+        
+        if(server.IsStarted)
+            throw new InvalidOperationException("The server is already running.");
         
         _ = Task.Run(async () => await server.StartAsync(app.Lifetime.ApplicationStopping));
 

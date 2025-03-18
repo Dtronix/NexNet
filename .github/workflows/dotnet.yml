@@ -46,6 +46,9 @@ jobs:
 
     - name: Pack NexNet.Quic
       run: dotnet pack src/NexNet.Quic -c Release -o ./artifacts
+
+    - name: Pack NexNet.Transports.Asp
+      run: dotnet pack src/NexNet.Transports.Asp -c Release -o ./artifacts
       
     - name: Pack NexNet.Generator
       run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
