@@ -31,8 +31,6 @@ public class WebSocketTransport : ITransport
         _client = client;
     }
 
-    public TransportConfiguration Configurations => new TransportConfiguration();
-
     public async ValueTask CloseAsync(bool linger)
     {
         await _pipe.CompleteAsync();
