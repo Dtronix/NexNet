@@ -97,21 +97,13 @@ internal class WebSocketPipe : IWebSocketPipe
             {
                 var message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
                 
-                if(!_isServer)
-                    Console.WriteLine($"--WebSocket Received {message.MessageType} Message with {message.Count} bytes.");
-                
                 while (!cancellation.IsCancellationRequested && !message.EndOfMessage && message.MessageType != WebSocketMessageType.Close)
                 {
-                    if(!_isServer)
-                        Console.WriteLine($"--WebSocket Not end of message.");
                     if (message.Count == 0)
                         break;
 
                     inputPipe.Writer.Advance(message.Count);
                     message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
-                    
-                    if(!_isServer)
-                        Console.WriteLine($"--WebSocket Received Additional {message.MessageType} Message with {message.Count} bytes.");
                 }
 
                 // We didn't get a complete message, we can't flush partial message.
