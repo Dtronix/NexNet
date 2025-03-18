@@ -52,7 +52,8 @@ public partial class ServerNexus
 
     public ValueTask<int> ServerTaskValueWithParam(int data)
     {
-        return ServerTaskValueWithParamEvent.Invoke(this, data);
+        return ValueTask.FromResult(++data);
+        //return ServerTaskValueWithParamEvent.Invoke(this, data);
     }
 
     public ValueTask ServerTaskWithCancellation(CancellationToken cancellationToken)

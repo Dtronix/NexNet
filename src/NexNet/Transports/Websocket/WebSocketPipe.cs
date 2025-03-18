@@ -22,13 +22,15 @@ internal class WebSocketPipe : IWebSocketPipe
 
     readonly System.Net.WebSockets.WebSocket webSocket;
     readonly WebSocketPipeOptions options;
+    private readonly bool _isServer;
 
     bool completed;
 
-    public WebSocketPipe(System.Net.WebSockets.WebSocket webSocket, WebSocketPipeOptions options)
+    public WebSocketPipe(System.Net.WebSockets.WebSocket webSocket, WebSocketPipeOptions options, bool isServer)
     {
         this.webSocket = webSocket;
         this.options = options;
+        _isServer = isServer;
         inputPipe = new Pipe(options.InputPipeOptions);
         outputWriter = PipeWriter.Create(new WebSocketStream(webSocket));
     }
@@ -94,13 +96,22 @@ internal class WebSocketPipe : IWebSocketPipe
             try
             {
                 var message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
+                
+                if(!_isServer)
+                    Console.WriteLine($"--WebSocket Received {message.MessageType} Message with {message.Count} bytes.");
+                
                 while (!cancellation.IsCancellationRequested && !message.EndOfMessage && message.MessageType != WebSocketMessageType.Close)
                 {
+                    if(!_isServer)
+                        Console.WriteLine($"--WebSocket Not end of message.");
                     if (message.Count == 0)
                         break;
 
                     inputPipe.Writer.Advance(message.Count);
                     message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
+                    
+                    if(!_isServer)
+                        Console.WriteLine($"--WebSocket Received Additional {message.MessageType} Message with {message.Count} bytes.");
                 }
 
                 // We didn't get a complete message, we can't flush partial message.

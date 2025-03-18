@@ -19,8 +19,10 @@ internal class Program
         var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 
         await client.ConnectAsync();
+        var val = 1;
 
-        await client.Proxy.ServerData(new byte[3000]);
+        //val = await client.Proxy.ServerTaskValueWithParam(val);
+        
         Console.ReadLine();
     }
 }

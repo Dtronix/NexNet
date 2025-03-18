@@ -64,11 +64,12 @@ public class WebSocketTransport : ITransport
             await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token);
 
             IWebSocketPipe pipe =
-                new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true });
-
-            // Run the receive loop.
-            _ = Task.Run(async () => await pipe.RunAsync(CancellationToken.None), CancellationToken.None);
-
+                new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true }, false);
+            
+            // Run receive loop on a long-running task.
+            _ = Task.Factory.StartNew(
+                async () => await pipe.RunAsync(CancellationToken.None), 
+                TaskCreationOptions.LongRunning);
             return new WebSocketTransport(pipe, client);
 
         }

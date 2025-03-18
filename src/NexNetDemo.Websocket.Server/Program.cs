@@ -1,12 +1,14 @@
 ﻿using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 using NexNet.Transports.WebSocket.Asp;
+using NexNetDemo.Websocket.Client;
 
 namespace NexNetDemo.Websocket.Server;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static async Task Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -14,11 +16,11 @@ public class Program
         var app = builder.Build();
         
         app.MapGet("/", () => "Hello World!");
-
+        var logger = new ConsoleLogger();
         var serverConfig = new WebSocketServerConfig()
         {
-            Logger = new LoggerNexusBridge(app.Logger),
-            Timeout = 4000,
+            Logger = logger.CreatePrefixedLogger(null, "Server"),
+            Timeout = 20000,
         };
 
         var nexusServer = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
@@ -26,7 +28,25 @@ public class Program
         app.UseAuthorization();
         app.UseNexNetWebSockets(nexusServer, serverConfig);
         
-        app.Run();
+        app.RunAsync();
+
+        var clientConfig = new WebSocketClientConfig()
+        {
+            Url = new Uri("ws://localhost:5000/ws"),
+            Logger = logger.CreatePrefixedLogger(null, "Client"),
+            Timeout = 10000,
+            PingInterval = 1000,
+            ReconnectionPolicy = new DefaultReconnectionPolicy()
+        };
+        var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
+
+        await client.ConnectAsync();
+        var val = 1;
+
+        await Task.Delay(3000);
+        val = await client.Proxy.ServerTaskValueWithParam(val);
+        
+        Console.ReadLine();
     }
 
 }
