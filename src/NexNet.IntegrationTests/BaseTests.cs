@@ -297,8 +297,11 @@ internal class BaseTests
     }
 
 
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, ServerNexus serverNexus, NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
-        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, 
+        ServerNexus serverNexus,
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client, 
+        ClientNexus clientNexus)
+        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig, bool startServer = true)
     {
         var serverNexus = new ServerNexus();
         var clientNexus = new ClientNexus();
@@ -315,14 +318,64 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseAuthorization();
-            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
+            app.UseNexNetWebSockets(server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }
         
         return (server, serverNexus, client, clientNexus);
+    }
+    
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, 
+        ServerNexus serverNexus,
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client, 
+        ClientNexus clientNexus,
+        Action startAspServer,
+        Action stopAspServer)
+        CreateServerClientWithStoppedServer(ServerConfig sConfig, ClientConfig cConfig)
+    {
+        var serverNexus = new ServerNexus();
+        var clientNexus = new ClientNexus();
+        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Servers.Add(server);
+        Clients.Add(client);
 
+        WebApplication? app = null;
+        if (sConfig is WebSocketServerConfig sWebSocketConfig)
+        {
+            
+            var builder = WebApplication.CreateBuilder();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.Services.AddAuthorization();
+            app = builder.Build();
+            app.UseAuthorization();
+            app.UseNexNetWebSockets(server, sWebSocketConfig);
+            AspServers.Add(app);
+        }
 
+        void StartAspServer()
+        {
+            if (app == null)
+                return;
+            _ = app.RunAsync();
+        }
+        
+        void StopAspServer()
+        {
+            if (app == null)
+                return;
+            
+            if(!app.Lifetime.ApplicationStarted.IsCancellationRequested)
+                return;
+            
+            app.Lifetime.StopApplication();
+
+            app.Lifetime.ApplicationStopped.WaitHandle.WaitOne(500);
+        }
+        
+
+        return (server, serverNexus, client, clientNexus, StartAspServer, StopAspServer);
     }
 
     protected NexusServer<ServerNexus, ServerNexus.ClientProxy>

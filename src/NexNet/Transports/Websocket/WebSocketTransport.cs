@@ -55,8 +55,8 @@ public class WebSocketTransport : ITransport
     {
 
         using var timeoutCancellation = new CancellationTokenSource(config.ConnectionTimeout);
-        await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel, false);
-
+        using var cancellationTokenRegistration =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
         try
         {
             var client = new ClientWebSocket();
@@ -75,6 +75,10 @@ public class WebSocketTransport : ITransport
         catch (WebSocketException e)
         {
             throw new TransportException(GetTransportError(e.WebSocketErrorCode), e.Message, e);
+        }
+        catch (TaskCanceledException e)
+        {
+            throw new TransportException(TransportError.ConnectionTimeout, e.Message, e);
         }
         catch (Exception e)
         {

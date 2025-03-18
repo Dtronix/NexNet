@@ -1,27 +1,77 @@
-﻿namespace NexNet;
+﻿using System;
+using NexNet.Pipes;
+
+namespace NexNet;
 
 /// <summary>
-/// Result of a connection attempt.
+/// Result of the connection attempt.
 /// </summary>
-public enum ConnectionResult
+public class ConnectionResult
 {
     /// <summary>
-    /// Connection was successful.
+    /// State of the connection.
     /// </summary>
-    Success,
+    public StateValue State { get; } = StateValue.Unset;
+    
+    /// <summary>
+    /// Exception that occurred while connecting.  Null if no exception occurred.
+    /// </summary>
+    public Exception? Exception { get; }
+
+    public ConnectionResult(StateValue state, Exception? exception = null)
+    {
+        State = state;
+        Exception = exception;
+    }
 
     /// <summary>
-    /// Connection failed due to a timeout.
+    /// Returns true if the connection was successful.  False otherwise.
     /// </summary>
-    Timeout,
-
+    /// <exception cref="ArgumentOutOfRangeException"></exception>
+    public bool Success => State switch
+    {
+        StateValue.Success => true,
+        StateValue.Timeout => false,
+        StateValue.AuthenticationFailed => false,
+        StateValue.Exception => false,
+        StateValue.Unset => false,
+        StateValue.UnknownException => false,
+        _ => throw new ArgumentOutOfRangeException()
+    };
+    
     /// <summary>
-    /// Connection failed due to an authentication failure.
+    /// Result of a connection attempt.
     /// </summary>
-    AuthenticationFailed,
+    public enum StateValue
+    {
+        /// <summary>
+        /// State is unset.
+        /// </summary>
+        Unset,
+        
+        /// <summary>
+        /// Connection was successful.
+        /// </summary>
+        Success,
 
-    /// <summary>
-    /// Connection failed due to an unknown exception.
-    /// </summary>
-    Exception
+        /// <summary>
+        /// Connection failed due to a timeout.
+        /// </summary>
+        Timeout,
+
+        /// <summary>
+        /// Connection failed due to an authentication failure.
+        /// </summary>
+        AuthenticationFailed,
+
+        /// <summary>
+        /// Connection failed due to a known exception.
+        /// </summary>
+        Exception,
+        
+        /// <summary>
+        /// Connection failed due to an unknown exception.
+        /// </summary>
+        UnknownException
+    }
 }

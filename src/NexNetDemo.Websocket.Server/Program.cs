@@ -18,6 +18,7 @@ public class Program
         var serverConfig = new WebSocketServerConfig()
         {
             Logger = new LoggerNexusBridge(app.Logger),
+            Timeout = 4000,
         };
 
         var nexusServer = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());

@@ -1,4 +1,5 @@
 ﻿using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 
 namespace NexNetDemo.Websocket.Client;
@@ -10,7 +11,10 @@ internal class Program
         var clientConfig = new WebSocketClientConfig()
         {
             Url = new Uri("ws://localhost:5000/ws"),
-            Logger = new ConsoleLogger()
+            Logger = new ConsoleLogger(),
+            Timeout = 4000,
+            PingInterval = 2000,
+            ReconnectionPolicy = new DefaultReconnectionPolicy()
         };
         var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 

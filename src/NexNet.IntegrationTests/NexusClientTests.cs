@@ -1,5 +1,6 @@
 ﻿using System.Net.Sockets;
 using MemoryPack;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -80,7 +81,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task ClientTimesOutWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
-        var (_, _, client, _) = CreateServerClient(
+        var (_, _, client, _, _, _) = CreateServerClientWithStoppedServer(
             CreateServerConfig(type),
             clientConfig);
 
@@ -118,7 +119,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.WebSocket)]
     public async Task ConnectTimesOutWithNoServer(Type type)
     {
-        var (_, _, client, _) = CreateServerClient(
+        var (_, _, client, _, _, _) = CreateServerClientWithStoppedServer(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -189,7 +190,6 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -218,6 +218,42 @@ internal partial class NexusClientTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        await tcs.Task.Timeout(5);
+    }
+    
+    [TestCase(Type.WebSocket)]
+    public async Task ReconnectsOnDisconnectAsp(Type type)
+    {
+        var tcs = new TaskCompletionSource();
+        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var (server, _, client, clientNexus, startAspServer, stopAspServer) = CreateServerClientWithStoppedServer(serverConfig, clientConfig);
+
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
+
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
+        {
+            if (isReconnected)
+                tcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        startAspServer.Invoke();
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        stopAspServer.Invoke();
+
+        // Wait for the client to process the disconnect.
+        await Task.Delay(50);
+        
+        (server, _, _, _, startAspServer, _) = CreateServerClientWithStoppedServer(serverConfig, clientConfig);
+
+        await server.StartAsync().Timeout(1);
+        startAspServer.Invoke();
+        
         await tcs.Task.Timeout(5);
     }
     
