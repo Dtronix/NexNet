@@ -5,7 +5,7 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Transports.Websocket;
+namespace NexNet.Transports.WebSocket;
 
 /// <summary>
 /// Basic implementation that simply wraps <see cref="WebSocket"/> and exposes 
@@ -20,12 +20,12 @@ internal class WebSocketPipe : IWebSocketPipe
     readonly Pipe inputPipe;
     readonly PipeWriter outputWriter;
 
-    readonly WebSocket webSocket;
+    readonly System.Net.WebSockets.WebSocket webSocket;
     readonly WebSocketPipeOptions options;
 
     bool completed;
 
-    public WebSocketPipe(WebSocket webSocket, WebSocketPipeOptions options)
+    public WebSocketPipe(System.Net.WebSockets.WebSocket webSocket, WebSocketPipeOptions options)
     {
         this.webSocket = webSocket;
         this.options = options;
@@ -134,9 +134,9 @@ internal class WebSocketPipe : IWebSocketPipe
 
     class WebSocketStream : Stream
     {
-        readonly WebSocket webSocket;
+        readonly System.Net.WebSockets.WebSocket webSocket;
 
-        public WebSocketStream(WebSocket webSocket) => this.webSocket = webSocket;
+        public WebSocketStream(System.Net.WebSockets.WebSocket webSocket) => this.webSocket = webSocket;
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
             => webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken);

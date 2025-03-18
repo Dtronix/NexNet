@@ -4,7 +4,7 @@ using System.Net.WebSockets;
 using System.Threading.Tasks.Dataflow;
 using NexNet.Logging;
 using NexNet.Transports;
-using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket;
 
 #pragma warning disable CA1416
 

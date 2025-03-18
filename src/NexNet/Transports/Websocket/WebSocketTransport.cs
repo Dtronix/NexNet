@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Transports;
 
-namespace NexNet.Transports.Websocket;
+namespace NexNet.Transports.WebSocket;
 
 public class WebSocketTransport : ITransport
 {
@@ -52,7 +52,7 @@ public class WebSocketTransport : ITransport
     /// </summary>
     /// 
     internal static async ValueTask<ITransport> ConnectAsync(
-        WebsocketClientConfig config,
+        WebSocketClientConfig config,
         CancellationToken cancellationToken)
     {
 

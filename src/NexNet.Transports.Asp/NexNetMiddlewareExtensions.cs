@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebSockets;
 using NexNet.Logging;
-using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket;
 
 namespace NexNet.Transports.WebSocket.Asp;
 

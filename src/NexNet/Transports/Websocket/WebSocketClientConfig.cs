@@ -2,12 +2,12 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Transports.Websocket;
+namespace NexNet.Transports.WebSocket;
 
 /// <summary>
 /// Configurations for the client to connect to a QUIC NexNet server.
 /// </summary>
-public class WebsocketClientConfig : ClientConfig
+public class WebSocketClientConfig : ClientConfig
 {
     /// <summary>
     /// Endpoint

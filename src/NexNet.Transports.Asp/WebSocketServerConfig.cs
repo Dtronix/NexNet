@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Http;
 using NexNet.Transports;
-using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket;
 
 namespace NexNet.Transports.WebSocket.Asp;
 internal record WebSocketAcceptedConnection(HttpContext Context, IWebSocketPipe Pipe);

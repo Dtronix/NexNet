@@ -13,6 +13,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -34,6 +35,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -60,6 +62,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)]  Can't start and stop Asp.
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
@@ -88,6 +91,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)]  Can't start and stop Asp.
     public async Task StopsAndReleasesStoppedTcs(Type type)
     {
         var (server, _, client, clientHub) = CreateServerClient(
@@ -108,6 +112,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)]  Can't start and stop Asp.
     public async Task ThrowsWhenServerIsAlreadyOpenOnSameTransport(Type type)
     {
         var config = CreateServerConfig(type);

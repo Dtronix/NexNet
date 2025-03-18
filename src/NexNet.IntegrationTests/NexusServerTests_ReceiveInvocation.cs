@@ -11,6 +11,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerVoid(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -28,6 +29,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerVoidWithParam(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -49,6 +51,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTask(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -67,6 +70,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskWithParam(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -86,6 +90,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskValue(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -103,6 +108,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskValue_ReturnedValue(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -122,6 +128,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -141,6 +148,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam_ReturnedValue(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -161,6 +169,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskWithCancellation(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -179,6 +188,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ServerTaskWithValueAndCancellation(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -198,6 +208,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -215,6 +226,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -233,6 +245,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -252,6 +265,7 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
         return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>

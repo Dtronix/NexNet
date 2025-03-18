@@ -4,11 +4,14 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.TestHost;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
+using NexNet.Transports.WebSocket;
+using NexNet.Transports.WebSocket.Asp;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using NUnit.Framework.Internal;
@@ -22,7 +25,8 @@ internal class BaseTests
         Uds,
         Tcp,
         TcpTls,
-        Quic
+        Quic,
+        WebSocket
     }
 
     private int _counter;
@@ -104,8 +108,19 @@ internal class BaseTests
             if (BlockForClose)
                 nexusServer.StoppedTask?.Wait();
         }
-
         Servers.Clear();
+        foreach (var se in AspServers)
+        {
+            if(!se.Lifetime.ApplicationStarted.IsCancellationRequested)
+                continue;
+            
+            se.Lifetime.StopApplication();
+
+            if (BlockForClose)
+                se.Lifetime.ApplicationStopped.WaitHandle.WaitOne(5000);
+        }
+        AspServers.Clear();
+        
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -122,7 +137,8 @@ internal class BaseTests
                 Logger = logger
             };
         }
-        else if (type == Type.Tcp)
+
+        if (type == Type.Tcp)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -133,7 +149,8 @@ internal class BaseTests
                 TcpNoDelay = true
             };
         }
-        else if (type == Type.TcpTls)
+
+        if (type == Type.TcpTls)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -152,7 +169,8 @@ internal class BaseTests
                 },
             };
         }
-        else if (type == Type.Quic)
+
+        if (type == Type.Quic)
         {
             CurrentUdpPort ??= FreeUdpPort();
 
@@ -168,6 +186,16 @@ internal class BaseTests
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                     ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
                 },
+            };
+        }
+        
+        if (type == Type.WebSocket)
+        {
+            return new WebSocketServerConfig()
+            {
+                
+                Path = "/websocket-test",
+                Logger = logger,
             };
         }
 
@@ -198,7 +226,8 @@ internal class BaseTests
                 Logger = logger,
             };
         }
-        else if (type == Type.Tcp)
+
+        if (type == Type.Tcp)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -208,7 +237,8 @@ internal class BaseTests
                 Logger = logger,
             };
         }
-        else if (type == Type.TcpTls)
+        
+        if (type == Type.TcpTls)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -225,7 +255,7 @@ internal class BaseTests
                 }
             };
         }
-        else if (type == Type.Quic)
+        if (type == Type.Quic)
         {
             CurrentUdpPort ??= FreeUdpPort();
 
@@ -240,6 +270,15 @@ internal class BaseTests
                     AllowRenegotiation = false,
                     RemoteCertificateValidationCallback = (_, _, _, _) => true
                 }
+            };
+        }
+
+        if (type == Type.WebSocket)
+        {
+            return new WebSocketClientConfig()
+            {
+                Url = new Uri("ws://127.0.0.1:15050/websocket-test"),
+                Logger = logger,
             };
         }
 
@@ -263,27 +302,27 @@ internal class BaseTests
     {
         var serverNexus = new ServerNexus();
         var clientNexus = new ClientNexus();
-
-
-        if (sConfig is Transports.WebSocket.Asp.WebSocketServerConfig sWebSocketConfig)
+        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Servers.Add(server);
+        Clients.Add(client);
+        
+        if (sConfig is WebSocketServerConfig sWebSocketConfig)
         {
+            
             var builder = WebApplication.CreateBuilder();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseAuthorization();
-            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, serverNexus, sWebSocketConfig);
+            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }
         
-        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
-        
-        var client = ClientNexus.CreateClient(cConfig, clientNexus);
-        Servers.Add(server);
-        AspServers.Add(server);
-        Clients.Add(client);
-
         return (server, serverNexus, client, clientNexus);
+
+
     }
 
     protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
@@ -295,7 +334,21 @@ internal class BaseTests
             nexusCreated?.Invoke(nexus);
             return nexus;
         }); 
+        
         Servers.Add(server);
+        
+        if (sConfig is WebSocketServerConfig sWebSocketConfig)
+        {
+            
+            var builder = WebApplication.CreateBuilder();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.Services.AddAuthorization();
+            var app = builder.Build();
+            app.UseAuthorization();
+            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
 
         return server;
     }

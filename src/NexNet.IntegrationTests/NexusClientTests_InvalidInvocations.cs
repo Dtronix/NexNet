@@ -9,6 +9,7 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientThrowsWhenArgumentTooLarge(Type type)
     {
         var tcs = new TaskCompletionSource();

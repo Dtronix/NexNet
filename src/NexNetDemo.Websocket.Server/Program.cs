@@ -1,5 +1,5 @@
 ﻿using NexNet.Logging;
-using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket;
 using NexNet.Transports.WebSocket.Asp;
 
 namespace NexNetDemo.Websocket.Server;

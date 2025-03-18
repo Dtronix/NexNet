@@ -13,6 +13,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -36,6 +37,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ConnectsToServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -57,6 +59,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientFailsGracefullyWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -73,6 +76,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientTimesOutWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -89,6 +93,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
         var (server, _, client, clientNexus) = CreateServerClient(
@@ -110,6 +115,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ConnectTimesOutWithNoServer(Type type)
     {
         var (_, _, client, _) = CreateServerClient(
@@ -123,6 +129,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientProvidesAuthenticationToken(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -154,6 +161,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientSendsPing(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -181,6 +189,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -216,6 +225,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReconnectsOnTimeout(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -247,6 +257,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -275,6 +286,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -312,6 +324,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ClientProxyInvocationCancelsOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -354,6 +367,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReadyTaskCompletesUponConnection(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
@@ -369,6 +383,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReadyTaskCompletesUponAuthentication(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -395,6 +410,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task ReadyTaskCompletesUponAuthFailure(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -416,6 +432,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task DisconnectTaskCompletesUponDisconnection(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(
@@ -439,6 +456,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task DisconnectTaskCompletesUponAuthFailure(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -461,6 +479,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
     public async Task DisconnectTaskCompletesAfterDisconnect(Type type)
     {
         var (server, serverHub, client, clientHub) = CreateServerClient(

@@ -1,5 +1,5 @@
 ﻿using NexNet.Logging;
-using NexNet.Transports.Websocket;
+using NexNet.Transports.WebSocket;
 
 namespace NexNetDemo.Websocket.Client;
 
@@ -7,7 +7,7 @@ internal class Program
 {
     static async Task Main(string[] args)
     {
-        var clientConfig = new WebsocketClientConfig()
+        var clientConfig = new WebSocketClientConfig()
         {
             Url = new Uri("ws://localhost:5000/ws"),
             Logger = new ConsoleLogger()
