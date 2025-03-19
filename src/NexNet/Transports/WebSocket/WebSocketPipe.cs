@@ -67,11 +67,11 @@ internal class WebSocketPipe : IWebSocketPipe
         completed = true;
 
         // NOTE: invoking these more than once is no-op.
-        await inputPipe.Writer.CompleteAsync();
-        await inputPipe.Reader.CompleteAsync();
+        await inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+        await inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
 
         if (options.CloseWhenCompleted || closeStatus != null)
-            await CloseAsync(closeStatus ?? WebSocketCloseStatus.NormalClosure, closeStatusDescription ?? "");
+            await CloseAsync(closeStatus ?? WebSocketCloseStatus.NormalClosure, closeStatusDescription ?? "").ConfigureAwait(false);
     }
 
     async ValueTask CloseAsync(WebSocketCloseStatus closeStatus, string closeStatusDescription)
@@ -86,7 +86,7 @@ internal class WebSocketPipe : IWebSocketPipe
             webSocket.CloseOutputAsync(closeStatus, closeStatusDescription, default);
 
         // Don't wait indefinitely for the close to be acknowledged
-        await Task.WhenAny(closeTask, Task.Delay(closeTimeout));
+        await Task.WhenAny(closeTask, Task.Delay(closeTimeout)).ConfigureAwait(false);
     }
 
     async Task ReadInputAsync(CancellationToken cancellation)
@@ -95,7 +95,7 @@ internal class WebSocketPipe : IWebSocketPipe
         {
             try
             {
-                var message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
+                var message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation).ConfigureAwait(false);
                 
                 while (!cancellation.IsCancellationRequested && !message.EndOfMessage && message.MessageType != WebSocketMessageType.Close)
                 {
@@ -103,7 +103,7 @@ internal class WebSocketPipe : IWebSocketPipe
                         break;
 
                     inputPipe.Writer.Advance(message.Count);
-                    message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation);
+                    message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation).ConfigureAwait(false);
                 }
 
                 // We didn't get a complete message, we can't flush partial message.
@@ -112,7 +112,7 @@ internal class WebSocketPipe : IWebSocketPipe
 
                 // Advance the EndOfMessage bytes before flushing.
                 inputPipe.Writer.Advance(message.Count);
-                var result = await inputPipe.Writer.FlushAsync(cancellation);
+                var result = await inputPipe.Writer.FlushAsync(cancellation).ConfigureAwait(false);
                 if (result.IsCompleted)
                     break;
 
@@ -126,7 +126,7 @@ internal class WebSocketPipe : IWebSocketPipe
         }
 
         // Preserve the close status since it might be triggered by a received Close message containing the status and description.
-        await CompleteAsync(webSocket.CloseStatus, webSocket.CloseStatusDescription);
+        await CompleteAsync(webSocket.CloseStatus, webSocket.CloseStatusDescription).ConfigureAwait(false);
     }
 
     public void Dispose()

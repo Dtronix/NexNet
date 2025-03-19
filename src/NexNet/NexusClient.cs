@@ -66,7 +66,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        var result = await TryConnectAsync(cancellationToken);
+        var result = await TryConnectAsync(cancellationToken).ConfigureAwait(false);
         if(!result.Success && result.Exception != null)
             throw result.Exception;
     }

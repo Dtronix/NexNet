@@ -10,8 +10,9 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
+using NexNet.Transports.Asp;
+using NexNet.Transports.Asp.WebSocket;
 using NexNet.Transports.WebSocket;
-using NexNet.Transports.WebSocket.Asp;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using NUnit.Framework.Internal;
@@ -398,7 +399,7 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseAuthorization();
-            Transports.WebSocket.Asp.NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
+            NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }

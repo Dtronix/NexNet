@@ -2,13 +2,16 @@
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
     <Nullable>enable</Nullable>
-    <RootNamespace>NexNet.Transports.WebSocket.Asp</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Http\HttpNexNetClientMiddleware.cs" />
+    <None Include="Http\HttpNexNetClientMiddleware.cs" />
   </ItemGroup>
 
 </Project>

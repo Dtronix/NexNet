@@ -2,17 +2,20 @@
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Http;
+using NexNet.Transports.HttpSocket;
 
-namespace NexNet.Transports.WebSocket.Asp;
-internal record WebSocketAcceptedConnection(HttpContext Context, IWebSocketPipe Pipe);
+namespace NexNet.Transports.Asp.Http;
+
+internal record HttpSocketAcceptedConnection(HttpContext Context, HttpSocketDuplexPipe Pipe);
+
 /// <summary>
 /// Configurations for the server to allow connections from QUIC NexNet clients.
 /// </summary>
-public class WebSocketServerConfig : ServerConfig
+public class HttpSocketServerConfig : ServerConfig
 {
     private string _path ="/ws";
     
-    internal readonly BufferBlock<WebSocketAcceptedConnection> ConnectionQueue = new();
+    internal readonly BufferBlock<HttpSocketAcceptedConnection> ConnectionQueue = new();
     internal bool IsAccepting = true;
     
     /// <summary>
@@ -28,6 +31,6 @@ public class WebSocketServerConfig : ServerConfig
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult(WebsocketTransportListener.Create(this, ConnectionQueue));
+        return ValueTask.FromResult(HttpSocketTransportListener.Create(this, ConnectionQueue));
     }
 }

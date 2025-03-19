@@ -33,10 +33,10 @@ public class WebSocketTransport : ITransport
 
     public async ValueTask CloseAsync(bool linger)
     {
-        await _pipe.CompleteAsync();
+        await _pipe.CompleteAsync().ConfigureAwait(false);
 
         if (_client != null)
-            await _client.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+            await _client.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -61,14 +61,14 @@ public class WebSocketTransport : ITransport
         {
             var client = new ClientWebSocket();
 
-            await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token);
+            await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token).ConfigureAwait(false);
 
             IWebSocketPipe pipe =
                 new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true }, false);
             
             // Run receive loop on a long-running task.
             _ = Task.Factory.StartNew(
-                async () => await pipe.RunAsync(CancellationToken.None), 
+                async () => await pipe.RunAsync(CancellationToken.None).ConfigureAwait(false), 
                 TaskCreationOptions.LongRunning);
             return new WebSocketTransport(pipe, client);
 
