@@ -11,6 +11,7 @@ using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.Asp;
+using NexNet.Transports.Asp.HttpSocket;
 using NexNet.Transports.Asp.WebSocket;
 using NexNet.Transports.WebSocket;
 using NUnit.Framework;
@@ -27,7 +28,8 @@ internal class BaseTests
         Tcp,
         TcpTls,
         Quic,
-        WebSocket
+        WebSocket,
+        HttpSocket
     }
 
     private int _counter;
@@ -199,6 +201,15 @@ internal class BaseTests
                 Logger = logger
             };
         }
+        
+        if (type == Type.HttpSocket)
+        {
+            return new HttpSocketServerConfig()
+            {
+                Path = "/httpsocket-test",
+                Logger = logger,
+            };
+        }
 
 
         throw new InvalidOperationException();
@@ -273,12 +284,19 @@ internal class BaseTests
                 }
             };
         }
-
         if (type == Type.WebSocket)
         {
             return new WebSocketClientConfig()
             {
                 Url = new Uri("ws://127.0.0.1:15050/websocket-test"),
+                Logger = logger,
+            };
+        }
+        if (type == Type.HttpSocket)
+        {
+            return new HttpSocketClientConfig()
+            {
+                Url = new Uri("http://127.0.0.1:15050/httpsocket-test"),
                 Logger = logger,
             };
         }
@@ -311,19 +329,28 @@ internal class BaseTests
         Servers.Add(server);
         Clients.Add(client);
         
-        if (sConfig is WebSocketServerConfig sWebSocketConfig)
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
-            
             var builder = WebApplication.CreateBuilder();
-            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             var app = builder.Build();
-            app.UseWebSockets();
-            app.MapWebSocketNexus(server, sWebSocketConfig);
+            
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(server, sWebSocketConfig);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(server, sHttpSocketConfig);
+            }
             _ = app.RunAsync();
             AspServers.Add(app);
         }
-        
+
         return (server, serverNexus, client, clientNexus);
     }
     
@@ -343,15 +370,26 @@ internal class BaseTests
         Clients.Add(client);
 
         WebApplication? app = null;
-        if (sConfig is WebSocketServerConfig sWebSocketConfig)
+
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
-            
             var builder = WebApplication.CreateBuilder();
-            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             app = builder.Build();
-            app.UseWebSockets();
-            app.MapWebSocketNexus(server, sWebSocketConfig);
+            
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(server, sWebSocketConfig);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(server, sHttpSocketConfig);
+    
+            }
             AspServers.Add(app);
         }
 
@@ -400,6 +438,17 @@ internal class BaseTests
             var app = builder.Build();
             app.UseWebSockets();
             app.MapWebSocketNexus(server, sWebSocketConfig);
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
+        else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+        {
+            var builder = WebApplication.CreateBuilder();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.Services.AddAuthorization();
+            var app = builder.Build();
+            app.UseHttpSockets();
+            app.MapHttpSocketNexus(server, sHttpSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }

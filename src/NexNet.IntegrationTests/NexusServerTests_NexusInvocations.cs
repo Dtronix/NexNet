@@ -36,6 +36,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task InvokesViaNexusContextAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -71,6 +72,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task InvokesViaNexusAndDoesNotBlock(Type type)
     {
         bool completed = false;
@@ -114,6 +116,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task InvokesViaNexusContextAndGetsReturnFromSingleClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -156,6 +159,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnAll(Type type)
     {
         var tcs1 = new TaskCompletionSource();
@@ -194,6 +198,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroup(Type type)
     {
         var tcs1 = new TaskCompletionSource();
@@ -232,6 +237,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroups(Type type)
     {
         var tcs1 = new TaskCompletionSource();
@@ -273,6 +279,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroupExceptCurrent(Type type)
     {
         var groupInvokedCount = 0;
@@ -328,6 +335,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroupsExceptCurrent(Type type)
     {
         var groupInvokedCount = 0;
@@ -383,6 +391,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task DirectNexusProxyInvokesOnGroupIncludingCurrent(Type type)
     {
         var groupInvokedCount = 0;
@@ -434,6 +443,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task DirectNexusProxyInvokesOnGroupsIncludingCurrent(Type type)
     {
         var groupInvokedCount = 0;
@@ -485,6 +495,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnOthers(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -526,6 +537,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnClient(Type type)
     {
         var tcs = new TaskCompletionSource();
@@ -567,6 +579,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnClients(Type type)
     {
         var tcs1 = new TaskCompletionSource();

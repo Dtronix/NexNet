@@ -12,6 +12,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -49,6 +50,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -81,6 +83,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesData(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -107,6 +110,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterSendsData(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
@@ -130,6 +134,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -155,6 +160,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -189,6 +195,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponDisconnection(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -215,6 +222,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponDisconnection(Type type)
     {
         var tcsDisconnected = new TaskCompletionSource();
@@ -245,6 +253,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponWriterCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -272,6 +281,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponWriterCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -304,6 +314,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
@@ -332,6 +343,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
@@ -369,6 +381,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenReady(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
@@ -391,6 +404,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReadyCancelsOnDisconnection(Type type)
     {
         var (server, _, client, _, _) = await Setup(type);
@@ -414,6 +428,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeCompleteCancelsOnDisconnection(Type type)
     {
         var (server, _, client, _, _) = await Setup(type);
@@ -437,6 +452,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenComplete(Type type)
     {
         var (_, sNexus, client, _, _) = await Setup(type);
@@ -462,6 +478,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(Type type)
     {
         var (_, sNexus, client, _, _) = await Setup(type);
@@ -480,6 +497,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingUsedPipe(Type type)
     {
         var (_, sNexus, client, _, _) = await Setup(type);
