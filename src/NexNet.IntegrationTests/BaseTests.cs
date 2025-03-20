@@ -124,7 +124,7 @@ internal class BaseTests
                 if (BlockForClose)
                     se.Lifetime.ApplicationStopped.WaitHandle.WaitOne(5000);
             }
-            catch (ObjectDisposedException e)
+            catch (ObjectDisposedException)
             {
             }
             
@@ -175,7 +175,7 @@ internal class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
                 },
             };
         }
@@ -194,10 +194,12 @@ internal class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
                 },
             };
         }
+        
+        
         
         if (type == Type.WebSocket)
         {
@@ -339,6 +341,8 @@ internal class BaseTests
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
+            if(sConfig.Logger == null)
+                builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
@@ -381,6 +385,8 @@ internal class BaseTests
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
+            if(sConfig.Logger == null)
+                builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
@@ -436,26 +442,27 @@ internal class BaseTests
         
         Servers.Add(server);
         
-        if (sConfig is WebSocketServerConfig sWebSocketConfig)
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
+            var builder = WebApplication.CreateBuilder();
+            if(sConfig.Logger == null)
+                builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, 15050));
+            builder.Services.AddAuthorization();
+            var app = builder.Build();
             
-            var builder = WebApplication.CreateBuilder();
-            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
-            builder.Services.AddAuthorization();
-            var app = builder.Build();
-            app.UseWebSockets();
-            app.MapWebSocketNexus(sWebSocketConfig);
-            _ = app.RunAsync();
-            AspServers.Add(app);
-        }
-        else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
-        {
-            var builder = WebApplication.CreateBuilder();
-            builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
-            builder.Services.AddAuthorization();
-            var app = builder.Build();
-            app.UseHttpSockets();
-            app.MapHttpSocketNexus(sHttpSocketConfig);
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(sWebSocketConfig);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(sHttpSocketConfig);
+    
+            }
             _ = app.RunAsync();
             AspServers.Add(app);
         }

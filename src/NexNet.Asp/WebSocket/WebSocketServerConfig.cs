@@ -13,8 +13,8 @@ namespace NexNet.Asp.WebSocket;
 public class WebSocketServerConfig : ServerConfig
 {
     private string _path ="/ws";
-    
-    internal readonly BufferBlock<IWebSocketPipe> ConnectionQueue = new();
+
+    private readonly BufferBlock<IWebSocketPipe> _connectionQueue = new();
     internal bool IsAccepting = true;
     
     /// <summary>
@@ -30,17 +30,25 @@ public class WebSocketServerConfig : ServerConfig
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult<ITransportListener>(new WebSocketTransportListener(this, ConnectionQueue));
+        return ValueTask.FromResult<ITransportListener>(new WebSocketTransportListener(this, _connectionQueue));
     }
 
+    /// <summary>
+    /// Pushes the newly accepted pipe connection to the Nexus server for handling.
+    /// </summary>
+    /// <param name="pipe">Pipe to have the Nexus server handle.</param>
+    /// <returns>
+    /// True if the connection was successfully added to the queue.  False if the queue has closed.
+    /// Usually means the server has closed.
+    /// </returns>
     public bool PushNewConnectionAsync(IWebSocketPipe pipe)
     {
         int count = 1;
         // Loop until we enqueue the connection.
-        while(!ConnectionQueue.Post(pipe))
+        while(!_connectionQueue.Post(pipe))
         {
             Logger?.LogTrace($"Failed to post connection to queue {count++} times.");
-            if (ConnectionQueue.Completion.IsCompleted)
+            if (_connectionQueue.Completion.IsCompleted)
             {
                 Logger?.LogTrace($"Connection queue is closed.");
                 return false;

@@ -8,6 +8,7 @@ namespace NexNetSample.Asp.Server;
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus
 {
+#pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
     public Action<ServerNexus> ServerVoidEvent;
     public Action<ServerNexus, int> ServerVoidWithParamEvent;
     public Func<ServerNexus, ValueTask> ServerTaskEvent;
@@ -19,11 +20,12 @@ public partial class ServerNexus
     public Func<ServerNexus, CancellationToken, ValueTask<int>> ServerTaskValueWithCancellationEvent;
     public Func<ServerNexus, int, CancellationToken, ValueTask<int>> ServerTaskValueWithValueAndCancellationEvent;
     public Func<ServerNexus, INexusDuplexPipe, ValueTask> ServerTaskValueWithDuplexPipeEvent;
-
+#pragma warning restore CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
     public Func<ServerNexus, byte[], ValueTask>? ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
+    
 
     public void ServerVoid()
     {

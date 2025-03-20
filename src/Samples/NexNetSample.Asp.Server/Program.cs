@@ -37,9 +37,7 @@ public class Program
         await MapWebSocket(logger, app);
         await MapHttpSocket(logger, app);
 
-        app.RunAsync();
-        
-        Console.ReadLine();
+        await app.RunAsync();
     }
 
     private static async Task MapHttpSocket(ConsoleLogger logger, WebApplication app)

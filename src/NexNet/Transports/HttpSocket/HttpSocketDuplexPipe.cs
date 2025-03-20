@@ -35,30 +35,36 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
     /// <inheritdoc />
     public PipeWriter Output => _outputPipe;
 
-    
-    public HttpSocketDuplexPipe(Stream stream)
+    /// <summary>
+    /// Creates a HttpSocket duplex pipe from a stream.
+    /// </summary>
+    /// <param name="stream">Stream to wrap into a duplex pipe.</param>
+    /// <param name="isServer">Set to true if this is a server pipe.</param>
+    /// <exception cref="ArgumentNullException">Throws if the stream is null.</exception>
+    public HttpSocketDuplexPipe(Stream stream, bool isServer)
     {
         Debug.Assert(stream.CanWrite);
         Debug.Assert(stream.CanRead);
         _stream = stream;
-        _inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)), new StreamPipeReaderOptions(leaveOpen: true));
-        _outputPipe = PipeWriter.Create(stream);
+        if (isServer)
+        {
+            _inputPipe = new NotifiedCompletePipeReader(this, stream ?? throw new ArgumentNullException(nameof(stream)));
+            //_inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)), new StreamPipeReaderOptions(leaveOpen: true));
+            _outputPipe = new NotifiedCompletePipeWriter(this, stream);
+            //_outputPipe = PipeWriter.Create(stream);
+            _pipeClosedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        else
+        {
+            _inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)),
+                new StreamPipeReaderOptions(leaveOpen: true));
+            _outputPipe = PipeWriter.Create(stream);
+        }
     }
     
-    public HttpSocketDuplexPipe(Stream stream, 
-        CancellationToken serverConnectionAborted,
-        CancellationToken lifetimeApplicationStopping)
-    {
-        Debug.Assert(stream.CanWrite);
-        Debug.Assert(stream.CanRead);
-        _stream = stream;
-        _inputPipe = new NotifiedCompletePipeReader(this, stream ?? throw new ArgumentNullException(nameof(stream)));
-        //_inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)), new StreamPipeReaderOptions(leaveOpen: true));
-        _outputPipe = new NotifiedCompletePipeWriter(this, stream);
-        //_outputPipe = PipeWriter.Create(stream);
-        _pipeClosedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    }
-
+    /// <summary>
+    /// Completes the connection and each input and output pipe.
+    /// </summary>
     public async ValueTask CompleteAsync()
     {
         try
@@ -92,6 +98,10 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes the pipe and underlying resources.
+    /// </summary>
+    /// <returns>ValueTask for completion</returns>
     public ValueTask DisposeAsync()
     {
         return CompleteAsync();

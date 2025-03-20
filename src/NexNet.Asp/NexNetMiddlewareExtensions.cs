@@ -23,7 +23,6 @@ public static class NexNetMiddlewareExtensions
     /// Maps a Nexus on a WebSocket.
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
-    /// <param name="server">NexNet server.</param>
     /// <param name="config">NexNet configurations.</param>
     /// <returns>Web app.</returns>
     public static IApplicationBuilder MapWebSocketNexus(this WebApplication app, WebSocketServerConfig config)

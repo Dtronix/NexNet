@@ -22,7 +22,7 @@ public class MessengerSample : SampleBase
                 ClientCertificateRequired = false,
                 AllowRenegotiation = false,
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
             },
         };
         ClientConfig = new QuicClientConfig()

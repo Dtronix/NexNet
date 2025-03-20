@@ -10,7 +10,7 @@ using NexNet.Transports.WebSocket;
 
 namespace NexNet.Transports.HttpSocket;
 
-public class HttpSocketTransport : ITransport
+internal class HttpSocketTransport : ITransport
 {
     private readonly HttpSocketDuplexPipe _pipe;
     public PipeReader Input { get; }
@@ -71,7 +71,7 @@ public class HttpSocketTransport : ITransport
             
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
   
-            var pipe = new HttpSocketDuplexPipe(connectedStream);
+            var pipe = new HttpSocketDuplexPipe(connectedStream, false);
             
             return new HttpSocketTransport(pipe);
 

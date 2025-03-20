@@ -161,9 +161,8 @@ public class HttpSocketMiddleware
             
             // Disable request timeout, if there is one, after the httpsocket has been accepted
             _context.Features.Get<IHttpRequestTimeoutFeature>()?.DisableTimeout();
-            var lifetime = _context.RequestServices.GetService<IHostApplicationLifetime>();
             
-            return new HttpSocketDuplexPipe(opaqueTransport, _context.RequestAborted, lifetime?.ApplicationStopping ?? CancellationToken.None);
+            return new HttpSocketDuplexPipe(opaqueTransport, true);
         }
 
         private static bool CheckSupportedHttpSocketRequest(string method, IHeaderDictionary requestHeaders)

@@ -14,8 +14,8 @@ namespace NexNet.Asp.HttpSocket;
 public class HttpSocketServerConfig : ServerConfig
 {
     private string _path ="/hs";
-    
-    internal readonly BufferBlock<HttpSocketDuplexPipe> ConnectionQueue = new();
+
+    private readonly BufferBlock<HttpSocketDuplexPipe> _connectionQueue = new();
     internal bool IsAccepting = true;
     
     /// <summary>
@@ -27,14 +27,22 @@ public class HttpSocketServerConfig : ServerConfig
         set => _path = value;
     }
 
+    /// <summary>
+    /// Pushes the newly accepted pipe connection to the Nexus server for handling.
+    /// </summary>
+    /// <param name="pipe">Pipe to have the Nexus server handle.</param>
+    /// <returns>
+    /// True if the connection was successfully added to the queue.  False if the queue has closed.
+    /// Usually means the server has closed.
+    /// </returns>
     public bool PushNewConnectionAsync(HttpSocketDuplexPipe pipe)
     {
         int count = 1;
         // Loop until we enqueue the connection.
-        while(!ConnectionQueue.Post(pipe))
+        while(!_connectionQueue.Post(pipe))
         {
             Logger?.LogTrace($"Failed to post connection to queue {count++} times.");
-            if (ConnectionQueue.Completion.IsCompleted)
+            if (_connectionQueue.Completion.IsCompleted)
             {
                 Logger?.LogTrace($"Connection queue is closed.");
                 return false;
@@ -47,6 +55,6 @@ public class HttpSocketServerConfig : ServerConfig
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult(HttpSocketTransportListener.Create(this, ConnectionQueue));
+        return ValueTask.FromResult(HttpSocketTransportListener.Create(this, _connectionQueue));
     }
 }

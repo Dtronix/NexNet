@@ -11,13 +11,18 @@ public class ConnectionResult
     /// <summary>
     /// State of the connection.
     /// </summary>
-    public StateValue State { get; } = StateValue.Unset;
+    public StateValue State { get; }
     
     /// <summary>
     /// Exception that occurred while connecting.  Null if no exception occurred.
     /// </summary>
     public Exception? Exception { get; }
 
+    /// <summary>
+    /// Instances a ConnectionResult
+    /// </summary>
+    /// <param name="state">State of the connection.</param>
+    /// <param name="exception">Exception that occurred while connecting.  Null if no exception occurred.</param>
     public ConnectionResult(StateValue state, Exception? exception = null)
     {
         State = state;

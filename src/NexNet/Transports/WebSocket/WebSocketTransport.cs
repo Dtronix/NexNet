@@ -9,7 +9,7 @@ using NexNet.Transports;
 
 namespace NexNet.Transports.WebSocket;
 
-public class WebSocketTransport : ITransport
+internal class WebSocketTransport : ITransport
 {
     private readonly IWebSocketPipe _pipe;
     private readonly ClientWebSocket? _client;

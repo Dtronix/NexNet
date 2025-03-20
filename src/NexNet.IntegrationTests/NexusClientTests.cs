@@ -312,8 +312,8 @@ internal partial class NexusClientTests : BaseTests
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
@@ -365,8 +365,8 @@ internal partial class NexusClientTests : BaseTests
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
+        var serverConfig = CreateServerConfig(type);
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ConnectionTimeout = 100;

@@ -91,7 +91,7 @@ internal static class Helpers
         var sb = new System.Text.StringBuilder();
         for(int i = 0 ; i < enums.Length ; i++)
         {
-            var count = Thread.VolatileRead(ref _counters[(int)enums[i]]);
+            var count = Volatile.Read(ref _counters[(int)enums[i]]);
             if (count != 0) sb.Append(enums[i]).Append(":\t").Append(count).AppendLine();
         }
         lock(_execCount)
