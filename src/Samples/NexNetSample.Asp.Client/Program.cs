@@ -10,7 +10,7 @@ internal class Program
     {
         var clientWebSocketConfig = new WebSocketClientConfig()
         {
-            Url = new Uri("ws://192.168.2.110:15050/ws"),
+            Url = new Uri("ws://192.168.2.110:9000/websocket"),
             Logger = new ConsoleLogger(),
             Timeout = 4000,
             PingInterval = 2000,
@@ -19,7 +19,7 @@ internal class Program
         
         var clientHttpSocketConfig = new HttpSocketClientConfig()
         {
-            Url = new Uri("http://127.0.0.1:15050/httpsocket"),
+            Url = new Uri("https://192.168.2.110:9000/httpsocket"),
             Logger = new ConsoleLogger(),
             Timeout = 4000,
             PingInterval = 2000,

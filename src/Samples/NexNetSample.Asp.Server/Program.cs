@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NexNet.Logging;
 using NexNet.Transports.Asp;
@@ -14,15 +15,23 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.WebHost.ConfigureKestrel((context, serverOptions) =>
         {
-            serverOptions.Listen(IPAddress.Any, 15050);
+            serverOptions.Listen(IPAddress.Any, 9000);
         });
         builder.Services.AddAuthorization();
+        builder.Services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        });
+        
         var app = builder.Build();
         
         app.UseHttpsRedirection();
         
         var logger = new ConsoleLogger();
+
         
+        app.UseForwardedHeaders();
         app.UseAuthorization();
   
         await MapWebSocket(logger, app);
@@ -55,7 +64,7 @@ public class Program
         {
             Logger = logger.CreatePrefixedLogger(null, "Server"),
             Timeout = 20000,
-            Path = "/httpsocket"
+            Path = "/websocket"
         };
         
         var webNexusServer = ServerNexus.CreateServer(webServerConfig, () => new ServerNexus());
