@@ -28,9 +28,6 @@ public static class NexNetMiddlewareExtensions
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
         
-        if(!server.IsStarted)
-            throw new InvalidOperationException("The server is required to be started.");
-
         app.Use(Middleware);
         return app;
         
@@ -74,9 +71,6 @@ public static class NexNetMiddlewareExtensions
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(config);
-        
-        if(!server.IsStarted)
-            throw new InvalidOperationException("The server is required to be started.");
 
         return app.Use(async (context, next) =>
         {

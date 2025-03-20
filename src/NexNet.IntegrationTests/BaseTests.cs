@@ -196,7 +196,7 @@ internal class BaseTests
             {
                 
                 Path = "/websocket-test",
-                Logger = logger,
+                Logger = logger
             };
         }
 
@@ -318,7 +318,6 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             var app = builder.Build();
-            app.UseAuthorization();
             app.UseWebSockets();
             app.MapWebSocketNexus(server, sWebSocketConfig);
             _ = app.RunAsync();
@@ -351,7 +350,7 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             app = builder.Build();
-            app.UseAuthorization();
+            app.UseWebSockets();
             app.MapWebSocketNexus(server, sWebSocketConfig);
             AspServers.Add(app);
         }
@@ -399,8 +398,8 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) => serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
             var app = builder.Build();
-            app.UseAuthorization();
-            NexNetMiddlewareExtensions.MapWebSocketNexus(app, server, sWebSocketConfig);
+            app.UseWebSockets();
+            app.MapWebSocketNexus(server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }
