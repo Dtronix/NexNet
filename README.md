@@ -92,7 +92,7 @@ Platform=X64  Runtime=.NET 9.0  MaxIterationCount=5
 MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
 ```
 
-| Method                               |    Mean |   Error |  StdDev | Op/s     | Allocated |
+| Method                               |    Mean |   Error |  StdDev |     Op/s | Allocated |
 |------------------------------------- |--------:|--------:|--------:|---------:|----------:|
 | InvocationNoArgument                 | 24.4 us | 0.68 us | 0.10 us | 40,973.3 |     569 B |
 | InvocationUnmanagedArgument          | 24.7 us | 0.67 us | 0.10 us | 40,394.6 |     624 B |
@@ -117,19 +117,19 @@ Notes:
 NexNet has a limitation where the total arguments passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
 
 ## Channels
-Building upon the Duplex Pipes infrastructure, NexNet prvoides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
+Building upon the Duplex Pipes infrastructure, NexNet provides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
 
-Several extension methods have been provided to allow for ease of reading and writing of entire collections (eg. selected table rows).
+Several extension methods have been provided to allow for ease of reading and writing of entire collections (e.g. selected table rows).
 - `NexusChannelExtensions.WriteAndComplete<T>(...)`: Writing a collection to either a `INexusDuplexChannel<T>` or `INexusChannelWriter<T>` with optional batch sizes for optimized sending.
 - `NexusChannelExtensions.ReadUntilComplete<T>(...)`: Reads from either a `INexusDuplexChannel<T>` or a `INexusChannelReader<T>` with an optional initial collection size to reduce collection resizing.
 
 #### INexusDuplexChannel<T>
-The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be seralized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine tuned for performance of those simple types
+The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be serialized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine-tuned for performance of those simple types
 
 Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
 
 #### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
-The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine tuned for performance.
+The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine-tuned for performance.
 
 Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
 
@@ -164,34 +164,10 @@ WebSockets enable real-time, bidirectional data exchange between client and serv
 #### HttpSockets (ASP.NET Core - Custom HTTP Negotiation)
 HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
 
+Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
+
 ## Dependencies
 - [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. 
 - Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for Pipeline socket transports.
 - Quic protocol requires `libmsquic` on *nix based systems. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
 
-Additional transports can be added easily as long as the new transport guarantees order and transmission.
-
-## ASP.NET Server Integration
-
-The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
-
-The package supports integration of NexNet server using WebSocket and HttpSocket connections, enabling easy management and proxying via common reverse proxies such as Nginx. This allows for potential improved connection handling, load balancing, and security.
-
-### ASP Proxying Configurations
-
-#### Nginx
-Below is a simple configuration that will allow for proxy integration with an ASP.NET Core server
-```
-server {
-    server_name example.com;
-    location / {
-        proxy_pass         http://backend;
-        proxy_http_version 1.1;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection $connection_upgrade;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-    }
-```
