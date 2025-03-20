@@ -8,16 +8,14 @@ using NexNet.Transports.HttpSocket;
 
 namespace NexNet.Asp.HttpSocket;
 
-internal record HttpSocketAcceptedConnection(HttpContext Context, HttpSocketDuplexPipe Pipe);
-
 /// <summary>
 /// Configurations for the server to allow connections from QUIC NexNet clients.
 /// </summary>
 public class HttpSocketServerConfig : ServerConfig
 {
-    private string _path ="/ws";
+    private string _path ="/hs";
     
-    internal readonly BufferBlock<HttpSocketAcceptedConnection> ConnectionQueue = new();
+    internal readonly BufferBlock<HttpSocketDuplexPipe> ConnectionQueue = new();
     internal bool IsAccepting = true;
     
     /// <summary>
@@ -29,14 +27,20 @@ public class HttpSocketServerConfig : ServerConfig
         set => _path = value;
     }
 
-    public void PushNewConnectionAsync(HttpContext context, HttpSocketDuplexPipe pipe)
+    public bool PushNewConnectionAsync(HttpSocketDuplexPipe pipe)
     {
         int count = 1;
         // Loop until we enqueue the connection.
-        while(!ConnectionQueue.Post(new HttpSocketAcceptedConnection(context, pipe)))
+        while(!ConnectionQueue.Post(pipe))
         {
-            Logger?.LogInfo($"Failed to post connection to queue {count++} times.");
+            Logger?.LogTrace($"Failed to post connection to queue {count++} times.");
+            if (ConnectionQueue.Completion.IsCompleted)
+            {
+                Logger?.LogTrace($"Connection queue is closed.");
+                return false;
+            }
         }
+        return true;
     } 
     
     /// <param name="cancellationToken"></param>

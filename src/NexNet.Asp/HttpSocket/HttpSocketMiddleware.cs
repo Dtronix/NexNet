@@ -2,10 +2,13 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.Timeouts;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
@@ -155,11 +158,12 @@ public class HttpSocketMiddleware
             {
                 opaqueTransport = await _upgradeFeature!.UpgradeAsync(); // Sets status code to 101
             }
-
+            
             // Disable request timeout, if there is one, after the httpsocket has been accepted
             _context.Features.Get<IHttpRequestTimeoutFeature>()?.DisableTimeout();
+            var lifetime = _context.RequestServices.GetService<IHostApplicationLifetime>();
             
-            return new HttpSocketDuplexPipe(opaqueTransport, true);
+            return new HttpSocketDuplexPipe(opaqueTransport, _context.RequestAborted, lifetime?.ApplicationStopping ?? CancellationToken.None);
         }
 
         private static bool CheckSupportedHttpSocketRequest(string method, IHeaderDictionary requestHeaders)
@@ -176,7 +180,7 @@ public class HttpSocketMiddleware
             {
                 if (string.Equals(value, HttpHeaderConstants.UpgradeHttpSocket, StringComparison.OrdinalIgnoreCase))
                 {
-                    // HttpSockets are long lived; so if the header values are valid we switch them out for the interned versions.
+                    // HttpSockets are long-lived; so if the header values are valid we switch them out for the interned versions.
                     if (values.Length == 1)
                     {
                         requestHeaders.Upgrade = HttpHeaderConstants.UpgradeHttpSocket;
@@ -196,7 +200,7 @@ public class HttpSocketMiddleware
             {
                 if (string.Equals(value, HeaderNames.Upgrade, StringComparison.OrdinalIgnoreCase))
                 {
-                    // HttpSockets are long lived; so if the header values are valid we switch them out for the interned versions.
+                    // HttpSockets are long-lived; so if the header values are valid we switch them out for the interned versions.
                     if (values.Length == 1)
                     {
                         requestHeaders.Connection = HeaderNames.Upgrade;

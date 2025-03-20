@@ -15,10 +15,10 @@ internal class WebSocketTransportListener : ITransportListener
 {
     private readonly WebSocketServerConfig _config;
 
-    private readonly BufferBlock<WebSocketAcceptedConnection> _connectionQueue;
+    private readonly BufferBlock<IWebSocketPipe> _connectionQueue;
 
-    private WebSocketTransportListener(WebSocketServerConfig config, 
-        BufferBlock<WebSocketAcceptedConnection> connectionQueue)
+    public WebSocketTransportListener(WebSocketServerConfig config, 
+        BufferBlock<IWebSocketPipe> connectionQueue)
     {
         _config = config;
         _connectionQueue = connectionQueue;
@@ -36,12 +36,12 @@ internal class WebSocketTransportListener : ITransportListener
 
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        WebSocketAcceptedConnection? connection = null;
+        IWebSocketPipe? pipe = null;
         try
         {
-            connection = await _connectionQueue.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            pipe = await _connectionQueue.ReceiveAsync(cancellationToken).ConfigureAwait(false);
 
-            return WebSocketTransport.CreateFromConnection(connection.Pipe);
+            return WebSocketTransport.CreateFromConnection(pipe);
         }
         catch (OperationCanceledException)
         {
@@ -57,17 +57,10 @@ internal class WebSocketTransportListener : ITransportListener
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            if (connection != null)
-                await connection.Pipe.CompleteAsync(WebSocketCloseStatus.Empty).ConfigureAwait(false);
+            if (pipe != null)
+                await pipe.CompleteAsync(WebSocketCloseStatus.Empty).ConfigureAwait(false);
         }
 
         return null;
-    }
-
-    public static ITransportListener Create(
-        WebSocketServerConfig config,
-        BufferBlock<WebSocketAcceptedConnection> connectionQueue)
-    {
-        return new WebSocketTransportListener(config, connectionQueue);
     }
 }

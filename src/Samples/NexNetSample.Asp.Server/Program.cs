@@ -55,7 +55,7 @@ public class Program
         await nexusServer.StartAsync();
         
         app.UseHttpSockets();
-        app.MapHttpSocketNexus(nexusServer, httpServerConfig);
+        app.MapHttpSocketNexus(httpServerConfig);
     }
 
     private static async Task MapWebSocket(ConsoleLogger logger, WebApplication app)
@@ -71,6 +71,6 @@ public class Program
         await webNexusServer.StartAsync();
 
         app.UseWebSockets();
-        app.MapWebSocketNexus(webNexusServer, webServerConfig);
+        app.MapWebSocketNexus(webServerConfig);
     }
 }

@@ -1,8 +1,12 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.Logging;
@@ -22,65 +26,70 @@ public static class NexNetMiddlewareExtensions
     /// <param name="server">NexNet server.</param>
     /// <param name="config">NexNet configurations.</param>
     /// <returns>Web app.</returns>
-    public static IApplicationBuilder MapWebSocketNexus(this WebApplication app, INexusServer server, WebSocketServerConfig config)
+    public static IApplicationBuilder MapWebSocketNexus(this WebApplication app, WebSocketServerConfig config)
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
         
-        app.Use(Middleware);
-        return app;
-        
-        async Task Middleware(HttpContext context, RequestDelegate next)
+        return app.Use(async (context, next) =>
         {
-            if (config.IsAccepting 
-                && context.WebSockets.IsWebSocketRequest 
-                && context.Request.Path.Value == config.Path)
+            if (config.IsAccepting &&
+                context.Request.Path.Value == config.Path &&
+                context.WebSockets.IsWebSocketRequest)
             {
                 using var websocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
                 using var pipe = IWebSocketPipe.Create(websocket, new WebSocketPipeOptions()
                 {
                     CloseWhenCompleted = true,
                 });
+                
+                // If we can't push a new connection to the queue, the server has been stopped and is not
+                // accepting any new connections.
+                if (!config.PushNewConnectionAsync(pipe))
+                    return;
+                
+                var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
 
-                int count = 1;
-                // Loop until we enqueue the connection.
-                while(!config.ConnectionQueue.Post(new WebSocketAcceptedConnection(context, pipe)))
-                {
-                    config.Logger?.LogInfo($"Failed to post connection to queue {count++} times.");
-                }
-
-                await pipe.RunAsync(context.RequestAborted).ConfigureAwait(false);
+                await pipe.RunAsync(cts.Token).ConfigureAwait(false);
             }
             else
             {
                 await next(context).ConfigureAwait(false);
             }
-        }
+        });
     }
     
     /// <summary>
     /// Maps a Nexus on a HttpSocket.
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
-    /// <param name="server">NexNet server.</param>
     /// <param name="config">NexNet configurations.</param>
     /// <returns>Web app.</returns>
-    public static IApplicationBuilder MapHttpSocketNexus(this WebApplication app, INexusServer server, HttpSocketServerConfig config)
+    public static IApplicationBuilder MapHttpSocketNexus(this WebApplication app, HttpSocketServerConfig config)
     {
         ArgumentNullException.ThrowIfNull(app);
-        ArgumentNullException.ThrowIfNull(server);
         ArgumentNullException.ThrowIfNull(config);
 
         return app.Use(async (context, next) =>
         {
-            if (context.Request.Path == config.Path)
+            if (config.IsAccepting &&
+                context.Request.Path == config.Path)
             {
                 var httpSocket = context.Features.Get<IHttpSocketFeature>();
+                
                 if (httpSocket?.IsHttpSocketRequest == true)
                 {
+                    var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+
                     var pipe = await httpSocket.AcceptAsync();
-                    config.PushNewConnectionAsync(context, pipe);
-                    await pipe.PipeClosedCompletion.ConfigureAwait(false);
+                    
+                    // If we can't push a new connection to the queue, the server has been stopped and is not
+                    // accepting any new connections.
+                    if (!config.PushNewConnectionAsync(pipe))
+                        return;
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
+                    await pipe.PipeClosedCompletion.WaitAsync(cts.Token).ConfigureAwait(false);
                 }
             }
             

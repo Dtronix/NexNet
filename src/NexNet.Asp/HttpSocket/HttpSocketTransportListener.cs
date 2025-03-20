@@ -14,10 +14,10 @@ internal class HttpSocketTransportListener : ITransportListener
 {
     private readonly HttpSocketServerConfig _config;
 
-    private readonly BufferBlock<HttpSocketAcceptedConnection> _connectionQueue;
+    private readonly BufferBlock<HttpSocketDuplexPipe> _connectionQueue;
 
     private HttpSocketTransportListener(HttpSocketServerConfig config, 
-        BufferBlock<HttpSocketAcceptedConnection> connectionQueue)
+        BufferBlock<HttpSocketDuplexPipe> connectionQueue)
     {
         _config = config;
         _connectionQueue = connectionQueue;
@@ -35,12 +35,12 @@ internal class HttpSocketTransportListener : ITransportListener
 
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        HttpSocketAcceptedConnection? connection = null;
+        HttpSocketDuplexPipe? pipe = null;
         try
         {
-            connection = await _connectionQueue.ReceiveAsync(cancellationToken).ConfigureAwait(false);
-
-            return HttpSocketTransport.CreateFromConnection(connection.Pipe);
+            pipe = await _connectionQueue.ReceiveAsync(cancellationToken).ConfigureAwait(false);
+            
+            return new HttpSocketTransport(pipe);
         }
         catch (OperationCanceledException)
         {
@@ -56,8 +56,8 @@ internal class HttpSocketTransportListener : ITransportListener
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            if (connection != null)
-                await connection.Pipe.CompleteAsync().ConfigureAwait(false);
+            if (pipe != null)
+                await pipe.CompleteAsync().ConfigureAwait(false);
         }
 
         return null;
@@ -65,7 +65,7 @@ internal class HttpSocketTransportListener : ITransportListener
 
     public static ITransportListener Create(
         HttpSocketServerConfig config,
-        BufferBlock<HttpSocketAcceptedConnection> connectionQueue)
+        BufferBlock<HttpSocketDuplexPipe> connectionQueue)
     {
         return new HttpSocketTransportListener(config, connectionQueue);
     }

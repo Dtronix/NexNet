@@ -114,13 +114,20 @@ internal class BaseTests
         Servers.Clear();
         foreach (var se in AspServers)
         {
-            if(!se.Lifetime.ApplicationStarted.IsCancellationRequested)
-                continue;
+            try
+            {
+                if(!se.Lifetime.ApplicationStarted.IsCancellationRequested)
+                    continue;
             
-            se.Lifetime.StopApplication();
+                se.Lifetime.StopApplication();
 
-            if (BlockForClose)
-                se.Lifetime.ApplicationStopped.WaitHandle.WaitOne(5000);
+                if (BlockForClose)
+                    se.Lifetime.ApplicationStopped.WaitHandle.WaitOne(5000);
+            }
+            catch (ObjectDisposedException e)
+            {
+            }
+            
         }
         AspServers.Clear();
         
@@ -340,12 +347,12 @@ internal class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(server, sWebSocketConfig);
+                app.MapWebSocketNexus(sWebSocketConfig);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(server, sHttpSocketConfig);
+                app.MapHttpSocketNexus(sHttpSocketConfig);
             }
             _ = app.RunAsync();
             AspServers.Add(app);
@@ -382,12 +389,12 @@ internal class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(server, sWebSocketConfig);
+                app.MapWebSocketNexus(sWebSocketConfig);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(server, sHttpSocketConfig);
+                app.MapHttpSocketNexus(sHttpSocketConfig);
     
             }
             AspServers.Add(app);
@@ -437,7 +444,7 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseWebSockets();
-            app.MapWebSocketNexus(server, sWebSocketConfig);
+            app.MapWebSocketNexus(sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }
@@ -448,7 +455,7 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseHttpSockets();
-            app.MapHttpSocketNexus(server, sHttpSocketConfig);
+            app.MapHttpSocketNexus(sHttpSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }

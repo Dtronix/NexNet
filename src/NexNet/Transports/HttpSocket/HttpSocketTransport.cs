@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Transports.WebSocket;
@@ -15,7 +16,7 @@ public class HttpSocketTransport : ITransport
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
 
-    private HttpSocketTransport(HttpSocketDuplexPipe pipe)
+    public HttpSocketTransport(HttpSocketDuplexPipe pipe)
     {
         _pipe = pipe;
         Input = pipe.Input;
@@ -70,7 +71,7 @@ public class HttpSocketTransport : ITransport
             
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
   
-            var pipe = new HttpSocketDuplexPipe(connectedStream, false);
+            var pipe = new HttpSocketDuplexPipe(connectedStream);
             
             return new HttpSocketTransport(pipe);
 
@@ -88,11 +89,7 @@ public class HttpSocketTransport : ITransport
             throw new TransportException(TransportError.ConnectionRefused, e.Message, e);
         }
     }
-
-    public static ITransport CreateFromConnection(HttpSocketDuplexPipe webSocketPipe)
-    {
-        return new HttpSocketTransport(webSocketPipe);
-    }
+    
 
     private static TransportError GetTransportError(HttpRequestError error)
     {

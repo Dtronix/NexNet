@@ -13,7 +13,7 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync()
     {
-        Logger?.LogTrace($"Reading");
+        Logger?.LogTrace("Reading");
         _state = (int)ConnectionState.Connected;
         try
         {
@@ -29,7 +29,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 // Terribly inefficient and only used for testing
                 if(Config.InternalOnReceive != null)
-                    await Config.InternalOnReceive.Invoke(this, result.Buffer);
+                    await Config.InternalOnReceive.Invoke(this, result.Buffer).ConfigureAwait(false);
 
                 var processResult = await Process(result.Buffer).ConfigureAwait(false);
 
