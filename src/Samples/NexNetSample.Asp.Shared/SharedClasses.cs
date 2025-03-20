@@ -1,6 +1,6 @@
 ﻿using NexNet.Pipes;
 
-namespace NexNetDemo.Websocket.Shared;
+namespace NexNetSample.Asp.Shared;
 
 public partial interface IClientNexus
 {

@@ -1,13 +1,11 @@
 ﻿using System.Net;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NexNet.Logging;
-using NexNet.Transports;
 using NexNet.Transports.Asp;
 using NexNet.Transports.Asp.HttpSocket;
 using NexNet.Transports.Asp.WebSocket;
-using NexNet.Transports.WebSocket;
 
-namespace NexNetDemo.Websocket.Server;
+namespace NexNetSample.Asp.Server;
 
 public class Program
 {
@@ -16,9 +14,7 @@ public class Program
         var builder = WebApplication.CreateBuilder(args);
         builder.WebHost.ConfigureKestrel((context, serverOptions) =>
         {
-
             serverOptions.Listen(IPAddress.Any, 15050);
-            serverOptions.ConfigureEndpointDefaults(lo => lo.Protocols = HttpProtocols.Http2);
         });
         builder.Services.AddAuthorization();
         var app = builder.Build();
@@ -26,30 +22,19 @@ public class Program
         app.UseHttpsRedirection();
         
         var logger = new ConsoleLogger();
-        //var serverConfig = new WebSocketServerConfig()
-        //{
-        //    Logger = logger.CreatePrefixedLogger(null, "Server"),
-        //    Timeout = 20000,
-        //};
         
-
-
         app.UseAuthorization();
-        //app.UseNexNetWebSockets(nexusServer, serverConfig);
-        
-        var webServerConfig = new WebSocketServerConfig()
-        {
-            Logger = logger.CreatePrefixedLogger(null, "Server"),
-            Timeout = 20000,
-            Path = "/httpsocket"
-        };
-        
-        var webNexusServer = ServerNexus.CreateServer(webServerConfig, () => new ServerNexus());
-        await webNexusServer.StartAsync();
+  
+        await MapWebSocket(logger, app);
+        await MapHttpSocket(logger, app);
 
-        app.UseWebSockets();
-        app.MapWebSocketNexus(webNexusServer, webServerConfig);
+        app.RunAsync();
         
+        Console.ReadLine();
+    }
+
+    private static async Task MapHttpSocket(ConsoleLogger logger, WebApplication app)
+    {
         var httpServerConfig = new HttpSocketServerConfig()
         {
             Logger = logger.CreatePrefixedLogger(null, "Server"),
@@ -62,10 +47,21 @@ public class Program
         
         app.UseHttpSockets();
         app.MapHttpSocketNexus(nexusServer, httpServerConfig);
-        
-        app.RunAsync();
-        
-        Console.ReadLine();
     }
 
+    private static async Task MapWebSocket(ConsoleLogger logger, WebApplication app)
+    {
+        var webServerConfig = new WebSocketServerConfig()
+        {
+            Logger = logger.CreatePrefixedLogger(null, "Server"),
+            Timeout = 20000,
+            Path = "/httpsocket"
+        };
+        
+        var webNexusServer = ServerNexus.CreateServer(webServerConfig, () => new ServerNexus());
+        await webNexusServer.StartAsync();
+
+        app.UseWebSockets();
+        app.MapWebSocketNexus(webNexusServer, webServerConfig);
+    }
 }

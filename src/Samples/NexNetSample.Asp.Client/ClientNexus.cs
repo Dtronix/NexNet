@@ -1,9 +1,9 @@
 ﻿using NexNet;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NexNetDemo.Websocket.Shared;
+using NexNetSample.Asp.Shared;
 
-namespace NexNetDemo.Websocket.Client;
+namespace NexNetSample.Asp.Client;
 
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\NexNet.Transports.Asp\NexNet.Transports.Asp.csproj" />
+    <ProjectReference Include="..\NexNetSample.Asp.Shared\NexNetSample.Asp.Shared.csproj" />
+    <ProjectReference Include="..\..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Properties\launchSettings.json" />
+  </ItemGroup>
+
+</Project>
