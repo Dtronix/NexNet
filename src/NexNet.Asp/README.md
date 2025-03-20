@@ -1,4 +1,4 @@
-This package adds the Quic transport protocol to NexNet.
+This package adds the WebSocket and custom HttpSocket negotiation transport protocol to NexNet and allows for integration into ASP.NET servers.
 
 NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional event-driven functionality into their applications. This framework streamlines the transmission of data bidirectionally between server-side code and connected clients with resilient communication channels.
 
@@ -51,3 +51,34 @@ WebSockets enable real-time, bidirectional data exchange between client and serv
 HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
 
 Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
+
+## ASP.NET Server Integration
+
+The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
+
+The package supports integration of NexNet server using WebSocket and HttpSocket connections, enabling easy management and proxying via common reverse proxies such as Nginx. This allows for potential improved connection handling, load balancing, and security.
+
+Abstracting the server away from direct connections can have some advantages such as th following:
+- Proxying HTTP connections through reverse proxies provides SSL/TLS termination, reducing cryptographic overhead on application servers.
+- Enables centralized traffic management, simplifying enforcement of security policies (e.g., rate-limiting, IP allowlisting, header validation).
+- Facilitates consistent logging, monitoring, and metrics collection at proxy level, aiding operational visibility and troubleshooting.
+- Provides an additional layer for DDoS mitigation and protection against common web vulnerabilities.
+
+### ASP Proxying Configurations
+
+#### Nginx
+Below is a simple configuration that will allow for proxy integration with an ASP.NET Core server
+```
+server {
+    server_name example.com;
+    location / {
+        proxy_pass         http://backend;
+        proxy_http_version 1.1;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection $connection_upgrade;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+```

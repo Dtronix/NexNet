@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace NexNet.Transports.Asp.HttpSocket;
+namespace NexNet.Asp.HttpSocket;
 
 /// <summary>
 /// Options that control how a <seealso cref="HttpSocket"/> is created.

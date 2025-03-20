@@ -3,13 +3,12 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.WebSockets;
+using NexNet.Asp.HttpSocket;
+using NexNet.Asp.WebSocket;
 using NexNet.Logging;
-using NexNet.Transports.Asp.HttpSocket;
-using NexNet.Transports.Asp.WebSocket;
 using NexNet.Transports.WebSocket;
 
-namespace NexNet.Transports.Asp;
+namespace NexNet.Asp;
 
 /// <summary>
 /// Extension methods to simplify adding NexNet servers to ASP.

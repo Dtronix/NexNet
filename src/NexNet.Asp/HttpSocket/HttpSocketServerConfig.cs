@@ -3,9 +3,10 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Http;
 using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 
-namespace NexNet.Transports.Asp.HttpSocket;
+namespace NexNet.Asp.HttpSocket;
 
 internal record HttpSocketAcceptedConnection(HttpContext Context, HttpSocketDuplexPipe Pipe);
 

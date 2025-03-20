@@ -11,7 +11,7 @@ using Microsoft.Extensions.Primitives;
 using Microsoft.Net.Http.Headers;
 using NexNet.Transports.HttpSocket;
 
-namespace NexNet.Transports.Asp.HttpSocket;
+namespace NexNet.Asp.HttpSocket;
 
 /// <summary>
 /// Enables accepting HttpSocket requests by adding a <see cref="IHttpSocketFeature"/>

@@ -10,7 +10,7 @@
       <_Parameter1>NexNet.IntegrationTests</_Parameter1>
     </AssemblyAttribute>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
-      <_Parameter1>NexNet.Transports.Asp</_Parameter1>
+      <_Parameter1>NexNet.Asp</_Parameter1>
     </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>

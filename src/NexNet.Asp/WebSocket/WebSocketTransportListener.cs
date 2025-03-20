@@ -4,11 +4,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 
 #pragma warning disable CA1416
 
-namespace NexNet.Transports.Asp.WebSocket;
+namespace NexNet.Asp.WebSocket;
 
 internal class WebSocketTransportListener : ITransportListener
 {

@@ -3,11 +3,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 
 #pragma warning disable CA1416
 
-namespace NexNet.Transports.Asp.HttpSocket;
+namespace NexNet.Asp.HttpSocket;
 
 internal class HttpSocketTransportListener : ITransportListener
 {

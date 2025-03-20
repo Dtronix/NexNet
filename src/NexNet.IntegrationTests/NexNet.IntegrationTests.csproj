@@ -31,7 +31,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" />
     <ProjectReference Include="..\NexNet.Quic\NexNet.Quic.csproj" />
-    <ProjectReference Include="..\NexNet.Transports.Asp\NexNet.Transports.Asp.csproj" />
+    <ProjectReference Include="..\NexNet.Asp\NexNet.Asp.csproj" />
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>

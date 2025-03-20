@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging;
 using NexNet.Logging;
 
-namespace NexNet.Transports.Asp;
+namespace NexNet.Asp;
 
 /// <summary>
 /// Bridge for ILogger and INexusLogger
