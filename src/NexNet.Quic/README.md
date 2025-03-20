@@ -1,6 +1,6 @@
 This package adds the Quic transport protocol to NexNet.
 
-NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional event-driven functionality into their applications. This framework streamlines the transmission of data bidirectionally between server-side code and connected clients with resilient communication channels.
+NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional, multiplexing, and event-driven functionality into applications. This framework streamlines the transmission of data bidirectionally between servers and clients with resilient connections.
 
 ## Features
 - Automatic reconnection upon timeout or socket losing connection.

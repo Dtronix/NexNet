@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
+    <Description>ASP.NET Core middleware for NexNet servers.</Description>
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
