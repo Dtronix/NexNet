@@ -25,16 +25,25 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Minimal external package requirements.
 
 ## Installation
-Installation through Nuget is the most common method of installation.  See below for the Nuget packages.
+Installation through NuGet is the most common method of installation.  See below for the NuGet packages.
 
-| Name                                                                  | Nuget                                                                                                                         | Install                               |
-|-----------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
-| [`NexNet`](https://www.nuget.org/packages/NexNet)                     | [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet)                              | `dotnet add package NexNet`           |
+| Name                                                                  | NuGet                                                                                                                                 | Install                               |
+|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| [`NexNet`](https://www.nuget.org/packages/NexNet)                     | [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet)                               | `dotnet add package NexNet`           |
 | [`NexNet.Generator`](https://www.nuget.org/packages/NexNet.Generator) | [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) | `dotnet add package NexNet.Generator` |
-| [`NexNet.Quic`](https://www.nuget.org/packages/NexNet.Quic)           | [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)               | `dotnet add package NexNet.Quic`      |
-| [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp)             | [![NexNet.Asp](https://img.shields.io/nuget/v/NexNet.Asp.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Asp)                  | `dotnet add package NexNet.Asp`       |
+| [`NexNet.Quic`](https://www.nuget.org/packages/NexNet.Quic)           | [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)                | `dotnet add package NexNet.Quic`      |
+| [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp)             | [![NexNet.Asp](https://img.shields.io/nuget/v/NexNet.Asp.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Asp)                   | `dotnet add package NexNet.Asp`       |
 
 Add the `NexNex.Generator` package to the `Client` and `Server` projects and the `NexNex` package to the `Shared` project.  Once complete, reference the `Shared` project in the `Client` and `Server` project.
+
+The `NexNet.Generator` is a Source Code Generator which will take the provided interfaces and create the required invocation system.  This is the system that allows for the elimination of reflection in the `Client` and `Server` projects and also allows for the final generated classes to be AOT friendly.
+The code below will need to be used to reference the `NexNet.Generator` in your `.csproj`.  It will normally be created automatically when you add the NuGet package.
+```xml
+<PackageReference Include="NexNet.Generator" Version="*-*">
+  <PrivateAssets>all</PrivateAssets>
+  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+</PackageReference>
+```
 
 ## Setup
 Common client and server interfaces should reside in a separate `Shared` project, referenceable by other projects.
