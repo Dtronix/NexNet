@@ -319,7 +319,8 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseAuthorization();
-            app.UseNexNetWebSockets(server, sWebSocketConfig);
+            app.UseWebSockets();
+            app.MapWebSocketNexus(server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }
@@ -351,7 +352,7 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             app = builder.Build();
             app.UseAuthorization();
-            app.UseNexNetWebSockets(server, sWebSocketConfig);
+            app.MapWebSocketNexus(server, sWebSocketConfig);
             AspServers.Add(app);
         }
 
@@ -399,7 +400,7 @@ internal class BaseTests
             builder.Services.AddAuthorization();
             var app = builder.Build();
             app.UseAuthorization();
-            NexNetMiddlewareExtensions.UseNexNetWebSockets(app, server, sWebSocketConfig);
+            NexNetMiddlewareExtensions.MapWebSocketNexus(app, server, sWebSocketConfig);
             _ = app.RunAsync();
             AspServers.Add(app);
         }

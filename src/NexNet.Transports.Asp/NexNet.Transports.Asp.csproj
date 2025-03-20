@@ -9,9 +9,5 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="Http\HttpNexNetClientMiddleware.cs" />
-    <None Include="Http\HttpNexNetClientMiddleware.cs" />
-  </ItemGroup>
 
 </Project>

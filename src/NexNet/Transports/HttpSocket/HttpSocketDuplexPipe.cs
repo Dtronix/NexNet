@@ -18,22 +18,31 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
     private readonly Stream? _stream;
     readonly PipeReader _inputPipe;
     readonly PipeWriter _outputPipe;
+    private readonly TaskCompletionSource? _serverClosedPipesTcs;
     
-    public HttpSocketDuplexPipe(Stream stream)
+    public HttpSocketDuplexPipe(Stream stream, bool isServer)
     {
         Debug.Assert(stream.CanWrite);
         Debug.Assert(stream.CanRead);
         _stream = stream;
         _inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)), new StreamPipeReaderOptions(leaveOpen: true));
         _outputPipe = PipeWriter.Create(stream);
+
+        if (isServer)
+        {
+            _serverClosedPipesTcs = new TaskCompletionSource();
+        }
+        
     }
 
-    public HttpSocketDuplexPipe(PipeReader requestBodyReader, PipeWriter responseBodyReader, TaskCompletionSource cts)
-    {
-        _inputPipe = requestBodyReader;
-        _outputPipe = responseBodyReader;
-    }
-
+    //public HttpSocketDuplexPipe(PipeReader requestBodyReader, PipeWriter responseBodyReader, TaskCompletionSource cts)
+    //{
+    //    _inputPipe = requestBodyReader;
+    //    _outputPipe = responseBodyReader;
+    //    _serverClosedPipesTcs = new TaskCompletionSource();
+    //}
+    
+    public Task PipeClosedCompletion => _serverClosedPipesTcs?.Task ?? throw new InvalidOperationException("This can only be used on servers.");
 
     public PipeReader Input => _inputPipe;
 

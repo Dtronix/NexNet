@@ -64,13 +64,13 @@ public class HttpSocketTransport : ITransport
             //message.Headers.Host
             message.Headers.Host = config.Url.Host;
             message.Headers.Connection.Add("Upgrade");
-            message.Headers.Upgrade.Add(new ProductHeaderValue("NexNet-httpsockets"));
+            message.Headers.Upgrade.Add(new ProductHeaderValue("nexnet-httpsockets"));
             var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationTokenRegistration.Token)
                 .ConfigureAwait(false);
             
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
   
-            var pipe = new HttpSocketDuplexPipe(connectedStream);
+            var pipe = new HttpSocketDuplexPipe(connectedStream, false);
             
             return new HttpSocketTransport(pipe);
 

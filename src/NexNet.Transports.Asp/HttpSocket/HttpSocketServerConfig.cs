@@ -2,9 +2,10 @@
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Microsoft.AspNetCore.Http;
+using NexNet.Logging;
 using NexNet.Transports.HttpSocket;
 
-namespace NexNet.Transports.Asp.Http;
+namespace NexNet.Transports.Asp.HttpSocket;
 
 internal record HttpSocketAcceptedConnection(HttpContext Context, HttpSocketDuplexPipe Pipe);
 
@@ -26,6 +27,16 @@ public class HttpSocketServerConfig : ServerConfig
         get => _path;
         set => _path = value;
     }
+
+    public void PushNewConnectionAsync(HttpContext context, HttpSocketDuplexPipe pipe)
+    {
+        int count = 1;
+        // Loop until we enqueue the connection.
+        while(!ConnectionQueue.Post(new HttpSocketAcceptedConnection(context, pipe)))
+        {
+            Logger?.LogInfo($"Failed to post connection to queue {count++} times.");
+        }
+    } 
     
     /// <param name="cancellationToken"></param>
     /// <inheritdoc />

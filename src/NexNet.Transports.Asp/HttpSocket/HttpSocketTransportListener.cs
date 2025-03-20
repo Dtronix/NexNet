@@ -7,7 +7,7 @@ using NexNet.Transports.HttpSocket;
 
 #pragma warning disable CA1416
 
-namespace NexNet.Transports.Asp.Http;
+namespace NexNet.Transports.Asp.HttpSocket;
 
 internal class HttpSocketTransportListener : ITransportListener
 {
