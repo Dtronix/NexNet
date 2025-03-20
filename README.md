@@ -166,6 +166,37 @@ HttpSockets establish a bidirectional, long-lived data stream by upgrading a sta
 
 Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
 
+## ASP.NET Server Integration
+
+The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
+
+The package supports integration of NexNet server using WebSocket and HttpSocket connections, enabling easy management and proxying via common reverse proxies such as Nginx. This allows for potential improved connection handling, load balancing, and security.
+
+Abstracting the server away from direct connections can have some advantages such as th following:
+- Proxying HTTP connections through reverse proxies provides SSL/TLS termination, reducing cryptographic overhead on application servers.
+- Enables centralized traffic management, simplifying enforcement of security policies (e.g., rate-limiting, IP allowlisting, header validation).
+- Facilitates consistent logging, monitoring, and metrics collection at proxy level, aiding operational visibility and troubleshooting.
+- Provides an additional layer for DDoS mitigation and protection against common web vulnerabilities.
+
+### ASP Proxying Configurations
+
+#### Nginx
+Below is a simple configuration that will allow for proxy integration with an ASP.NET Core server
+```
+server {
+    server_name example.com;
+    location / {
+        proxy_pass         http://backend;
+        proxy_http_version 1.1;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection $connection_upgrade;
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+```
+
 ## Dependencies
 - [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. 
 - Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for Pipeline socket transports.
