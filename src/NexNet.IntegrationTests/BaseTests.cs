@@ -42,7 +42,6 @@ internal class BaseTests
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
     private readonly List<WebApplication> AspServers = new List<WebApplication>();
-    public bool BlockForClose { get; set; }
     public RollingLogger Logger => _logger;
 
     [OneTimeSetUp]
@@ -65,7 +64,6 @@ internal class BaseTests
     public virtual void SetUp()
     {
         _logger = new RollingLogger();
-        BlockForClose = false;
     }
 
     [TearDown]
@@ -87,7 +85,7 @@ internal class BaseTests
         CurrentTcpPort = null;
         CurrentUdpPort = null;
 
-        _logger.LogEnabled = BlockForClose;
+        _logger.LogEnabled = false;
         
         foreach (var nexusClient in Clients)
         {
@@ -95,9 +93,6 @@ internal class BaseTests
                 continue;
 
             _ = nexusClient.DisconnectAsync();
-
-            if(BlockForClose)
-                nexusClient.DisconnectedTask?.Wait();
         }
         Clients.Clear();
 
@@ -107,9 +102,6 @@ internal class BaseTests
                 continue;
 
             _ = nexusServer.StopAsync();
-
-            if (BlockForClose)
-                nexusServer.StoppedTask?.Wait();
         }
         Servers.Clear();
         foreach (var se in AspServers)
@@ -120,9 +112,6 @@ internal class BaseTests
                     continue;
             
                 se.Lifetime.StopApplication();
-
-                if (BlockForClose)
-                    se.Lifetime.ApplicationStopped.WaitHandle.WaitOne(5000);
             }
             catch (ObjectDisposedException)
             {
@@ -341,8 +330,7 @@ internal class BaseTests
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
-            if(sConfig.Logger == null)
-                builder.Logging.ClearProviders();
+            builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
@@ -385,8 +373,7 @@ internal class BaseTests
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
-            if(sConfig.Logger == null)
-                builder.Logging.ClearProviders();
+            builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
@@ -445,8 +432,7 @@ internal class BaseTests
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
-            if(sConfig.Logger == null)
-                builder.Logging.ClearProviders();
+            builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
