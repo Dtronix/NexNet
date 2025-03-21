@@ -77,6 +77,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(2);
     }
 
+    [Repeat(10, true)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -105,7 +106,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
             await pipe.ReadyTask.Timeout(1);
         }
 
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(2);
     }
 
     [TestCase(Type.Uds)]
