@@ -86,7 +86,7 @@ internal class NexusChannelReaderUnmanagedTests
     public async Task WaitsForFullData<T>(T inputData)
         where T : unmanaged
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
 

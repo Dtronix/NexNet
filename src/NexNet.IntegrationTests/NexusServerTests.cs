@@ -17,7 +17,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task AcceptsClientConnection(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var serverConfig = CreateServerConfig(type);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             serverConfig,
@@ -40,7 +40,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusFiresOnConnected(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));

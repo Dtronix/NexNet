@@ -159,7 +159,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         where T : IMessageBase
     {
         var clientConfig = CreateClientConfig(type);
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);

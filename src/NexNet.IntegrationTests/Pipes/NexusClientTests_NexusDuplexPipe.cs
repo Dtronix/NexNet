@@ -225,7 +225,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponDisconnection(Type type)
     {
-        var tcsDisconnected = new TaskCompletionSource();
+        var tcsDisconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
@@ -347,7 +347,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-        var outputComplete = new TaskCompletionSource();
+        var outputComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {

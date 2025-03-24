@@ -62,7 +62,7 @@ internal class NexusDuplexPipeWriterTests
     [Test]
     public async Task WriterSends()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var messenger = new SessionMessengerStub();
         var writer = CreateWriter(messenger);
@@ -81,7 +81,7 @@ internal class NexusDuplexPipeWriterTests
     [Test]
     public async Task WriterChunks()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[512 * 3];
         var messenger = new SessionMessengerStub();
         var writer = CreateWriter(messenger);
@@ -102,7 +102,7 @@ internal class NexusDuplexPipeWriterTests
     [Test]
     public async Task WriterPausesWriting()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var writer = CreateWriter();
         writer.PauseWriting = true;
@@ -112,7 +112,7 @@ internal class NexusDuplexPipeWriterTests
     [Test]
     public async Task WriterResumesWriting()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var writer = CreateWriter();
         writer.PauseWriting = true;

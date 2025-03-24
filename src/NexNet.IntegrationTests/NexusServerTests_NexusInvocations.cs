@@ -15,7 +15,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.Quic)]
     public async Task InvokesViaNexusContext(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
@@ -76,7 +76,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     public async Task InvokesViaNexusAndDoesNotBlock(Type type)
     {
         bool completed = false;
-        var tcs1 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
         server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
@@ -162,8 +162,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnAll(Type type)
     {
-        var tcs1 = new TaskCompletionSource();
-        var tcs2 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int connectedCount = 0;
         var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
@@ -201,8 +201,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroup(Type type)
     {
-        var tcs1 = new TaskCompletionSource();
-        var tcs2 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int connectedCount = 0;
         var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
@@ -240,8 +240,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnGroups(Type type)
     {
-        var tcs1 = new TaskCompletionSource();
-        var tcs2 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int connectedCount = 0;
         var server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
@@ -284,7 +284,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     {
         var groupInvokedCount = 0;
         var voidInvokedCount = 0;
-        var tcs1 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
@@ -340,7 +340,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     {
         var groupInvokedCount = 0;
         var voidInvokedCount = 0;
-        var tcs1 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
@@ -396,7 +396,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     {
         var groupInvokedCount = 0;
         var voidInvokedCount = 0;
-        var tcs1 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
@@ -448,7 +448,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     {
         var groupInvokedCount = 0;
         var voidInvokedCount = 0;
-        var tcs1 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (client1, clientNexus1) = CreateClient(CreateClientConfig(type));
         var (client2, clientNexus2) = CreateClient(CreateClientConfig(type));
@@ -498,7 +498,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnOthers(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         int connectedCount = 0;
         int invocationCount = 0;
@@ -540,7 +540,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnClient(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         int connectedCount = 0;
         int invocationCount = 0;
@@ -582,8 +582,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusInvokesOnClients(Type type)
     {
-        var tcs1 = new TaskCompletionSource();
-        var tcs2 = new TaskCompletionSource();
+        var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs2 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         int connectedCount = 0;
         NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
         server = CreateServer(CreateServerConfig(type), connectedNexus =>

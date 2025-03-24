@@ -22,7 +22,7 @@ internal class BasePipeTests : BaseTests
         TaskCompletionSource tcs
         )> Setup(Type type, LogMode log = LogMode.None)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (server, sNexus, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, log),

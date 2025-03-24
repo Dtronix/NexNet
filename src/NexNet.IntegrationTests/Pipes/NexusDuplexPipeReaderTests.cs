@@ -23,7 +23,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task BufferData()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
         await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
@@ -41,7 +41,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task ReadAsyncWaitsForData()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
 
@@ -60,7 +60,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task ReadAsyncPausesUntilNewDataIsReceived()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
 
@@ -83,7 +83,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task ReadAsyncReadsOnEachNewReceive()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var bufferSemaphore = new SemaphoreSlim(0, 1);
         var reader = CreateReader();
 
@@ -123,7 +123,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task CancelPendingReadCancelsReadBeforeReadAsync()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = CreateReader();
 
         reader.CancelPendingRead();
@@ -141,7 +141,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task CancelPendingReadCancelsReadBeforeTryRead()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = CreateReader();
 
         reader.CancelPendingRead();
@@ -159,7 +159,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task CancelPendingReadCancelsReadAfterReadStart()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = CreateReader();
 
         _ = Task.Run(async () =>
@@ -179,7 +179,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task CancelPendingReadCancelsAllowsReadAsyncAfter()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = CreateReader();
 
         _ = Task.Run(async () =>
@@ -205,7 +205,7 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task CancelPendingReadPreCancelsAllowsReadAsyncAfter()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var reader = CreateReader();
 
         reader.CancelPendingRead();

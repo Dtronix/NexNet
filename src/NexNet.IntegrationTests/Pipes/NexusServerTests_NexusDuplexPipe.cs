@@ -43,7 +43,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
-
+    [Repeat(30000)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -52,7 +52,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Server_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, LogMode.OnTestFail);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, LogMode.Always);
         var count = 0;
         var largeData = new byte[1024 * 32];
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
@@ -77,7 +77,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(2);
     }
 
-    [Repeat(10, true)]
+    [Repeat(1000, true)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -194,7 +194,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     public async Task Server_PipeWriterCompletesUponCompleteAsync(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-        var completedTcs = new TaskCompletionSource();
+        var completedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -261,7 +261,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Server_PipeWriterCompletesUponDisconnection(Type type)
     {
-        var tcsDisconnected = new TaskCompletionSource();
+        var tcsDisconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
@@ -385,7 +385,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     public async Task Server_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-        var outputComplete = new TaskCompletionSource();
+        var outputComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {

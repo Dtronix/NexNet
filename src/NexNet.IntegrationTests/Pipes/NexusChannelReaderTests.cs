@@ -129,7 +129,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
     [Test]
     public async Task WaitsForFullData()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();

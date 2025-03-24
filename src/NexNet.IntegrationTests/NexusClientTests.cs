@@ -18,7 +18,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task NexusFiresOnConnected(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, _, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
@@ -44,7 +44,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task ConnectsToServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
@@ -141,7 +141,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task ClientProvidesAuthenticationToken(Type type)
     {
         var clientConfig = CreateClientConfig(type);
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
@@ -175,7 +175,7 @@ internal partial class NexusClientTests : BaseTests
     {
         var clientConfig = CreateClientConfig(type);
         clientConfig.PingInterval = 20;
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (server, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
@@ -200,7 +200,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.Quic)]
     public async Task ReconnectsOnDisconnect(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
@@ -236,7 +236,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReconnectsOnDisconnectAsp(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
         clientConfig.Timeout = 1000;
         var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
@@ -278,7 +278,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReconnectsOnTimeout(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
@@ -311,7 +311,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReconnectsNotifiesReconnecting(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
@@ -335,7 +335,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReconnectsNotifiesReconnecting_Hosted(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
@@ -364,7 +364,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReconnectsStopsAfterSpecifiedTimes(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
@@ -403,7 +403,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ClientProxyInvocationCancelsOnDisconnect(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
