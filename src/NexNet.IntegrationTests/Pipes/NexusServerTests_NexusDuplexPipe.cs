@@ -1,5 +1,7 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
+using NexNet.Logging;
+using NexNet.Pipes;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;
@@ -42,8 +44,8 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
 
         await tcs.Task.Timeout(1);
     }
-
-    [Repeat(30000)]
+    
+    //[Repeat(5)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
@@ -52,29 +54,53 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Server_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, LogMode.Always);
+        var consoleLogger = new ConsoleLogger();
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type, consoleLogger);
         var count = 0;
         var largeData = new byte[1024 * 32];
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
-        const int iterations = 1000;
+        const int iterations = 4000;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
-            pipe.Input.AdvanceTo(result.Buffer.End);
-
+            consoleLogger.LogWarning($"Started Read:{count}");
+            bool complete = false;
+            do
+            {
+                var result = await pipe.Input.ReadAsync().Timeout(1);
+                pipe.Input.AdvanceTo(result.Buffer.End);
+                complete = result.IsCompleted;
+                
+            } while (!complete);
+            
             if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
+            
+            consoleLogger.LogWarning($"Completed Read:{count}");
+            
         };
-
+        var countWrite = 0;
         for (var i = 0; i < iterations; i++)
         {
+            consoleLogger.LogWarning($"Write on {countWrite}");
             await using var pipe = cNexus.Context.CreatePipe();
             await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
             await pipe.ReadyTask.Timeout(1);
+            consoleLogger.LogWarning($"Write done on {countWrite}");
             await pipe.Output.WriteAsync(largeData).Timeout(1);
+            //consoleLogger.LogWarning("Wrote");
+            await pipe.CompleteAsync();
+            consoleLogger.LogWarning($"Complete Pipe on {countWrite}");
+            
+            //consoleLogger.LogWarning("SendComplete");
+            
+            
+            await pipe.CompleteTask.Timeout(1);
+            consoleLogger.LogWarning($"Complete on {countWrite++}");
+            //consoleLogger.LogWarning("Completed");
         }
 
-        await tcs.Task.Timeout(2);
+        await tcs.Task.Timeout(1);
+        //await Task.Delay(100);
     }
 
     [Repeat(1000, true)]

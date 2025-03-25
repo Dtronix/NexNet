@@ -73,6 +73,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
             await pipe.ReadyTask.Timeout(1);
             await pipe.Output.WriteAsync(largeData).Timeout(1);
+            await pipe.CompleteTask.Timeout(1);
         }
 
         await tcs.Task.Timeout(1);

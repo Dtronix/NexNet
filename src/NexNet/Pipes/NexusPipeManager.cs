@@ -53,7 +53,7 @@ internal class NexusPipeManager
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask ReturnPipe(IRentedNexusDuplexPipe pipe)
     {
-        _logger?.LogTrace($"ReturnPipe({pipe.Id});");
+        _logger?.LogTrace($"ReturnPipe(P{pipe.Id});");
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
             return;
         
@@ -96,11 +96,11 @@ internal class NexusPipeManager
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
     {
-        _logger?.LogTrace($"DeregisterPipe({pipe.Id});");
+        _logger?.LogTrace($"DeregisterPipe(P{pipe.Id});");
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
         {
-            _logger?.LogError($"Cant Remove ({pipe.Id});");
+            _logger?.LogError($"Cant Remove (P{pipe.Id});");
             return;
         }
 
@@ -139,14 +139,14 @@ internal class NexusPipeManager
             return pipe.WriteFromUpstream(data);
         }
 
-        _logger?.LogInfo($"Received data on NexusDuplexPipe id: {id} but no stream is open on this id.");
+        _logger?.LogInfo($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
         //throw new InvalidOperationException($"No pipe exists for id: {id}.");
         return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
-    public DisconnectReason UpdateState(ushort id, NexusDuplexPipe.State state)
+    public DisconnectReason UpdateState(ushort id, State state)
     {
-        _logger?.LogTrace($"Pipe {id} update state {state}");
+        _logger?.LogTrace($"Pipe P{id} update state {state}");
         if (_isCanceled)
             return DisconnectReason.None;
 
@@ -156,32 +156,34 @@ internal class NexusPipeManager
         }
         else
         {
-            if (state == State.Ready)
+            switch (state)
             {
-                var localIdByte = ExtractLocalId(id, _session.IsServer);
-                var partialId = GetPartialIdFromLocalId(localIdByte);
-                if (!_activePipes.TryRemove(partialId, out pipe))
+                case State.Ready:
                 {
-                    _logger?.LogTrace($"Could not find pipe with Full ID of {id} and initial ID of {localIdByte}");
-                    return DisconnectReason.ProtocolError;
+                    var localIdByte = ExtractLocalId(id, _session.IsServer);
+                    var partialId = GetPartialIdFromLocalId(localIdByte);
+                    if (!_activePipes.TryRemove(partialId, out pipe))
+                    {
+                        _logger?.LogTrace($"Could not find pipe with Full ID of P{id} and initial ID of {localIdByte}");
+                        return DisconnectReason.ProtocolError;
+                    }
+
+                    // Move the pipe to the main active pipes.
+                    _activePipes.TryAdd(id, pipe);
+
+                    // Set the full ID of the pipe.
+                    pipe.Id = id;
+
+                    pipe.UpdateState(state);
+                    return DisconnectReason.None;
                 }
-
-                // Move the pipe to the main active pipes.
-                _activePipes.TryAdd(id, pipe);
-
-                // Set the full ID of the pipe.
-                pipe.Id = id;
-
-                pipe.UpdateState(state);
-                return DisconnectReason.None;
+                case State.Complete:
+                    _logger?.LogTrace($"Pipe is already complete and ignored state update of {state} with Full ID of P{id}");
+                    return DisconnectReason.None;
+                default:
+                    _logger?.LogTrace($"Ignored state update of {state} with Full ID of P{id}");
+                    break;
             }
-            else if (state == State.Complete)
-            {
-                _logger?.LogTrace($"Pipe is already complete and ignored state update of {state} with Full ID of {id}");
-                return DisconnectReason.None;
-            }
-
-            _logger?.LogTrace($"Ignored state update of {state} with Full ID of {id}");
         }
 
         return DisconnectReason.None;
