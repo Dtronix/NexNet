@@ -32,7 +32,7 @@ internal class SessionManager
         if (!Sessions.TryRemove(session.Id, out var _))
             return;
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             var count = groups.Count;
             for (var i = 0; i < count; i++)
@@ -69,7 +69,7 @@ internal class SessionManager
         group.RegisterSession(session);
 
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             groups.Add(id);
         }
@@ -89,7 +89,7 @@ internal class SessionManager
         }
 
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             groups.AddRange(groupIds);
         }

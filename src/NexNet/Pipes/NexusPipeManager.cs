@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Logging;
@@ -17,6 +18,7 @@ internal class NexusPipeManager
     private INexusSession _session = null!;
     private readonly ConcurrentDictionary<ushort, NexusDuplexPipe> _activePipes = new();
     private readonly BitArray _usedIds = new(256, false);
+    private readonly Lock _usedIdsLock = new Lock();
     private int _currentId = 0;
     private bool _isCanceled;
 
@@ -64,7 +66,7 @@ internal class NexusPipeManager
 
         nexusPipe.Dispose();
 
-        lock (_usedIds)
+        lock (_usedIdsLock)
         {
             // Return the local ID to the available IDs list.
             _usedIds.Set(nexusPipe.LocalId, false);
@@ -113,7 +115,7 @@ internal class NexusPipeManager
 
         //_session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe.Pipe);
 
-        lock (_usedIds)
+        lock (_usedIdsLock)
         {
             // Return the local ID to the available IDs list.
             _usedIds.Set(localId, false);
@@ -274,7 +276,7 @@ internal class NexusPipeManager
 
     private byte GetNewLocalId()
     {
-        lock (_usedIds)
+        lock (_usedIdsLock)
         {
             var incrementedId = _currentId;
 

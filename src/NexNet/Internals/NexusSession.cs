@@ -72,7 +72,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         }
     }
-
+    
     public SessionManager? SessionManager => _sessionManager;
     public SessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
@@ -81,6 +81,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     CacheManager INexusSession.CacheManager => CacheManager;
 
     public List<int> RegisteredGroups { get; } = new List<int>();
+    
+    public Lock RegisteredGroupsLock { get; } = new Lock();
 
     public SessionCacheManager<TProxy> CacheManager => _cacheManager;
     public SessionStore SessionStore { get; }
