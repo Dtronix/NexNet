@@ -437,8 +437,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await tcs1.Task.Timeout(1);
         Assert.That(groupInvokedCount, Is.EqualTo(2));
     }
-
-    [TestCase(Type.Uds, Ignore = "Flaky test on build server")]
+    
+    [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
