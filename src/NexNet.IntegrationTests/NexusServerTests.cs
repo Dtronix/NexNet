@@ -9,10 +9,10 @@ namespace NexNet.IntegrationTests;
 internal partial class NexusServerTests : BaseTests
 {
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task AcceptsClientConnection(Type type)
@@ -32,10 +32,10 @@ internal partial class NexusServerTests : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task NexusFiresOnConnected(Type type)
@@ -60,10 +60,10 @@ internal partial class NexusServerTests : BaseTests
 
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StartsAndStopsMultipleTimes(Type type)
@@ -90,10 +90,10 @@ internal partial class NexusServerTests : BaseTests
         }
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StopsAndReleasesStoppedTcs(Type type)
@@ -112,10 +112,10 @@ internal partial class NexusServerTests : BaseTests
         await server.StoppedTask!.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task ThrowsWhenServerIsAlreadyOpenOnSameTransport(Type type)

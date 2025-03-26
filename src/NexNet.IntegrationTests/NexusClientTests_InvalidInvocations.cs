@@ -5,10 +5,10 @@ namespace NexNet.IntegrationTests;
 
 internal partial class NexusClientTests_InvalidInvocations : BaseTests
 {
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task ClientThrowsWhenArgumentTooLarge(Type type)

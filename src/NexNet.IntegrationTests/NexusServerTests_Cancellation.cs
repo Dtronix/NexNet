@@ -10,10 +10,10 @@ namespace NexNet.IntegrationTests;
 
 internal partial class NexusServerTests_Cancellation : BaseTests
 {
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task SendsCancellationTokenOnTimeout_ClientTaskValueWithParam(Type type)
@@ -42,10 +42,10 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskWithValueAndCancellation(Type type)
@@ -75,10 +75,10 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithCancellation(Type type)
@@ -104,10 +104,10 @@ internal partial class NexusServerTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task SendsCancellationTokenOnTimeout_ServerTaskValueWithValueAndCancellation(Type type)
@@ -132,10 +132,10 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         await tcs.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)

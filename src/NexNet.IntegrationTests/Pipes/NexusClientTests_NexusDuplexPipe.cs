@@ -7,10 +7,10 @@ namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 {
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
@@ -45,10 +45,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
@@ -79,10 +79,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesData(Type type)
@@ -106,10 +106,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterSendsData(Type type)
@@ -130,10 +130,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(Type type)
@@ -156,10 +156,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponCompleteAsync(Type type)
@@ -191,10 +191,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(3);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponDisconnection(Type type)
@@ -218,10 +218,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponDisconnection(Type type)
@@ -249,10 +249,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponWriterCompletion(Type type)
@@ -277,10 +277,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponWriterCompletion(Type type)
@@ -310,10 +310,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(Type type)
@@ -339,10 +339,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         Assert.That(result.Buffer.ToArray(), Is.EqualTo(Data));
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
@@ -377,10 +377,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await tcs.Task.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenReady(Type type)
@@ -400,10 +400,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReadyCancelsOnDisconnection(Type type)
@@ -424,10 +424,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await AssertThrows<TaskCanceledException>(async () => await pipe.ReadyTask).Timeout(2);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeCompleteCancelsOnDisconnection(Type type)
@@ -448,10 +448,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await AssertThrows<TaskCanceledException>(async () => await pipe.CompleteTask).Timeout(2);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenComplete(Type type)
@@ -474,10 +474,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         Assert.That(completedInvocation, Is.True);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(Type type)
@@ -493,10 +493,10 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingUsedPipe(Type type)
