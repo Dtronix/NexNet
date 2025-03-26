@@ -94,7 +94,7 @@ internal class NexusServerTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Server_PipeReaderCreatesAndDestroysPipeMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type, LogMode.OnTestFail);
+        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
         var count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.

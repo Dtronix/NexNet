@@ -121,9 +121,9 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         var clients = new List<(NexusClient<ClientNexus, ClientNexus.ServerProxy> Client, ClientNexus ClientNexus)>();
 
         for (int i = 0; i < clientCount; i++)
-            clients.Add(CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always)));
+            clients.Add(CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.OnTestFail)));
 
-        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.Always), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = nexus =>
             {
@@ -173,9 +173,9 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         var clients = new List<(NexusClient<ClientNexus, ClientNexus.ServerProxy> Client, ClientNexus ClientNexus)>();
 
         for (int i = 0; i < clientCount; i++)
-            clients.Add(CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.Always)));
+            clients.Add(CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.OnTestFail)));
 
-        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.Always), connectedNexus =>
+        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
             connectedNexus.OnConnectedEvent = nexus =>
             {
