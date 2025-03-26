@@ -386,6 +386,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         Assert.That(groupInvokedCount, Is.EqualTo(2));
     }
 
+    [Repeat(10)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
