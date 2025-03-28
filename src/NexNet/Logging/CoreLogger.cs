@@ -75,6 +75,15 @@ public abstract class CoreLogger : INexusLogger
         Sw = Stopwatch.StartNew();
         SessionDetails = "";
     }
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CoreLogger"/> class.
+    /// </summary>
+    protected CoreLogger(CoreLogger baseLogger)
+    {
+        BaseLogger = baseLogger;
+        SessionDetails = "";
+    }
 
     /// <inheritdoc />
     public abstract void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message);

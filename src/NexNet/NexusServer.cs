@@ -30,8 +30,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
-    private readonly ServerConfig _config;
-    private readonly Func<TServerNexus> _nexusFactory;
+    private ServerConfig? _config;
+    private Func<TServerNexus>? _nexusFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
     private ITransportListener? _listener;
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
@@ -46,7 +46,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
-    private readonly INexusLogger? _logger;
+    private INexusLogger? _logger;
 
     /// <summary>
     /// True if the server is running, false otherwise.
@@ -69,12 +69,40 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
     public NexusServer(ServerConfig config, Func<TServerNexus> nexusFactory)
+        : this()
     {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(nexusFactory);
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
+    }
+    
+    /// <summary>
+    /// Creates a NexNetServer class for handling incoming connections.
+    /// </summary>
+    public NexusServer()
+    {
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
+    }
+
+    /// <summary>
+    /// Configures the server after instancing.  This can only be executed a single time and with the
+    /// <see cref="NexusServer{TServerNexus,TClientProxy}"/> paramaterless constructor.
+    /// </summary>
+    /// <param name="config">Server configurations</param>
+    /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(nexusFactory);
+        if(_config != null)
+            throw new InvalidOperationException("Server has already been configured.");
+        
+        _config = config;
+        _nexusFactory = nexusFactory;
+        _logger = config.Logger?.CreateLogger("NexusServer");
     }
 
     /// <summary>
@@ -95,6 +123,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(_config);
         static void FireAndForget(Task? task)
         {
             // make sure that any exception is observed

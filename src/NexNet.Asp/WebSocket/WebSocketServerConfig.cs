@@ -12,7 +12,7 @@ namespace NexNet.Asp.WebSocket;
 /// </summary>
 public class WebSocketServerConfig : ServerConfig
 {
-    private string _path ="/ws";
+    private string _path = null!;
 
     private readonly BufferBlock<IWebSocketPipe> _connectionQueue = new();
     internal bool IsAccepting = true;

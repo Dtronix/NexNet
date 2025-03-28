@@ -13,7 +13,7 @@ namespace NexNet.Asp.HttpSocket;
 /// </summary>
 public class HttpSocketServerConfig : ServerConfig
 {
-    private string _path ="/hs";
+    private string _path = null!;
 
     private readonly BufferBlock<HttpSocketDuplexPipe> _connectionQueue = new();
     internal bool IsAccepting = true;

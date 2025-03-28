@@ -8,6 +8,10 @@ namespace NexNetSample.Asp.Server;
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus
 {
+    public ServerNexus(ILogger<ServerNexus> logger, IServiceProvider  sf)
+    {
+        
+    }
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
     public Action<ServerNexus> ServerVoidEvent;
     public Action<ServerNexus, int> ServerVoidWithParamEvent;

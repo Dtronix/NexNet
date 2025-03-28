@@ -1,8 +1,10 @@
 ﻿using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
+using NexNet;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
+using NexNet.Invocation;
 using NexNet.Logging;
 
 namespace NexNetSample.Asp.Server;
@@ -16,58 +18,23 @@ public class Program
         {
             serverOptions.Listen(IPAddress.Any, 9000);
         });
-        builder.Services.AddAuthorization();
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders =
                 ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
         });
         
+        builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+        
         var app = builder.Build();
         
         app.UseHttpsRedirection();
-        
-        var logger = new ConsoleLogger();
-
-        
         app.UseForwardedHeaders();
-        app.UseAuthorization();
-  
-        await MapWebSocket(logger, app);
-        await MapHttpSocket(logger, app);
+        await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
+        {
+            c.Path = "/httpsocket";
+        });
 
         await app.RunAsync();
-    }
-
-    private static async Task MapHttpSocket(ConsoleLogger logger, WebApplication app)
-    {
-        var httpServerConfig = new HttpSocketServerConfig()
-        {
-            Logger = logger.CreatePrefixedLogger(null, "Server"),
-            Timeout = 20000,
-            Path = "/httpsocket"
-        };
-
-        var nexusServer = ServerNexus.CreateServer(httpServerConfig, () => new ServerNexus());
-        await nexusServer.StartAsync();
-        
-        app.UseHttpSockets();
-        app.MapHttpSocketNexus(httpServerConfig);
-    }
-
-    private static async Task MapWebSocket(ConsoleLogger logger, WebApplication app)
-    {
-        var webServerConfig = new WebSocketServerConfig()
-        {
-            Logger = logger.CreatePrefixedLogger(null, "Server"),
-            Timeout = 20000,
-            Path = "/websocket"
-        };
-        
-        var webNexusServer = ServerNexus.CreateServer(webServerConfig, () => new ServerNexus());
-        await webNexusServer.StartAsync();
-
-        app.UseWebSockets();
-        app.MapWebSocketNexus(webServerConfig);
     }
 }
