@@ -10,7 +10,7 @@ internal class Program
     {
         var clientWebSocketConfig = new WebSocketClientConfig()
         {
-            Url = new Uri("ws://127.0.0.1:9000/websocket"),
+            Url = new Uri("ws://127.0.0.1:9001/websocket"),
             Logger = new ConsoleLogger(),
             Timeout = 4000,
             PingInterval = 2000,
@@ -19,12 +19,13 @@ internal class Program
         
         var clientHttpSocketConfig = new HttpSocketClientConfig()
         {
-            Url = new Uri("http://127.0.0.1:9000/httpsocket"),
+            Url = new Uri("http://127.0.0.1:9001/httpsocket"),
             Logger = new ConsoleLogger(),
             Timeout = 4000,
             PingInterval = 2000,
             ReconnectionPolicy = new DefaultReconnectionPolicy()
         };
+
         var client = ClientNexus.CreateClient(clientHttpSocketConfig, new ClientNexus());
 
         await client.ConnectAsync();

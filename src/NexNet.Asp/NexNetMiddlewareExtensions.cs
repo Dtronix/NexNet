@@ -107,27 +107,28 @@ public static class NexNetMiddlewareExtensions
     /// <returns>Nexus server</returns>
     /// <typeparam name="TServerNexus">Server to map</typeparam>
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
-    public static async Task<WebApplication> UseHttpSocketNexusServerAsync<TServerNexus, TClientProxy>(
+    public static NexusServer<TServerNexus, TClientProxy> UseHttpSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
         Action<HttpSocketServerConfig>? configure = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
-        
-        // If the server is already started, then we can't start it again and we can't map the same
+
+        if (server.Config != null)
+            throw new InvalidOperationException("Server has already been configured and can not be reused.");
+
+        // If the server is already started, then we can't start it again, and we can't map the same
         // nexus to multiple path endpoints.
         if (server.IsStarted)
-            return app;
+            throw new InvalidOperationException("Server is already started.");
         
         // Setup logging
         var logger = app.Services.GetRequiredService<ILogger<INexusServer>>();
-        var loggerBridge = new NexusILoggerBridgeLogger(logger);
         
-        loggerBridge.LogError("TEst");
-        var config = new HttpSocketServerConfig()
+        var config = new HttpSocketServerConfig
         {
-            Logger = loggerBridge.CreatePrefixedLogger(null, "SV"),
+            Logger = new NexusILoggerBridgeLogger(logger)
         };
         configure?.Invoke(config);
         
@@ -136,14 +137,11 @@ public static class NexNetMiddlewareExtensions
         
         server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>());
         
-        // Start the server.
-        await server.StartAsync(app.Lifetime.ApplicationStopped);
-        
         // Enable usage of sockets and register this nexus 
         app.UseHttpSockets();
         app.MapHttpSocketNexus(config);
 
-        return app;
+        return server;
     }
     
     /// <summary>
@@ -154,41 +152,41 @@ public static class NexNetMiddlewareExtensions
     /// <returns>Nexus server</returns>
     /// <typeparam name="TServerNexus">Server to map</typeparam>
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
-    public static async Task<WebApplication> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
+    public static NexusServer<TServerNexus, TClientProxy> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
         Action<WebSocketServerConfig>? configure = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
-        
-        // If the server is already started, then we can't start it again and we can't map the same
+
+        if (server.Config != null)
+            throw new InvalidOperationException("Server has already been configured and can not be reused.");
+
+        // If the server is already started, then we can't start it again, and we can't map the same
         // nexus to multiple path endpoints.
         if (server.IsStarted)
-            return app;
-        
+            throw new InvalidOperationException("Server is already started.");
+
         // Setup logging
         var logger = app.Services.GetRequiredService<ILogger<INexusServer>>();
-        var loggerBridge = new NexusILoggerBridgeLogger(logger);
-        var config = new WebSocketServerConfig()
+
+        var config = new WebSocketServerConfig
         {
-            Logger = loggerBridge.CreatePrefixedLogger(null, "SV"),
+            Logger = new NexusILoggerBridgeLogger(logger)
         };
         configure?.Invoke(config);
         
         if(string.IsNullOrWhiteSpace(config.Path))
             throw new InvalidOperationException("Configured path is empty.  Must provide a endpoint for mapping to.");
-        
+
         server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>());
-        
-        // Start the server.
-        await server.StartAsync(app.Lifetime.ApplicationStopped);
-        
+
         // Enable usage of sockets and register this nexus 
         app.UseWebSockets();
         app.MapWebSocketNexus(config);
 
-        return app;
+        return server;
     }
     
     /// <summary>
@@ -204,7 +202,7 @@ public static class NexNetMiddlewareExtensions
         services.AddTransient<TServerNexus>();
         
         // Adds the server as a singleton to the service collection
-        services.AddSingleton<NexusServer<TServerNexus, TClientProxy>>(provider => 
+        services.AddSingleton(p => 
             new NexusServer<TServerNexus, TClientProxy>());
 
         return services;

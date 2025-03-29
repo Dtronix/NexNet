@@ -11,6 +11,8 @@ namespace NexNet.Logging;
 /// </summary>
 public abstract class CoreLogger : INexusLogger
 {
+    private NexusLogBehaviors _behaviors;
+
     /// <summary>
     /// Gets or sets the prefix for the logger. This property is used to prepend a string to the log message, 
     /// providing a way to distinguish or categorize log messages. This can be null.
@@ -29,11 +31,19 @@ public abstract class CoreLogger : INexusLogger
     /// </summary>
     protected readonly CoreLogger BaseLogger;
 
+
     /// <summary>
     /// Represents the minimum log level for the base logger. 
     /// Log events with a level lower than this will not be processed by the base logger.
     /// </summary>
     private NexusLogLevel _thisMinLogLevel = NexusLogLevel.Trace;
+
+    /// <inheritdoc />
+    public NexusLogBehaviors Behaviors
+    {
+        get => BaseLogger._behaviors;
+        set => BaseLogger._behaviors = value;
+    }
 
     /// <summary>
     /// Gets or sets the category for the log event. This property is used to group related log events, 
@@ -83,6 +93,8 @@ public abstract class CoreLogger : INexusLogger
     {
         BaseLogger = baseLogger;
         SessionDetails = "";
+        Sw = Stopwatch.StartNew();
+        Behaviors = baseLogger.Behaviors;
     }
 
     /// <inheritdoc />
