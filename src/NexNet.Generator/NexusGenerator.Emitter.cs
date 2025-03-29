@@ -261,7 +261,7 @@ partial class MethodMeta
             sb.AppendLine(");");
         }
 
-        sb.Append("                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? global::NexNet.Logging.NexusLogLevel.Information : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $\"Invoking Method: ");
+        sb.Append("                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 ? global::NexNet.Logging.NexusLogLevel.Information : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $\"Invoking Method: ");
 
         EmitNexusMethodInvocation(sb, true);
         sb.AppendLine("\");");
