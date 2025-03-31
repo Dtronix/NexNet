@@ -17,6 +17,7 @@ using NexNet.Transports.WebSocket;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
 using NUnit.Framework.Internal;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NexNet.IntegrationTests;
 
@@ -76,6 +77,7 @@ internal class BaseTests
                 _logger.Flush(TestContext.Out);
             }
         }
+
         if (_loggerMode == BasePipeTests.LogMode.Always)
         {
             _logger.Flush(TestContext.Out);
@@ -86,40 +88,43 @@ internal class BaseTests
         CurrentUdpPort = null;
 
         _logger.LogEnabled = false;
-        
+
         foreach (var nexusClient in Clients)
         {
-            if(nexusClient.State != ConnectionState.Connected)
+            if (nexusClient.State != ConnectionState.Connected)
                 continue;
 
             _ = nexusClient.DisconnectAsync();
         }
+
         Clients.Clear();
 
         foreach (var nexusServer in Servers)
         {
-            if(!nexusServer.IsStarted)
+            if (!nexusServer.IsStarted)
                 continue;
 
             _ = nexusServer.StopAsync();
         }
+
         Servers.Clear();
         foreach (var se in AspServers)
         {
             try
             {
-                if(!se.Lifetime.ApplicationStarted.IsCancellationRequested)
+                if (!se.Lifetime.ApplicationStarted.IsCancellationRequested)
                     continue;
-            
+
                 se.Lifetime.StopApplication();
             }
             catch (ObjectDisposedException)
             {
             }
-            
+
         }
+
         AspServers.Clear();
-        
+
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -130,11 +135,7 @@ internal class BaseTests
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsServerConfig()
-            {
-                EndPoint = CurrentPath,
-                Logger = logger
-            };
+            return new UdsServerConfig() { EndPoint = CurrentPath, Logger = logger };
         }
 
         if (type == Type.Tcp)
@@ -187,36 +188,27 @@ internal class BaseTests
                 },
             };
         }
-        
-        
-        
+
+
+
         if (type == Type.WebSocket)
         {
-            return new WebSocketServerConfig()
-            {
-                
-                Path = "/websocket-test",
-                Logger = logger
-            };
+            return new WebSocketServerConfig() { Path = "/websocket-test", Logger = logger };
         }
-        
+
         if (type == Type.HttpSocket)
         {
-            return new HttpSocketServerConfig()
-            {
-                Path = "/httpsocket-test",
-                Logger = logger,
-            };
+            return new HttpSocketServerConfig() { Path = "/httpsocket-test", Logger = logger, };
         }
 
 
         throw new InvalidOperationException();
     }
 
-    protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
+    protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
         _loggerMode = log;
-        var logger = log != BasePipeTests.LogMode.None 
+        var logger = log != BasePipeTests.LogMode.None
             ? _logger.CreatePrefixedLogger(null, "SV")
             : null;
         return CreateServerConfigWithLog(type, logger);
@@ -230,11 +222,7 @@ internal class BaseTests
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsClientConfig()
-            {
-                EndPoint = CurrentPath,
-                Logger = logger,
-            };
+            return new UdsClientConfig() { EndPoint = CurrentPath, Logger = logger, };
         }
 
         if (type == Type.Tcp)
@@ -243,11 +231,10 @@ internal class BaseTests
 
             return new TcpClientConfig()
             {
-                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
-                Logger = logger,
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value), Logger = logger,
             };
         }
-        
+
         if (type == Type.TcpTls)
         {
             CurrentTcpPort ??= FreeTcpPort();
@@ -265,6 +252,7 @@ internal class BaseTests
                 }
             };
         }
+
         if (type == Type.Quic)
         {
             CurrentUdpPort ??= FreeUdpPort();
@@ -282,27 +270,27 @@ internal class BaseTests
                 }
             };
         }
+
         if (type == Type.WebSocket)
         {
             return new WebSocketClientConfig()
             {
-                Url = new Uri("ws://127.0.0.1:15050/websocket-test"),
-                Logger = logger,
+                Url = new Uri("ws://127.0.0.1:15050/websocket-test"), Logger = logger,
             };
         }
+
         if (type == Type.HttpSocket)
         {
             return new HttpSocketClientConfig()
             {
-                Url = new Uri("http://127.0.0.1:15050/httpsocket-test"),
-                Logger = logger,
+                Url = new Uri("http://127.0.0.1:15050/httpsocket-test"), Logger = logger,
             };
         }
 
         throw new InvalidOperationException();
     }
 
-    protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
+    protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
         _loggerMode = log;
 
@@ -314,9 +302,10 @@ internal class BaseTests
     }
 
 
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, 
+
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
         ServerNexus serverNexus,
-        NexusClient<ClientNexus, ClientNexus.ServerProxy> client, 
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus)
         CreateServerClient(ServerConfig sConfig, ClientConfig cConfig, bool startServer = true)
     {
@@ -326,7 +315,8 @@ internal class BaseTests
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
         Servers.Add(server);
         Clients.Add(client);
-        
+
+
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
@@ -334,8 +324,12 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+
             var app = builder.Build();
-            
+
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
@@ -346,16 +340,17 @@ internal class BaseTests
                 app.UseHttpSockets();
                 app.MapHttpSocketNexus(sHttpSocketConfig);
             }
+
             _ = app.RunAsync();
             AspServers.Add(app);
         }
 
         return (server, serverNexus, client, clientNexus);
     }
-    
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, 
+
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
         ServerNexus serverNexus,
-        NexusClient<ClientNexus, ClientNexus.ServerProxy> client, 
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         Action startAspServer,
         Action stopAspServer)
@@ -377,8 +372,12 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+
             app = builder.Build();
-            
+
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
@@ -388,8 +387,9 @@ internal class BaseTests
             {
                 app.UseHttpSockets();
                 app.MapHttpSocketNexus(sHttpSocketConfig);
-    
+
             }
+
             AspServers.Add(app);
         }
 
@@ -399,20 +399,20 @@ internal class BaseTests
                 return;
             _ = app.RunAsync();
         }
-        
+
         void StopAspServer()
         {
             if (app == null)
                 return;
-            
-            if(!app.Lifetime.ApplicationStarted.IsCancellationRequested)
+
+            if (!app.Lifetime.ApplicationStarted.IsCancellationRequested)
                 return;
-            
+
             app.Lifetime.StopApplication();
 
             app.Lifetime.ApplicationStopped.WaitHandle.WaitOne(500);
         }
-        
+
 
         return (server, serverNexus, client, clientNexus, StartAspServer, StopAspServer);
     }
@@ -425,10 +425,10 @@ internal class BaseTests
             var nexus = new ServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        }); 
-        
+        });
+
         Servers.Add(server);
-        
+
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
             var builder = WebApplication.CreateBuilder();
@@ -436,8 +436,12 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
             builder.Services.AddAuthorization();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+
             var app = builder.Build();
-            
+
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
@@ -447,8 +451,9 @@ internal class BaseTests
             {
                 app.UseHttpSockets();
                 app.MapHttpSocketNexus(sHttpSocketConfig);
-    
+
             }
+
             _ = app.RunAsync();
             AspServers.Add(app);
         }
@@ -498,5 +503,53 @@ internal class BaseTests
         }
 
         Assert.That(thrown?.GetType(), Is.EqualTo(typeof(T)));
+    }
+
+    private class AspLoggerProviderBridge : ILoggerProvider
+    {
+        private readonly INexusLogger _logger;
+
+
+        public AspLoggerProviderBridge(INexusLogger logger)
+        {
+            _logger = logger;
+        }
+
+        public void Dispose()
+        {
+            // Ignore
+        }
+
+        public ILogger CreateLogger(string categoryName)
+        {
+            return new SubLogger(_logger.CreateLogger(categoryName));
+        }
+
+        class SubLogger : ILogger
+        {
+            private readonly INexusLogger _logger;
+
+            public SubLogger(INexusLogger logger)
+            {
+                _logger = logger;
+            }
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+            {
+                return null;
+            }
+
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return true;
+            }
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                _logger.Log((NexusLogLevel)logLevel, _logger.Category, exception,
+                    formatter?.Invoke(state, exception) ?? "");
+            }
+        }
     }
 }

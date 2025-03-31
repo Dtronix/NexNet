@@ -21,7 +21,7 @@ internal class BasePipeTests : BaseTests
         NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         TaskCompletionSource tcs
-        )> Setup(Type type, LogMode log = LogMode.None)
+        )> Setup(Type type, LogMode log = LogMode.OnTestFail)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
