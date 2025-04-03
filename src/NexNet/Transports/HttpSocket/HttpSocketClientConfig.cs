@@ -1,20 +1,13 @@
-﻿using System;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Transports.HttpSocket;
 
-namespace NexNet.Transports.WebSocket;
+namespace NexNet.Transports.HttpSocket;
 
 /// <summary>
-/// Configurations for the client to connect to a QUIC NexNet server.
+/// Configurations for the client to connect to a HttpSocket NexNet server.
 /// </summary>
-public class HttpSocketClientConfig : ClientConfig
+public class HttpSocketClientConfig : HttpClientConfig
 {
-    /// <summary>
-    /// Endpoint
-    /// </summary>
-    public required Uri Url { get; set; }
-
     /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {

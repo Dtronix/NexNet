@@ -93,7 +93,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Exception, e);
         }
         
-
         _config.InternalOnClientConnect?.Invoke();
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()

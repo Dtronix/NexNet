@@ -1,4 +1,5 @@
-﻿using NexNet;
+﻿using System.Security.Claims;
+using NexNet;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
@@ -26,7 +27,6 @@ public partial class ServerNexus
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
     
-
     public void ServerVoid()
     {
         ServerVoidEvent?.Invoke(this);

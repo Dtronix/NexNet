@@ -1,5 +1,7 @@
 ﻿using System;
 using System.IO.Pipelines;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Quic;
 using System.Net.Security;
 using System.Net.WebSockets;
@@ -57,12 +59,17 @@ internal class WebSocketTransport : ITransport
         using var timeoutCancellation = new CancellationTokenSource(config.ConnectionTimeout);
         using var cancellationTokenRegistration =
             CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCancellation.Token);
+        ClientWebSocket client = null!;
         try
         {
-            var client = new ClientWebSocket();
+            client = new ClientWebSocket();
+            client.Options.CollectHttpResponseDetails = true;
 
+            if(config.AuthenticationHeader != null)
+                client.Options.SetRequestHeader("Authorization", config.AuthenticationHeader.ToString());
+            
             await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token).ConfigureAwait(false);
-
+            
             IWebSocketPipe pipe =
                 new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true }, false);
             
@@ -75,6 +82,12 @@ internal class WebSocketTransport : ITransport
         }
         catch (WebSocketException e)
         {
+            var httpSuccess = ((int)client.HttpStatusCode >= 200) && ((int)client.HttpStatusCode <= 299);
+            
+            if(!httpSuccess && client.HttpStatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new TransportException(TransportError.AuthenticationError,
+                    $"Websocket connection authentication failed with Http stats code: {client.HttpStatusCode}", e);
+
             throw new TransportException(GetTransportError(e.WebSocketErrorCode), e.Message, e);
         }
         catch (TaskCanceledException e)

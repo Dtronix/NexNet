@@ -74,4 +74,9 @@ public enum TransportError
     /// The connection was reset by the peer.
     /// </summary>
     ConnectionReset,
+    
+    /// <summary>
+    /// The connection authentication failed
+    /// </summary>
+    AuthenticationError,
 }

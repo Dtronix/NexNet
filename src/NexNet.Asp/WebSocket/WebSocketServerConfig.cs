@@ -1,38 +1,18 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
-using Microsoft.AspNetCore.Http;
 using NexNet.Logging;
 using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 
 namespace NexNet.Asp.WebSocket;
 /// <summary>
-/// Configurations for the server to allow connections from QUIC NexNet clients.
+/// Configurations for the server to allow connections from WebSocket NexNet clients.
 /// </summary>
-public class WebSocketServerConfig : ServerConfig
+public class WebSocketServerConfig : AspServerConfig
 {
-    private string _path = null!;
-
     private readonly BufferBlock<IWebSocketPipe> _connectionQueue = new();
-    internal bool IsAccepting = true;
     
-    /// <summary>
-    /// Path that the NexNet server binds to on the host.
-    /// </summary>
-    public string Path
-    {
-        get => _path;
-        set => _path = value;
-    }
-    
-    /// <param name="cancellationToken"></param>
-    /// <inheritdoc />
-    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
-    {
-        return ValueTask.FromResult<ITransportListener>(new WebSocketTransportListener(this, _connectionQueue));
-    }
-
     /// <summary>
     /// Pushes the newly accepted pipe connection to the Nexus server for handling.
     /// </summary>
@@ -56,4 +36,11 @@ public class WebSocketServerConfig : ServerConfig
         }
         return true;
     }
+    
+    /// <inheritdoc />
+    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
+    {
+        return ValueTask.FromResult<ITransportListener>(new WebSocketTransportListener(this, _connectionQueue));
+    }
+
 }

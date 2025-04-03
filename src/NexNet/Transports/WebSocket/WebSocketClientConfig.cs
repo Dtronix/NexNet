@@ -5,15 +5,10 @@ using System.Threading.Tasks;
 namespace NexNet.Transports.WebSocket;
 
 /// <summary>
-/// Configurations for the client to connect to a QUIC NexNet server.
+/// Configurations for the client to connect to a WebSocket NexNet server.
 /// </summary>
-public class WebSocketClientConfig : ClientConfig
+public class WebSocketClientConfig : HttpClientConfig
 {
-    /// <summary>
-    /// Endpoint
-    /// </summary>
-    public required Uri Url { get; set; }
-
     /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {

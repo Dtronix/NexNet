@@ -66,9 +66,14 @@ internal class HttpSocketTransport : ITransport
             message.Headers.Host = config.Url.Host;
             message.Headers.Connection.Add("Upgrade");
             message.Headers.Upgrade.Add(new ProductHeaderValue("nexnet-httpsockets"));
+            message.Headers.Authorization = config.AuthenticationHeader;
             var response = await client.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationTokenRegistration.Token)
                 .ConfigureAwait(false);
             
+            // the protocol should be switching.  If not, then check for error.
+            if(response.StatusCode != HttpStatusCode.SwitchingProtocols)
+                response.EnsureSuccessStatusCode();
+      
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
   
             var pipe = new HttpSocketDuplexPipe(connectedStream, false);
@@ -78,6 +83,10 @@ internal class HttpSocketTransport : ITransport
         }
         catch (HttpRequestException e)
         {
+            if (e.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+                throw new TransportException(TransportError.AuthenticationError,
+                    $"Http connection authentication failed with stats code: {e.StatusCode}", e);
+            
             throw new TransportException(GetTransportError(e.HttpRequestError), e.Message, e);
         }
         catch (TaskCanceledException e)
@@ -102,7 +111,7 @@ internal class HttpSocketTransport : ITransport
             HttpRequestError.HttpProtocolError => TransportError.ProtocolError,
             HttpRequestError.ExtendedConnectNotSupported => TransportError.ProtocolError,
             HttpRequestError.VersionNegotiationError => TransportError.VersionNegotiationError,
-            HttpRequestError.UserAuthenticationError => TransportError.ConnectionRefused,
+            HttpRequestError.UserAuthenticationError => TransportError.AuthenticationError,
             HttpRequestError.ProxyTunnelError => TransportError.Unreachable,
             HttpRequestError.InvalidResponse => TransportError.ProtocolError,
             HttpRequestError.ResponseEnded => TransportError.ConnectionAborted,

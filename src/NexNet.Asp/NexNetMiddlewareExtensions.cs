@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,7 @@ using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 
 namespace NexNet.Asp;
@@ -38,6 +40,9 @@ public static class NexNetMiddlewareExtensions
                 context.Request.Path.Value == config.Path &&
                 context.WebSockets.IsWebSocketRequest)
             {
+                if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
+                    return;
+                
                 using var websocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
                 using var pipe = IWebSocketPipe.Create(websocket, new WebSocketPipeOptions()
                 {
@@ -77,13 +82,16 @@ public static class NexNetMiddlewareExtensions
             if (config.IsAccepting &&
                 context.Request.Path == config.Path)
             {
+                if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
+                    return;
+                
                 var httpSocket = context.Features.Get<IHttpSocketFeature>();
                 
                 if (httpSocket?.IsHttpSocketRequest == true)
                 {
                     var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
 
-                    var pipe = await httpSocket.AcceptAsync();
+                    var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
                     
                     // If we can't push a new connection to the queue, the server has been stopped and is not
                     // accepting any new connections.
@@ -222,6 +230,44 @@ public static class NexNetMiddlewareExtensions
         
         configure?.Invoke(options);
         return app.UseMiddleware<HttpSocketMiddleware>(options);
+    }
+    
+    
+    
+    /// <summary>
+    /// Applies the current configured authentication scheme.
+    /// </summary>
+    /// <param name="context">Http context for the current connection.</param>
+    /// <param name="config">Configuration containing the authentication scheme.</param>
+    /// <returns>
+    /// Returns true if the connection should continue based upon the configurations.
+    /// The client may be authenticated or not if configured to disable authentication.
+    /// </returns>
+    public static async Task<bool> ApplyAuthentication(HttpContext context, AspServerConfig config)
+    {
+        if (!config.AspEnableAuthentication)
+            return true;
+        
+        var authScheme = config.AspAuthenticationScheme?.Trim();
+        AuthenticateResult authResult;
+        if (string.IsNullOrWhiteSpace(authScheme))
+        {
+            authResult = await context.AuthenticateAsync();
+        }
+        else
+        {
+            authResult = await context.AuthenticateAsync(authScheme);
+        }
+
+        if (authResult.Succeeded)
+            return true;
+
+        // Log the failure.
+        config.Logger?.LogInfo(authResult.Failure, "Authentication failed");
+                    
+        // Notify the connecting client with Unauthorized.
+        context.Response.StatusCode = 401;
+        return false;
     }
 
 }

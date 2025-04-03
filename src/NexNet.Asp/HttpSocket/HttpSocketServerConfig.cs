@@ -9,24 +9,12 @@ using NexNet.Transports.HttpSocket;
 namespace NexNet.Asp.HttpSocket;
 
 /// <summary>
-/// Configurations for the server to allow connections from QUIC NexNet clients.
+/// Configurations for the server to allow connections from HttpSockeet NexNet clients.
 /// </summary>
-public class HttpSocketServerConfig : ServerConfig
+public class HttpSocketServerConfig : AspServerConfig
 {
-    private string _path = null!;
-
     private readonly BufferBlock<HttpSocketDuplexPipe> _connectionQueue = new();
-    internal bool IsAccepting = true;
     
-    /// <summary>
-    /// Path that the NexNet server binds to on the host.
-    /// </summary>
-    public string Path
-    {
-        get => _path;
-        set => _path = value;
-    }
-
     /// <summary>
     /// Pushes the newly accepted pipe connection to the Nexus server for handling.
     /// </summary>
@@ -51,7 +39,6 @@ public class HttpSocketServerConfig : ServerConfig
         return true;
     } 
     
-    /// <param name="cancellationToken"></param>
     /// <inheritdoc />
     protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
     {

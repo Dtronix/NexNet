@@ -1,15 +1,11 @@
 ﻿using System.Net;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.Extensions.Options;
-using NexNet;
 using NexNet.Asp;
-using NexNet.Asp.HttpSocket;
-using NexNet.Asp.WebSocket;
-using NexNet.Invocation;
 using NexNet.Logging;
 
 namespace NexNetSample.Asp.Server;
-
 public class Program
 {
     public static async Task Main(string[] args)
@@ -22,25 +18,41 @@ public class Program
         builder.Services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders =
-                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
         });
         
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
+        // Sample dummy authentication.
+        builder.Services.AddAuthentication().AddBearerToken("BearerToken", options =>
+        {
+            options.Events = new BearerTokenEvents()
+            {
+                OnMessageReceived = context =>
+                {
+                    context.Principal = new ClaimsPrincipal();
+                    context.Success();
+                    return Task.CompletedTask;
+                }
+            };
+        });
+        
+        builder.Services.AddAuthorization();
+        builder.Services.AddHttpContextAccessor();
+
         var app = builder.Build();
-
-        //app.UseHttpsRedirection();
+        
         app.UseForwardedHeaders();
-
-        //await app.UseWebSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
-        //{
-        //    c.Path = "/websocket";
-        //}).StartAsync(app.Lifetime.ApplicationStopped);
+        
+        app.UseAuthentication();
+        app.UseAuthorization();
 
         await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
         {
-            c.Path = "/httpsocket";
+            c.Path = "/nexus";
             c.Logger.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
+            c.AspEnableAuthentication = true;
+            c.AspAuthenticationScheme = "BearerToken";
         }).StartAsync(app.Lifetime.ApplicationStopped);
 
 
