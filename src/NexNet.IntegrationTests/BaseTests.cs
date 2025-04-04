@@ -324,7 +324,6 @@ internal class BaseTests
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
-            builder.Services.AddAuthorization();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -372,7 +371,6 @@ internal class BaseTests
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
-            builder.Services.AddAuthorization();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -418,8 +416,11 @@ internal class BaseTests
         return (server, serverNexus, client, clientNexus, StartAspServer, StopAspServer);
     }
 
-    protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
-        CreateServer(ServerConfig sConfig, Action<ServerNexus>? nexusCreated)
+    protected NexusServer<ServerNexus, ServerNexus.ClientProxy> CreateServer(
+        ServerConfig sConfig,
+        Action<ServerNexus>? nexusCreated,
+        Action<WebApplicationBuilder>? OnAspCreateServices = null,
+        Action<WebApplication>? OnAspAppConfigure = null)
     {
         var server = ServerNexus.CreateServer(sConfig, () =>
         {
@@ -436,12 +437,15 @@ internal class BaseTests
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, 15050));
-            builder.Services.AddAuthorization();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+            
+            OnAspCreateServices?.Invoke(builder);
 
             var app = builder.Build();
+            
+            OnAspAppConfigure?.Invoke(app);
 
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
@@ -454,6 +458,8 @@ internal class BaseTests
                 app.MapHttpSocketNexus(sHttpSocketConfig);
 
             }
+            
+
 
             _ = app.RunAsync();
             AspServers.Add(app);

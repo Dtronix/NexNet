@@ -87,7 +87,11 @@ internal class WebSocketTransport : ITransport
             if(!httpSuccess && client.HttpStatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 throw new TransportException(TransportError.AuthenticationError,
                     $"Websocket connection authentication failed with Http stats code: {client.HttpStatusCode}", e);
-
+                    
+            if(client.HttpStatusCode == HttpStatusCode.InternalServerError)
+                throw new TransportException(TransportError.InternalError,
+                    $"Http connection authentication failed with stats code: {client.HttpStatusCode}", e);
+            
             throw new TransportException(GetTransportError(e.WebSocketErrorCode), e.Message, e);
         }
         catch (TaskCanceledException e)

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.HttpOverrides;
 using NexNet.Asp;
@@ -30,8 +31,16 @@ public class Program
             {
                 OnMessageReceived = context =>
                 {
-                    context.Principal = new ClaimsPrincipal();
-                    context.Success();
+                    if (context.Request.Headers.Authorization.First() == "Bearer SecretTokenValue")
+                    {
+                        context.Principal = new ClaimsPrincipal();
+                        context.Success();
+                    }
+                    else
+                    {
+                        context.Fail("Failed Connection");
+                    }
+
                     return Task.CompletedTask;
                 }
             };
@@ -50,7 +59,7 @@ public class Program
         await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
         {
             c.Path = "/nexus";
-            c.Logger.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
+            c.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
             c.AspEnableAuthentication = true;
             c.AspAuthenticationScheme = "BearerToken";
         }).StartAsync(app.Lifetime.ApplicationStopped);

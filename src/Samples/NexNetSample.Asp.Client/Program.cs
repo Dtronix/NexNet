@@ -16,7 +16,7 @@ internal class Program
             Url = new Uri("ws://127.0.0.1:9001/nexus"),
             Logger = new ConsoleLogger(),
             ReconnectionPolicy = new DefaultReconnectionPolicy(),
-            AuthenticationHeader = new AuthenticationHeaderValue("BearerToken", "SecretTokenValue")
+            AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
         };
         
         var clientHttpSocketConfig = new HttpSocketClientConfig()
@@ -24,7 +24,7 @@ internal class Program
             Url = new Uri("http://127.0.0.1:9001/nexus"),
             Logger = new ConsoleLogger(),
             ReconnectionPolicy = new DefaultReconnectionPolicy(),
-            AuthenticationHeader = new AuthenticationHeaderValue("BearerToken", "SecretTokenValue")
+            AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
         };
 
         var client = ClientNexus.CreateClient(clientHttpSocketConfig, new ClientNexus());

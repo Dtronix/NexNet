@@ -180,12 +180,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 catch (Exception e)
                 {
                     // Ignore exceptions
-                    _config.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
+                    _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
                 }
 
             }
 
-            await listener.CloseAsync(!_config.InternalNoLingerOnShutdown).ConfigureAwait(false);
+            await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
         }
         catch
         {
@@ -267,7 +267,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     private void ConnectionWatchdog(object? state)
     {
-        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
+        var timeoutTicks = Environment.TickCount64 - _config!.Timeout;
 
         foreach (var session in _sessionManager.Sessions)
             session.Value.DisconnectIfTimeout(timeoutTicks);
@@ -285,7 +285,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 if(clientTransport == null)
                     continue;
 
-                _config.InternalOnConnect?.Invoke();
+                _config!.InternalOnConnect?.Invoke();
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
@@ -303,7 +303,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         SessionManager = _sessionManager,
                         IsServer = true,
                         Id = (long)baseSessionId << 32 | (long)Random.Shared.Next(),
-                        Nexus = _nexusFactory.Invoke()
+                        Nexus = _nexusFactory!.Invoke()
                     });
             }
         }
@@ -311,12 +311,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _config.Logger?.LogError(ex, "Server shut down.");
+            _config!.Logger?.LogError(ex, "Server shut down.");
             await StopAsync().ConfigureAwait(false);
         }
     }
 
-    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, object? state)
+    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, in NexusSessionConfigurations<TServerNexus, TClientProxy>? state)
     {
         if (scheduler == PipeScheduler.Inline) scheduler = null;
         (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);

@@ -87,6 +87,10 @@ internal class HttpSocketTransport : ITransport
                 throw new TransportException(TransportError.AuthenticationError,
                     $"Http connection authentication failed with stats code: {e.StatusCode}", e);
             
+            if(e.StatusCode == HttpStatusCode.InternalServerError)
+                throw new TransportException(TransportError.InternalError,
+                    $"Http connection authentication failed with stats code: {e.StatusCode}", e);
+            
             throw new TransportException(GetTransportError(e.HttpRequestError), e.Message, e);
         }
         catch (TaskCanceledException e)
