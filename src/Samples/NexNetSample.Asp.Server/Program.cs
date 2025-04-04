@@ -16,11 +16,7 @@ public class Program
         {
             serverOptions.Listen(IPAddress.Any, 9001);
         });
-        builder.Services.Configure<ForwardedHeadersOptions>(options =>
-        {
-            options.ForwardedHeaders =
-                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-        });
+        builder.Services.Configure<ForwardedHeadersOptions>(options => options.ForwardedHeaders = ForwardedHeaders.All);
         
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
