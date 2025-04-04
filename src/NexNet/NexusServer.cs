@@ -56,7 +56,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <summary>
     /// Configurations the server us currently using.
     /// </summary>
-    public ServerConfig Config => _config;
+    public ServerConfig Config => _config ?? throw new InvalidOperationException("Nexus server has not been started yet.  Please setup with the parameterized constructor or invoke Configure().");
 
     /// <summary>
     /// Task which completes upon the server stopping.
@@ -80,6 +80,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
+    /// This is used in conjunction with the <see cref="Configure"/> method.  Configure must
+    /// be invoked after instancing with this constructor prior to starting the server,
+    /// otherwise it will throw on start. 
     /// </summary>
     public NexusServer()
     {
@@ -93,6 +96,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    /// <remarks>
+    /// Do not use this method.  Instead, use the parameterized constructor.
+    /// </remarks>
     public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
     {
         ArgumentNullException.ThrowIfNull(config);
