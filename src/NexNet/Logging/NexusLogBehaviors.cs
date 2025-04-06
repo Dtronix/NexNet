@@ -22,4 +22,9 @@ public enum NexusLogBehaviors : int
     /// Set to log all local nexus invocations on the nexus as Info instead of Debug.
     /// </summary>
     LocalInvocationsLogAsInfo = 1 << 1,
+    
+    /// <summary>
+    /// Set to log all incoming and outgoing data.  Recommended only for debugging.
+    /// </summary>
+    LogTransportData = 1 << 2,
 }

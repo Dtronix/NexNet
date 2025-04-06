@@ -71,7 +71,7 @@ internal class WebSocketTransport : ITransport
             await client.ConnectAsync(config.Url, cancellationTokenRegistration.Token).ConfigureAwait(false);
             
             IWebSocketPipe pipe =
-                new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true }, false);
+                new WebSocketPipe(client, new WebSocketPipeOptions { CloseWhenCompleted = true }, config);
             
             // Run receive loop on a long-running task.
             _ = Task.Factory.StartNew(

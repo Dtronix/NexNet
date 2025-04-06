@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Logging;
 
 namespace NexNet.Transports.WebSocket;
 
@@ -15,75 +16,80 @@ internal class WebSocketPipe : IWebSocketPipe
 {
     // Wait 250 ms before giving up on a Close, same as SignalR WebSocketHandler
     static readonly TimeSpan closeTimeout = TimeSpan.FromMilliseconds(250);
+    
+    private const int DefaultBufferSize = 8192;
 
-    readonly CancellationTokenSource disposeCancellation = new CancellationTokenSource();
-    readonly Pipe inputPipe;
-    readonly PipeWriter outputWriter;
+    readonly CancellationTokenSource _disposeCancellation = new CancellationTokenSource();
+    readonly Pipe _inputPipe;
+    readonly PipeWriter _outputWriter;
 
-    readonly System.Net.WebSockets.WebSocket webSocket;
-    readonly WebSocketPipeOptions options;
-    private readonly bool _isServer;
+    readonly System.Net.WebSockets.WebSocket _webSocket;
+    readonly WebSocketPipeOptions _options;
 
-    bool completed;
+    bool _completed;
+    private readonly ConfigBase _config;
 
-    public WebSocketPipe(System.Net.WebSockets.WebSocket webSocket, WebSocketPipeOptions options, bool isServer)
+    public WebSocketPipe(
+        System.Net.WebSockets.WebSocket webSocket, 
+        WebSocketPipeOptions options,
+        ConfigBase config)
     {
-        this.webSocket = webSocket;
-        this.options = options;
-        _isServer = isServer;
-        inputPipe = new Pipe(options.InputPipeOptions);
-        outputWriter = PipeWriter.Create(new WebSocketStream(webSocket));
+        _config = config;
+        this._webSocket = webSocket;
+        this._options = options;
+        _inputPipe = new Pipe(options.InputPipeOptions);
+        _outputWriter = PipeWriter.Create(new WebSocketStream(webSocket, config));
     }
 
-    bool IsClient => webSocket is ClientWebSocket;
+    bool IsClient => _webSocket is ClientWebSocket;
 
-    public PipeReader Input => inputPipe.Reader;
+    public PipeReader Input => _inputPipe.Reader;
 
-    public PipeWriter Output => outputWriter;
+    public PipeWriter Output => _outputWriter;
 
-    public WebSocketCloseStatus? CloseStatus => webSocket.CloseStatus;
+    public WebSocketCloseStatus? CloseStatus => _webSocket.CloseStatus;
 
-    public string? CloseStatusDescription => webSocket.CloseStatusDescription;
+    public string? CloseStatusDescription => _webSocket.CloseStatusDescription;
 
-    public WebSocketState State => webSocket.State;
+    public WebSocketState State => _webSocket.State;
 
-    public string? SubProtocol => webSocket.SubProtocol;
+    public string? SubProtocol => _webSocket.SubProtocol;
 
     public Task RunAsync(CancellationToken cancellation = default)
     {
-        if (webSocket.State != WebSocketState.Open)
-            throw new InvalidOperationException($"WebSocket must be opened. State was {webSocket.State}");
+        if (_webSocket.State != WebSocketState.Open)
+            throw new InvalidOperationException($"WebSocket must be opened. State was {_webSocket.State}");
 
-        var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellation, disposeCancellation.Token);
+        var combined = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _disposeCancellation.Token);
         return ReadInputAsync(combined.Token);
     }
 
     public async ValueTask CompleteAsync(WebSocketCloseStatus? closeStatus = null,
         string? closeStatusDescription = null)
     {
-        if (completed)
+        if (_completed)
             return;
 
-        completed = true;
+        _completed = true;
 
         // NOTE: invoking these more than once is no-op.
-        await inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
-        await inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+        await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
+        await _inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
 
-        if (options.CloseWhenCompleted || closeStatus != null)
+        if (_options.CloseWhenCompleted || closeStatus != null)
             await CloseAsync(closeStatus ?? WebSocketCloseStatus.NormalClosure, closeStatusDescription ?? "").ConfigureAwait(false);
     }
 
     async ValueTask CloseAsync(WebSocketCloseStatus closeStatus, string closeStatusDescription)
     {
         var state = State;
-        if (state == WebSocketState.Closed || state == WebSocketState.CloseSent || state == WebSocketState.Aborted)
+        if (state is WebSocketState.Closed or WebSocketState.CloseSent or WebSocketState.Aborted)
             return;
 
         var closeTask = IsClient ?
             // Disconnect from client vs server is different.
-            webSocket.CloseAsync(closeStatus, closeStatusDescription, default) :
-            webSocket.CloseOutputAsync(closeStatus, closeStatusDescription, default);
+            _webSocket.CloseAsync(closeStatus, closeStatusDescription, default) :
+            _webSocket.CloseOutputAsync(closeStatus, closeStatusDescription, default);
 
         // Don't wait indefinitely for the close to be acknowledged
         await Task.WhenAny(closeTask, Task.Delay(closeTimeout)).ConfigureAwait(false);
@@ -91,28 +97,38 @@ internal class WebSocketPipe : IWebSocketPipe
 
     async Task ReadInputAsync(CancellationToken cancellation)
     {
-        while (webSocket.State == WebSocketState.Open && !cancellation.IsCancellationRequested)
+        bool enableTransportLog = (_config.Logger?.Behaviors & NexusLogBehaviors.LogTransportData) != 0;
+        while (_webSocket.State == WebSocketState.Open && !cancellation.IsCancellationRequested)
         {
             try
             {
-                var message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation).ConfigureAwait(false);
+                var buffer = _inputPipe.Writer.GetMemory(DefaultBufferSize);
+                var message = await _webSocket.ReceiveAsync(buffer, cancellation).ConfigureAwait(false);
                 
                 while (!cancellation.IsCancellationRequested && !message.EndOfMessage && message.MessageType != WebSocketMessageType.Close)
                 {
                     if (message.Count == 0)
                         break;
+                    
+                    if (enableTransportLog)
+                        _config.Logger!.LogTraceArray($"Received {message.Count}:", buffer.Slice(0, message.Count));
 
-                    inputPipe.Writer.Advance(message.Count);
-                    message = await webSocket.ReceiveAsync(inputPipe.Writer.GetMemory(512), cancellation).ConfigureAwait(false);
+                    _inputPipe.Writer.Advance(message.Count);
+                    buffer = _inputPipe.Writer.GetMemory(DefaultBufferSize);
+                   
+                    message = await _webSocket.ReceiveAsync(buffer, cancellation).ConfigureAwait(false);
                 }
 
                 // We didn't get a complete message, we can't flush partial message.
                 if (cancellation.IsCancellationRequested || !message.EndOfMessage || message.MessageType == WebSocketMessageType.Close)
                     break;
+                
+                if (enableTransportLog)
+                    _config.Logger!.LogTraceArray($"Received {message.Count}:", buffer.Slice(0, message.Count));
 
                 // Advance the EndOfMessage bytes before flushing.
-                inputPipe.Writer.Advance(message.Count);
-                var result = await inputPipe.Writer.FlushAsync(cancellation).ConfigureAwait(false);
+                _inputPipe.Writer.Advance(message.Count);
+                var result = await _inputPipe.Writer.FlushAsync(cancellation).ConfigureAwait(false);
                 if (result.IsCompleted)
                     break;
 
@@ -126,23 +142,33 @@ internal class WebSocketPipe : IWebSocketPipe
         }
 
         // Preserve the close status since it might be triggered by a received Close message containing the status and description.
-        await CompleteAsync(webSocket.CloseStatus, webSocket.CloseStatusDescription).ConfigureAwait(false);
+        await CompleteAsync(_webSocket.CloseStatus, _webSocket.CloseStatusDescription).ConfigureAwait(false);
     }
 
     public void Dispose()
     {
-        disposeCancellation.Cancel();
-        webSocket.Dispose();
+        _disposeCancellation.Cancel();
+        _webSocket.Dispose();
     }
 
     class WebSocketStream : Stream
     {
-        readonly System.Net.WebSockets.WebSocket webSocket;
+        private readonly System.Net.WebSockets.WebSocket _webSocket;
+        private readonly ConfigBase _config;
 
-        public WebSocketStream(System.Net.WebSockets.WebSocket webSocket) => this.webSocket = webSocket;
+        public WebSocketStream(System.Net.WebSockets.WebSocket webSocket, ConfigBase config)
+        {
+            this._webSocket = webSocket;
+            _config = config;
+        }
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
-            => webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken);
+        {
+            if((_config.Logger?.Behaviors & NexusLogBehaviors.LogTransportData) != 0)
+                _config.Logger!.LogTraceArray($"Sent {buffer.Length}:", buffer);
+            
+            return _webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken);
+        }
 
         public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
         public override bool CanRead => throw new NotImplementedException();

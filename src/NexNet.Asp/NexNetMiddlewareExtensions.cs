@@ -47,7 +47,7 @@ public static class NexNetMiddlewareExtensions
                 using var pipe = IWebSocketPipe.Create(websocket, new WebSocketPipeOptions()
                 {
                     CloseWhenCompleted = true,
-                });
+                }, config);
                 
                 // If we can't push a new connection to the queue, the server has been stopped and is not
                 // accepting any new connections.

@@ -194,11 +194,18 @@ internal class BaseTests
 
         if (type == Type.WebSocket)
         {
+            CurrentTcpPort ??= FreeTcpPort();
+            
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
             return new WebSocketServerConfig() { Path = "/websocket-test", Logger = logger };
         }
 
         if (type == Type.HttpSocket)
         {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
             return new HttpSocketServerConfig() { Path = "/httpsocket-test", Logger = logger, };
         }
 
@@ -274,17 +281,27 @@ internal class BaseTests
 
         if (type == Type.WebSocket)
         {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            
             return new WebSocketClientConfig()
             {
-                Url = new Uri("ws://127.0.0.1:15050/websocket-test"), Logger = logger,
+                Url = new Uri($"ws://127.0.0.1:{CurrentTcpPort}/websocket-test"), 
+                Logger = logger,
             };
         }
 
         if (type == Type.HttpSocket)
         {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            
             return new HttpSocketClientConfig()
             {
-                Url = new Uri("http://127.0.0.1:15050/httpsocket-test"), Logger = logger,
+                Url = new Uri($"http://127.0.0.1:{CurrentTcpPort}/httpsocket-test"), 
+                Logger = logger,
             };
         }
 
@@ -294,7 +311,7 @@ internal class BaseTests
     protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
         _loggerMode = log;
-
+        
         var logger = log != BasePipeTests.LogMode.None
             ? _logger.CreatePrefixedLogger(null, "CL")
             : null;
@@ -320,10 +337,11 @@ internal class BaseTests
 
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
+            CurrentTcpPort ??= FreeTcpPort();
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, 15050));
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -367,10 +385,11 @@ internal class BaseTests
 
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
+            CurrentTcpPort ??= FreeTcpPort();
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, 15050));
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -433,10 +452,11 @@ internal class BaseTests
 
         if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
         {
+            CurrentTcpPort ??= FreeTcpPort();
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, 15050));
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));

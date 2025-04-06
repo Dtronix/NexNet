@@ -17,8 +17,13 @@ public interface IWebSocketPipe : IDuplexPipe, IDisposable
     /// </summary>
     /// <param name="webSocket">WebSocket to wrap.</param>
     /// <param name="options">Pipe and socket configurations.</param>
+    /// <param name="config">Server configuration.</param>
     /// <returns>New websocket</returns>
-    public static IWebSocketPipe Create(System.Net.WebSockets.WebSocket webSocket, WebSocketPipeOptions options) => new WebSocketPipe(webSocket, options, true);
+    public static IWebSocketPipe Create(
+        System.Net.WebSockets.WebSocket webSocket,
+        WebSocketPipeOptions options, 
+        AspServerConfig config) =>
+        new WebSocketPipe(webSocket, options, config);
     /// <summary>
     /// Indicates the reason for the close handshake.
     /// </summary>
