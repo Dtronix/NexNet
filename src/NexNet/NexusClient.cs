@@ -51,7 +51,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// Creates a NexNet client for communication with a matching NexNet server.
     /// </summary>
     /// <param name="config">Configurations for this client.</param>
-    /// <param name="nexus">Hub used for handling incoming invocations.</param>
+    /// <param name="nexus">Nexus used for handling incoming invocations.</param>
     public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);

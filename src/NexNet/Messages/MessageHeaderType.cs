@@ -85,11 +85,16 @@ public enum MessageType : byte
     /// Header for <see cref="ClientGreetingMessage"/>.
     /// </summary>
     ClientGreeting = 100,
-
+    
+    /// <summary>
+    /// Header for <see cref="ClientGreetingMessage"/>.
+    /// </summary>
+    ClientGreetingReconnection = 101,
+    
     /// <summary>
     /// Header for <see cref="ServerGreetingMessage"/>.
     /// </summary>
-    ServerGreeting = 101,
+    ServerGreeting = 105,
 
     // Messages 110 - 119 are reserved for invocation messages.
 

@@ -123,6 +123,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                         // HEADER + BODY
                         case MessageType.ClientGreeting:
+                        case MessageType.ClientGreetingReconnection:
                         case MessageType.ServerGreeting:
                         case MessageType.Invocation:
                         case MessageType.InvocationCancellation:
@@ -216,6 +217,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     case MessageType.ServerGreeting:
                     case MessageType.ClientGreeting:
+                    case MessageType.ClientGreetingReconnection:
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState: 
                         // TODO: Review transitioning this to a simple message instead of a full message.
@@ -315,9 +317,14 @@ internal partial class NexusSession<TNexus, TProxy>
 
         switch (messageType)
         {
+            case MessageType.ClientGreetingReconnection:
             case MessageType.ClientGreeting:
             {
-                var cGreeting = message.As<ClientGreetingMessage>();
+
+                var cGreeting = messageType == MessageType.ClientGreeting
+                    ? message.As<ClientGreetingMessage>()
+                    : message.As<ClientGreetingReconnectionMessage>();
+                        
                 // Verify that this is the server
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
