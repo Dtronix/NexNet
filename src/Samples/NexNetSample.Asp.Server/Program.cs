@@ -54,10 +54,10 @@ public class Program
 
         await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
         {
-            c.Path = "/nexus";
-            c.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
-            c.AspEnableAuthentication = true;
-            c.AspAuthenticationScheme = "BearerToken";
+            c.NexusConfig.Path = "/nexus";
+            c.NexusConfig.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
+            c.NexusConfig.AspEnableAuthentication = true;
+            c.NexusConfig.AspAuthenticationScheme = "BearerToken";
         }).StartAsync(app.Lifetime.ApplicationStopped);
 
 

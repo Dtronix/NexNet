@@ -16,6 +16,7 @@ using NexNet.Logging;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
+using ArgumentNullException = System.ArgumentNullException;
 
 namespace NexNet.Asp;
 
@@ -95,10 +96,12 @@ public static partial class NexNetMiddlewareExtensions
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
     public static NexusServer<TServerNexus, TClientProxy> UseHttpSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
-        Action<HttpSocketServerConfig>? configure = null)
+        Action<HttpSocketConfigure>? configure = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
+        ArgumentNullException.ThrowIfNull(app);
+
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
 
         if (server.IsConfigured)
@@ -116,7 +119,10 @@ public static partial class NexNetMiddlewareExtensions
         {
             Logger = new NexusILoggerBridgeLogger(logger)
         };
-        configure?.Invoke(config);
+        
+        var options = new HttpSocketOptions();
+        
+        configure?.Invoke(new HttpSocketConfigure(config, options));
         
         if(string.IsNullOrWhiteSpace(config.Path))
             throw new InvalidOperationException("Configured path is empty.  Must provide a endpoint for mapping to.");
@@ -124,17 +130,24 @@ public static partial class NexNetMiddlewareExtensions
         server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>());
         
         // Enable usage of sockets and register this nexus 
-        app.UseHttpSockets();
+        app.UseHttpSockets(options);
         app.MapHttpSocketNexus<TServerNexus, TClientProxy>(config);
 
         return server;
     }
     
     /// <summary>
+    /// Configuration object for Nexus HttpSockets.
+    /// </summary>
+    /// <param name="NexusConfig">Nexus configurations.</param>
+    /// <param name="SocketOptions">Socket options.</param>
+    public record HttpSocketConfigure(HttpSocketServerConfig NexusConfig, HttpSocketOptions SocketOptions);
+    
+    /// <summary>
     /// Adds the required middleware for a HttpSocket used by NexNet 
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
-    /// <param name="configure"></param>
+    /// <param name="configure">Optional configuration options.</param>
     /// <returns>Web app.</returns>
     public static IApplicationBuilder UseHttpSockets(this WebApplication app, Action<HttpSocketOptions>? configure = null)
     {
@@ -143,6 +156,20 @@ public static partial class NexNetMiddlewareExtensions
         var options = new HttpSocketOptions();
         
         configure?.Invoke(options);
+        return UseHttpSockets(app, options);
+    }
+
+    /// <summary>
+    /// Adds the required middleware for a HttpSocket used by NexNet 
+    /// </summary>
+    /// <param name="app">Web app to bind the NexNet server to.</param>
+    /// <param name="options">Options for the socket connection.</param>
+    /// <returns>Web app.</returns>
+    public static IApplicationBuilder UseHttpSockets(this WebApplication app, HttpSocketOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(app);
+
         return app.UseMiddleware<HttpSocketMiddleware>(options);
     }
 }
