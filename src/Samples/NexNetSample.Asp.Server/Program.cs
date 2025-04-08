@@ -17,7 +17,6 @@ public class Program
         });
         builder.Services.AddTransient<IHttpContextAccessor, HttpContextAccessor>();
         builder.Services.Configure<ForwardedHeadersOptions>(options => options.ForwardedHeaders = ForwardedHeaders.All);
-        builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
         // Sample dummy authentication.
         builder.Services.AddAuthentication().AddBearerToken("BearerToken", options =>
@@ -28,7 +27,12 @@ public class Program
                 {
                     if (context.Request.Headers.Authorization.First() == "Bearer SecretTokenValue")
                     {
-                        context.Principal = new ClaimsPrincipal();
+                        // Dummy data
+                        context.Principal = new ClaimsPrincipal([
+                            new ClaimsIdentity([
+                                new Claim(ClaimTypes.Name, "Connected User Name"),
+                            ])
+                        ]);
                         context.Success();
                     }
                     else
@@ -43,6 +47,8 @@ public class Program
         
         builder.Services.AddAuthorization();
         builder.Services.AddHttpContextAccessor();
+        
+        builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
         var app = builder.Build();
         
@@ -51,7 +57,7 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
 
-        await app.UseWebSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
+        await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
         {
             c.NexusConfig.Path = "/nexus";
             c.NexusConfig.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
