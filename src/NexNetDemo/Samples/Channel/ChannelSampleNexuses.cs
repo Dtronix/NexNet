@@ -14,16 +14,18 @@ interface IChannelSampleServerNexus
     ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
     ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
     ValueTask DifferentTypesChannel(INexusDuplexPipe pipe);
+
+    ValueTask Send(INexusDuplexChannel<ComplexMessage> channel);
 }
 
 
-[Nexus<IChannelSampleClientNexus, IChannelSampleServerNexus>(NexusType = NexusType.Client)]
+//[Nexus<IChannelSampleClientNexus, IChannelSampleServerNexus>(NexusType = NexusType.Client)]
 partial class ChannelSampleClientNexus
 {
 
 }
 
-[Nexus<IChannelSampleServerNexus, IChannelSampleClientNexus>(NexusType = NexusType.Server)]
+//[Nexus<IChannelSampleServerNexus, IChannelSampleClientNexus>(NexusType = NexusType.Server)]
 partial class ChannelSampleServerNexus
 {
     public async ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel)
@@ -86,6 +88,11 @@ partial class ChannelSampleServerNexus
         }
 
         await writer.CompleteAsync();
+    }
+
+    public ValueTask Send(INexusDuplexChannel<ComplexMessage> channel)
+    {
+        throw new NotImplementedException();
     }
 
     private static IEnumerable<ComplexMessage> GetComplexMessages()
