@@ -334,6 +334,7 @@ internal partial class NexusSession<TNexus, TProxy>
             
 
             case MessageType.ClientGreeting:
+            {
                 // Set the initial flag for the greeting and
                 // ensure we are not re-connecting with a simple ClientGreeting.
                 if ((EnumUtilities<InternalState>.SetFlag(
@@ -342,9 +343,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     _config.Logger?.LogError("Client attempted to connect with another ClientGreeting rather than the required ClientGreetingReconnection message.");
                     return DisconnectReason.ProtocolError;
                 }
-
-                ClientGreetingHandler:
-            {
+                
                 IClientGreetingMessageBase cGreeting = messageType == MessageType.ClientGreeting
                     ? message.As<ClientGreetingMessage>()
                     : message.As<ClientGreetingReconnectionMessage>();
