@@ -297,8 +297,8 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type, BasePipeTests.LogMode.Always),
-            CreateClientConfig(type, BasePipeTests.LogMode.Always));
+            CreateServerConfig(type),
+            CreateClientConfig(type));
 
         await server.StartAsync().Timeout(1);
 

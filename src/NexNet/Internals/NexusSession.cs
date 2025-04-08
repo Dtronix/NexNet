@@ -250,8 +250,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 _transportConnection = transport;
                 _registeredDisconnectReason = DisconnectReason.None;
                 EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
-
-                Logger?.LogInfo($"Reconnected");
+                // Remove the greeting received flag.
+                EnumUtilities<InternalState>.RemoveFlag(ref _internalState, InternalState.InitialServerGreetingReceived);
+                Logger?.LogInfo("Reconnected");
                 await StartAsClient(true).ConfigureAwait(false);
 
                 return true;
