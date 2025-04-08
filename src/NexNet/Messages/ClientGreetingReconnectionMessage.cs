@@ -6,10 +6,10 @@ using NexNet.Cache;
 namespace NexNet.Messages;
 
 [MemoryPackable(SerializeLayout.Explicit)]
-internal partial class ClientGreetingMessage : IClientGreetingMessageBase
+internal partial class ClientGreetingReconnectionMessage : IClientGreetingMessageBase
 {
     private bool _isArgumentPoolArray;
-    public static MessageType Type { get; } = MessageType.ClientGreeting;
+    public static MessageType Type { get; } = MessageType.ClientGreetingReconnection;
 
     private ICachedMessage? _messageCache = null!;
 

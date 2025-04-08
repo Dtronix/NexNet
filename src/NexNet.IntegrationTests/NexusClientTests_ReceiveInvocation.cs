@@ -1,4 +1,5 @@
-﻿using NexNet.IntegrationTests.TestInterfaces;
+﻿using NexNet.IntegrationTests.Pipes;
+using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
@@ -296,8 +297,8 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type),
-            CreateClientConfig(type));
+            CreateServerConfig(type, BasePipeTests.LogMode.Always),
+            CreateClientConfig(type, BasePipeTests.LogMode.Always));
 
         await server.StartAsync().Timeout(1);
 

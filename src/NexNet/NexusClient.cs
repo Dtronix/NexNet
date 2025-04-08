@@ -116,7 +116,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
-        await session.StartAsClient().ConfigureAwait(false);
+        await session.StartAsClient(false).ConfigureAwait(false);
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
 
