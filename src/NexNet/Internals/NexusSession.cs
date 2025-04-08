@@ -198,12 +198,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             await SendMessage(Unsafe.As<ClientGreetingReconnectionMessage>(greetingMessage)).ConfigureAwait(false);
         else
             await SendMessage(Unsafe.As<ClientGreetingMessage>(greetingMessage)).ConfigureAwait(false);
-        
-        // ReSharper disable once MethodSupportsCancellation
-        _ = Task.Factory.StartNew(StartReadAsync, TaskCreationOptions.LongRunning);
 
-        Logger?.LogInfo($"Client connected");
+        // Start the reading loop on a dedicated long-running task.
+        _ = Task.Factory.StartNew(() => StartReadAsync(), TaskCreationOptions.LongRunning);
 
+        Logger?.LogInfo("Client connected");
     }
 
     private async ValueTask<bool> TryReconnectAsClient()
@@ -299,12 +298,24 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             if (delay && _config.DisconnectDelay > 0)
             {
                 // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
-                await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);
+                try
+                {
+                    await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
             }
         }
 
         // This can not be stopped on some transports as they don't have an understanding about
         // shutting down of rending pipes separately from receiving pipes.
+        // Cancel any pending reads.
+        _pipeInput!.CancelPendingRead();
+        
+        // The CompelteAsync method does the exact same action, but introduces overhead into this call.
         // ReSharper disable once MethodHasAsyncOverload
         _pipeInput!.Complete();
         _pipeInput = null;

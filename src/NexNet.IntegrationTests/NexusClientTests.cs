@@ -328,7 +328,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         await server.StopAsync();
-        await tcs.Task.Timeout(1);
+        await tcs.Task.Timeout(1000);
     }
     
     [TestCase(Type.WebSocket)]

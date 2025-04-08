@@ -5,13 +5,14 @@ using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using NexNet.Logging;
 
 namespace NexNet.Internals;
 
 internal partial class NexusSession<TNexus, TProxy>
 {
-    public async Task StartReadAsync()
+    public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
         Logger?.LogTrace("Reading");
         _state = ConnectionState.Connected;
@@ -23,7 +24,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     || State != ConnectionState.Connected)
                     return;
 
-                var result = await _pipeInput.ReadAsync().ConfigureAwait(false);
+                var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
 
                 LastReceived = Environment.TickCount64;
 

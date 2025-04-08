@@ -76,8 +76,8 @@ public class TcpServerConfig : ServerConfig
 
 
     /// <inheritdoc />
-    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
+    protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return new ValueTask<ITransportListener>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
+        return new ValueTask<ITransportListener?>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
     }
 }

@@ -16,8 +16,8 @@ public class Program
         {
             serverOptions.Listen(IPAddress.Any, 9001);
         });
+        builder.Services.AddTransient<IHttpContextAccessor, HttpContextAccessor>();
         builder.Services.Configure<ForwardedHeadersOptions>(options => options.ForwardedHeaders = ForwardedHeaders.All);
-        
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
         // Sample dummy authentication.

@@ -29,8 +29,8 @@ public sealed class UdsServerConfig : ServerConfig
     public override int NexusPipeFlushChunkSize { get; set; } = 1024 * 4;
 
     /// <inheritdoc />
-    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
+    protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return new ValueTask<ITransportListener>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.IP));
+        return new ValueTask<ITransportListener?>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.IP));
     }
 }

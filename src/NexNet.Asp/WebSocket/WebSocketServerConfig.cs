@@ -38,9 +38,9 @@ public class WebSocketServerConfig : AspServerConfig
     }
     
     /// <inheritdoc />
-    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
+    protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return ValueTask.FromResult<ITransportListener>(new WebSocketTransportListener(this, _connectionQueue));
+        return ValueTask.FromResult<ITransportListener?>(new WebSocketTransportListener(this, _connectionQueue));
     }
 
 }

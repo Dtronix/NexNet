@@ -33,8 +33,8 @@ public sealed class TcpTlsServerConfig : TcpServerConfig
     public int SslConnectionTimeout { get; set; } = 5000;
 
     /// <inheritdoc />
-    protected override ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken)
+    protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
-        return new ValueTask<ITransportListener>(TcpTlsTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
+        return new ValueTask<ITransportListener?>(TcpTlsTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
     }
 }

@@ -14,6 +14,7 @@ using NexNet.Asp.WebSocket;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Transports;
+using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
 
 namespace NexNet.Asp;
@@ -65,14 +66,22 @@ public static class NexNetMiddlewareExtensions
             }
         });
     }
-    
+
     /// <summary>
     /// Maps a Nexus on a HttpSocket.
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
     /// <param name="config">NexNet configurations.</param>
+    /// <param name="server">
+    /// Optional server to pass use directly.  Normal usage will leave this null.
+    /// </param>
     /// <returns>Web app builder.</returns>
-    public static IApplicationBuilder MapHttpSocketNexus(this WebApplication app, HttpSocketServerConfig config)
+    public static IApplicationBuilder MapHttpSocketNexus<TServerNexus, TClientProxy>(
+        this WebApplication app,
+        HttpSocketServerConfig config,
+        NexusServer<TServerNexus, TClientProxy>? server = null)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
@@ -82,6 +91,16 @@ public static class NexNetMiddlewareExtensions
             if (config.IsAccepting &&
                 context.Request.Path == config.Path)
             {
+                // Either use the server passed or create a new server service.
+                server ??= app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
+                
+                // Check to see if the server is running.
+                if (server.State != NexusServerState.Running)
+                {
+                    await next(context);
+                    return;
+                }
+
                 if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
                     return;
                 
@@ -90,15 +109,11 @@ public static class NexNetMiddlewareExtensions
                 if (httpSocket?.IsHttpSocketRequest == true)
                 {
                     var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
-
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
                     var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
                     
-                    // If we can't push a new connection to the queue, the server has been stopped and is not
-                    // accepting any new connections.
-                    if (!config.PushNewConnectionAsync(pipe))
-                        return;
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
-                    await pipe.PipeClosedCompletion.WaitAsync(cts.Token).ConfigureAwait(false);
+                    await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new HttpSocketTransport(pipe), cts.Token).ConfigureAwait(false);
+                    return;
                 }
             }
             
@@ -106,6 +121,52 @@ public static class NexNetMiddlewareExtensions
 
         });
     }
+    
+    // /// <summary>
+    // /// Maps a Nexus on a HttpSocket.
+    // /// </summary>
+    // /// <param name="app">Web app to bind the NexNet server to.</param>
+    // /// <param name="config">NexNet configurations.</param>
+    // /// <returns>Web app builder.</returns>
+    // internal static IApplicationBuilder MapHttpSocketNexus<TServerNexus, TClientProxy>(
+    //     this WebApplication app, 
+    //     HttpSocketServerConfig config, 
+    //     NexusServer<TServerNexus, TClientProxy> server)
+    //     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+    //     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    // {
+    //     ArgumentNullException.ThrowIfNull(app);
+    //     ArgumentNullException.ThrowIfNull(config);
+    //
+    //     return app.Use(async (context, next) =>
+    //     {
+    //         if (config.IsAccepting &&
+    //             context.Request.Path == config.Path)
+    //         {
+    //             if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
+    //                 return;
+    //             
+    //             var httpSocket = context.Features.Get<IHttpSocketFeature>();
+    //             
+    //             if (httpSocket?.IsHttpSocketRequest == true)
+    //             {
+    //                 var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+    //
+    //                 var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
+    //                 
+    //                 //var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
+    //                 await server.AcceptTransport(new HttpSocketTransport(pipe));
+    //                 // If we can't push a new connection to the queue, the server has been stopped and is not
+    //                 // accepting any new connections.
+    //                 //using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
+    //                 //await pipe.PipeClosedCompletion.WaitAsync(cts.Token).ConfigureAwait(false);
+    //             }
+    //         }
+    //         
+    //         await next(context);
+    //
+    //     });
+    // }
 
     /// <summary>
     /// Uses a Nexus with a HttpSocket.
@@ -123,13 +184,13 @@ public static class NexNetMiddlewareExtensions
     {
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
 
-        if (server.Config != null)
+        if (server.IsConfigured)
             throw new InvalidOperationException("Server has already been configured and can not be reused.");
 
         // If the server is already started, then we can't start it again, and we can't map the same
         // nexus to multiple path endpoints.
-        if (server.IsStarted)
-            throw new InvalidOperationException("Server is already started.");
+        if (server.State == NexusServerState.Running)
+            throw new InvalidOperationException("Server is already running.");
         
         // Setup logging
         var logger = app.Services.GetRequiredService<ILogger<INexusServer>>();
@@ -147,7 +208,7 @@ public static class NexNetMiddlewareExtensions
         
         // Enable usage of sockets and register this nexus 
         app.UseHttpSockets();
-        app.MapHttpSocketNexus(config);
+        app.MapHttpSocketNexus<TServerNexus, TClientProxy>(config);
 
         return server;
     }
@@ -173,8 +234,8 @@ public static class NexNetMiddlewareExtensions
 
         // If the server is already started, then we can't start it again, and we can't map the same
         // nexus to multiple path endpoints.
-        if (server.IsStarted)
-            throw new InvalidOperationException("Server is already started.");
+        if (server.State == NexusServerState.Running)
+            throw new InvalidOperationException("Server is already running.");
 
         // Setup logging
         var logger = app.Services.GetRequiredService<ILogger<INexusServer>>();

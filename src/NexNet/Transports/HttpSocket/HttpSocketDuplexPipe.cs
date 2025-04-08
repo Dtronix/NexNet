@@ -20,15 +20,7 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
     readonly PipeReader _inputPipe;
     readonly PipeWriter _outputPipe;
     private readonly TaskCompletionSource? _pipeClosedTcs;
-    //private readonly CancellationTokenRegistration? _serverConnectionAbortedRegistration;
-    //private readonly CancellationTokenRegistration? _lifetimeApplicationStoppingRegistration;
     
-    /// <summary>
-    /// Task completed upon the completion of the pipe.
-    /// </summary>
-    /// <exception cref="InvalidOperationException"></exception>
-    public Task PipeClosedCompletion => _pipeClosedTcs?.Task ?? throw new InvalidOperationException("This can only be used on servers.");
-
     /// <inheritdoc />
     public PipeReader Input => _inputPipe;
 

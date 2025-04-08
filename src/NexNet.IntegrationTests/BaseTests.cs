@@ -102,7 +102,7 @@ internal class BaseTests
 
         foreach (var nexusServer in Servers)
         {
-            if (!nexusServer.IsStarted)
+            if (nexusServer.State != NexusServerState.Running)
                 continue;
 
             _ = nexusServer.StopAsync();
@@ -342,6 +342,8 @@ internal class BaseTests
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
+            
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -356,7 +358,7 @@ internal class BaseTests
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(sHttpSocketConfig);
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
             }
 
             _ = app.RunAsync();
@@ -390,6 +392,8 @@ internal class BaseTests
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
+            
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
@@ -404,7 +408,7 @@ internal class BaseTests
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(sHttpSocketConfig);
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
 
             }
 
@@ -458,6 +462,8 @@ internal class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
 
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
             
@@ -475,8 +481,7 @@ internal class BaseTests
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(sHttpSocketConfig);
-
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
             }
             
 
