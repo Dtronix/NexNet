@@ -27,7 +27,7 @@ internal class Program
             AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
         };
 
-        var client = ClientNexus.CreateClient(clientHttpSocketConfig, new ClientNexus());
+        var client = ClientNexus.CreateClient(clientWebSocketConfig, new ClientNexus());
 
         await client.ConnectAsync();
         

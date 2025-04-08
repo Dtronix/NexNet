@@ -96,13 +96,13 @@ public static partial class NexNetMiddlewareExtensions
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
     public static NexusServer<TServerNexus, TClientProxy> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
-        Action<WebSocketServerConfig>? configure = null)
+        Action<WebSocketConfigure>? configure = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
 
-        if (server.Config != null)
+        if (server.IsConfigured)
             throw new InvalidOperationException("Server has already been configured and can not be reused.");
 
         // If the server is already started, then we can't start it again, and we can't map the same
@@ -117,7 +117,7 @@ public static partial class NexNetMiddlewareExtensions
         {
             Logger = new NexusILoggerBridgeLogger(logger)
         };
-        configure?.Invoke(config);
+        configure?.Invoke(new WebSocketConfigure(config));
         
         if(string.IsNullOrWhiteSpace(config.Path))
             throw new InvalidOperationException("Configured path is empty.  Must provide a endpoint for mapping to.");
@@ -130,4 +130,10 @@ public static partial class NexNetMiddlewareExtensions
 
         return server;
     }
+    
+    /// <summary>
+    /// Configuration object for Nexus WebSockets.
+    /// </summary>
+    /// <param name="NexusConfig">Nexus configurations.</param>
+    public record WebSocketConfigure(WebSocketServerConfig NexusConfig);
 }

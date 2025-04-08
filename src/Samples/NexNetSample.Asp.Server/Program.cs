@@ -52,7 +52,7 @@ public class Program
         app.UseAuthentication();
         app.UseAuthorization();
 
-        await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
+        await app.UseWebSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
         {
             c.NexusConfig.Path = "/nexus";
             c.NexusConfig.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;

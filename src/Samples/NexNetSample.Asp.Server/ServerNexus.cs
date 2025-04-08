@@ -11,7 +11,7 @@ namespace NexNetSample.Asp.Server;
 public partial class ServerNexus
 {
 #pragma warning disable CS8618, CS9264
-    public ServerNexus(IHttpContextAccessor  requestFeature)
+    public ServerNexus(IHttpContextAccessor requestFeature)
 #pragma warning restore CS8618, CS9264
     {
         
