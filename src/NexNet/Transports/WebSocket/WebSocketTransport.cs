@@ -18,7 +18,7 @@ internal class WebSocketTransport : ITransport
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
 
-    private WebSocketTransport(IWebSocketPipe pipe)
+    public WebSocketTransport(IWebSocketPipe pipe)
     {
         _pipe = pipe;
         Input = pipe.Input;

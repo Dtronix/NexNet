@@ -30,9 +30,7 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
     /// <param name="config">NexNet configurations.</param>
-    /// <param name="server">
-    /// Optional server to pass use directly.  Normal usage will leave this null.
-    /// </param>
+    /// <param name="server"> Optional server to pass use directly.  Normal usage will leave this null. </param>
     /// <remarks>
     /// This <see cref="MapHttpSocketNexus{TServerNexus,TClientProxy}"/> method is used for setting up mapping of the
     /// passed or nexus server service.  Using this method is discouraged over the complete <see cref="UseHttpSocketNexusServerAsync{TServerNexus,TClientProxy}"/>
@@ -52,14 +50,16 @@ public static partial class NexNetMiddlewareExtensions
 
         return app.Use(async (context, next) =>
         {
-            if (config.IsAccepting &&
-                context.Request.Path == config.Path)
+            if (context.Request.Path == config.Path)
             {
                 // Either use the server passed or create a new server service.
                 server ??= app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
                 
-                // Check to see if the server is running.
-                if (server.State != NexusServerState.Running)
+                var httpSocket = context.Features.Get<IHttpSocketFeature>();
+                
+                // Check to see if the server is running and if this is the right type of connection.
+                if (server.State != NexusServerState.Running
+                    || httpSocket?.IsHttpSocketRequest != true)
                 {
                     await next(context);
                     return;
@@ -68,17 +68,12 @@ public static partial class NexNetMiddlewareExtensions
                 if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
                     return;
                 
-                var httpSocket = context.Features.Get<IHttpSocketFeature>();
-                
-                if (httpSocket?.IsHttpSocketRequest == true)
-                {
-                    var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
-                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
-                    var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
+                var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
+                var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
                     
-                    await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new HttpSocketTransport(pipe), cts.Token).ConfigureAwait(false);
-                    return;
-                }
+                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new HttpSocketTransport(pipe), cts.Token).ConfigureAwait(false);
+                return;
             }
             
             await next(context);

@@ -74,6 +74,9 @@ internal class HttpSocketTransport : ITransport
             if(response.StatusCode != HttpStatusCode.SwitchingProtocols)
                 response.EnsureSuccessStatusCode();
       
+            // Don't cancel the stream from the passed cancellation token as it is only valid
+            // until the connection has been completed.
+            // ReSharper disable once MethodSupportsCancellation
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
   
             var pipe = new HttpSocketDuplexPipe(connectedStream, false);

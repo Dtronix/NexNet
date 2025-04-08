@@ -353,7 +353,7 @@ internal class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(sWebSocketConfig);
+                app.MapWebSocketNexus(sWebSocketConfig, server);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
@@ -403,7 +403,7 @@ internal class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(sWebSocketConfig);
+                app.MapWebSocketNexus(sWebSocketConfig, server);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
@@ -476,7 +476,7 @@ internal class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(sWebSocketConfig);
+                app.MapWebSocketNexus(sWebSocketConfig, server);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {

@@ -5,8 +5,6 @@ namespace NexNet.Transports;
 /// </summary>
 public abstract class AspServerConfig : ServerConfig
 {
-    internal bool IsAccepting = true;
-
     /// <summary>
     /// Path that the NexNet server binds to on the host.
     /// </summary>

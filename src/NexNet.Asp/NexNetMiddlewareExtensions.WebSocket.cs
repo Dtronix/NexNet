@@ -29,20 +29,38 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
     /// <param name="config">NexNet configurations.</param>
+    /// <param name="server">Optional server to pass use directly.  Normal usage will leave this null.</param>
     /// <returns>Web app.</returns>
-    public static IApplicationBuilder MapWebSocketNexus(this WebApplication app, WebSocketServerConfig config)
+    public static IApplicationBuilder MapWebSocketNexus<TServerNexus, TClientProxy>(
+        this WebApplication app, 
+        WebSocketServerConfig config,
+        NexusServer<TServerNexus, TClientProxy>? server = null)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
         
         return app.Use(async (context, next) =>
         {
-            if (config.IsAccepting &&
-                context.Request.Path.Value == config.Path &&
+            if (context.Request.Path.Value == config.Path &&
                 context.WebSockets.IsWebSocketRequest)
             {
+                // Either use the server passed or create a new server service.
+                server ??= app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
+                
+                // Check to see if the server is running.
+                if (server.State != NexusServerState.Running)
+                {
+                    await next(context);
+                    return;
+                }
+                
                 if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
                     return;
+                
+                var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
                 
                 using var websocket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
                 using var pipe = IWebSocketPipe.Create(websocket, new WebSocketPipeOptions()
@@ -50,15 +68,14 @@ public static partial class NexNetMiddlewareExtensions
                     CloseWhenCompleted = true,
                 }, config);
                 
-                // If we can't push a new connection to the queue, the server has been stopped and is not
-                // accepting any new connections.
-                if (!config.PushNewConnectionAsync(pipe))
-                    return;
+                // Run the reader until the connection completes.
+                _ = Task.Factory.StartNew(static async obj =>
+                {
+                    var state = Unsafe.As<WebSocketReadingState>(obj)!;
+                    await state.Pipe.RunAsync(state.CancellationToken).ConfigureAwait(false);
+                }, new WebSocketReadingState(pipe, cts.Token), cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
                 
-                var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
-
-                await pipe.RunAsync(cts.Token).ConfigureAwait(false);
+                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new WebSocketTransport(pipe), cts.Token).ConfigureAwait(false);
             }
             else
             {
@@ -66,6 +83,8 @@ public static partial class NexNetMiddlewareExtensions
             }
         });
     }
+    
+    private record WebSocketReadingState(IWebSocketPipe Pipe, CancellationToken CancellationToken);
     
     /// <summary>
     /// Uses a Nexus with a HttpSocket.
@@ -107,7 +126,7 @@ public static partial class NexNetMiddlewareExtensions
 
         // Enable usage of sockets and register this nexus 
         app.UseWebSockets();
-        app.MapWebSocketNexus(config);
+        app.MapWebSocketNexus<TServerNexus, TClientProxy>(config);
 
         return server;
     }
