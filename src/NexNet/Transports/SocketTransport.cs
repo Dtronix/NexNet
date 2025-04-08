@@ -79,7 +79,8 @@ internal class SocketTransport : ITransport
             try
             {
                 using var timeoutCancellation = new CancellationTokenSource();
-                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
+                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel)
+                    .ConfigureAwait(false);
                 // Connection timeout task.
                 async Task ConnectionTimeout()
                 {

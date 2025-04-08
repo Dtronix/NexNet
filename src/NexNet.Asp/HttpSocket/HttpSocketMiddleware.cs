@@ -152,12 +152,12 @@ public class HttpSocketMiddleware
             if (_isH2HttpSocket)
             {
                 // Send the response headers
-                opaqueTransport = await _connectFeature!.AcceptAsync();
+                opaqueTransport = await _connectFeature!.AcceptAsync().ConfigureAwait(false);
             }
             // HTTP/1.1
             else
             {
-                opaqueTransport = await _upgradeFeature!.UpgradeAsync(); // Sets status code to 101
+                opaqueTransport = await _upgradeFeature!.UpgradeAsync().ConfigureAwait(false); // Sets status code to 101
             }
             
             // Disable request timeout, if there is one, after the httpsocket has been accepted

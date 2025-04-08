@@ -78,7 +78,8 @@ internal class TcpTlsTransport : ITransport
             var sslStream = new SslStream(networkStream, true);
 
             using var sslTimeout = new CancellationTokenSource(clientConfig.SslConnectionTimeout);
-            await using var cancellationTokenRegistration = cancellationToken.Register(sslTimeout.Cancel);
+            await using var cancellationTokenRegistration = cancellationToken.Register(sslTimeout.Cancel)
+                .ConfigureAwait(false);
 
             await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token)
                 .ConfigureAwait(false);

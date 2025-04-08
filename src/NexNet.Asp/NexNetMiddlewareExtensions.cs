@@ -252,11 +252,11 @@ public static class NexNetMiddlewareExtensions
         AuthenticateResult authResult;
         if (string.IsNullOrWhiteSpace(authScheme))
         {
-            authResult = await context.AuthenticateAsync();
+            authResult = await context.AuthenticateAsync().ConfigureAwait(false);
         }
         else
         {
-            authResult = await context.AuthenticateAsync(authScheme);
+            authResult = await context.AuthenticateAsync(authScheme).ConfigureAwait(false);
         }
 
         if (authResult.Succeeded)

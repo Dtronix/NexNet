@@ -237,7 +237,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice).ConfigureAwait(false);
                         break;
                     }
 
@@ -370,7 +370,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     // Run the handler and verify that it is good.
                     var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
-                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken);
+                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken).ConfigureAwait(false);
 
                     // Set the identity on the context.
                     var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);

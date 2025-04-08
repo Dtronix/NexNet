@@ -258,10 +258,12 @@ partial class MethodMeta
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
             sb.Append(DuplexPipeParameter!.SerializedId);
-            sb.AppendLine(");");
+            sb.AppendLine(").ConfigureAwait(false);");
         }
 
-        sb.Append("                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 ? global::NexNet.Logging.NexusLogLevel.Information : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $\"Invoking Method: ");
+        sb.AppendLine("                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 ");
+        sb.AppendLine("                            ? global::NexNet.Logging.NexusLogLevel.Information");
+        sb.Append("                            : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $\"Invoking Method: ");
 
         EmitNexusMethodInvocation(sb, true);
         sb.AppendLine("\");");
@@ -394,8 +396,9 @@ partial class MethodMeta
             if(addedParam)
                 sb.Remove(sb.Length - 2, 2);
         }
-
-        sb.Append(");");
+        
+        // Configure the await if the method is not a void return type.
+        sb.Append(")").Append((this.IsReturnVoid || forLog) ? ";" : ".ConfigureAwait(false);");
 
         if (!forLog)
             sb.AppendLine();

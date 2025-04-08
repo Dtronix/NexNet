@@ -163,7 +163,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             finally
             {
                 if(cancellationTokenRegistration != null)
-                    await cancellationTokenRegistration.Value.DisposeAsync();
+                    await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
             }
         }
 
@@ -186,7 +186,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         if (_messenger == null)
         {
             if (cancellationTokenRegistration != null)
-                await cancellationTokenRegistration.Value.DisposeAsync();
+                await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
 
             throw new InvalidOperationException("Session is null.");
         }
@@ -246,7 +246,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         }
 
         if(cancellationTokenRegistration != null)
-            await cancellationTokenRegistration.Value.DisposeAsync();
+            await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
 
         return new FlushResult(_isCanceled, _isCompleted);
     }
