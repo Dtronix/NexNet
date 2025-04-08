@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests.Pipes;
 

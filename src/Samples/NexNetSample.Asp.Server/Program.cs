@@ -1,6 +1,5 @@
 ﻿using System.Net;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.HttpOverrides;
 using NexNet.Asp;

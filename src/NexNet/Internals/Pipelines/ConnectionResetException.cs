@@ -1,7 +1,6 @@
 ﻿#nullable disable
 using System;
 using System.IO;
-using System.Runtime.Serialization;
 
 namespace NexNet.Internals.Pipelines;
 

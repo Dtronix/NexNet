@@ -1,6 +1,4 @@
-﻿using System.Net.Sockets;
-using MemoryPack;
-using NexNet.IntegrationTests.Pipes;
+﻿using MemoryPack;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;

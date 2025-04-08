@@ -1,6 +1,4 @@
-﻿using System.Net.Quic;
-using NexNet.IntegrationTests.TestInterfaces;
-using NexNet.Transports;
+﻿using NexNet.Transports;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 

@@ -1,6 +1,4 @@
-﻿using System.Security.Claims;
-using Microsoft.AspNetCore.Http.Features;
-using NexNet;
+﻿using NexNet;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;

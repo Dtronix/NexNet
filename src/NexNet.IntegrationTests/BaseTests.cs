@@ -4,7 +4,6 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
-using Microsoft.AspNetCore.TestHost;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
@@ -17,7 +16,6 @@ using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NexNet.IntegrationTests;

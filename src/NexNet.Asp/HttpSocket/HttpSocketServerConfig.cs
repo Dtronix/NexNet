@@ -1,10 +1,6 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
-using Microsoft.AspNetCore.Http;
-using NexNet.Logging;
 using NexNet.Transports;
-using NexNet.Transports.HttpSocket;
 
 namespace NexNet.Asp.HttpSocket;
 

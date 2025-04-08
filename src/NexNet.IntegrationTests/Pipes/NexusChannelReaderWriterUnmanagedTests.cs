@@ -1,7 +1,4 @@
-﻿using System.Buffers;
-using NexNet.Internals;
-using NexNet.Messages;
-using NexNet.Pipes;
+﻿using NexNet.Pipes;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;

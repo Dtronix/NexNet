@@ -1,13 +1,9 @@
 ﻿using System;
 using System.IO.Pipelines;
 using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Quic;
-using System.Net.Security;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Transports;
 
 namespace NexNet.Transports.WebSocket;
 

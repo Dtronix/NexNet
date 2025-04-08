@@ -1,9 +1,5 @@
-﻿using NexNet.Logging;
-using NexNetDemo.Samples;
+﻿using NexNetDemo.Samples;
 using NexNetDemo.Samples.Channel;
-using NexNetDemo.Samples.DuplexPipeStreaming;
-using NexNetDemo.Samples.InvocationSample;
-using NexNetDemo.Samples.Messenger;
 
 namespace NexNetDemo;
 

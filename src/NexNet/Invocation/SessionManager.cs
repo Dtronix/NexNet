@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using static System.Collections.Specialized.BitVector32;
 
 namespace NexNet.Invocation;
 /// <summary>

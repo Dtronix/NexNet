@@ -1,5 +1,4 @@
-﻿using NexNet.IntegrationTests.Pipes;
-using NexNet.IntegrationTests.TestInterfaces;
+﻿using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 

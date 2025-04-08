@@ -1,5 +1,4 @@
 ﻿using System.Net.Http.Headers;
-using NexNet;
 using NexNet.Logging;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
