@@ -419,11 +419,11 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Set the server assigned client id.
                 Id = message.As<ServerGreetingMessage>().ClientId;
 
-                _ = Task.Factory.StartNew(InvokeOnConnected, this);
-                
                 EnumUtilities<InternalState>.SetFlag(
                     ref _internalState, InternalState.NexusCompletedConnection);
-
+                
+                _ = Task.Factory.StartNew(InvokeOnConnected, this);
+                
                 _readyTaskCompletionSource?.TrySetResult();
                 break;
 
