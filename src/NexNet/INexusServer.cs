@@ -28,13 +28,18 @@ public interface INexusServer : IAsyncDisposable
     NexusServerState State { get; }
 
     /// <summary>
-    /// Starts the server.
+    /// True if the server has been Configured and ready to start.
+    /// </summary>
+    bool IsConfigured { get; }
+
+    /// <summary>
+    /// Starts the server.  Returns upon completion of the start process.  Does not block.
     /// </summary>
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stops the server.
+    /// Stops the server.  Returns upon the completion of the stop process.
     /// </summary>
     Task StopAsync();
     

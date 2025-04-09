@@ -41,24 +41,16 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
     
-    /// <summary>
-    /// State of the server.
-    /// </summary>
+    /// <inheritdoc />
     public NexusServerState State => _state;
 
-    /// <summary>
-    /// Configurations the server us currently using.
-    /// </summary>
+    /// <inheritdoc />
     public ServerConfig Config => _config ?? throw new InvalidOperationException("Nexus server has not been started yet.  Please setup with the parameterized constructor or invoke Configure().");
 
-    /// <summary>
-    /// Task which completes upon the server stopping.
-    /// </summary>
+    /// <inheritdoc />
     public Task? StoppedTask => _stoppedTcs?.Task;
 
-    /// <summary>
-    /// True if the server has been Configured and ready to start.
-    /// </summary>
+    /// <inheritdoc />
     public bool IsConfigured => _config != null;
 
     /// <summary>
@@ -110,7 +102,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     }
 
     /// <summary>
-    /// Gets a nexus context which can be used outside of the nexus.  Dispose after usage.
+    /// Gets a nexus context which can be used outside the nexus.  Dispose after usage.
     /// </summary>
     /// <returns>Server nexus context for invocation of client methods.</returns>
     public ServerNexusContext<TClientProxy> GetContext()
@@ -121,10 +113,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         return context;
     }
 
-    /// <summary>
-    /// Starts the server.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
+
+    /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(_config);
@@ -156,9 +146,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
     }
 
-    /// <summary>
-    /// Stops the server.
-    /// </summary>
+    /// <inheritdoc />
     public async Task StopAsync()
     {
         if (Interlocked.CompareExchange(ref _state, NexusServerState.Stopped, NexusServerState.Running) != NexusServerState.Running)
@@ -202,10 +190,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _stoppedTcs?.TrySetResult();
     }
 
-    /// <summary>
-    /// Disposes the server. Server can not be restarted after this.
-    /// </summary>
-    /// <returns>Value task which completes upon disposal.</returns>
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         var previousState = Interlocked.Exchange(ref _state, NexusServerState.Disposed);
@@ -215,11 +200,41 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
         await StopAsync().ConfigureAwait(false);
     }
+    
+    ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
+    {
+        if (_config == null)
+            throw new InvalidOperationException(
+                "Can't accept new transport before server configuration has been completed.");
+        var baseSessionId = _sessionIdIncrementer++;
+        
+        _config!.InternalOnConnect?.Invoke();
+        
+        return RunClientAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
+        {
+            Transport = transport,
+            Cache = _cacheManager,
+            Configs = _config,
+            SessionManager = _sessionManager,
+            IsServer = true,
+            Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
+            Nexus = _nexusFactory!.Invoke()
+        }, cancellationToken);
+    }
 
     private static async void RunClientAsync(object? boxed)
     {
-        var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
-        await RunClientAsync(arguments);
+        try
+        {
+            var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
+            await RunClientAsync(arguments);
+        }
+        catch (Exception e)
+        {
+            ((NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!).Configs.Logger
+                ?.LogError(e, "Exception while running client");
+        }
+        
     }
 
     private static async ValueTask RunClientAsync(
@@ -286,27 +301,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         foreach (var session in _sessionManager.Sessions)
             session.Value.DisconnectIfTimeout(timeoutTicks);
     }
-
-    ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
-    {
-        if (_config == null)
-            throw new InvalidOperationException(
-                "Can't accept new transport before server configuration has been completed.");
-        var baseSessionId = _sessionIdIncrementer++;
-        
-        _config!.InternalOnConnect?.Invoke();
-        
-        return RunClientAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
-        {
-            Transport = transport,
-            Cache = _cacheManager,
-            Configs = _config,
-            SessionManager = _sessionManager,
-            IsServer = true,
-            Id = (long)baseSessionId << 32 | (long)Random.Shared.Next(),
-            Nexus = _nexusFactory!.Invoke()
-        }, cancellationToken);
-    }
     
     private async Task ListenForConnectionsAsync()
     {
@@ -337,7 +331,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Configs = _config,
                         SessionManager = _sessionManager,
                         IsServer = true,
-                        Id = (long)baseSessionId << 32 | (long)Random.Shared.Next(),
+                        Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
                         Nexus = _nexusFactory!.Invoke()
                     });
             }
