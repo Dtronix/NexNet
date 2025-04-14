@@ -383,19 +383,21 @@ internal partial class NexusSession<TNexus, TProxy>
                         return DisconnectReason.Authentication;
                     }
                 }
+                
+                EnumUtilities<InternalState>.SetFlag(
+                    ref _internalState, InternalState.NexusCompletedConnection);
+                
+                _sessionManager!.RegisterSession(this);
+                
+                await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
 
                 using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
                 serverGreeting.Version = 0;
                 serverGreeting.ClientId = Id;
 
                 await SendMessage(serverGreeting).ConfigureAwait(false);
-
-                _sessionManager!.RegisterSession(this);
                 
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
-                
-                EnumUtilities<InternalState>.SetFlag(
-                    ref _internalState, InternalState.NexusCompletedConnection);
 
                 _readyTaskCompletionSource?.TrySetResult();
                 break;

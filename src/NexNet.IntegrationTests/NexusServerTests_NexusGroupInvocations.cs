@@ -1,4 +1,5 @@
-﻿using NexNet.IntegrationTests.Pipes;
+﻿using System.Collections.Concurrent;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NUnit.Framework;
@@ -125,7 +126,7 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
 
         var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
-            connectedNexus.OnConnectedEvent = nexus =>
+            connectedNexus.OnInitializeEvent = nexus =>
             {
                 if (addGroups.Length == 1)
                     nexus.Context.Groups.Add(addGroups[0]);
@@ -171,13 +172,14 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         var tcs1 = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         var clients = new List<(NexusClient<ClientNexus, ClientNexus.ServerProxy> Client, ClientNexus ClientNexus)>();
-
+        
         for (int i = 0; i < clientCount; i++)
             clients.Add(CreateClient(CreateClientConfig(type, BasePipeTests.LogMode.OnTestFail)));
+        
 
         var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
-            connectedNexus.OnConnectedEvent = nexus =>
+            connectedNexus.OnInitializeEvent = nexus =>
             {
                 if (addGroups.Length == 1)
                     nexus.Context.Groups.Add(addGroups[0]);
@@ -203,7 +205,7 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
 
         await server.StartAsync().Timeout(1);
         await Task.WhenAll(clients.Select(c => c.Client.ConnectAsync())).Timeout(1);
-
+        
         await onReady.Invoke(server.GetContext().Clients);
 
         await tcs1.Task.Timeout(1);

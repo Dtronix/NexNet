@@ -49,7 +49,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             completed = true;
         };
 
-        serverNexus.OnConnectedEvent = nexus =>
+        serverNexus.OnInitializeEvent = nexus =>
         {
             nexus.Context.Groups.Add("myGroup");
             return ValueTask.CompletedTask;
@@ -79,10 +79,13 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
         server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
-            connectedNexus.OnConnectedEvent = async nexus =>
+            connectedNexus.OnInitializeEvent = nexus =>
             {
                 nexus.Context.Groups.Add("myGroup");
-
+                return ValueTask.CompletedTask;
+            };
+            connectedNexus.OnConnectedEvent = async nexus =>
+            {
                 await nexus.Context.Clients.All.ClientTask();
                 // ReSharper disable once AccessToModifiedClosure
                 await nexus.Context.Clients.Clients(server!.GetContext().Clients.GetIds().ToArray()).ClientTask();
