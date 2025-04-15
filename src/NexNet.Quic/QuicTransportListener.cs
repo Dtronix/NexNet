@@ -45,7 +45,7 @@ internal class QuicTransportListener : ITransportListener
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            await connection.DisposeAsync();
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
 
         return null;

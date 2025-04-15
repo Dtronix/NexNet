@@ -1,6 +1,4 @@
-﻿using System.Net.Quic;
-using NexNet.IntegrationTests.TestInterfaces;
-using NexNet.Transports;
+﻿using NexNet.Transports;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
@@ -9,13 +7,15 @@ namespace NexNet.IntegrationTests;
 internal partial class NexusServerTests : BaseTests
 {
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task AcceptsClientConnection(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var serverConfig = CreateServerConfig(type);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             serverConfig,
@@ -30,13 +30,15 @@ internal partial class NexusServerTests : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task NexusFiresOnConnected(Type type)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
@@ -56,10 +58,12 @@ internal partial class NexusServerTests : BaseTests
 
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)] Can't start and stop Asp.
+    //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StartsAndStopsMultipleTimes(Type type)
     {
 
@@ -84,30 +88,34 @@ internal partial class NexusServerTests : BaseTests
         }
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)] Can't start and stop Asp.
+    //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StopsAndReleasesStoppedTcs(Type type)
     {
         var (server, _, client, clientHub) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        
-        Assert.IsNull(server.StoppedTask);
+
+        Assert.That(server.StoppedTask, Is.Null);
         await server.StartAsync().Timeout(1);
-        Assert.IsFalse(server.StoppedTask!.IsCompleted);
+        Assert.That(server.StoppedTask!.IsCompleted, Is.False);
 
         await server.StopAsync();
 
         await server.StoppedTask!.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    //[TestCase(Type.WebSocket)] Can't start and stop Asp.
+    //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task ThrowsWhenServerIsAlreadyOpenOnSameTransport(Type type)
     {
         var config = CreateServerConfig(type);
@@ -124,7 +132,7 @@ internal partial class NexusServerTests : BaseTests
         catch (TransportException e)
         {
             // Quic does not return information if a UDP port is already in use or not.
-            Assert.AreEqual(TransportError.AddressInUse, e.Error);
+            Assert.That(e.Error, Is.EqualTo(TransportError.AddressInUse));
         }
         catch (Exception e)
         {

@@ -13,11 +13,6 @@ namespace NexNet;
 public interface INexusServer : IAsyncDisposable
 {
     /// <summary>
-    /// True if the server is running, false otherwise.
-    /// </summary>
-    bool IsStarted { get; }
-
-    /// <summary>
     /// Configurations the server us currently using.
     /// </summary>
     ServerConfig Config { get; }
@@ -28,18 +23,30 @@ public interface INexusServer : IAsyncDisposable
     Task? StoppedTask { get; }
 
     /// <summary>
-    /// Starts the server.
+    /// State of the server.
+    /// </summary>
+    NexusServerState State { get; }
+
+    /// <summary>
+    /// True if the server has been Configured and ready to start.
+    /// </summary>
+    bool IsConfigured { get; }
+
+    /// <summary>
+    /// Starts the server.  Returns upon completion of the start process.  Does not block.
     /// </summary>
     /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
     Task StartAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stops the server.
+    /// Stops the server.  Returns upon the completion of the stop process.
     /// </summary>
     Task StopAsync();
+    
+    
 }
 
-internal interface INexusServer<TClientProxy> : INexusServer
+internal interface INexusServer<TClientProxy> : INexusServer, IAcceptsExternalTransport
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>

@@ -21,22 +21,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
-    private static class State
-    {
-        public const int Stopped = 0;
-        public const int Running = 1;
-        public const int Disposed = 2;
-    }
-
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
-    private readonly ServerConfig _config;
-    private readonly Func<TServerNexus> _nexusFactory;
+    private ServerConfig? _config;
+    private Func<TServerNexus>? _nexusFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
     private ITransportListener? _listener;
     private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
     private TaskCompletionSource? _stoppedTcs;
-    private volatile int _state = State.Stopped;
+    private NexusServerState _state = NexusServerState.Stopped;
     private CancellationTokenSource? _cancellationTokenSource;
     /// <summary>
     /// Cache for all the server nexus contexts.
@@ -46,22 +39,19 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
-    private readonly INexusLogger? _logger;
+    private INexusLogger? _logger;
+    
+    /// <inheritdoc />
+    public NexusServerState State => _state;
 
-    /// <summary>
-    /// True if the server is running, false otherwise.
-    /// </summary>
-    public bool IsStarted => _listener != null;
+    /// <inheritdoc />
+    public ServerConfig Config => _config ?? throw new InvalidOperationException("Nexus server has not been started yet.  Please setup with the parameterized constructor or invoke Configure().");
 
-    /// <summary>
-    /// Configurations the server us currently using.
-    /// </summary>
-    public ServerConfig Config => _config;
-
-    /// <summary>
-    /// Task which completes upon the server stopping.
-    /// </summary>
+    /// <inheritdoc />
     public Task? StoppedTask => _stoppedTcs?.Task;
+
+    /// <inheritdoc />
+    public bool IsConfigured => _config != null;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
@@ -69,16 +59,50 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
     public NexusServer(ServerConfig config, Func<TServerNexus> nexusFactory)
+        : this()
     {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(nexusFactory);
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
+    }
+    
+    /// <summary>
+    /// Creates a NexNetServer class for handling incoming connections.
+    /// This is used in conjunction with the <see cref="Configure"/> method.  Configure must
+    /// be invoked after instancing with this constructor prior to starting the server,
+    /// otherwise it will throw on start. 
+    /// </summary>
+    public NexusServer()
+    {
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
     }
 
     /// <summary>
-    /// Gets a nexus context which can be used outside of the nexus.  Dispose after usage.
+    /// Configures the server after instancing.  This can only be executed a single time and with the
+    /// <see cref="NexusServer{TServerNexus,TClientProxy}"/> paramaterless constructor.
+    /// </summary>
+    /// <param name="config">Server configurations</param>
+    /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    /// <remarks>
+    /// Do not use this method.  Instead, use the parameterized constructor.
+    /// </remarks>
+    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        ArgumentNullException.ThrowIfNull(nexusFactory);
+        if(_config != null)
+            throw new InvalidOperationException("Server has already been configured.");
+        
+        _config = config;
+        _nexusFactory = nexusFactory;
+        _logger = config.Logger?.CreateLogger("NexusServer");
+    }
+
+    /// <summary>
+    /// Gets a nexus context which can be used outside the nexus.  Dispose after usage.
     /// </summary>
     /// <returns>Server nexus context for invocation of client methods.</returns>
     public ServerNexusContext<TClientProxy> GetContext()
@@ -89,12 +113,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         return context;
     }
 
-    /// <summary>
-    /// Starts the server.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">Throws when the server is already running.</exception>
+
+    /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(_config);
         static void FireAndForget(Task? task)
         {
             // make sure that any exception is observed
@@ -109,7 +132,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         }
 
         // Only execute if the server is stopped and not disposed.
-        if (Interlocked.CompareExchange(ref _state, State.Running, State.Stopped) != State.Stopped)
+        if (Interlocked.CompareExchange(ref _state, NexusServerState.Running, NexusServerState.Stopped) != NexusServerState.Stopped)
             return;
 
         if (_listener != null) throw new InvalidOperationException("Server is already running");
@@ -123,17 +146,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
     }
 
-    /// <summary>
-    /// Stops the server.
-    /// </summary>
+    /// <inheritdoc />
     public async Task StopAsync()
     {
-        if (Interlocked.CompareExchange(ref _state, State.Stopped, State.Running) != State.Running)
+        if (Interlocked.CompareExchange(ref _state, NexusServerState.Stopped, NexusServerState.Running) != NexusServerState.Running)
             return;
 
         _logger?.LogInfo("Stopping server");
 
-        var listener = _listener!;
+        var listener = _listener;
         _listener = null;
 
         try
@@ -151,12 +172,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 catch (Exception e)
                 {
                     // Ignore exceptions
-                    _config.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
+                    _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
                 }
 
             }
-
-            await listener.CloseAsync(!_config.InternalNoLingerOnShutdown).ConfigureAwait(false);
+            
+            // If the listener is null, then the incoming connections are not handled by a listener,
+            // and we don't have any work to perform.
+            if(listener != null)
+                await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
         }
         catch
         {
@@ -166,28 +190,62 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _stoppedTcs?.TrySetResult();
     }
 
-    /// <summary>
-    /// Disposes the server. Server can not be restarted after this.
-    /// </summary>
-    /// <returns>Value task which completes upon disposal.</returns>
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        var previousState = Interlocked.Exchange(ref _state, State.Disposed);
+        var previousState = Interlocked.Exchange(ref _state, NexusServerState.Disposed);
 
-        if (previousState == State.Disposed || previousState == State.Stopped)
+        if (previousState == NexusServerState.Disposed || previousState == NexusServerState.Stopped)
             return;
 
         await StopAsync().ConfigureAwait(false);
     }
+    
+    ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
+    {
+        if (_config == null)
+            throw new InvalidOperationException(
+                "Can't accept new transport before server configuration has been completed.");
+        var baseSessionId = _sessionIdIncrementer++;
+        
+        _config!.InternalOnConnect?.Invoke();
+        
+        return RunClientAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
+        {
+            Transport = transport,
+            Cache = _cacheManager,
+            Configs = _config,
+            SessionManager = _sessionManager,
+            IsServer = true,
+            Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
+            Nexus = _nexusFactory!.Invoke()
+        }, cancellationToken);
+    }
 
     private static async void RunClientAsync(object? boxed)
     {
-        var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
+        try
+        {
+            var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
+            await RunClientAsync(arguments);
+        }
+        catch (Exception e)
+        {
+            ((NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!).Configs.Logger
+                ?.LogError(e, "Exception while running client");
+        }
+        
+    }
+
+    private static async ValueTask RunClientAsync(
+        NexusSessionConfigurations<TServerNexus, TClientProxy> arguments,
+        CancellationToken cancellationToken = default)
+    {
         try
         {
             var session = new NexusSession<TServerNexus, TClientProxy>(arguments);
 
-            await session.StartReadAsync().ConfigureAwait(false);
+            await session.StartReadAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
@@ -238,7 +296,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     private void ConnectionWatchdog(object? state)
     {
-        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
+        var timeoutTicks = Environment.TickCount64 - _config!.Timeout;
 
         foreach (var session in _sessionManager.Sessions)
             session.Value.DisconnectIfTimeout(timeoutTicks);
@@ -249,14 +307,14 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         try
         {
             _logger?.LogInfo("Listening for connections");
-            while (_state == State.Running)
+            while (_state == NexusServerState.Running)
             {
                 var clientTransport = await _listener!.AcceptTransportAsync(_cancellationTokenSource!.Token).ConfigureAwait(false);
 
                 if(clientTransport == null)
                     continue;
 
-                _config.InternalOnConnect?.Invoke();
+                _config!.InternalOnConnect?.Invoke();
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
@@ -273,8 +331,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Configs = _config,
                         SessionManager = _sessionManager,
                         IsServer = true,
-                        Id = (long)baseSessionId << 32 | (long)Random.Shared.Next(),
-                        Nexus = _nexusFactory.Invoke()
+                        Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
+                        Nexus = _nexusFactory!.Invoke()
                     });
             }
         }
@@ -282,12 +340,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _config.Logger?.LogError(ex, "Server shut down.");
+            _config!.Logger?.LogError(ex, "Server shut down.");
             await StopAsync().ConfigureAwait(false);
         }
     }
 
-    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, object? state)
+    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, in NexusSessionConfigurations<TServerNexus, TClientProxy>? state)
     {
         if (scheduler == PipeScheduler.Inline) scheduler = null;
         (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);

@@ -3,7 +3,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace NexNet.Pipelines.Threading;
+namespace NexNet.Internals.Pipelines.Threading;
 
 internal partial class MutexSlim
 {

@@ -3,8 +3,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipelines;
 using NexNet.Logging;
-using NexNet.Pipelines;
 
 namespace NexNet.Transports;
 

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
 using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -21,6 +22,11 @@ internal interface INexusSession : ISessionMessenger
     /// List all the groups that this session is registered with.  Always an empty list on client sessions.
     /// </summary>
     List<int> RegisteredGroups { get; }
+    
+    /// <summary>
+    /// Lock for the group registrations.
+    /// </summary>
+    Lock RegisteredGroupsLock { get; }
 
     /// <summary>
     /// Manages all the sessions connection on the server. Null if this is not a server session.

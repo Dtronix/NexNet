@@ -31,7 +31,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
 
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
 
@@ -42,7 +42,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -69,7 +69,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
 
         //Write the rest of the data
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
@@ -81,7 +81,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -92,9 +92,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var cts = new CancellationTokenSource(100);
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.IsTrue(cts.IsCancellationRequested);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(cts.IsCancellationRequested, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -106,9 +106,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         cts.Cancel();
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
 
-        Assert.IsTrue(cts.IsCancellationRequested);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(cts.IsCancellationRequested, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
     [Test]
@@ -120,16 +120,16 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         await pipeReader.CompleteAsync();
         var result = await reader.ReadAsync().Timeout(1);
 
-        Assert.IsTrue(reader.IsComplete);
-        Assert.NotNull(result);
-        Assert.IsEmpty(result);
+        Assert.That(reader.IsComplete, Is.True);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result, Is.Empty);
     }
 
 
     [Test]
     public async Task WaitsForFullData()
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
@@ -146,7 +146,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         tcs.SetResult();
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
-        Assert.AreEqual(baseObject, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -166,9 +166,9 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         foreach (var complexMessage in result)
         {
-            Assert.AreEqual(baseObject, complexMessage);
+            Assert.That(complexMessage, Is.EqualTo(baseObject));
         }
 
-        Assert.AreEqual(iterations, result.Count());
+        Assert.That(result.Count(), Is.EqualTo(iterations));
     }
 }

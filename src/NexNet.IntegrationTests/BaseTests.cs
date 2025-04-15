@@ -4,14 +4,19 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using NexNet.Asp;
+using NexNet.Asp.HttpSocket;
+using NexNet.Asp.WebSocket;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
+using NexNet.Transports.HttpSocket;
+using NexNet.Transports.WebSocket;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
-using NUnit.Framework.Internal;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NexNet.IntegrationTests;
 
@@ -22,19 +27,21 @@ internal class BaseTests
         Uds,
         Tcp,
         TcpTls,
-        Quic
+        Quic,
+        WebSocket,
+        HttpSocket
     }
 
     private int _counter;
     private DirectoryInfo? _socketDirectory;
-    protected UnixDomainSocketEndPoint? CurrentPath;
-    protected int? CurrentTcpPort;
-    protected int? CurrentUdpPort;
-    protected List<INexusServer> Servers = new List<INexusServer>();
-    protected List<INexusClient> Clients = new List<INexusClient>();
+    private UnixDomainSocketEndPoint? CurrentPath;
+    private int? CurrentTcpPort;
+    private int? CurrentUdpPort;
+    private List<INexusServer> Servers = new List<INexusServer>();
+    private List<INexusClient> Clients = new List<INexusClient>();
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
-    public bool BlockForClose { get; set; }
+    private readonly List<WebApplication> AspServers = new List<WebApplication>();
     public RollingLogger Logger => _logger;
 
     [OneTimeSetUp]
@@ -57,7 +64,6 @@ internal class BaseTests
     public virtual void SetUp()
     {
         _logger = new RollingLogger();
-        BlockForClose = false;
     }
 
     [TearDown]
@@ -70,6 +76,7 @@ internal class BaseTests
                 _logger.Flush(TestContext.Out);
             }
         }
+
         if (_loggerMode == BasePipeTests.LogMode.Always)
         {
             _logger.Flush(TestContext.Out);
@@ -79,32 +86,44 @@ internal class BaseTests
         CurrentTcpPort = null;
         CurrentUdpPort = null;
 
-        _logger.LogEnabled = BlockForClose;
-        
+        _logger.LogEnabled = false;
+
         foreach (var nexusClient in Clients)
         {
-            if(nexusClient.State != ConnectionState.Connected)
+            if (nexusClient.State != ConnectionState.Connected)
                 continue;
 
             _ = nexusClient.DisconnectAsync();
-
-            if(BlockForClose)
-                nexusClient.DisconnectedTask?.Wait();
         }
+
         Clients.Clear();
 
         foreach (var nexusServer in Servers)
         {
-            if(!nexusServer.IsStarted)
+            if (nexusServer.State != NexusServerState.Running)
                 continue;
 
             _ = nexusServer.StopAsync();
-
-            if (BlockForClose)
-                nexusServer.StoppedTask?.Wait();
         }
 
         Servers.Clear();
+        foreach (var se in AspServers)
+        {
+            try
+            {
+                if (!se.Lifetime.ApplicationStarted.IsCancellationRequested)
+                    continue;
+
+                se.Lifetime.StopApplication();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+        }
+
+        AspServers.Clear();
+
     }
 
     protected ServerConfig CreateServerConfigWithLog(Type type, INexusLogger? logger = null)
@@ -115,13 +134,10 @@ internal class BaseTests
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsServerConfig()
-            {
-                EndPoint = CurrentPath,
-                Logger = logger
-            };
+            return new UdsServerConfig() { EndPoint = CurrentPath, Logger = logger };
         }
-        else if (type == Type.Tcp)
+
+        if (type == Type.Tcp)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -132,7 +148,8 @@ internal class BaseTests
                 TcpNoDelay = true
             };
         }
-        else if (type == Type.TcpTls)
+
+        if (type == Type.TcpTls)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -147,11 +164,12 @@ internal class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
                 },
             };
         }
-        else if (type == Type.Quic)
+
+        if (type == Type.Quic)
         {
             CurrentUdpPort ??= FreeUdpPort();
 
@@ -165,19 +183,38 @@ internal class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = new X509Certificate2("server.pfx", "certPass"),
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
                 },
             };
+        }
+
+
+
+        if (type == Type.WebSocket)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            return new WebSocketServerConfig() { Path = "/websocket-test", Logger = logger };
+        }
+
+        if (type == Type.HttpSocket)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            return new HttpSocketServerConfig() { Path = "/httpsocket-test", Logger = logger, };
         }
 
 
         throw new InvalidOperationException();
     }
 
-    protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
+    protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
         _loggerMode = log;
-        var logger = log != BasePipeTests.LogMode.None 
+        var logger = log != BasePipeTests.LogMode.None
             ? _logger.CreatePrefixedLogger(null, "SV")
             : null;
         return CreateServerConfigWithLog(type, logger);
@@ -191,23 +228,20 @@ internal class BaseTests
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsClientConfig()
-            {
-                EndPoint = CurrentPath,
-                Logger = logger,
-            };
+            return new UdsClientConfig() { EndPoint = CurrentPath, Logger = logger, };
         }
-        else if (type == Type.Tcp)
+
+        if (type == Type.Tcp)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
             return new TcpClientConfig()
             {
-                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value),
-                Logger = logger,
+                EndPoint = new IPEndPoint(IPAddress.Loopback, CurrentTcpPort.Value), Logger = logger,
             };
         }
-        else if (type == Type.TcpTls)
+
+        if (type == Type.TcpTls)
         {
             CurrentTcpPort ??= FreeTcpPort();
 
@@ -224,7 +258,8 @@ internal class BaseTests
                 }
             };
         }
-        else if (type == Type.Quic)
+
+        if (type == Type.Quic)
         {
             CurrentUdpPort ??= FreeUdpPort();
 
@@ -242,13 +277,39 @@ internal class BaseTests
             };
         }
 
+        if (type == Type.WebSocket)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            
+            return new WebSocketClientConfig()
+            {
+                Url = new Uri($"ws://127.0.0.1:{CurrentTcpPort}/websocket-test"), 
+                Logger = logger,
+            };
+        }
+
+        if (type == Type.HttpSocket)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            if(logger != null)
+                logger.Behaviors |= NexusLogBehaviors.LogTransportData;
+            
+            return new HttpSocketClientConfig()
+            {
+                Url = new Uri($"http://127.0.0.1:{CurrentTcpPort}/httpsocket-test"), 
+                Logger = logger,
+            };
+        }
+
         throw new InvalidOperationException();
     }
 
-    protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.None)
+    protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
         _loggerMode = log;
-
+        
         var logger = log != BasePipeTests.LogMode.None
             ? _logger.CreatePrefixedLogger(null, "CL")
             : null;
@@ -257,8 +318,12 @@ internal class BaseTests
     }
 
 
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server, ServerNexus serverNexus, NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
-        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig)
+
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
+        ServerNexus serverNexus,
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
+        ClientNexus clientNexus)
+        CreateServerClient(ServerConfig sConfig, ClientConfig cConfig, bool startServer = true)
     {
         var serverNexus = new ServerNexus();
         var clientNexus = new ClientNexus();
@@ -267,19 +332,161 @@ internal class BaseTests
         Servers.Add(server);
         Clients.Add(client);
 
+
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
+            
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+
+            var app = builder.Build();
+
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(sWebSocketConfig, server);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
+            }
+
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
+
         return (server, serverNexus, client, clientNexus);
     }
 
-    protected NexusServer<ServerNexus, ServerNexus.ClientProxy>
-        CreateServer(ServerConfig sConfig, Action<ServerNexus>? nexusCreated)
+    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
+        ServerNexus serverNexus,
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
+        ClientNexus clientNexus,
+        Action startAspServer,
+        Action stopAspServer)
+        CreateServerClientWithStoppedServer(ServerConfig sConfig, ClientConfig cConfig)
+    {
+        var serverNexus = new ServerNexus();
+        var clientNexus = new ClientNexus();
+        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
+        var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        Servers.Add(server);
+        Clients.Add(client);
+
+        WebApplication? app = null;
+
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
+            
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+
+            app = builder.Build();
+
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(sWebSocketConfig, server);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
+
+            }
+
+            AspServers.Add(app);
+        }
+
+        void StartAspServer()
+        {
+            if (app == null)
+                return;
+            _ = app.RunAsync();
+        }
+
+        void StopAspServer()
+        {
+            if (app == null)
+                return;
+
+            if (!app.Lifetime.ApplicationStarted.IsCancellationRequested)
+                return;
+
+            app.Lifetime.StopApplication();
+
+            app.Lifetime.ApplicationStopped.WaitHandle.WaitOne(500);
+        }
+
+
+        return (server, serverNexus, client, clientNexus, StartAspServer, StopAspServer);
+    }
+
+    protected NexusServer<ServerNexus, ServerNexus.ClientProxy> CreateServer(
+        ServerConfig sConfig,
+        Action<ServerNexus>? nexusCreated,
+        Action<WebApplicationBuilder>? OnAspCreateServices = null,
+        Action<WebApplication>? OnAspAppConfigure = null)
     {
         var server = ServerNexus.CreateServer(sConfig, () =>
         {
             var nexus = new ServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        }); 
+        });
+
         Servers.Add(server);
+
+        if (sConfig is WebSocketServerConfig || sConfig is HttpSocketServerConfig)
+        {
+            CurrentTcpPort ??= FreeTcpPort();
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel((context, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, CurrentTcpPort.Value));
+
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+
+            if (sConfig.Logger != null)
+                builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
+            
+            OnAspCreateServices?.Invoke(builder);
+
+            var app = builder.Build();
+            
+            OnAspAppConfigure?.Invoke(app);
+
+            if (sConfig is WebSocketServerConfig sWebSocketConfig)
+            {
+                app.UseWebSockets();
+                app.MapWebSocketNexus(sWebSocketConfig, server);
+            }
+            else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
+            {
+                app.UseHttpSockets();
+                app.MapHttpSocketNexus(sHttpSocketConfig, server);
+            }
+            
+
+
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
 
         return server;
     }
@@ -325,6 +532,54 @@ internal class BaseTests
             thrown = e;
         }
 
-        Assert.AreEqual(typeof(T), thrown?.GetType());
+        Assert.That(thrown?.GetType(), Is.EqualTo(typeof(T)));
+    }
+
+    private class AspLoggerProviderBridge : ILoggerProvider
+    {
+        private readonly INexusLogger _logger;
+
+
+        public AspLoggerProviderBridge(INexusLogger logger)
+        {
+            _logger = logger;
+        }
+
+        public void Dispose()
+        {
+            // Ignore
+        }
+
+        public ILogger CreateLogger(string categoryName)
+        {
+            return new SubLogger(_logger.CreateLogger(categoryName));
+        }
+
+        class SubLogger : ILogger
+        {
+            private readonly INexusLogger _logger;
+
+            public SubLogger(INexusLogger logger)
+            {
+                _logger = logger;
+            }
+
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+            {
+                return null;
+            }
+
+            public bool IsEnabled(LogLevel logLevel)
+            {
+                return true;
+            }
+
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                _logger.Log((NexusLogLevel)logLevel, _logger.Category, exception,
+                    formatter?.Invoke(state, exception) ?? "");
+            }
+        }
     }
 }

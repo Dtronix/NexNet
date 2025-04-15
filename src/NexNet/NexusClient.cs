@@ -51,7 +51,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// Creates a NexNet client for communication with a matching NexNet server.
     /// </summary>
     /// <param name="config">Configurations for this client.</param>
-    /// <param name="nexus">Hub used for handling incoming invocations.</param>
+    /// <param name="nexus">Nexus used for handling incoming invocations.</param>
     public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);
@@ -66,23 +66,33 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        await TryConnectAsync(cancellationToken);
+        var result = await TryConnectAsync(cancellationToken).ConfigureAwait(false);
+        if(!result.Success && result.Exception != null)
+            throw result.Exception;
     }
 
     /// <inheritdoc />
     public async Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
     {
         if (_session != null)
-            return ConnectionResult.Success;
+            return new ConnectionResult(ConnectionResult.StateValue.Success);
 
         // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
         var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnectedTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
-
-        var transport = await _config.ConnectTransport(cancellationToken).ConfigureAwait(false);
-
+        ITransport transport;
+        
+        try
+        {
+            transport = await _config.ConnectTransport(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            return new ConnectionResult(ConnectionResult.StateValue.Exception, e);
+        }
+        
         _config.InternalOnClientConnect?.Invoke();
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
@@ -106,24 +116,24 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
-        await session.StartAsClient().ConfigureAwait(false);
+        await session.StartAsClient(false).ConfigureAwait(false);
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
 
         if (session.DisconnectReason != DisconnectReason.None)
         {
             session.OnStateChanged = null;
-            return session.DisconnectReason switch
+            return new ConnectionResult(session.DisconnectReason switch
             {
-                DisconnectReason.Timeout => ConnectionResult.Timeout,
-                DisconnectReason.Authentication => ConnectionResult.AuthenticationFailed,
-                _ => ConnectionResult.Exception
-            };
+                DisconnectReason.Timeout => ConnectionResult.StateValue.Timeout,
+                DisconnectReason.Authentication => ConnectionResult.StateValue.AuthenticationFailed,
+                _ => ConnectionResult.StateValue.UnknownException
+            });
         }
 
         _pingTimer.Change(_config.PingInterval, _config.PingInterval);
 
-        return ConnectionResult.Success;
+        return new ConnectionResult(ConnectionResult.StateValue.Success);
     }
 
     /// <inheritdoc />

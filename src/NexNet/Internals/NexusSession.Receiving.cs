@@ -5,16 +5,17 @@ using NexNet.Invocation;
 using System.Threading.Tasks;
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using NexNet.Logging;
 
 namespace NexNet.Internals;
 
 internal partial class NexusSession<TNexus, TProxy>
 {
-    public async Task StartReadAsync()
+    public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
-        Logger?.LogTrace($"Reading");
-        _state = (int)ConnectionState.Connected;
+        Logger?.LogTrace("Reading");
+        _state = ConnectionState.Connected;
         try
         {
             while (true)
@@ -23,13 +24,13 @@ internal partial class NexusSession<TNexus, TProxy>
                     || State != ConnectionState.Connected)
                     return;
 
-                var result = await _pipeInput.ReadAsync().ConfigureAwait(false);
+                var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
 
                 LastReceived = Environment.TickCount64;
 
                 // Terribly inefficient and only used for testing
                 if(Config.InternalOnReceive != null)
-                    await Config.InternalOnReceive.Invoke(this, result.Buffer);
+                    await Config.InternalOnReceive.Invoke(this, result.Buffer).ConfigureAwait(false);
 
                 var processResult = await Process(result.Buffer).ConfigureAwait(false);
 
@@ -123,6 +124,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                         // HEADER + BODY
                         case MessageType.ClientGreeting:
+                        case MessageType.ClientGreetingReconnection:
                         case MessageType.ServerGreeting:
                         case MessageType.Invocation:
                         case MessageType.InvocationCancellation:
@@ -216,6 +218,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     case MessageType.ServerGreeting:
                     case MessageType.ClientGreeting:
+                    case MessageType.ClientGreetingReconnection:
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState: 
                         // TODO: Review transitioning this to a simple message instead of a full message.
@@ -235,7 +238,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice).ConfigureAwait(false);
                         break;
                     }
 
@@ -298,7 +301,8 @@ internal partial class NexusSession<TNexus, TProxy>
 
             try
             {
-                await session._nexus.Connected(session._isReconnected).ConfigureAwait(false);
+                
+                await session._nexus.Connected((session._internalState & InternalState.ReconnectingInProgress) != 0).ConfigureAwait(false);
             }
             catch (TaskCanceledException e)
             {
@@ -308,21 +312,48 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 session.Logger?.LogError(e, "OnConnected threw an exception.");
             }
-
             // Reset the value;
-            session._isReconnected = false;
+            EnumUtilities<InternalState>.RemoveFlag(ref session._internalState, InternalState.ReconnectingInProgress);
         }
 
         switch (messageType)
         {
+            case MessageType.ClientGreetingReconnection:
+                /*
+                 TODO: Complete updated reconnection logic that will preserve the Nexus.
+                var initialValue = EnumUtilities<InternalState>.SetFlag(ref _internalState,
+                    InternalState.InitialClientGreetingReceived);
+
+                if ((initialValue & InternalState.InitialClientGreetingReceived) == 0)
+                {
+                    _config.Logger?.LogError("Client attempted to reconnect before the client has ever completed the connection process.");
+                    return DisconnectReason.ProtocolError;
+                }
+
+                goto ClientGreetingHandler;
+                */
+            
+
             case MessageType.ClientGreeting:
             {
-                var cGreeting = message.As<ClientGreetingMessage>();
+                // Set the initial flag for the greeting and
+                // ensure we are not re-connecting with a simple ClientGreeting.
+                if ((EnumUtilities<InternalState>.SetFlag(
+                        ref _internalState, InternalState.InitialClientGreetingReceived) & InternalState.InitialClientGreetingReceived) != 0)
+                {
+                    _config.Logger?.LogError("Client attempted to connect with another ClientGreeting rather than the required ClientGreetingReconnection message.");
+                    return DisconnectReason.ProtocolError;
+                }
+                
+                IClientGreetingMessageBase cGreeting = messageType == MessageType.ClientGreeting
+                    ? message.As<ClientGreetingMessage>()
+                    : message.As<ClientGreetingReconnectionMessage>();
+                        
                 // Verify that this is the server
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
 
-                // Verify what the greeting method hashes matches this nexus's and proxy's
+                // Verify what the greeting method hashes matches this nexus and proxy hash.
                 if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
                 {
                     return DisconnectReason.ServerMismatch;
@@ -340,7 +371,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     // Run the handler and verify that it is good.
                     var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
-                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken);
+                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken).ConfigureAwait(false);
 
                     // Set the identity on the context.
                     var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
@@ -352,15 +383,20 @@ internal partial class NexusSession<TNexus, TProxy>
                         return DisconnectReason.Authentication;
                     }
                 }
+                
+                EnumUtilities<InternalState>.SetFlag(
+                    ref _internalState, InternalState.NexusCompletedConnection);
+                
+                _sessionManager!.RegisterSession(this);
+                
+                await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
 
                 using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
                 serverGreeting.Version = 0;
                 serverGreeting.ClientId = Id;
 
                 await SendMessage(serverGreeting).ConfigureAwait(false);
-
-                _sessionManager!.RegisterSession(this);
-
+                
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
 
                 _readyTaskCompletionSource?.TrySetResult();
@@ -369,15 +405,27 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.ServerGreeting:
             {
+                if ((EnumUtilities<InternalState>.SetFlag(
+                        ref _internalState, InternalState.InitialServerGreetingReceived) & InternalState.InitialServerGreetingReceived) != 0)
+                {
+                    _config.Logger?.LogError("Server sent multiple server greetings.");
+                    return DisconnectReason.ProtocolError;
+                }
                 // Verify that this is the client
                 if (IsServer)
+                {
+                    _config.Logger?.LogError($"Received {messageType} message on the server.");
                     return DisconnectReason.ProtocolError;
+                }
 
                 // Set the server assigned client id.
                 Id = message.As<ServerGreetingMessage>().ClientId;
 
+                EnumUtilities<InternalState>.SetFlag(
+                    ref _internalState, InternalState.NexusCompletedConnection);
+                
                 _ = Task.Factory.StartNew(InvokeOnConnected, this);
-
+                
                 _readyTaskCompletionSource?.TrySetResult();
                 break;
 
@@ -385,6 +433,12 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.Invocation:
             {
+                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+                {
+                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
+                    return DisconnectReason.ProtocolError;
+                }
+
                 var invocationRequestMessage = message.As<InvocationMessage>();
                 // Throttle invocations.
 
@@ -430,6 +484,12 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.InvocationResult:
             {
+                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+                {
+                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
+                    return DisconnectReason.ProtocolError;
+                }
+                
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
                 break;
@@ -437,6 +497,11 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.InvocationCancellation:
             {
+                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+                {
+                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
+                    return DisconnectReason.ProtocolError;
+                }
                 var invocationCancellationRequestMessage = message.As<InvocationCancellationMessage>();
                 _nexus.CancelInvocation(invocationCancellationRequestMessage);
                 break;
@@ -444,6 +509,11 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.DuplexPipeUpdateState:
             {
+                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+                {
+                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
+                    return DisconnectReason.ProtocolError;
+                }
                 var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
                 var updateStateResult = PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
                 if (updateStateResult != DisconnectReason.None)

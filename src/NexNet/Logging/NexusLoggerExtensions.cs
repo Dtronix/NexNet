@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 
 namespace NexNet.Logging;
 
@@ -15,6 +16,26 @@ public static class NexusLoggerExtensions
     public static void LogTrace(this INexusLogger logger, string message)
     {
         logger.LogTrace(null, message);
+    }
+
+    /// <summary>
+    /// Log a trace event containing data..
+    /// </summary>
+    /// <param name="logger">Logger for this method.</param>
+    /// <param name="message">Log message.</param>
+    /// <param name="data">Data to log.</param>
+    internal static void LogTraceArray(this INexusLogger logger, string message, ReadOnlyMemory<byte> data)
+    {
+        var sb = new StringBuilder(message);
+        sb.Append("[");
+        foreach (var byteData in data.Span)
+        {
+            sb.Append(byteData).Append(',');
+        }
+        if(data.Length > 0)
+            sb.Remove(sb.Length - 1, 1);
+        sb.Append("]");
+        logger.LogTrace(null, sb.ToString());
     }
 
     /// <summary>

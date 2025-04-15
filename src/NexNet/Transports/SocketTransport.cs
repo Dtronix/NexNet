@@ -5,7 +5,6 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals.Pipelines;
-using NexNet.Pipelines;
 
 namespace NexNet.Transports;
 
@@ -24,9 +23,7 @@ internal class SocketTransport : ITransport
         Input = socketConnection.Input;
         Output = socketConnection.Output;
     }
-
-    public TransportConfiguration Configurations => new TransportConfiguration();
-
+    
     public ValueTask CloseAsync(bool linger)
     {
         if (!linger)
@@ -82,7 +79,8 @@ internal class SocketTransport : ITransport
             try
             {
                 using var timeoutCancellation = new CancellationTokenSource();
-                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
+                await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel)
+                    .ConfigureAwait(false);
                 // Connection timeout task.
                 async Task ConnectionTimeout()
                 {

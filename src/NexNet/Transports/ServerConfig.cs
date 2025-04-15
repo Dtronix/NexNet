@@ -32,9 +32,9 @@ public abstract class ServerConfig : ConfigBase
     /// </summary>
     /// <param name="cancellationToken"></param>
     /// <returns>Listener interface.</returns>
-    protected abstract ValueTask<ITransportListener> OnCreateServerListener(CancellationToken cancellationToken);
+    protected abstract ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken);
 
-    internal ValueTask<ITransportListener> CreateServerListener(CancellationToken cancellationToken)
+    internal ValueTask<ITransportListener?> CreateServerListener(CancellationToken cancellationToken)
     {
         return OnCreateServerListener(cancellationToken);
     }

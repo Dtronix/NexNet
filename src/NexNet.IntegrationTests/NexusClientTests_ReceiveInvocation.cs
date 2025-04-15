@@ -7,10 +7,12 @@ namespace NexNet.IntegrationTests;
 internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 {
     
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientVoid(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -24,10 +26,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientVoidWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -45,10 +49,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTask(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -62,11 +68,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
-
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -82,10 +89,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -99,10 +108,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValue_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -110,7 +121,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValue();
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueEvent = nexus => ValueTask.FromResult(54321);
@@ -118,10 +129,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithParam(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -137,10 +150,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithParam_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -148,7 +163,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithParam(12345);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
@@ -157,10 +172,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskWithCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -175,10 +192,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskWithValueAndCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -193,10 +212,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -210,10 +231,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -221,17 +244,19 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -247,10 +272,12 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
         });
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
@@ -258,7 +285,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-                Assert.AreEqual(54321, value);
+                Assert.That(value, Is.EqualTo(54321));
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);
@@ -267,7 +294,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
     private async Task ClientReceivesInvocation(Type type, Action<ServerNexus, ClientNexus, TaskCompletionSource> action)
     {
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));

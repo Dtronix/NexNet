@@ -30,6 +30,9 @@ internal class CacheManager
         // 
         _messageCaches[((int)ClientGreetingMessage.Type - MessageCacheOffsetModifier)] =
             new CachedCachedMessage<ClientGreetingMessage>();
+        
+        _messageCaches[((int)ClientGreetingReconnectionMessage.Type - MessageCacheOffsetModifier)] =
+            new CachedCachedMessage<ClientGreetingReconnectionMessage>();
 
         _messageCaches[((int)ServerGreetingMessage.Type - MessageCacheOffsetModifier)] =
             new CachedCachedMessage<ServerGreetingMessage>();

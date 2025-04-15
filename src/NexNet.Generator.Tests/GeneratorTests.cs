@@ -23,7 +23,7 @@ class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id), Is.True);
     }
 
     [Test]
@@ -45,7 +45,7 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustBePartial.Id), Is.True);
     }
 
     [Test]
@@ -67,7 +67,7 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id), Is.True);
 
     }
 
@@ -90,7 +90,7 @@ abstract partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.MustNotBeAbstractOrInterface.Id), Is.True);
 
     }
 
@@ -113,7 +113,7 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
 
     }
 
@@ -140,7 +140,7 @@ partial class ServerNexus : IServerNexus
 }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvokeMethodCoreReservedMethodName.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvokeMethodCoreReservedMethodName.Id), Is.True);
 
     }
 
@@ -164,7 +164,7 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
 
     }
 
@@ -188,7 +188,7 @@ partial class ServerNexus<T> : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.NexusMustNotBeGeneric.Id), Is.True);
 
     }
 
@@ -209,7 +209,7 @@ partial class ClientNexus : IClientNexus
     public void Update() { }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
 
     }
 
@@ -232,7 +232,7 @@ partial class ClientNexus : IClientNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
     }
 
 
@@ -255,7 +255,7 @@ partial class ServerNexus : IServerNexus
     public void Update() { }
 }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
     }
 
     [Test]
@@ -271,7 +271,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id), Is.True);
     }
 
     [Test]
@@ -288,7 +288,7 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus { }
 
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidReturnValue.Id), Is.True);
     }
 
     [Test]
@@ -310,7 +310,7 @@ partial class ServerNexus : IServerNexus
     public void Update(string arg) { }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -329,7 +329,7 @@ partial class ServerNexus : IServerNexus
 
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -345,7 +345,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id), Is.True);
     }
 
     [Test]
@@ -361,7 +361,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.InvalidCancellationToken.Id), Is.True);
     }
 
 
@@ -378,7 +378,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
     }
 
     [Test]
@@ -394,7 +394,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
     }
 
     [Test]
@@ -428,7 +428,7 @@ namespace HubNameSpaces2.Seven.Eight
     }
 }
 """);
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
 }

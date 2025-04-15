@@ -8,9 +8,8 @@ using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipelines;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 internal partial class SocketConnection
 {

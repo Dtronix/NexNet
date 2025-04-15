@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using static System.Collections.Specialized.BitVector32;
+using NexNet.Logging;
 
 namespace NexNet.Invocation;
 /// <summary>
@@ -32,7 +32,7 @@ internal class SessionManager
         if (!Sessions.TryRemove(session.Id, out var _))
             return;
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             var count = groups.Count;
             for (var i = 0; i < count; i++)
@@ -50,12 +50,14 @@ internal class SessionManager
 
     public void UnregisterSessionGroup(string groupName, INexusSession session)
     {
-
+        
         if (!_groupIdDictionary.TryGetValue(groupName, out int id))
             return;
 
         if (!_sessionGroups.TryGetValue(id, out var group))
             return;
+        
+        session.Logger?.LogDebug($"Unregistering session from {session.Id} to group {groupName}");
 
         group.UnregisterSession(session);
     }
@@ -63,13 +65,14 @@ internal class SessionManager
 
     public void RegisterSessionGroup(string groupName, INexusSession session)
     {
+        session.Logger?.LogDebug($"Registering session {session.Id} to group {groupName}");
         var id = _groupIdDictionary.GetOrAdd(groupName, name => Interlocked.Increment(ref _idCounter));
         // ReSharper disable once InconsistentlySynchronizedField
         var group = _sessionGroups.GetOrAdd(id, name => new SessionGroup());
         group.RegisterSession(session);
 
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             groups.Add(id);
         }
@@ -78,6 +81,7 @@ internal class SessionManager
     public void RegisterSessionGroup(string[] groupNames, INexusSession session)
     {
         int[] groupIds = new int[groupNames.Length];
+        session.Logger?.LogDebug($"Registering session {session.Id} to groups {string.Join(',', groupNames)}");
 
         // Create or get group ids for all the groups.
         for (int i = 0; i < groupNames.Length; i++)
@@ -89,7 +93,7 @@ internal class SessionManager
         }
 
         var groups = session.RegisteredGroups;
-        lock (groups)
+        lock (session.RegisteredGroupsLock)
         {
             groups.AddRange(groupIds);
         }
