@@ -38,6 +38,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNetSample.Asp.Server", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNetSample.Asp.Client", "Samples\NexNetSample.Asp.Client\NexNetSample.Asp.Client.csproj", "{2A08A183-A116-432C-A26A-7C4CF3A35871}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NexNet.Backplane.Redis", "NexNet.Backplane.Redis\NexNet.Backplane.Redis.csproj", "{5BEB7C1C-559C-4A5E-93F3-85E16C592ADC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -88,6 +90,10 @@ Global
 		{2A08A183-A116-432C-A26A-7C4CF3A35871}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2A08A183-A116-432C-A26A-7C4CF3A35871}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2A08A183-A116-432C-A26A-7C4CF3A35871}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5BEB7C1C-559C-4A5E-93F3-85E16C592ADC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5BEB7C1C-559C-4A5E-93F3-85E16C592ADC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5BEB7C1C-559C-4A5E-93F3-85E16C592ADC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5BEB7C1C-559C-4A5E-93F3-85E16C592ADC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
