@@ -29,6 +29,11 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     /// </summary>
     public long Created { get; set; }
 
+    public RegisteredInvocationState()
+    {
+        // Ensure all continuations run asynchronously to prevent deadlocks.
+        _source.RunContinuationsAsynchronously = true;
+    }
 
 
     public void Reset()
@@ -87,7 +92,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     void IValueTaskSource<bool>.OnCompleted(Action<object?> continuation, object? state, short token, ValueTaskSourceOnCompletedFlags flags)
     {
-        _source.OnCompleted(continuation, state, token, flags);
+        _source.OnCompleted(continuation, state, token, ValueTaskSourceOnCompletedFlags.None);
     }
 
     bool IValueTaskSource<bool>.GetResult(short token) => _source.GetResult(token);

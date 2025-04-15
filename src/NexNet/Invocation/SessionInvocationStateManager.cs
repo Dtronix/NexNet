@@ -17,6 +17,7 @@ internal class SessionInvocationStateManager
     private readonly INexusLogger? _logger;
     private ushort _invocationId = 0;
     private readonly List<ushort> _currentInvocations = new List<ushort>();
+    private readonly Lock _currentInvocationsLock = new Lock();
 
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
     //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
@@ -43,7 +44,7 @@ internal class SessionInvocationStateManager
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ushort GetNextId(bool addToCurrentInvocations)
     {
-        lock (_currentInvocations)
+        lock (_currentInvocationsLock)
         {
             // If we are not adding to the current invocations, then we can just return the next ID.
             _invocationId++;
@@ -66,7 +67,7 @@ internal class SessionInvocationStateManager
             return;
 
         // Remove the invocation from the current invocations list.
-        lock (_currentInvocations)
+        lock (_currentInvocationsLock)
         {
             _currentInvocations.Remove(message.InvocationId);
         }

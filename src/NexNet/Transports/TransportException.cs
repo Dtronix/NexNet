@@ -19,7 +19,7 @@ public class TransportException : Exception
     /// <param name="error">Error code.</param>
     /// <param name="message">Error description.</param>
     /// <param name="innerException">Source exception.</param>
-    public TransportException(TransportError error, string message, Exception innerException)
+    public TransportException(TransportError error, string message, Exception? innerException)
         : base(message, innerException)
     {
         Error = error;
@@ -31,13 +31,13 @@ public class TransportException : Exception
     /// <param name="error">Error code.</param>
     /// <param name="message">Error description.</param>
     /// <param name="innerException">Source exception.</param>
-    public TransportException(SocketError error, string message, Exception innerException)
+    public TransportException(SocketError error, string message, Exception? innerException)
         : base(message, innerException)
     {
         Error = SocketErrorToTransportError(error);
     }
 
-    internal static TransportError SocketErrorToTransportError(SocketError error) =>
+    private static TransportError SocketErrorToTransportError(SocketError error) =>
         error switch
         {
             SocketError.ConnectionRefused => TransportError.ConnectionRefused,

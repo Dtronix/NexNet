@@ -20,6 +20,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
     private readonly BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
+    private readonly Lock _bufferLock = new Lock();
     private readonly IPipeStateManager _stateManager;
 
     private bool _isCompleted;
@@ -42,7 +43,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     {
         get
         {
-            lock (_buffer)
+            lock (_bufferLock)
                 return _bufferTailPosition - _examinedPosition;
         }
     }
@@ -98,7 +99,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
             int loopCount = 0;
             while (!_isCompleted)
             {
-                //_logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low water mark completion. Loop {i++}");
+                _logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low watermark completion. Loop {loopCount}");
                 // Do a short delay to allow the other side to process the data and progressively increase the delay.
                 if (loopCount < 2)
                 {
@@ -128,14 +129,14 @@ internal class NexusPipeReader : PipeReader, IDisposable
             if(_isCompleted)
                 return NexusPipeBufferResult.DataIgnored;
 
-            // If we have the back pressure flag, then we have not yet reached the low water mark.
+            // If we have the back pressure flag, then we have not yet reached the low watermark.
             //if (_stateManager.CurrentState.HasFlag(_backPressureFlag))
             //{
             //    //return NexusPipeBufferResult.HighCutoffReached;
             //}
         }
 
-        lock (_buffer)
+        lock (_bufferLock)
         {
             _bufferTailPosition += length;
 
@@ -155,10 +156,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
             _buffer.Advance(length);
         }
 
-        // If we have reached the high water mark, then notify the other side of the pipe.
+        // If we have reached the high watermark, then notify the other side of the pipe.
         if (_highWaterMark != 0 && bufferLength >= _highWaterMark)
         {
-            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water mark of {_highWaterMark}");
+            _logger?.LogDebug($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high watermark of {_highWaterMark}");
 
             if (_stateManager.UpdateState(_backPressureFlag))
                 await _stateManager.NotifyState().ConfigureAwait(false);
@@ -205,7 +206,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         if (_isCompleted)
         {
             // There can still be data the buffer even if the pipe is completed.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 result = new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
             }
@@ -216,16 +217,16 @@ internal class NexusPipeReader : PipeReader, IDisposable
         {
             _isCanceled = false;
             // There can still be data the buffer even if the pipe is canceled.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 result =  new ReadResult(_buffer.GetBuffer(), true, _isCompleted);
             }
             return true;
         }
         
-        lock (_buffer)
+        lock (_bufferLock)
         {
-            if (BufferedLength == 0)
+            if (_bufferTailPosition - _examinedPosition == 0) // BufferedLength
             {
                 result = new ReadResult(ReadOnlySequence<byte>.Empty, false, _isCompleted);
                 return false;
@@ -243,7 +244,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         if (_isCompleted)
         {
             // There can still be data the buffer even if the pipe is completed.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
             }
@@ -252,7 +253,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         if (cancellationToken.IsCancellationRequested)
         {
             // There can still be data the buffer even if the pipe is canceled.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 return new ReadResult(_buffer.GetBuffer(), true, _isCompleted);
             }
@@ -262,7 +263,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         {
             _isCanceled = false;
             // There can still be data the buffer even if the pipe is canceled.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 return new ReadResult(_buffer.GetBuffer(), true, _isCompleted);
             }
@@ -286,16 +287,31 @@ internal class NexusPipeReader : PipeReader, IDisposable
                 // Check to see if we do in-fact have more data to read.  If we do, then bypass the wait.
                 do
                 {
+                    // Hot path for if the semaphore has already been disposed.
                     if (_readSemaphore == null)
-                        return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+                    {
+                        lock (_bufferLock)
+                            return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+                    }
+                    
+                    try
+                    {
+                        await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (NullReferenceException e)
+                    {
+                        // Slow path for if the semaphore has already been swapped out with null between the check above and now.
+                        _logger?.LogInfo(e, "Semaphore is null and can not be acquired.");
+                        lock (_bufferLock)
+                            return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
+                    }
 
-                    await _readSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
                 } while (_bufferTailPosition <= _examinedPosition && _isCanceled == false && _isCompleted == false);
             }
             catch (OperationCanceledException)
             {
                 // There can still be data the buffer even if the pipe is canceled.
-                lock (_buffer)
+                lock (_bufferLock)
                 {
                     return new ReadResult(_buffer.GetBuffer(), true, _isCompleted);
                 }
@@ -317,7 +333,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         if (_isCompleted)
         {
             // There can still be data the buffer even if the pipe is completed.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 return new ReadResult(_buffer.GetBuffer(), false, _isCompleted);
             }
@@ -327,7 +343,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         {
             _isCanceled = false;
             // There can still be data the buffer even if the pipe is canceled.
-            lock (_buffer)
+            lock (_bufferLock)
             {
                 return new ReadResult(_buffer.GetBuffer(), true, _isCompleted);
             }
@@ -335,13 +351,13 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
         ReadOnlySequence<byte> readOnlySequence;
         long bufferLength;
-        lock (_buffer)
+        lock (_bufferLock)
         {
             readOnlySequence = _buffer.GetBuffer();
             bufferLength = _buffer.Length;
         }
 
-        // If we currently have back pressure, and the buffer length is below the low water mark, then we need to
+        // If we currently have back-pressure, and the buffer length is below the low watermark, then we need to
         // notify the other side that we are ready to receive more data.
         // ignore the back pressure if the completed flag is set.
         if (_isCompleted == false
@@ -379,7 +395,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
             }
             else if (examined.GetInteger() == 0 && examinedObject.Equals(Array.Empty<byte>()))
             {
-                // Provided an zero advance position. No need to update the examined position.
+                // Provided a zero advance position. No need to update the examined position.
                 return;
             }
             else
@@ -388,7 +404,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
             }
         }
 
-        lock (_buffer)
+        lock (_bufferLock)
         {
             _buffer.ReleaseTo(consumed);
         }
@@ -396,7 +412,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
     public void AdvanceTo(int count)
     {
-        lock (_buffer)
+        lock (_bufferLock)
         {
             _examinedPosition += count;
             _buffer.ReleaseTo(count);
@@ -413,7 +429,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     {
         Interlocked.Exchange(ref _readSemaphore, null)?.Dispose();
 
-        lock (_buffer)
+        lock (_bufferLock)
         {
             _buffer.Reset();
         }

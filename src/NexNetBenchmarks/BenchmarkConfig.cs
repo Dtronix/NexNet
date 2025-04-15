@@ -5,8 +5,6 @@ using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Diagnosers;
 using BenchmarkDotNet.Environments;
-using BenchmarkDotNet.Exporters;
-using BenchmarkDotNet.Exporters.Csv;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Loggers;
 
@@ -23,7 +21,7 @@ namespace NexNetBenchmarks
             return ManualConfig.CreateEmpty()
                 // Jobs
                 .AddJob(Job.Default
-                    .WithRuntime(CoreRuntime.Core80)
+                    .WithRuntime(CoreRuntime.Core90)
                     .WithPlatform(Platform.X64)
                     .WithMinWarmupCount(1)
                     .WithMaxWarmupCount(3)

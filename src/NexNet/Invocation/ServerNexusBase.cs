@@ -28,4 +28,19 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     {
         return ValueTask.FromResult((IIdentity?)null);
     }
+    
+    internal ValueTask NexusInitialize()
+    {
+        return OnNexusInitialize();
+    }
+    
+    /// <summary>
+    /// Initializes the nexus. Is performed after the session has invoked <see cref="OnAuthenticate"/> (if applicable), but prior to <see cref="NexusBase{TProxy}.OnConnected"/>.
+    /// Good for registration of groups.  If an exception occurs on this method, the session will be disconnected.  Invoked on the same task as <see cref="OnAuthenticate"/>.
+    /// </summary>
+    /// <returns>Task returns upon completion of the initialization.</returns>
+    protected virtual ValueTask OnNexusInitialize()
+    {
+        return ValueTask.CompletedTask;
+    }
 }

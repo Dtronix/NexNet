@@ -2,7 +2,7 @@
 using System;
 using System.Runtime.CompilerServices;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 /// <summary>
 /// Flags that influence the behavior of SocketConnection

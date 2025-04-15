@@ -2,7 +2,7 @@
 using System.IO;
 using System.IO.Pipelines;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 /// <summary>
 /// Provides serves to shim between streams and pipelines

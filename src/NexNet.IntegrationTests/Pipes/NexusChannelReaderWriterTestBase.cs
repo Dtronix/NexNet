@@ -3,8 +3,6 @@ using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace NexNet.IntegrationTests.Pipes;
 

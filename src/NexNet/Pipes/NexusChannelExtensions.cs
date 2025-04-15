@@ -30,7 +30,7 @@ public static class NexusChannelExtensions
         int chunkSize = 10,
         CancellationToken cancellationToken = default)
     {
-        var writer = await channel.GetWriterAsync();
+        var writer = await channel.GetWriterAsync().ConfigureAwait(false);
         await WriteAndComplete<T>(writer, enumerableData, chunkSize, cancellationToken).ConfigureAwait(false);
     }
 

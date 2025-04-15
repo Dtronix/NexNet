@@ -7,10 +7,9 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipelines;
 using NexNet.Internals.Pipelines.Internal;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 internal static partial class StreamConnection
 {

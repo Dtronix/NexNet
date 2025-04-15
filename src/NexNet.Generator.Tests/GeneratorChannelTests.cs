@@ -21,7 +21,7 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexUnmanagedChannel <int> pipe){ return default; }
   }
 ");
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -41,7 +41,7 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexChannel <int> pipe){ return default; }
   }
 ");
-        Assert.IsEmpty(diagnostic);
+        Assert.That(diagnostic, Is.Empty);
     }
 
     [Test]
@@ -58,7 +58,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id), Is.True);
     }
 
     [Test]
@@ -75,7 +75,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
     }
 
     [Test]
@@ -92,7 +92,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
     }
 
     [Test]
@@ -109,7 +109,7 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.IsTrue(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id));
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
     }
 }
 

@@ -28,7 +28,7 @@ internal class NexusChannelWriterTests
 
         var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.AreEqual(baseObject, message);
+        Assert.That(message, Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -49,7 +49,7 @@ internal class NexusChannelWriterTests
 
         var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
 
-        Assert.AreEqual(baseObject, message);
+        Assert.That(message, Is.EqualTo(baseObject));
     }
 
     [Test]
@@ -65,8 +65,8 @@ internal class NexusChannelWriterTests
         var cts = new CancellationTokenSource(100);
         var writeResult = await writer.WriteAsync(ComplexMessage.Random(), cts.Token).Timeout(1);
 
-        Assert.IsFalse(writeResult);
-        Assert.IsFalse(writer.IsComplete);
+        Assert.That(writeResult, Is.False);
+        Assert.That(writer.IsComplete, Is.False);
     }
 
     [Test]
@@ -83,8 +83,8 @@ internal class NexusChannelWriterTests
         cts.Cancel();
         var writeResult = await writer.WriteAsync(ComplexMessage.Random(), cts.Token).Timeout(1);
 
-        Assert.IsFalse(writeResult);
-        Assert.IsFalse(writer.IsComplete);
+        Assert.That(writeResult, Is.False);
+        Assert.That(writer.IsComplete, Is.False);
     }
 
     private class DummyPipeStateManager : IPipeStateManager

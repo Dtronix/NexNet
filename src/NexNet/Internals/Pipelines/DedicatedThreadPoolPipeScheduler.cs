@@ -147,7 +147,7 @@ internal sealed class DedicatedThreadPoolPipeScheduler : PipeScheduler, IDisposa
     /// <summary>
     /// The number of workers currently actively engaged in work
     /// </summary>
-    public int AvailableCount => Thread.VolatileRead(ref _availableCount);
+    public int AvailableCount => Volatile.Read(ref _availableCount);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Execute(Action<object> action, object state)

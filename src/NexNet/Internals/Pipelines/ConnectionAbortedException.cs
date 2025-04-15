@@ -1,6 +1,5 @@
 ﻿#nullable disable
 using System;
-using System.Runtime.Serialization;
 
 namespace NexNet.Internals.Pipelines;
 #pragma warning disable RCS1194 // exception constructors

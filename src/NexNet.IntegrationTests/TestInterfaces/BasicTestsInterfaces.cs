@@ -159,6 +159,7 @@ public partial class ServerNexus
 
     public Func<ServerNexus, byte[], ValueTask>? ServerDataEvent;
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
+    public Func<ServerNexus, ValueTask>? OnInitializeEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
 
@@ -219,30 +220,26 @@ public partial class ServerNexus
 
     public ValueTask ServerData(byte[] data)
     {
-        if (ServerDataEvent == null)
-            return ValueTask.CompletedTask;
-
-        return ServerDataEvent.Invoke(this, data);
+        return ServerDataEvent?.Invoke(this, data) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnConnected(bool isReconnected)
     {
-        if (OnConnectedEvent == null)
-            return ValueTask.CompletedTask;
-
-        return OnConnectedEvent.Invoke(this);
+        return OnConnectedEvent?.Invoke(this) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
     {
-        if (OnDisconnectedEvent == null)
-            return ValueTask.CompletedTask;
-
-        return OnDisconnectedEvent.Invoke(this);
+        return OnDisconnectedEvent?.Invoke(this) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticateEvent!.Invoke(this);
+    }
+    
+    protected override ValueTask OnNexusInitialize()
+    {
+        return OnInitializeEvent?.Invoke(this) ?? ValueTask.CompletedTask;
     }
 }

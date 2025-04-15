@@ -115,11 +115,12 @@ internal static class SequenceExtensions
                 sequence = new Sequence<T>(segment.Array, segment.Count, segment.Count);
                 return true;
             }
-            if (source is Sequence<T> seq)
-            {
-                sequence = seq;
-                return true;
-            }
+            // Sequence does not implement IEnumerable<T>, so there should not be a valid cast.
+            //if (source is Sequence<T> seq)
+            //{
+            //    sequence = seq;
+            //    return true;
+            //}
             sequence = default;
             return false;
         }

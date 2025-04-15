@@ -8,15 +8,19 @@ namespace NexNet.Logging;
 public interface INexusLogger
 {
     /// <summary>
+    /// Configures the logger to behave certain ways.  Can be updated on the fly.
+    /// </summary>
+    public NexusLogBehaviors Behaviors { get; set; }
+    /// <summary>
     /// Category for the log event.
     /// </summary>
-    public string? Category { get; set; }
+    public string? Category { get; }
 
     /// <summary>
     /// Gets or sets the session-specific details to be included in the log.
     /// This can be used to provide additional context about the session during which the log events occur.
     /// </summary>
-    public string? SessionDetails { get; set; }
+    public string? SessionDetails { get; set;  }
 
     /// <summary>
     /// Logs a message with a specified level, category, and associated exception.

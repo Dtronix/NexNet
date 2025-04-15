@@ -4,9 +4,8 @@ using System;
 using System.Buffers;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipelines;
 
-namespace NexNet.Pipelines;
+namespace NexNet.Internals.Pipelines;
 
 partial class StreamConnection
 {

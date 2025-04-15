@@ -34,6 +34,6 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 
 **TLS over TCP** allows for TLS encryption provided by the SslStream on both the server and client. This is still fast, but not as fast as either prior options as it creates a Socket, wrapped by a Network stream wrapped by a SslStream.
 
-**QUIC (UDP)** s a  UDP protocol which guarantees packet transmission, order and survives a connection IP and port change such as a connection switching from WiFi to celular.  It requires the `libmsquic` library which can be installed on linux/unix based systems via the local app pacakge manager.  Ubuntu: `sudo apt install libmsquic`.  Must install the `NexNet.Quic` Nuget package to add the Quic transport.
+**QUIC (UDP)** s a  UDP protocol which guarantees packet transmission, order and survives a connection IP and port change such as a connection switching from WiFi to celular.  It requires the `libmsquic` library which can be installed on linux/unix based systems via the local app pacakge manager.  Ubuntu: `sudo apt install libmsquic`.  Must install the `NexNet.Quic` NuGet package to add the Quic transport.
 
 Additional transports can be added as long as the transports guarantees order and transmission.

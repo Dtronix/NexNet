@@ -12,7 +12,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals.Pipelines.Internal;
-using NexNet.Pipelines;
 
 namespace NexNet.Internals.Pipelines;
 

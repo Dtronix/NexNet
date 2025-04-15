@@ -10,10 +10,12 @@ namespace NexNet.IntegrationTests;
 
 internal partial class NexusClientTests_Cancellation : BaseTests
 {
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -24,7 +26,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client =>
@@ -40,10 +42,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -54,7 +58,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client =>
@@ -71,10 +75,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -86,7 +92,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             async client =>
@@ -98,10 +104,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -113,7 +121,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             async client =>
@@ -124,10 +132,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await tcs.Timeout(1);
     }
 
+    [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -135,7 +145,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             sNexus => sNexus.ServerTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
             {
-                Assert.AreEqual(1, message.InvocationId);
+                Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
             client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(200).Token));
@@ -149,7 +159,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         where T : IMessageBase
     {
         var clientConfig = CreateClientConfig(type);
-        var tcs = new TaskCompletionSource();
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, serverNexus, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);

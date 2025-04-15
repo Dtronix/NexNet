@@ -12,7 +12,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         var value = ComplexMessage.Random();
         await writer.WriteAsync(value).Timeout(1);
         var result = await reader.ReadAsync().Timeout(1);
-        Assert.AreEqual(value, result.Single());
+        Assert.That(result.Single(), Is.EqualTo(value));
     }
 
     [Test]
@@ -29,10 +29,10 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         var result = await reader.ReadAsync().Timeout(1);
         foreach (var complexMessage in result)
         {
-            Assert.AreEqual(value, complexMessage);
+            Assert.That(complexMessage, Is.EqualTo(value));
         }
 
-        Assert.AreEqual(iterations, result.Count());
+        Assert.That(result.Count(), Is.EqualTo(iterations));
     }
 
     [Test]
@@ -57,7 +57,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
                 var result = await reader.ReadAsync().Timeout(1);
                 foreach (var complexMessage in result)
                 {
-                    Assert.AreEqual(value, complexMessage);
+                    Assert.That(complexMessage, Is.EqualTo(value));
                     count++;
                 }
 
@@ -68,7 +68,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
             }
         }).Timeout(1);
 
-        Assert.AreEqual(iterations, count);
+        Assert.That(count, Is.EqualTo(iterations));
     }
 
     [Test]
@@ -85,7 +85,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         
         var completeRead = await reader.ReadUntilComplete().Timeout(1);
 
-        Assert.AreEqual(0, completeRead.Count);
+        Assert.That(completeRead.Count, Is.EqualTo(0));
     }
     private (NexusChannelWriter<T>, NexusChannelReader<T>) GetReaderWriter<T>()
     {

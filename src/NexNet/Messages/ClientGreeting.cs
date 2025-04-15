@@ -6,7 +6,7 @@ using NexNet.Cache;
 namespace NexNet.Messages;
 
 [MemoryPackable(SerializeLayout.Explicit)]
-internal partial class ClientGreetingMessage : IMessageBase
+internal partial class ClientGreetingMessage : IClientGreetingMessageBase
 {
     private bool _isArgumentPoolArray;
     public static MessageType Type { get; } = MessageType.ClientGreeting;

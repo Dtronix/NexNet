@@ -30,7 +30,7 @@ public abstract class ConfigBase
 
 
     /// <summary>
-    /// If a client has not sent any message within this time frame,
+    /// The time in milliseconds if a connection has not sent any message within this time frame,
     /// including a ping, the client will be disconnected.
     /// </summary>
     public int Timeout { get; set; } = 30_000;

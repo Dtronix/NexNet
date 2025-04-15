@@ -96,12 +96,12 @@ internal class BufferWriterTests
         }
 
         var sequence = bufferWriter.GetBuffer().AsReadOnly();
-        Assert.AreEqual(loops * dataLength, sequence.Length);
+        Assert.That(sequence.Length, Is.EqualTo(loops * dataLength));
 
         bufferWriter.ReleaseTo(3000 * 16);
 
         sequence = bufferWriter.GetBuffer().AsReadOnly();
-        Assert.AreEqual(loops * dataLength - 3000 * 16, sequence.Length);
+        Assert.That(sequence.Length, Is.EqualTo(loops * dataLength - 3000 * 16));
 
 
     }    
@@ -124,7 +124,7 @@ internal class BufferWriterTests
         bufferWriter.Advance(data.Length);
 
         var sequence = bufferWriter.GetBuffer().AsReadOnly();
-        Assert.AreEqual(data.Length, sequence.Length);
+        Assert.That(sequence.Length, Is.EqualTo(data.Length));
 
 
     }
