@@ -83,16 +83,22 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var disconnectedTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
         ITransport transport;
-        
+
         try
         {
             transport = await _config.ConnectTransport(cancellationToken).ConfigureAwait(false);
+        }
+        catch (TransportException e)
+        {
+            return new ConnectionResult(e.Error == TransportError.AuthenticationError
+                ? ConnectionResult.StateValue.AuthenticationFailed
+                : ConnectionResult.StateValue.Exception, e);
         }
         catch (Exception e)
         {
             return new ConnectionResult(ConnectionResult.StateValue.Exception, e);
         }
-        
+
         _config.InternalOnClientConnect?.Invoke();
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
