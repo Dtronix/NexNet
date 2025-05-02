@@ -6,6 +6,7 @@ using BenchmarkDotNet.Attributes;
 using NexNet;
 using NexNet.Logging;
 using NexNet.Transports;
+using NexNet.Transports.Uds;
 
 namespace NexNetBenchmarks;
 
