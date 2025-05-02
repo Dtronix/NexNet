@@ -6,6 +6,7 @@ using System.Security.Cryptography.X509Certificates;
 using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
+using NexNet.Transports.Uds;
 
 namespace NexNetDemo.Samples;
 

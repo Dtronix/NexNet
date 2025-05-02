@@ -64,6 +64,15 @@ public class QuicServerConfig : ServerConfig
     /// Endpoint to bind to.
     /// </summary>
     public required IPEndPoint EndPoint { get; set; }
+    
+    /// <summary>
+    /// Sets the server mode.
+    /// </summary>
+    public QuicServerConfig()
+        : base(ServerConnectionMode.Listener)
+    {
+        
+    }
 
 
     /// <param name="cancellationToken"></param>

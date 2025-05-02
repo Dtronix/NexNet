@@ -26,7 +26,8 @@ internal abstract class SocketServer : IDisposable
         int listenBacklog = 20,
         PipeOptions sendOptions = null, PipeOptions receiveOptions = null)
     {
-        if (_listener is not null) Throw.InvalidOperation("Server is already running");
+        if (_listener is not null) 
+            Throw.InvalidOperation("Server is already running");
         var listener = new Socket(addressFamily, socketType, protocolType);
         listener.Bind(endPoint);
         listener.Listen(listenBacklog);

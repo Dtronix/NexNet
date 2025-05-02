@@ -9,6 +9,12 @@ namespace NexNet.Transports;
 /// </summary>
 public abstract class ServerConfig : ConfigBase
 {
+    
+    /// <summary>
+    /// Gets the connection mode that the server is to operate in.
+    /// </summary>
+    public ServerConnectionMode ConnectionMode { get; }
+    
     /// <summary>
     /// Option: acceptor backlog size
     /// </summary>
@@ -34,11 +40,19 @@ public abstract class ServerConfig : ConfigBase
     /// <returns>Listener interface.</returns>
     protected abstract ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken);
 
+    internal Action? InternalOnConnect = null;
+
+    /// <summary>
+    /// Base configuration class for servers, providing options for the server connection
+    /// </summary>
+    protected ServerConfig(ServerConnectionMode connectionMode)
+    {
+        ConnectionMode = connectionMode;
+    }
+
     internal ValueTask<ITransportListener?> CreateServerListener(CancellationToken cancellationToken)
     {
         return OnCreateServerListener(cancellationToken);
     }
-
-    internal Action? InternalOnConnect;
 
 }

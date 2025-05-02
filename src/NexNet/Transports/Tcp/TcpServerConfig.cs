@@ -74,10 +74,19 @@ public class TcpServerConfig : ServerConfig
     /// </summary>
     public required EndPoint EndPoint { get; set; }
 
-
+    /// <summary>
+    /// Sets the server mode.
+    /// </summary>
+    public TcpServerConfig()
+        : base(ServerConnectionMode.Listener)
+    {
+        
+    }
+    
     /// <inheritdoc />
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
         return new ValueTask<ITransportListener?>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.Tcp));
     }
+
 }
