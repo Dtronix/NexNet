@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Transports;
+namespace NexNet.Transports.Uds;
 
 /// <summary>
 /// Configurations for the server to allow connections from Unix Domain Socket (UDS) NexNet clients.
@@ -32,5 +32,14 @@ public sealed class UdsServerConfig : ServerConfig
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
         return new ValueTask<ITransportListener?>(SocketTransportListener.Create(this, EndPoint, SocketType.Stream, ProtocolType.IP));
+    }
+    
+    /// <summary>
+    /// Sets the server mode.
+    /// </summary>
+    public UdsServerConfig()
+        : base(ServerConnectionMode.Listener)
+    {
+        
     }
 }

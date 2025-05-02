@@ -130,18 +130,32 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
         }
+        if (State == NexusServerState.Running) 
+            throw new InvalidOperationException("Server is already running");
 
         // Only execute if the server is stopped and not disposed.
         if (Interlocked.CompareExchange(ref _state, NexusServerState.Running, NexusServerState.Stopped) != NexusServerState.Stopped)
             return;
+        
+        if (_config.ConnectionMode == ServerConnectionMode.Listener)
+        {
+            // Startup the listener and stopping mechanisms.
+            _cancellationTokenSource = new CancellationTokenSource();
+            _stoppedTcs?.TrySetResult();
+            _stoppedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            
+            _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
+            
+            if(_listener == null)
+                throw new InvalidOperationException("""
+                                                    Configuration returned a null listener.  
+                                                    If the server is directly being provided connections via the AcceptTransport method,
+                                                    then the ServerConnectionMode.Receiver should be set on the configuration.
+                                                    """);
 
-        if (_listener != null) throw new InvalidOperationException("Server is already running");
-        _cancellationTokenSource = new CancellationTokenSource();
-        _stoppedTcs?.TrySetResult();
-        _stoppedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
-
-        StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler, _ => FireAndForget(ListenForConnectionsAsync()), null);
+            StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
+                _ => FireAndForget(ListenForConnectionsAsync()), null);
+        }
 
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
     }
@@ -154,40 +168,48 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
         _logger?.LogInfo("Stopping server");
 
-        var listener = _listener;
-        _listener = null;
-
-        try
+        // If the server is not listening for connections, we are done.
+        if (_config?.ConnectionMode == ServerConnectionMode.Listener)
         {
-            _cancellationTokenSource?.Cancel();
-            _cacheManager.Clear();
-            _watchdogTimer.Change(-1, -1);
+            var listener = _listener;
+            _listener = null;
 
-            foreach (var session in _sessionManager.Sessions)
+            try
             {
-                try
-                {
-                    await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
-                }
-                catch (Exception e)
-                {
-                    // Ignore exceptions
-                    _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Key}");
-                }
-
+                // The async overload just uses more resources.
+                // ReSharper disable once MethodHasAsyncOverload
+                _cancellationTokenSource?.Cancel();
+                
+                // If the listener is null, then the incoming connections are not handled by a listener,
+                // and we don't have any work to perform.
+                if (listener != null)
+                    await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
             }
-            
-            // If the listener is null, then the incoming connections are not handled by a listener,
-            // and we don't have any work to perform.
-            if(listener != null)
-                await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
-        }
-        catch
-        {
-            // ignored
-        }
+            catch
+            {
+                // ignored
+            }
 
-        _stoppedTcs?.TrySetResult();
+            _stoppedTcs?.TrySetResult();
+        }
+        
+        foreach (var session in _sessionManager.Sessions)
+        {
+            try
+            {
+                await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                // Ignore exceptions
+                _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Key} due to server shutdown.");
+            }
+        }
+        
+        _cacheManager.Clear();
+        
+        // Stop the watchdog timer as the server is no longer running.
+        _watchdogTimer.Change(-1, -1);
     }
 
     /// <inheritdoc />
@@ -203,6 +225,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     
     ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
     {
+        // If the server is not running, don't accept connections.
+        if(_state != NexusServerState.Running)
+            return ValueTask.CompletedTask;
+        
         if (_config == null)
             throw new InvalidOperationException(
                 "Can't accept new transport before server configuration has been completed.");

@@ -13,6 +13,7 @@ using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
+using NexNet.Transports.Uds;
 using NexNet.Transports.WebSocket;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;

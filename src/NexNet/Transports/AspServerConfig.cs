@@ -19,4 +19,13 @@ public abstract class AspServerConfig : ServerConfig
     /// ASP Authentication scheme to apply.  Null to use the default authentication scheme.
     /// </summary>
     public string? AspAuthenticationScheme { get; set; } = null;
+
+    /// <summary>
+    /// Sets the server mode.
+    /// </summary>
+    protected AspServerConfig()
+        : base(ServerConnectionMode.Receiver)
+    {
+        
+    }
 }

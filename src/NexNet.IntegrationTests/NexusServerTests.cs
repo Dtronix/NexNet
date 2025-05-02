@@ -1,4 +1,5 @@
-﻿using NexNet.Transports;
+﻿using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Transports;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
@@ -138,6 +139,28 @@ internal partial class NexusServerTests : BaseTests
         {
             Assert.Fail($"Expected {nameof(TransportException)} but got {e.GetType().Name}");
         }
-
     }
+    
+    [Test]
+    public void ServerThrowsWhenTransportConfigReturnsNullListenerOnWrongMode()
+    {
+        var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Listener), () => null!);
+        Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+    }
+    
+    [Test]
+    public void ServerDoesntThrowWhenTransportConfigReturnsNullListenerOnCorrectMode()
+    {
+        var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
+        Assert.DoesNotThrowAsync(() => server.StartAsync());
+    }
+    
+    [Test]
+    public void ServerThrowsWhenStartingTwiceWhileAlreadyRunning()
+    {
+        var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
+        Assert.DoesNotThrowAsync(() => server.StartAsync());
+        Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+    }
+
 }
