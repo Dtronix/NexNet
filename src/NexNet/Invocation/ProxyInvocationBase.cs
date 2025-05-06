@@ -7,6 +7,7 @@ using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Transports;
 
 namespace NexNet.Invocation;
 
@@ -89,6 +90,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
     {
+        if (_session?.State != ConnectionState.Connected)
+            throw new InvalidOperationException("Session is not connected");
+        
         var message = _cacheManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
         message.Flags = InvocationFlags.IgnoreReturn | flags;
@@ -270,6 +274,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
+        if (_session?.State != ConnectionState.Connected)
+            throw new InvalidOperationException("Session is not connected");
+        
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
@@ -294,6 +301,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
+        if (_session?.State != ConnectionState.Connected)
+            throw new InvalidOperationException("Session is not connected");
+        
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
@@ -329,6 +339,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
      byte IProxyInvoker.ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe)
      {
+         if (_session?.State != ConnectionState.Connected)
+             throw new InvalidOperationException("Session is not connected");
+         
          ArgumentNullException.ThrowIfNull(pipe);
          var nexusPipe = Unsafe.As<NexusDuplexPipe>(pipe);
 

@@ -1,4 +1,5 @@
 ﻿using MemoryPack;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -579,4 +580,262 @@ internal partial class NexusClientTests : BaseTests
 
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientSendsDisconnectSignal(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.InternalOnSend = (_, bytes) =>
+        {
+            // first byte is the message type
+            if (bytes.Length == 1 && bytes[0] == (int)MessageType.DisconnectGraceful)
+                tcs.SetResult();
+        };
+
+        var (server, _, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            clientConfig);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        await client.DisconnectAsync().Timeout(1);
+
+        await tcs.Task.Timeout(1);
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task FiresOnDisconnectedEvent(Type type)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, _, client, clientNexus) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        clientNexus.OnDisconnectedEvent = _ =>
+        {
+            tcs.SetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        await client.DisconnectAsync().Timeout(1);
+
+        await tcs.Task.Timeout(1);
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ProxyInvocationPropagatesServerException(Type type)
+    {
+        var (server, serverNexus, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server throws
+        serverNexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        Assert.ThrowsAsync<ProxyRemoteInvocationException>(
+            () => client.Proxy.ServerTaskValue().Timeout(1));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task DisconnectWithoutConnectDoesNotThrow(Type type)
+    {
+        var (_, _, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+        
+        // Should complete without throwing
+        Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task DoubleConnectDoesNotThrow(Type type)
+    {
+        var (server, _, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Second ConnectAsync should throw
+        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task DoubleDisconnectDoesNotThrow(Type type)
+    {
+        var (server, _, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        // First disconnect
+        await client.DisconnectAsync().Timeout(1);
+        
+        // Second disconnect should be a no-op
+        Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ConcurrentProxyInvocations(Type type)
+    {
+        var (server, serverNexus, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server always returns 42
+        serverNexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Fire off 20 simultaneous calls
+        var calls = Enumerable.Range(0, 20)
+            .Select(_ => client.Proxy.ServerTaskValue().AsTask())
+            .ToArray();
+
+        var results = await Task.WhenAll(calls).Timeout(1);
+        Assert.That(results, Has.Exactly(20).EqualTo(42));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    public async Task ServerRejectsAuth_SendsDisconnect(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        // Capture what the server sends
+        byte? sentMessageType = null;
+        serverConfig.InternalOnSend = (_, bytes) =>
+        {
+            // First byte is the message type
+            sentMessageType = bytes.Length > 0 ? (byte?)bytes[0] : null;
+        };
+
+        var clientConfig = CreateClientConfig(type);
+        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+
+        // Force authentication to fail
+        serverHub.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Give it a moment to send the disconnect
+        await Task.Delay(50);
+
+        Assert.That(sentMessageType, Is.EqualTo((byte)MessageType.DisconnectAuthentication),
+            "Server should send a Disconnect message when auth is rejected");
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ProxyInvocationAfterDisconnectThrows(Type type)
+    {
+        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        // Server will respond, but we will disconnect before calling
+        serverNexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        await client.DisconnectAsync().Timeout(1);
+
+        // Any RPC after clean disconnect should throw
+        await AssertThrows<InvalidOperationException>(() => client.Proxy.ServerTaskValue().Timeout(1));
+    }
+    
+    /// <summary>
+    /// If the reconnection policy is null, OnReconnectingEvent must never fire after a disconnect.
+    /// </summary>
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task OnReconnectingEventNotFiredWithNoRetries(Type type)
+    {
+        var clientConfig = CreateClientConfig(type);
+        // Zero‐retry policy
+        clientConfig.ReconnectionPolicy = null;
+
+        var serverConfig = CreateServerConfig(type);
+        // Ensure no clean‐disconnect signal is sent
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        var reconnectingFired = false;
+        clientNexus.OnReconnectingEvent = _ =>
+        {
+            reconnectingFired = true;
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        await server.StopAsync().Timeout(1);
+
+        // Give it a moment to (not) trigger
+        await Task.Delay(50);
+        Assert.That(reconnectingFired, Is.False, "With a disabled reconnection policy, OnReconnectingEvent must not fire.");
+    }
+
 }
