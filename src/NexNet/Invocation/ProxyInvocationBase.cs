@@ -90,7 +90,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
     {
-        if (_session?.State != ConnectionState.Connected)
+        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
+        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
         
         var message = _cacheManager.Rent<InvocationMessage>();
@@ -274,7 +275,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
-        if (_session?.State != ConnectionState.Connected)
+        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
+        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
         
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
@@ -301,7 +303,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     /// <inheritdoc />
     async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
     {
-        if (_session?.State != ConnectionState.Connected)
+        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
+        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
         
         var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
