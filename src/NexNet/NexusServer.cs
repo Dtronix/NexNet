@@ -164,7 +164,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public async Task StopAsync()
     {
         if (Interlocked.CompareExchange(ref _state, NexusServerState.Stopped, NexusServerState.Running) != NexusServerState.Running)
-            return;
+            throw new InvalidOperationException("Server is not running");
 
         _logger?.LogInfo("Stopping server");
 
