@@ -273,7 +273,7 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         _head = node;
         
         if(_tailOffset < count)
-            throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {_tailOffset - count} remaining elements.");
+            throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {count - _tailOffset} remaining elements.");
 
         _headOffset = count;
     }

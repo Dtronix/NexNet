@@ -8,7 +8,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
     [Test]
     public async Task WritesAndReadsData()
     {
-        var (writer, reader) = GetReaderWriter<ComplexMessage>();
+        var (writer, reader, _, _) = GetReaderWriter<ComplexMessage>();
         var value = ComplexMessage.Random();
         await writer.WriteAsync(value).Timeout(1);
         var result = await reader.ReadAsync().Timeout(1);
@@ -18,7 +18,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
     [Test]
     public async Task WritesAndReadsMultipleData()
     {
-        var (writer, reader) = GetReaderWriter<ComplexMessage>();
+        var (writer, reader, _, _) = GetReaderWriter<ComplexMessage>();
         var iterations = 1000;
         var value = ComplexMessage.Random();
         for (var i = 0; i < iterations; i++)
@@ -34,11 +34,41 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
 
         Assert.That(result.Count(), Is.EqualTo(iterations));
     }
+    
+    [Test]
+    public async Task ReadsAcrossMessageBoundary()
+    {
+        var (writer, reader, messenger, pipeReader) = GetReaderWriter<ComplexMessage>();
+
+        messenger.OnMessageSent = async (type, memory, arg3) =>
+        {
+            await pipeReader!.BufferData(arg3.Slice(0, 30)).Timeout(1);
+        };
+        
+        var value = new ComplexMessage()
+        {
+            DateTime = DateTime.UnixEpoch,
+            DateTimeOffset = DateTimeOffset.UnixEpoch,
+            DateTimeOffsetNull = DateTimeOffset.UnixEpoch,
+            Integer = 12345,
+            String1 = "String1",
+            StringNull = null
+        };
+        await writer.WriteAsync(value).Timeout(1);
+
+        var result = await reader.ReadAsync().Timeout(1);
+        //foreach (var complexMessage in result)
+        //{
+        //    Assert.That(complexMessage, Is.EqualTo(value));
+        //}
+//
+        //Assert.That(result.Count(), Is.EqualTo(iterations));
+    }
 
     [Test]
     public async Task WritesAndReadsMultipleDataParallel()
     {
-        var (writer, reader) = GetReaderWriter<ComplexMessage>();
+        var (writer, reader, _, _) = GetReaderWriter<ComplexMessage>();
         var iterations = 10000;
         var value = ComplexMessage.Random();
         var count = 0;
@@ -74,7 +104,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
     [Test]
     public async Task ReaderCompletesOnPartialRead()
     {
-        var (writer, reader) = GetReaderWriter<long>();
+        var (writer, reader, _, _) = GetReaderWriter<long>();
         var value = ComplexMessage.Random();
 
         _ = Task.Run(async () =>
@@ -87,14 +117,14 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
 
         Assert.That(completeRead.Count, Is.EqualTo(0));
     }
-    private (NexusChannelWriter<T>, NexusChannelReader<T>) GetReaderWriter<T>()
+    private (NexusChannelWriter<T> writer, NexusChannelReader<T> reader, DummySessionMessenger sessionMessenger, NexusPipeReader pipeReader) GetReaderWriter<T>()
     {
-        var (pipeWriter, pipeReader) = GetConnectedPipeReaderWriter();
+        var (pipeWriter, pipeReader, sessionMessenger) = GetConnectedPipeReaderWriter();
 
         var writer = new NexusChannelWriter<T>(pipeWriter);
         var reader = new NexusChannelReader<T>(pipeReader);
 
-        return (writer, reader);
+        return (writer, reader, sessionMessenger, pipeReader);
     }
 
 }

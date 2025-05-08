@@ -95,7 +95,7 @@ internal class NexusChannelReaderUnmanaged<T> : NexusChannelReader<T>
                 : converter.Invoke(reader.ReadValue<T>()!));
         }
 
-        pipeReader.AdvanceTo(reader.Consumed);
+        pipeReader.AdvanceTo(reader.Consumed, reader.Consumed);
 
         return reader.Consumed;
     }
