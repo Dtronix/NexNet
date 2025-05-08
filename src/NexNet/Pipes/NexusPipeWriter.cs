@@ -21,7 +21,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
     private readonly int _chunkSize;
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
-    private bool _pauseWriting;
+    internal bool _pauseWriting;
     private readonly INexusLogger? _logger;
     private readonly ISessionMessenger? _messenger;
     private readonly NexusDuplexPipe.State _completedFlag;

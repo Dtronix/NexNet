@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -90,7 +91,8 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
 
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
-        int successfulConsumedCount = 0;
+        int consumedLength = 0;
+        int examinedLength = 0;
         while ((length - reader.Consumed) > 0)
         {
             try
@@ -99,19 +101,21 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
                 list.Add(converter == null 
                     ? reader.ReadValue<TTo>()! 
                     : converter.Invoke(reader.ReadValue<T>()!));
-                successfulConsumedCount = reader.Consumed;
+                consumedLength = reader.Consumed;
+                examinedLength = reader.Consumed;
             }
             catch
             {
+                examinedLength = reader.Consumed;
                 break;
             }
         }
 
-        if (successfulConsumedCount > 0)
+        if (consumedLength > 0 || examinedLength > 0)
         {
-            pipeReader.AdvanceTo(successfulConsumedCount);
+            pipeReader.AdvanceTo(consumedLength, examinedLength);
         }
 
-        return successfulConsumedCount;
+        return consumedLength;
     }
 }
