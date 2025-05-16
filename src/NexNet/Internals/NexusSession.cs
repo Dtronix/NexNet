@@ -56,6 +56,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly CancellationTokenSource _disconnectionCts;
 
     public Action<ConnectionState>? OnStateChanged;
+    private readonly INexusClient? _client;
 
     /// <summary>
     /// State of the connection that 
@@ -102,7 +103,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public SessionCacheManager<TProxy> CacheManager => _cacheManager;
     public SessionStore SessionStore { get; }
 
-    public Action? OnDisconnected { get; set; }
+    public Action? OnDisconnected { get; init; }
+    
+    public Action<bool>? OnReconnectingStatusChange { get; init; }
 
     public IIdentity? Identity { get; private set; }
 
@@ -131,10 +134,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
         _cacheManager = configurations.Cache;
         _sessionManager = configurations.SessionManager;
-        IsServer = configurations.IsServer;
+        IsServer = configurations.Client == null;
+        _client = configurations.Client;
         _nexus = configurations.Nexus;
         _disconnectionCts = new CancellationTokenSource();
-        _nexus.SessionContext = configurations.IsServer
+        _nexus.SessionContext = IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
@@ -193,6 +197,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _state = ConnectionState.Connected;
         OnStateChanged?.Invoke(State);
+        
+        // Notify that the connection has been reconnected.
+        if (isReconnect)
+            OnReconnectingStatusChange?.Invoke(true);
 
         if(isReconnect)
             await SendMessage(Unsafe.As<ClientGreetingReconnectionMessage>(greetingMessage)).ConfigureAwait(false);
@@ -207,7 +215,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private async ValueTask<bool> TryReconnectAsClient()
     {
-
         Logger?.LogInfo("Connection Lost. Reconnecting.");
         if (IsServer)
             return false;
@@ -217,6 +224,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         if (clientConfig.ReconnectionPolicy == null)
             return false;
+        
+        OnReconnectingStatusChange?.Invoke(false);
 
         _state = ConnectionState.Reconnecting;
         OnStateChanged?.Invoke(State);
@@ -237,10 +246,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                     return false;
 
                 await Task.Delay(delay.Value).ConfigureAwait(false);
+                clientConfig.ReconnectionPolicy.FireReconnection(_client!, count);
 
                 Logger?.LogTrace($"Reconnection attempt {count}");
 
-                transport = await clientConfig.ConnectTransport(default).ConfigureAwait(false);
+                transport = await clientConfig.ConnectTransport(CancellationToken.None).ConfigureAwait(false);
                 _state = ConnectionState.Connecting;
                 OnStateChanged?.Invoke(State);
 

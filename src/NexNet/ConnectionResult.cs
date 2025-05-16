@@ -5,7 +5,7 @@ namespace NexNet;
 /// <summary>
 /// Result of the connection attempt.
 /// </summary>
-public class ConnectionResult
+public readonly struct ConnectionResult
 {
     /// <summary>
     /// State of the connection.
@@ -40,6 +40,7 @@ public class ConnectionResult
         StateValue.Exception => false,
         StateValue.Unset => false,
         StateValue.UnknownException => false,
+        StateValue.Canceled => false,
         _ => throw new ArgumentOutOfRangeException()
     };
     
@@ -76,6 +77,11 @@ public class ConnectionResult
         /// <summary>
         /// Connection failed due to an unknown exception.
         /// </summary>
-        UnknownException
+        UnknownException,
+        
+        /// <summary>
+        /// The connection attempt was canceled.
+        /// </summary>
+        Canceled,
     }
 }

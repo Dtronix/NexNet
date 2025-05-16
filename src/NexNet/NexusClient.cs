@@ -107,7 +107,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             Transport = transport,
             Cache = _cacheManager,
             SessionManager = null,
-            IsServer = false,
+            Client = this,
             Id = 0, // Initial value.  Not set by the client.
             Nexus = _nexus,
             ReadyTaskCompletionSource = readyTaskCompletionSource,
@@ -117,6 +117,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
+            OnReconnectingStatusChange = OnReconnectingStatusChange,
             OnStateChanged = (state) => StateChanged?.Invoke(this, state)
         };
 
@@ -203,5 +204,18 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         //_receiveLoopThread = null;
         _pingTimer.Change(-1, -1);
         _session = null;
+    }
+    
+    
+    private void OnReconnectingStatusChange(bool reconnected)
+    {
+        if (reconnected)
+        {
+            _pingTimer.Change(_config.PingInterval, _config.PingInterval);
+        }
+        else
+        {
+            _pingTimer.Change(-1, -1);
+        }
     }
 }

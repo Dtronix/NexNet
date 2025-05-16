@@ -242,7 +242,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             Cache = _cacheManager,
             Configs = _config,
             SessionManager = _sessionManager,
-            IsServer = true,
+            Client = null,
             Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
             Nexus = _nexusFactory!.Invoke()
         }, cancellationToken);
@@ -356,7 +356,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Cache = _cacheManager,
                         Configs = _config,
                         SessionManager = _sessionManager,
-                        IsServer = true,
                         Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
                         Nexus = _nexusFactory!.Invoke()
                     });
