@@ -17,6 +17,9 @@ public class DefaultReconnectionPolicy : IReconnectionPolicy
     /// </summary>
     public bool ContinuousRetry { get; }
 
+    /// <inheritdoc />
+    public event ReconnectionAttemptDelegate? Reconnection;
+
     /// <summary>
     /// Creates a reconnection in default mode.
     /// </summary>
@@ -57,5 +60,11 @@ public class DefaultReconnectionPolicy : IReconnectionPolicy
         }
 
         return null;
+    }
+
+    /// <inheritdoc />
+    void IReconnectionPolicy.FireReconnection(INexusClient client, int retryAttempt)
+    {
+        Reconnection?.Invoke(client, retryAttempt);
     }
 }
