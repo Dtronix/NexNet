@@ -24,8 +24,8 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.GetContext();
-        await context.Clients.All.ClientTask();
+        using var context = server.ContextProvider.Rent();
+        await context.Proxy.All.ClientTask();
         await tcs.Task.Timeout(1);
     }
 
@@ -58,11 +58,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.GetContext();
-        await context.Clients.All.ClientTask();
-        await context.Clients.Clients(context.Clients.GetIds().ToArray()).ClientTask();
-        await context.Clients.Group("myGroup").ClientTask();
-        await context.Clients.Groups(new[] { "myGroup" }).ClientTask();
+        using var context = server.ContextProvider.Rent();
+        await context.Proxy.All.ClientTask();
+        await context.Proxy.Clients(context.Proxy.GetIds().ToArray()).ClientTask();
+        await context.Proxy.Group("myGroup").ClientTask();
+        await context.Proxy.Groups(new[] { "myGroup" }).ClientTask();
         Assert.That(completed, Is.False);
     }
 
@@ -88,7 +88,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             {
                 await nexus.Context.Clients.All.ClientTask();
                 // ReSharper disable once AccessToModifiedClosure
-                await nexus.Context.Clients.Clients(server!.GetContext().Clients.GetIds().ToArray()).ClientTask();
+                await nexus.Context.Clients.Clients(server!.ContextProvider.Rent().Proxy.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(new[] { "myGroup" }).ClientTask();
                 Assert.That(completed, Is.False);
@@ -149,9 +149,9 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.GetContext();
+        using var context = server.ContextProvider.Rent();
 
-        var result = await context.Clients.Client(context.Clients.GetIds().First()).ClientTaskValue();
+        var result = await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue();
 
         Assert.That(result, Is.EqualTo(54321));
     }
@@ -299,7 +299,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 if (Interlocked.Increment(ref connectedCount) == 2)
                 {
                     // ReSharper disable once AccessToModifiedClosure
-                    var clientIds = server!.GetContext().Clients.GetIds().ToArray();
+                    var clientIds = server!.ContextProvider.Rent().Proxy.GetIds().ToArray();
                     await nexus.Context.Clients.Clients(clientIds).ClientTask();
                 }
             };

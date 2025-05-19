@@ -49,6 +49,8 @@ public class Program
         builder.Services.AddHttpContextAccessor();
         
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+        
+        builder.Services.AddHostedService<SimpleService>();
 
         var app = builder.Build();
         
@@ -64,8 +66,8 @@ public class Program
             c.NexusConfig.AspEnableAuthentication = true;
             c.NexusConfig.AspAuthenticationScheme = "BearerToken";
         }).StartAsync(app.Lifetime.ApplicationStopped);
-
-
+        
         await app.RunAsync();
     }
 }
+

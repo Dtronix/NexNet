@@ -26,8 +26,11 @@ public static partial class NexNetMiddlewareExtensions
         services.AddTransient<TServerNexus>();
         
         // Adds the server as a singleton to the service collection
-        services.AddSingleton(p => 
-            new NexusServer<TServerNexus, TClientProxy>());
+        services.AddSingleton<NexusServer<TServerNexus, TClientProxy>>();
+        
+        // Adds the context provider
+        services.AddSingleton<ServerNexusContextProvider<TClientProxy>>(sp =>
+            sp.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>().ContextProvider);
 
         return services;
     }

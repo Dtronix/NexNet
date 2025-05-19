@@ -26,8 +26,16 @@ internal class Program
             AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
         };
 
-        var client = ClientNexus.CreateClient(clientHttpSocketConfig, new ClientNexus());
+        var nexus = new ClientNexus {
+            ClientTaskWithParamEvent = (clientNexus, i) =>
+            {
+                Console.WriteLine($"Received param event with value {i}");
+                return ValueTask.CompletedTask;
+            }
+        };
 
+        var client = ClientNexus.CreateClient(clientHttpSocketConfig, nexus);
+        
         await client.ConnectAsync();
         
         var val = await client.Proxy.ServerTaskValueWithParam(124);
