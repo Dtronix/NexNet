@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using NexNet.Cache;
 
 namespace NexNet.Invocation;
@@ -8,29 +7,23 @@ namespace NexNet.Invocation;
 /// Context for external hub management.
 /// </summary>
 /// <typeparam name="TClientProxy">Proxy class used for invocation.</typeparam>
-public class ServerNexusContext<TClientProxy> : IDisposable
+public class ServerNexusContext<TClientProxy>
     where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    private readonly INexusServer<TClientProxy> _server;
-    private readonly SessionManager _sessionManager;
-
     /// <summary>
     /// Client Proxy.
     /// </summary>
     public IProxyBase<TClientProxy> Clients { get; }
 
     internal ServerNexusContext(
-        INexusServer<TClientProxy> server,
         SessionManager sessionManager,
         SessionCacheManager<TClientProxy> cache)
     {
-        _server = server;
-        _sessionManager = sessionManager;
         Clients = new ClientProxy(sessionManager, cache);
 
     }
 
-    private sealed class ClientProxy : IProxyBase<TClientProxy>
+    internal sealed class ClientProxy : IProxyBase<TClientProxy>
     {
         private readonly SessionManager _sessionManager;
         private readonly SessionCacheManager<TClientProxy> _cacheManager;
@@ -153,14 +146,5 @@ public class ServerNexusContext<TClientProxy> : IDisposable
                 _cacheManager.ProxyCache.Return(proxy);
             }
         }
-    }
-
-    /// <summary>
-    /// Disposes the context for reuse at a later time.
-    /// </summary>
-    void IDisposable.Dispose()
-    {
-        ((ClientProxy)Clients).Reset();
-        _server.ServerNexusContextCache.Add(this);
     }
 }

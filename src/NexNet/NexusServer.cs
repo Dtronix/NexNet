@@ -27,16 +27,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private Func<TServerNexus>? _nexusFactory;
     private readonly SessionCacheManager<TClientProxy> _cacheManager;
     private ITransportListener? _listener;
-    private readonly ConcurrentBag<ServerNexusContext<TClientProxy>> _serverNexusContextCache = new();
     private TaskCompletionSource? _stoppedTcs;
     private NexusServerState _state = NexusServerState.Stopped;
     private CancellationTokenSource? _cancellationTokenSource;
-    /// <summary>
-    /// Cache for all the server nexus contexts.
-    /// </summary>
-    ConcurrentBag<ServerNexusContext<TClientProxy>> INexusServer<TClientProxy>.ServerNexusContextCache =>
-        _serverNexusContextCache;
-
+    
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
@@ -52,6 +46,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
     /// <inheritdoc />
     public bool IsConfigured => _config != null;
+    
+    /// <inheritdoc />
+    public ServerNexusContextProvider<TClientProxy> ContextProvider { get; }
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
@@ -78,6 +75,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
+        ContextProvider = new ServerNexusContextProvider<TClientProxy>(_sessionManager, _cacheManager);
     }
 
     /// <summary>
@@ -100,19 +98,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
     }
-
-    /// <summary>
-    /// Gets a nexus context which can be used outside the nexus.  Dispose after usage.
-    /// </summary>
-    /// <returns>Server nexus context for invocation of client methods.</returns>
-    public ServerNexusContext<TClientProxy> GetContext()
-    {
-        if(!_serverNexusContextCache.TryTake(out var context))
-            context = new ServerNexusContext<TClientProxy>(this, _sessionManager, _cacheManager);
-
-        return context;
-    }
-
 
     /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
