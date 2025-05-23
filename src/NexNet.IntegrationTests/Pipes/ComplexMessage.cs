@@ -54,3 +54,9 @@ public partial class ComplexMessage
     }
 
 }
+
+[MemoryPackable]
+public partial class SimpleMessage
+{
+    public byte[] Data { get; set; } = null!;
+}

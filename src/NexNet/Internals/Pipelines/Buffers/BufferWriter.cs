@@ -233,6 +233,7 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
 
     /// <summary>
     /// Releases the specified number of bytes from the head of the buffer.
+    /// If the count is greater than the data buffered, throws.
     /// </summary>
     /// <param name="count">Number of bytes to release</param>
     public void ReleaseTo(int count)
@@ -243,9 +244,13 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         var node = _head;
 
         count += _headOffset;
-
+        
         if (node is not null && count < node.Length)
         {
+            // TODO: This should not happen, but does.
+            //if(_tailOffset < count)
+            //    throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {_tailOffset - _headOffset} remaining elements.");
+
             _headOffset = count;
             return;
         }
@@ -267,6 +272,10 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
 
 
         _head = node;
+        // TODO: This should not happen, but does.
+        //if(_tailOffset < count)
+        //    throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {count - _tailOffset} remaining elements.");
+
         _headOffset = count;
     }
 

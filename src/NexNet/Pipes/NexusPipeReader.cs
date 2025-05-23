@@ -410,12 +410,16 @@ internal class NexusPipeReader : PipeReader, IDisposable
         }
     }
 
-    public void AdvanceTo(int count)
+    public void AdvanceTo(int consumed, int examined)
     {
+        if(consumed > examined)
+            throw new ArgumentOutOfRangeException(nameof(consumed), "Consumed amount must be greater than or equal to the examined amount.");
         lock (_bufferLock)
         {
-            _examinedPosition += count;
-            _buffer.ReleaseTo(count);
+            _examinedPosition += examined;
+            
+            if(consumed > 0)
+                _buffer.ReleaseTo(consumed);
         }
     }
 

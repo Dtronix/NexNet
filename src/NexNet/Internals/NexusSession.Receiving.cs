@@ -371,7 +371,18 @@ internal partial class NexusSession<TNexus, TProxy>
                 {
                     // Run the handler and verify that it is good.
                     var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
-                    Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken).ConfigureAwait(false);
+
+                    try
+                    {
+                        Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken).ConfigureAwait(false);
+                    }
+                    catch (Exception e)
+                    {
+                        // Exception was thrown. Cancel the entire connection.
+                        _config.Logger?.LogError(e, "Authenticate threw an exception.");
+                        return DisconnectReason.Authentication;
+                    }
+                    
 
                     // Set the identity on the context.
                     var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);

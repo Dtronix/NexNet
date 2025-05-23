@@ -502,7 +502,7 @@ internal partial class NexusClientTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.TryConnectAsync().Timeout(1);
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
 
@@ -549,35 +549,33 @@ internal partial class NexusClientTests : BaseTests
         serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await client.TryConnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
 
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
-
+    
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task DisconnectTaskCompletesAfterDisconnect(Type type)
+    public async Task DisconnectTaskCompletesAfterServerStops(Type type)
     {
-        var (server, serverHub, client, clientHub) = CreateServerClient(
-            CreateServerConfig(type),
-            CreateClientConfig(type));
-
-        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+        // Arrange
+        var serverConfig = CreateServerConfig(type);
+        var clientConfig = CreateClientConfig(type);
+        var (server, serverHub, client, _) = CreateServerClient(serverConfig, clientConfig);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await server.StopAsync();
+        // Act
+        await server.StopAsync().Timeout(1);
 
-        await Task.Delay(1000);
-
+        // Assert: client.DisconnectedTask will complete promptly
         await client.DisconnectedTask.Timeout(1);
-
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
     
@@ -663,7 +661,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task DisconnectWithoutConnectDoesNotThrow(Type type)
+    public void DisconnectWithoutConnectDoesNotThrow(Type type)
     {
         var (_, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
@@ -768,7 +766,7 @@ internal partial class NexusClientTests : BaseTests
         serverHub.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await client.TryConnectAsync().Timeout(1);
 
         // Give it a moment to send the disconnect
         await Task.Delay(50);
@@ -836,6 +834,27 @@ internal partial class NexusClientTests : BaseTests
         // Give it a moment to (not) trigger
         await Task.Delay(50);
         Assert.That(reconnectingFired, Is.False, "With a disabled reconnection policy, OnReconnectingEvent must not fire.");
+    }
+    
+    /// <summary>
+    /// Calling StartAsync twice on the same server instance should throw on the second call.
+    /// </summary>
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task StartAsyncTwiceThrows(Type type)
+    {
+        var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
+
+        // First start should succeed
+        await server.StartAsync().Timeout(1);
+
+        // Second concurrent start should throw InvalidOperationException
+        Assert.ThrowsAsync<InvalidOperationException>(
+            () => server.StartAsync().Timeout(1));
     }
 
 }
