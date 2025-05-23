@@ -20,15 +20,9 @@ public class NexusList<T>
         _duplexPipe = duplexPipe;
         _channel = new NexusDuplexChannel<INexusListOperation>(duplexPipe);
         
-        _channel.
-    }
 
-    public void Add(T item)
-    {
-        
-        _list.GetEnumerator();
     }
-
+    
     public void Clear()
     {
         throw new System.NotImplementedException();

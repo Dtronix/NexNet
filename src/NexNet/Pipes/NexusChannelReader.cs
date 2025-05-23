@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Cache;
 
 namespace NexNet.Pipes;
 
@@ -117,5 +118,34 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         }
 
         return consumedLength;
+    }
+
+    public async IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = new CancellationToken())
+    {
+        var list = ListPool<T>.Rent();
+
+        while (true)
+        {
+            var previousBufferLength = BufferedLength;
+
+            if (IsComplete && previousBufferLength == 0)
+                break;
+
+            list.Clear();
+            var readResult = await ReadAsync(list, null, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (readResult == false && previousBufferLength == BufferedLength)
+                break;
+
+            if (list.Count > 0)
+            {
+                foreach (var item in list) 
+                    yield return item;
+            }
+        }
+
+        // Return the list to the pool.
+        ListPool<T>.Return(list);
     }
 }
