@@ -9,11 +9,6 @@ namespace NexNetSample.Asp.Server;
 public partial class ServerNexus
 {
 #pragma warning disable CS8618, CS9264
-    public ServerNexus(IHttpContextAccessor requestFeature)
-#pragma warning restore CS8618, CS9264
-    {
-        
-    }
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
     public Action<ServerNexus> ServerVoidEvent;
     public Action<ServerNexus, int> ServerVoidWithParamEvent;
@@ -34,12 +29,12 @@ public partial class ServerNexus
     
     public void ServerVoid()
     {
-        ServerVoidEvent?.Invoke(this);
+        ServerVoidEvent.Invoke(this);
     }
 
     public void ServerVoidWithParam(int id)
     {
-        this.ServerVoidWithParamEvent?.Invoke(this, id);
+        this.ServerVoidWithParamEvent.Invoke(this, id);
     }
 
     public ValueTask ServerTask()
