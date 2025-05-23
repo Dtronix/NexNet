@@ -61,10 +61,15 @@ internal class NexusChannelReaderWriterTestBase
         }
     }
 
-    protected (NexusPipeWriter, NexusPipeReader) GetConnectedPipeReaderWriter(bool log = false)
+    protected (NexusPipeWriter, NexusPipeReader, DummySessionMessenger) GetConnectedPipeReaderWriter(bool log = false)
     {
-        NexusPipeWriter nexusPipeWriter = null!;
-        NexusPipeReader nexusPipeReader = null!;
+        var nexusPipeReader = new NexusPipeReader(
+            new DummyPipeStateManager(),
+            log ? new ConsoleLogger() : null,
+            true,
+            ushort.MaxValue,
+            0,
+            0);
 
         var messenger = new DummySessionMessenger()
         {
@@ -73,20 +78,15 @@ internal class NexusChannelReaderWriterTestBase
                 await nexusPipeReader!.BufferData(arg3).Timeout(1);
             }
         };
-        nexusPipeWriter = new NexusPipeWriter(
+
+        var nexusPipeWriter = new NexusPipeWriter(
         new DummyPipeStateManager(),
             log ? new ConsoleLogger() : null,
             messenger,
             true,
             ushort.MaxValue);
-        nexusPipeReader = new NexusPipeReader(
-            new DummyPipeStateManager(),
-            log ? new ConsoleLogger() : null,
-            true,
-            ushort.MaxValue,
-            0,
-            0);
 
-        return (nexusPipeWriter, nexusPipeReader);
+
+        return (nexusPipeWriter, nexusPipeReader, messenger);
     }
 }

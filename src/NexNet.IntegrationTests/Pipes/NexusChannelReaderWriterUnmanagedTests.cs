@@ -88,7 +88,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
     private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()
         where T : unmanaged
     {
-        var (pipeWriter, pipeReader) = GetConnectedPipeReaderWriter();
+        var (pipeWriter, pipeReader, _) = GetConnectedPipeReaderWriter();
 
         var writer = new NexusChannelWriterUnmanaged<T>(pipeWriter);
         var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);

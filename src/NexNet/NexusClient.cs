@@ -67,8 +67,16 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
         var result = await TryConnectAsync(cancellationToken).ConfigureAwait(false);
-        if(!result.Success && result.Exception != null)
-            throw result.Exception;
+        if (!result.Success)
+        {
+            if (result.Exception != null)
+                throw result.Exception;
+            
+            if(result.State == ConnectionResult.StateValue.AuthenticationFailed)
+                throw new TransportException(TransportError.AuthenticationError, "Authentication failed.", result.Exception);
+        }
+
+
     }
 
     /// <inheritdoc />

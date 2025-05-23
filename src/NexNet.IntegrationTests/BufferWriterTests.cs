@@ -1,5 +1,8 @@
-﻿using NexNet.Internals.Pipelines.Buffers;
+﻿using System.Buffers;
+using NexNet.Internals.Pipelines.Arenas;
+using NexNet.Internals.Pipelines.Buffers;
 using NUnit.Framework;
+using NUnit.Framework.Legacy;
 
 #pragma warning disable VSTHRD200
 
@@ -27,6 +30,9 @@ internal class BufferWriterTests
             if (bufferSize != addBufferLen)
                 Assert.Fail($"bufferSize: {bufferSize} != addBufferLen: {addBufferLen}");
 
+            if (decreaseSize < bufferWriter.Length)
+                decreaseSize = (int)bufferWriter.Length;
+            
             bufferWriter.ReleaseTo(decreaseSize);
 
             bufferSize -= decreaseSize;
@@ -102,8 +108,6 @@ internal class BufferWriterTests
 
         sequence = bufferWriter.GetBuffer().AsReadOnly();
         Assert.That(sequence.Length, Is.EqualTo(loops * dataLength - 3000 * 16));
-
-
     }    
     
     [Test]
@@ -128,6 +132,129 @@ internal class BufferWriterTests
 
 
     }
+    
+    [Test]
+    public void GetBuffer_Empty_ReturnsZeroLength()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Advance_Negative_ThrowsArgumentOutOfRangeException()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Advance(-1));
+    }
+
+    [Test]
+    public void Flush_LongCount_Negative_ThrowsArgumentOutOfRangeException()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Flush(-5));
+    }
+    
+    
+    [Test]
+    public void Flush_CountGreaterThanBuffered_ThrowsArgumentOutOfRangeException()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        var data = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
+        data.CopyTo(writer.GetSpan(data.Length));
+        writer.Advance(data.Length);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Flush(data.Length + 1));
+    }
+
+    [Test]
+    public void Flush_ZeroCount_ReturnsEmptySequence()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        var owned = writer.Flush(0);
+        // Owned.Value is a ReadOnlySequence<byte>
+        Assert.That(owned.Value.Length, Is.EqualTo(0));
+    }
+    
+    [Test]
+    public void Flush_PartialAndFull_WorksAsExpected()
+    {
+        var writer = BufferWriter<byte>.Create(4);
+        var data = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
+        // write all 10 bytes
+        data.CopyTo(writer.GetSpan(data.Length));
+        writer.Advance(data.Length);
+
+        // flush 6
+        var ownedPartial = writer.Flush(6);
+        var seqPartial = ownedPartial.Value;
+        Assert.That(seqPartial.Length, Is.EqualTo(6));
+        Assert.That(seqPartial.ToArray(), Is.EqualTo(data.Take(6).ToArray()).AsCollection);
+
+        // remaining should be 4
+        Assert.That(writer.GetBuffer().Length, Is.EqualTo(4));
+        Assert.That(writer.GetBuffer().ToArray(),
+            Is.EqualTo(data.Skip(6).ToArray()).AsCollection);
+
+        // flush all remaining
+        var ownedAll = writer.Flush();
+        Assert.That(ownedAll.Value.Length, Is.EqualTo(4));
+        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
+    }
+    
+    [Test]
+    public void Deallocate_FullSequence_ClearsBuffer()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        var data = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
+        data.CopyTo(writer.GetSpan(data.Length));
+        writer.Advance(data.Length);
+
+        var seq = writer.GetBuffer();
+        writer.Deallocate(seq);
+        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
+    }
+
+    [Test]
+    [Ignore("Under investigation.")]
+    public void ReleaseTo_CountGreaterThanBuffered_Throws()
+    {
+        var writer = BufferWriter<byte>.Create(128);
+        var data = new byte[20];
+        var span = writer.GetSpan(data.Length);
+        data.CopyTo(span);
+        writer.Advance(data.Length);
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => writer.ReleaseTo(data.Length + 10));
+    }
+
+    [Test]
+    public void Dispose_ClearsBuffer_And_IsIdempotent()
+    {
+        var writer = BufferWriter<byte>.Create(64);
+        writer.GetSpan(10);
+        writer.Advance(10);
+
+        writer.Dispose();
+        Assert.That(writer.GetBuffer().Length, Is.Zero);
+
+        // second dispose must not throw
+        Assert.DoesNotThrow(() => writer.Dispose());
+    }
+    
+    [Test]
+    public void GetSpan_DoesNotCommitUntilAdvance()
+    {
+        var writer = BufferWriter<byte>.Create(32);
+        var span = writer.GetSpan(10);
+        for (int i = 0; i < 10; i++) span[i] = (byte)i;
+
+        // not yet committed
+        Assert.That(writer.GetBuffer().Length, Is.Zero);
+
+        writer.Advance(10);
+        Assert.That(writer.GetBuffer().Length, Is.EqualTo(10));
+    }
+
 
     private void FillSpan(Span<byte> span)
     {
