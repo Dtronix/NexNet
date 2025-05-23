@@ -2,33 +2,30 @@
 using System.Collections.Generic;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Invocation;
+using NexNet.Pipes;
+using NexNetSample.Asp.Shared;
 
 namespace NexNet.Collections;
 
-public class NexusList<T> : IList<T> 
+public class NexusList<T>
 {
     private readonly NexusDictionaryMode _mode;
+    private readonly INexusDuplexPipe _duplexPipe;
     private VersionedList<T> _list = new();
-    
-    internal NexusList(NexusDictionaryMode mode, IProxyInvoker invoker, int id)
+    private readonly NexusDuplexChannel<INexusListOperation> _channel;
+
+    internal NexusList(NexusDictionaryMode mode, INexusDuplexPipe duplexPipe)
     {
         _mode = mode;
-        //invoker.ProxyGetDuplexPipeInitialId()
-    }
-
-    /// <inheritdoc />
-    public IEnumerator<T> GetEnumerator()
-    {
-        return _list.GetEnumerator();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
+        _duplexPipe = duplexPipe;
+        _channel = new NexusDuplexChannel<INexusListOperation>(duplexPipe);
+        
+        _channel.
     }
 
     public void Add(T item)
     {
+        
         _list.GetEnumerator();
     }
 
