@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
+using NexNet.Internals.Collections.Lists;
 using NexNet.Invocation;
 
 namespace NexNet.Collections;
@@ -8,7 +8,7 @@ namespace NexNet.Collections;
 public class NexusList<T> : IList<T> 
 {
     private readonly NexusDictionaryMode _mode;
-    private List<T> _list = new();
+    private VersionedList<T> _list = new();
     
     internal NexusList(NexusDictionaryMode mode, IProxyInvoker invoker, int id)
     {
