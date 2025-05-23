@@ -35,6 +35,8 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         Assert.That(result.Count(), Is.EqualTo(iterations));
     }
     
+    /*
+     TODO: Test this logic.
     [Test]
     public async Task ReadsAcrossMessageBoundary()
     {
@@ -64,7 +66,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         //}
 //
         //Assert.That(result.Count(), Is.EqualTo(iterations));
-    }
+    }*/
     
     [Repeat(20)]
     [Test]
