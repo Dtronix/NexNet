@@ -24,6 +24,7 @@ public sealed class ServerNexusContextOwner<TClientProxy> : IDisposable
     /// <summary>
     /// Gets the owned context. Throws if the owner has already been disposed.
     /// </summary>
+    /// <exception cref="ObjectDisposedException"></exception>
     public ServerNexusContext<TClientProxy> Context
     {
         get
@@ -34,6 +35,10 @@ public sealed class ServerNexusContextOwner<TClientProxy> : IDisposable
         }
     }
     
+    /// <summary>
+    /// Proxy for client methods.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException"></exception>
     public IProxyBase<TClientProxy> Proxy
     {
         get

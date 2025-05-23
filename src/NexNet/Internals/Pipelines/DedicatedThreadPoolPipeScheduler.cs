@@ -76,17 +76,18 @@ internal sealed class DedicatedThreadPoolPipeScheduler : PipeScheduler, IDisposa
         }
     }
 
-    private long _totalServicedByQueue, _totalServicedByPool;
+    private long _totalServicedByQueue;
+    //private long _totalServicedByPool;
 
     /// <summary>
     /// The total number of operations serviced by the queue
     /// </summary>
     public long TotalServicedByQueue => Volatile.Read(ref _totalServicedByQueue);
 
-    /// <summary>
-    /// The total number of operations that could not be serviced by the queue, but which were sent to the thread-pool instead
-    /// </summary>
-    public long TotalServicedByPool => Volatile.Read(ref _totalServicedByPool);
+    // <summary>
+    // The total number of operations that could not be serviced by the queue, but which were sent to the thread-pool instead
+    // </summary>
+    //public long TotalServicedByPool => Volatile.Read(ref _totalServicedByPool);
 
     private readonly struct WorkItem
     {
