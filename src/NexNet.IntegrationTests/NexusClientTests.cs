@@ -661,7 +661,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task DisconnectWithoutConnectDoesNotThrow(Type type)
+    public void DisconnectWithoutConnectDoesNotThrow(Type type)
     {
         var (_, _, client, _) = CreateServerClient(
             CreateServerConfig(type),
