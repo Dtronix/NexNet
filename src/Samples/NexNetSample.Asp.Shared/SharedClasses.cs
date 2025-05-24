@@ -32,6 +32,7 @@ public partial interface IServerNexus
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
+    ValueTask Server(INexusDuplexPipe pipe);
 
     ValueTask ServerData(byte[] data);
 }

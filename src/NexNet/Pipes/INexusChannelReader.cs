@@ -8,7 +8,7 @@ namespace NexNet.Pipes;
 /// The channel reader is responsible for reading items of a specified type from the underlying INexusPipeWriter.
 /// </summary>
 /// <typeparam name="T">The type of the items that will be written to the INexusPipeWriter.</typeparam>
-public interface INexusChannelReader<T>
+public interface INexusChannelReader<T> : IAsyncEnumerable<T>
 {
     /// <summary>
     /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
