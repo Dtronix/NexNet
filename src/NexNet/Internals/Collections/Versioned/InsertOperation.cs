@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
+using System.Threading;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -34,10 +36,11 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(ref ImmutableList<T> list)
+    public override void Apply(ref VersionedList<T>.ListState state)
     {
-        ImmutableInterlocked.Update(ref list, static (list, state) => 
-            list.Insert(state.Index, state.Item), (Index, Item));
+        ImmutableInterlocked.Update(ref state, static (state, args) => 
+            new VersionedList<T>.ListState(state.List.Insert(args.Index, args.Item), state.Version + 1),
+            (Index, Item));
     }
 
     /// <inheritdoc />

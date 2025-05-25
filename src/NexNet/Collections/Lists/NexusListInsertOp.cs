@@ -11,7 +11,7 @@ namespace NexNetSample.Asp.Shared;
 
 [MemoryPackable]
 [MemoryPackUnion(0, typeof(NexusListInsertOperation))]
-[MemoryPackUnion(1, typeof(NexusListFillItemOperation))]
+[MemoryPackUnion(1, typeof(NexusListAddItemOperation))]
 [MemoryPackUnion(2, typeof(NexusListFillCompleteOperation))]
 public partial interface INexusListOperation
 {
@@ -82,9 +82,9 @@ public partial class NexusListInsertOperation : INexusListOperation
 /// Contains an invocation request message data.
 /// </summary>
 [MemoryPackable(SerializeLayout.Explicit)]
-public partial class NexusListFillItemOperation : INexusListOperation
+public partial class NexusListAddItemOperation : INexusListOperation
 {
-    public static readonly ConcurrentBag<NexusListFillItemOperation> Cache = new();
+    public static readonly ConcurrentBag<NexusListAddItemOperation> Cache = new();
     internal bool IsArgumentPoolArray;
     
     [MemoryPackOrder(0)]
@@ -97,10 +97,10 @@ public partial class NexusListFillItemOperation : INexusListOperation
         return MemoryPackSerializer.Deserialize<T>(Value.Span);
     }
     
-    public static NexusListFillItemOperation GetFromCache()
+    public static NexusListAddItemOperation GetFromCache()
     {
         if(!Cache.TryTake(out var operation))
-            operation = new NexusListFillItemOperation();
+            operation = new NexusListAddItemOperation();
 
         return operation;
     }

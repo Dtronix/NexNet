@@ -31,7 +31,7 @@ public class VersionedListFuzzTests
         {
             // Pick a random operation type
             Operation<int> op;
-            int count = versionedList.Items.Count;
+            int count = versionedList.Count;
 
             switch (random.Next(4))
             {

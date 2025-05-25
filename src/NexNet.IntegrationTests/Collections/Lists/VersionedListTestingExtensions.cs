@@ -1,5 +1,4 @@
 ﻿using System.Collections.Immutable;
-using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
@@ -14,10 +13,13 @@ internal static class VersionedListTestingExtensions
     /// <returns>The same <see cref="VersionedList{T}"/> instance with added values.</returns>
     public static VersionedList<int> FillNegative(this VersionedList<int> list, int count)
     {
+        var builder = ImmutableList.CreateBuilder<int>();
         for (int i = 0; i < count; i++)
         {
-            ImmutableInterlocked.Update(ref list.List, ints => ints.Add(-i - 1));
+            builder.Add(-i - 1);
         }
+        
+        list.State = new VersionedList<int>.ListState(builder.ToImmutable(), 0);
 
         return list;
     }

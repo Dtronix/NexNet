@@ -12,7 +12,7 @@ internal abstract class Operation<T>
     /// <summary>
     /// Apply this operation to the target list.
     /// </summary>
-    public abstract void Apply(ref ImmutableList<T> list);
+    public abstract void Apply(ref VersionedList<T>.ListState state);
 
     /// <summary>
     /// Transform (rebase) this operation against another concurrent operation.

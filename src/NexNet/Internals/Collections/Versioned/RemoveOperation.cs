@@ -25,9 +25,11 @@ internal class RemoveOperation<T> : Operation<T>, IEquatable<RemoveOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(ref ImmutableList<T> list)
+    public override void Apply(ref VersionedList<T>.ListState state)
     {
-        ImmutableInterlocked.Update(ref list, static (list, index) => list.RemoveAt(index), Index);
+        ImmutableInterlocked.Update(ref state, static (state, index) => 
+                new VersionedList<T>.ListState(state.List.RemoveAt(index), state.Version + 1),
+            Index);
     }
 
     /// <inheritdoc />

@@ -12,29 +12,32 @@ namespace NexNet.Internals.Collections.Versioned;
 /// allowing operational transforms to be processed against client operations
 /// for synchronization and conflict resolution.
 /// </summary>
-internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
+internal class VersionedList<T> : IEquatable<T[]>
 {
-    internal ImmutableList<T> List;
+    internal ListState State;
     private readonly IndexedCircularList<Operation<T>> _history;
-    private int _version = 0;
+    
+    public record ListState(ImmutableList<T> List, int Version);
 
     /// <summary>
     /// Current version of the list.
     /// </summary>
-    public int Version => _version;
+    public int Version => State.Version;
     
     /// <summary>
     /// Max number of versions that this list can store.
     /// </summary>
     public int MaxVersions { get; }
 
-    public int MinValidVersion => Math.Max(0, _version - MaxVersions);
+    public int MinValidVersion => Math.Max(0, State.Version - MaxVersions);
 
     /// <summary>
     /// Get a snapshot of the list.
     /// </summary>
     /// <returns>An array containing the current list items.</returns>
-    public IReadOnlyList<T> Items => List;
+    public ListState CurrentState => State;
+
+    public int Count => State.List.Count;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VersionedList{T}"/> class with a specified initial capacity.
@@ -43,7 +46,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
     public VersionedList(int maxVersions = 256)
     {
         MaxVersions = maxVersions;
-        List = ImmutableList<T>.Empty;
+        State = new ListState(ImmutableList<T>.Empty, 0);
         _history = new IndexedCircularList<Operation<T>>(maxVersions);
     }   
 
@@ -75,7 +78,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
             return null;
         }
 
-        if (baseVersion > _version)
+        if (baseVersion > State.Version)
         {
             result = ListProcessResult.InvalidVersion;
             return null;
@@ -89,18 +92,20 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
                 return new NoopOperation<T>();
             }
         }
+
+        var itemCount = State.List.Count;
         
         // Invalid operation checks.
         switch (txOp)
         {
-            case InsertOperation<T> insOp when insOp.Index < 0 || insOp.Index > List.Count:
-            case RemoveOperation<T> rmOp when rmOp.Index < 0 || rmOp.Index >= List.Count:
-            case ModifyOperation<T> modOp when modOp.Index < 0 || modOp.Index >= List.Count:
+            case InsertOperation<T> insOp when insOp.Index < 0 || insOp.Index > itemCount:
+            case RemoveOperation<T> rmOp when rmOp.Index < 0 || rmOp.Index >= itemCount:
+            case ModifyOperation<T> modOp when modOp.Index < 0 || modOp.Index >= itemCount:
             case MoveOperation<T> mvOp when
                 mvOp.FromIndex < 0 ||
-                mvOp.FromIndex >= List.Count ||
+                mvOp.FromIndex >= itemCount ||
                 mvOp.ToIndex < 0 ||
-                mvOp.ToIndex >= List.Count ||
+                mvOp.ToIndex >= itemCount ||
                 mvOp.FromIndex == mvOp.ToIndex:
             {
                 result = ListProcessResult.BadOperation;
@@ -108,9 +113,8 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
             }
         }
 
-        txOp.Apply(ref List);
+        txOp.Apply(ref State);
         _history.Add(txOp);
-        _version++;
         
         result = ListProcessResult.Successful;
         return txOp;
@@ -120,19 +124,14 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
     public bool Equals(T[]? other)
     {
         if (other is null) return false;
-        if (List.Count != other.Length)
+        if (State.List.Count != other.Length)
             return false;
 
-        for (var i = 0; i < List.Count; i++)
-            if (!EqualityComparer<T>.Default.Equals(List[i], other[i]))
+        for (var i = 0; i < State.List.Count; i++)
+            if (!EqualityComparer<T>.Default.Equals(State.List[i], other[i]))
                 return false;
         
         return true;
-    }
-
-    public IEnumerator<T> GetEnumerator()
-    {
-        return List.GetEnumerator();
     }
 
     /// <inheritdoc />
@@ -147,13 +146,13 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
     /// <inheritdoc />
     public override string ToString()
     {
-        if (List.Count == 0)
+        if (State.List.Count == 0)
             return "[]";
 
         // Estimate a bit of capacity (optional):
-        var sb = new StringBuilder(List.Count * 16);
+        var sb = new StringBuilder(State.List.Count * 16);
         
-        using (var e = List.GetEnumerator())
+        using (var e = State.List.GetEnumerator())
         {
             // Append the first item without prefix
             e.MoveNext();
@@ -167,10 +166,5 @@ internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
         }
 
         return sb.ToString();
-    }
-
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
     }
 }

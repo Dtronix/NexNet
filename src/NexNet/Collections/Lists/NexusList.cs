@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals.Collections.Lists;
@@ -14,7 +15,7 @@ public class NexusList<T>
     private readonly bool _server;
     private VersionedList<T> _itemList = new();
     private LockFreeArrayList<Client> _nexusPipeList;
-    private Type _tType
+    private static readonly Type _tType = typeof(T);
     
     private record Client(INexusDuplexPipe Pipe, INexusChannelReader<INexusListOperation> Reader, INexusChannelWriter<INexusListOperation> Writer);
 
@@ -33,22 +34,25 @@ public class NexusList<T>
         await pipe.ReadyTask;
 
         var writer = new NexusChannelWriter<INexusListOperation>(pipe);
-        var op = NexusListFillItemOperation.GetFromCache();
-        var type = typeof(T);
+        var op = NexusListAddItemOperation.GetFromCache();
         
         // TODO: Look at chunking
-        foreach (var item in _itemList)
+
+        var state = _itemList.CurrentState;
+        foreach (var item in state.List)
         {
-            op.Value = MemoryPackSerializer.Serialize(type, item);
+            op.Value = MemoryPackSerializer.Serialize(_tType, item);
             await writer.WriteAsync(op);
         }
+        
+        NexusListAddItemOperation.Cache.Add(op);
         
         _nexusPipeList.Add(new Client(
             pipe, 
             new NexusChannelReader<INexusListOperation>(pipe),
             writer));
         
-        // Add in the completion removal for execution later..
+        // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
         {
             var (pipe, list) = ((INexusDuplexPipe, LockFreeArrayList<INexusDuplexPipe>))state!;
@@ -56,6 +60,11 @@ public class NexusList<T>
         }, (pipe, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
         
         await pipe.CompleteTask;
+    }
+
+    public void ConnectAsClient(INexusDuplexPipe pipe)
+    {
+        
     }
     
     public void Clear()
