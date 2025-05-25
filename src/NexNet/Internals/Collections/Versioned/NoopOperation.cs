@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections.Immutable;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Represents an operation to modify the value of an item at a specified index in the list.
@@ -16,7 +16,7 @@ internal class NoopOperation<T> : Operation<T>
     }
 
     /// <inheritdoc />
-    public override void Apply(List<T> list)
+    public override void Apply(ref ImmutableList<T> list)
     {
         // Noop
     }

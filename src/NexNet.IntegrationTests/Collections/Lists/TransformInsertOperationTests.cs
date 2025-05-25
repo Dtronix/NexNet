@@ -1,4 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
+using NexNet.Internals.Collections.Versioned;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections.Lists;

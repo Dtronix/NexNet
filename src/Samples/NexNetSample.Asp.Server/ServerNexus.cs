@@ -80,9 +80,11 @@ public partial class ServerNexus
 
     public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
-        return ServerTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+        
+        Context
+        pipe.GetChannelWriter<>()
     }
-
+    
     public ValueTask ServerData(byte[] data)
     {
         if (ServerDataEvent == null)

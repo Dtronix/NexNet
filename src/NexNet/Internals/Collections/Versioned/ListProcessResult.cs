@@ -1,4 +1,4 @@
-﻿namespace NexNet.Internals.Collections.Lists;
+﻿namespace NexNet.Internals.Collections.Versioned;
 
 internal enum ListProcessResult
 {

@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Represents an operation to remove an item at a specified index from the list.
@@ -25,9 +25,9 @@ internal class RemoveOperation<T> : Operation<T>, IEquatable<RemoveOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(List<T> list)
+    public override void Apply(ref ImmutableList<T> list)
     {
-        list.RemoveAt(Index);
+        ImmutableInterlocked.Update(ref list, static (list, index) => list.RemoveAt(index), Index);
     }
 
     /// <inheritdoc />

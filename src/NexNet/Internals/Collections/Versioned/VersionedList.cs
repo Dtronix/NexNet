@@ -1,17 +1,20 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Text;
+using NexNet.Internals.Collections.Lists;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Maintains a list of items with versioning and an operation history,
 /// allowing operational transforms to be processed against client operations
 /// for synchronization and conflict resolution.
 /// </summary>
-internal class VersionedList<T> : IEquatable<T[]>
+internal class VersionedList<T> : IEquatable<T[]>, IEnumerable<T>
 {
-    public readonly List<T> List;
+    internal ImmutableList<T> List;
     private readonly IndexedCircularList<Operation<T>> _history;
     private int _version = 0;
 
@@ -26,12 +29,12 @@ internal class VersionedList<T> : IEquatable<T[]>
     public int MaxVersions { get; }
 
     public int MinValidVersion => Math.Max(0, _version - MaxVersions);
-    
+
     /// <summary>
     /// Get a snapshot of the list.
     /// </summary>
     /// <returns>An array containing the current list items.</returns>
-    public T[] Items => List.ToArray();
+    public IReadOnlyList<T> Items => List;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VersionedList{T}"/> class with a specified initial capacity.
@@ -40,7 +43,7 @@ internal class VersionedList<T> : IEquatable<T[]>
     public VersionedList(int maxVersions = 256)
     {
         MaxVersions = maxVersions;
-        List = new List<T>(maxVersions);
+        List = ImmutableList<T>.Empty;
         _history = new IndexedCircularList<Operation<T>>(maxVersions);
     }   
 
@@ -105,7 +108,7 @@ internal class VersionedList<T> : IEquatable<T[]>
             }
         }
 
-        txOp.Apply(List);
+        txOp.Apply(ref List);
         _history.Add(txOp);
         _version++;
         
@@ -127,6 +130,11 @@ internal class VersionedList<T> : IEquatable<T[]>
         return true;
     }
 
+    public IEnumerator<T> GetEnumerator()
+    {
+        return List.GetEnumerator();
+    }
+
     /// <inheritdoc />
     public override bool Equals(object? obj)
     {
@@ -134,12 +142,6 @@ internal class VersionedList<T> : IEquatable<T[]>
         if (ReferenceEquals(this, obj)) return true;
         if (obj.GetType() != GetType()) return false;
         return Equals((VersionedList<T>)obj);
-    }
-
-    /// <inheritdoc />
-    public override int GetHashCode()
-    {
-        return List.GetHashCode();
     }
 
     /// <inheritdoc />
@@ -165,5 +167,10 @@ internal class VersionedList<T> : IEquatable<T[]>
         }
 
         return sb.ToString();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return GetEnumerator();
     }
 }

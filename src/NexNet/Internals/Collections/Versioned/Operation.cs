@@ -1,6 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections.Immutable;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Represents an abstract operation on a list of items, supporting
@@ -12,7 +12,7 @@ internal abstract class Operation<T>
     /// <summary>
     /// Apply this operation to the target list.
     /// </summary>
-    public abstract void Apply(List<T> list);
+    public abstract void Apply(ref ImmutableList<T> list);
 
     /// <summary>
     /// Transform (rebase) this operation against another concurrent operation.

@@ -1,7 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Immutable;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Represents an operation to move an item from one index to another within the list.
@@ -34,11 +34,14 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(List<T> list)
+    public override void Apply(ref ImmutableList<T> list)
     {
         var item = list[FromIndex];
-        list.RemoveAt(FromIndex);
-        list.Insert(ToIndex, item);
+        ImmutableInterlocked.Update(ref list, static (list, state) =>
+        {
+            var removed = list.RemoveAt(state.FromIndex);
+            return removed.Insert(state.ToIndex, state.item);
+        }, (FromIndex, ToIndex, item));
     }
 
     /// <inheritdoc />

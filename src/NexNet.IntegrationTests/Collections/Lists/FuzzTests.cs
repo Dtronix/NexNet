@@ -1,4 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
+using NexNet.Internals.Collections.Versioned;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
@@ -30,7 +31,7 @@ public class VersionedListFuzzTests
         {
             // Pick a random operation type
             Operation<int> op;
-            int count = versionedList.Items.Length;
+            int count = versionedList.Items.Count;
 
             switch (random.Next(4))
             {

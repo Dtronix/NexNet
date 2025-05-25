@@ -20,4 +20,5 @@ public class SimpleService : BackgroundService
             await context.Proxy.All.ClientTaskWithParam(54321);
         }
     }
+    
 }

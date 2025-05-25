@@ -1,4 +1,6 @@
-﻿using NexNet.Internals.Collections.Lists;
+﻿using System.Collections.Immutable;
+using NexNet.Internals.Collections.Lists;
+using NexNet.Internals.Collections.Versioned;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
 
@@ -14,7 +16,7 @@ internal static class VersionedListTestingExtensions
     {
         for (int i = 0; i < count; i++)
         {
-            list.List.Add(-i - 1);
+            ImmutableInterlocked.Update(ref list.List, ints => ints.Add(-i - 1));
         }
 
         return list;

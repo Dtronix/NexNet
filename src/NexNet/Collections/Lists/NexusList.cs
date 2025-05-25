@@ -1,26 +1,61 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Linq;
+using System.Threading.Tasks;
+using MemoryPack;
 using NexNet.Internals.Collections.Lists;
-using NexNet.Invocation;
+using NexNet.Internals.Collections.Versioned;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
 
-namespace NexNet.Collections;
+namespace NexNet.Collections.Lists;
 
 public class NexusList<T>
 {
     private readonly NexusDictionaryMode _mode;
-    private readonly INexusDuplexPipe _duplexPipe;
-    private VersionedList<T> _list = new();
-    private readonly NexusDuplexChannel<INexusListOperation> _channel;
+    private readonly bool _server;
+    private VersionedList<T> _itemList = new();
+    private LockFreeArrayList<Client> _nexusPipeList;
+    private Type _tType
+    
+    private record Client(INexusDuplexPipe Pipe, INexusChannelReader<INexusListOperation> Reader, INexusChannelWriter<INexusListOperation> Writer);
 
-    internal NexusList(NexusDictionaryMode mode, INexusDuplexPipe duplexPipe)
+    internal NexusList(NexusDictionaryMode mode, bool server)
     {
         _mode = mode;
-        _duplexPipe = duplexPipe;
-        _channel = new NexusDuplexChannel<INexusListOperation>(duplexPipe);
-        
+        _server = server;
+        _nexusPipeList = new LockFreeArrayList<Client>(64);
+    }
 
+    public async ValueTask AddClient(INexusDuplexPipe pipe)
+    {
+        if (pipe.CompleteTask.IsCompleted)
+            return;
+
+        await pipe.ReadyTask;
+
+        var writer = new NexusChannelWriter<INexusListOperation>(pipe);
+        var op = NexusListFillItemOperation.GetFromCache();
+        var type = typeof(T);
+        
+        // TODO: Look at chunking
+        foreach (var item in _itemList)
+        {
+            op.Value = MemoryPackSerializer.Serialize(type, item);
+            await writer.WriteAsync(op);
+        }
+        
+        _nexusPipeList.Add(new Client(
+            pipe, 
+            new NexusChannelReader<INexusListOperation>(pipe),
+            writer));
+        
+        // Add in the completion removal for execution later..
+        _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
+        {
+            var (pipe, list) = ((INexusDuplexPipe, LockFreeArrayList<INexusDuplexPipe>))state!;
+            list.Remove(pipe);
+        }, (pipe, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
+        
+        await pipe.CompleteTask;
     }
     
     public void Clear()

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -10,6 +11,8 @@ namespace NexNetSample.Asp.Shared;
 
 [MemoryPackable]
 [MemoryPackUnion(0, typeof(NexusListInsertOperation))]
+[MemoryPackUnion(1, typeof(NexusListFillItemOperation))]
+[MemoryPackUnion(2, typeof(NexusListFillCompleteOperation))]
 public partial interface INexusListOperation
 {
     
@@ -72,4 +75,56 @@ public partial class NexusListInsertOperation : INexusListOperation
 
         cache.Return(this);
     }*/
+}
+
+
+/// <summary>
+/// Contains an invocation request message data.
+/// </summary>
+[MemoryPackable(SerializeLayout.Explicit)]
+public partial class NexusListFillItemOperation : INexusListOperation
+{
+    public static readonly ConcurrentBag<NexusListFillItemOperation> Cache = new();
+    internal bool IsArgumentPoolArray;
+    
+    [MemoryPackOrder(0)]
+    [MemoryPoolFormatter<byte>]
+    public Memory<byte> Value { get; set; }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? DeserializeValue<T>()
+    {
+        return MemoryPackSerializer.Deserialize<T>(Value.Span);
+    }
+    
+    public static NexusListFillItemOperation GetFromCache()
+    {
+        if(!Cache.TryTake(out var operation))
+            operation = new NexusListFillItemOperation();
+
+        return operation;
+    }
+
+    [MemoryPackOnDeserialized]
+    private void OnDeserialized()
+    {
+        IsArgumentPoolArray = true;
+    }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+public partial class NexusListFillCompleteOperation : INexusListOperation
+{
+    public static readonly ConcurrentBag<NexusListFillCompleteOperation> Cache = new();
+    
+    [MemoryPackOrder(0)]
+    public int Version { get; set; }
+    
+    public static NexusListFillCompleteOperation GetFromCache()
+    {
+        if(!Cache.TryTake(out var operation))
+            operation = new NexusListFillCompleteOperation();
+
+        return operation;
+    }
 }

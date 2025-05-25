@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 
-namespace NexNet.Internals.Collections.Lists;
+namespace NexNet.Internals.Collections.Versioned;
 
 /// <summary>
 /// Represents an operation to insert an item at a specified index in the list.
@@ -33,9 +34,10 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(List<T> list)
+    public override void Apply(ref ImmutableList<T> list)
     {
-        list.Insert(Index, Item);
+        ImmutableInterlocked.Update(ref list, static (list, state) => 
+            list.Insert(state.Index, state.Item), (Index, Item));
     }
 
     /// <inheritdoc />

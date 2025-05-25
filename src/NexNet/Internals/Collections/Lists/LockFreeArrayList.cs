@@ -1,26 +1,69 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 
 namespace NexNet.Internals.Collections.Lists;
 
+/// <summary>
+/// Represents a lock-free, array-based singly linked list that supports
+/// concurrent additions, insertions, and removals without blocking.
+/// </summary>
+/// <typeparam name="T">The type of elements contained in the list.</typeparam>
 internal class LockFreeArrayList<T> : IEnumerable<T>
 {
+    /// <summary>
+    /// Represents a sentinel value indicating no valid index.
+    /// </summary>
     private const int NullIndex = -1;
 
+    /// <summary>
+    /// A node in the lock-free list, containing the value and pointers
+    /// for both the main list linkage and the free-list for reclaimed slots.
+    /// </summary>
     private struct Node
     {
+        /// <summary>
+        /// The value stored in this node.
+        /// </summary>
         public T Value;
-        public int Next; // index of next node in the main list
-        public int Marked; // 0 = live, 1 = logically deleted
-        public int FreeNext; // index of next node in the free‑list
+
+        /// <summary>
+        /// The index of the next node in the main list,
+        /// or <see cref="NullIndex"/> if this is the last node.
+        /// </summary>
+        public int Next;
+
+        /// <summary>
+        /// Logical deletion marker: 0 = live, 1 = logically deleted.
+        /// </summary>
+        public int Marked;
+
+        /// <summary>
+        /// The index of the next node in the free-list,
+        /// or <see cref="NullIndex"/> if there is none.
+        /// </summary>
+        public int FreeNext;
     }
 
+    // Underlying array of nodes.
     private volatile Node[] _nodes;
-    private volatile int _count; // next slot if free list empty
-    private volatile int _freeListHead; // head of reclaimed indices
 
+    // Next available slot if the free-list is empty.
+    private volatile int _count;
+
+    // Next available slot if the free-list is empty.
+    private volatile int _freeListHead;
+
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LockFreeArrayList{T}"/> class
+    /// with the specified initial capacity.
+    /// </summary>
+    /// <param name="initialCapacity">
+    /// The initial size of the internal node array. Defaults to 16.
+    /// </param>
     public LockFreeArrayList(int initialCapacity = 16)
     {
         _nodes = new Node[initialCapacity];
@@ -29,6 +72,10 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
         _freeListHead = NullIndex;
     }
 
+    /// <summary>
+    /// Adds an item to the head of the list in a lock-free manner.
+    /// </summary>
+    /// <param name="item">The element to add to the list.</param>
     public void Add(T item)
     {
         // 1) allocate or reuse a slot
@@ -45,26 +92,23 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             int oldNext = nodes[0].Next;
             nodes[newIdx].Next = oldNext;
 
-            if (Interlocked.CompareExchange(
-                    ref nodes[0].Next,
-                    newIdx,
-                    oldNext
-                ) == oldNext)
-            {
+            if (Interlocked.CompareExchange(ref nodes[0].Next, newIdx, oldNext) == oldNext)
                 return;
-            }
-            // lost race, retry
         }
     }
 
+
     /// <summary>
-    /// Inserts <paramref name="item"/> so that it becomes the element at position
-    /// <paramref name="index"/> in the list (0‑based).  Throws if index is out of range.
+    /// Inserts an item at the specified zero-based index in the list.
     /// </summary>
+    /// <param name="index">The position at which to insert the item.</param>
+    /// <param name="item">The element to insert into the list.</param>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown if <paramref name="index"/> is less than 0 or greater than the current list size.
+    /// </exception>
     public void Insert(int index, T item)
     {
-        if (index < 0)
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         while (true)
         {
@@ -83,8 +127,7 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             }
 
             // if we stopped early, index was too large
-            if (i != index)
-                throw new ArgumentOutOfRangeException(nameof(index));
+            ArgumentOutOfRangeException.ThrowIfNotEqual(index, i);
 
             // 2) grab a free slot (or grow & allocate):
             int newIdx = PopFreeIndex();
@@ -96,21 +139,21 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             // 3) splice it in between prevIdx → currIdx
             var freshNodes = _nodes; // re‑read in case of a resize
             freshNodes[newIdx].Next = currIdx; // link forward
-            if (Interlocked.CompareExchange(
-                    ref freshNodes[prevIdx].Next, // location to update
-                    newIdx, // our new node
-                    currIdx // what we expect was there
-                ) == currIdx)
-            {
-                // success!
+            if (Interlocked.CompareExchange(ref freshNodes[prevIdx].Next, newIdx, currIdx) == currIdx)
                 return;
-            }
 
             // 4) lost the race on that CAS: clean up and retry
             PushFreeIndex(newIdx);
         }
     }
 
+    /// <summary>
+    /// Removes the first occurrence of the specified item from the list.
+    /// </summary>
+    /// <param name="item">The element to remove.</param>
+    /// <returns>
+    /// <c>true</c> if the item was found and removed; otherwise, <c>false</c>.
+    /// </returns>
     public bool Remove(T item)
     {
         while (true)
@@ -131,22 +174,14 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
                 return false;
 
             // 2) logical delete
-            if (Interlocked.CompareExchange(
-                    ref nodes[currIdx].Marked,
-                    1,
-                    0
-                ) != 0)
+            if (Interlocked.CompareExchange(ref nodes[currIdx].Marked, 1, 0) != 0)
             {
                 continue; // someone else deleted; retry
             }
 
             // 3) physical unlink
             int nextIdx = nodes[currIdx].Next;
-            if (Interlocked.CompareExchange(
-                    ref nodes[prevIdx].Next,
-                    nextIdx,
-                    currIdx
-                ) == currIdx)
+            if (Interlocked.CompareExchange(ref nodes[prevIdx].Next, nextIdx, currIdx) == currIdx)
             {
                 // reclaimed: push currIdx onto free‑list
                 PushFreeIndex(currIdx);
@@ -156,6 +191,11 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
         }
     }
 
+    /// <summary>
+    /// Returns an enumerator that iterates through the live elements
+    /// in a snapshot of the list.
+    /// </summary>
+    /// <returns>An enumerator for the list.</returns>
     public IEnumerator<T> GetEnumerator()
     {
         var snapshot = _nodes;
@@ -168,11 +208,19 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
         }
     }
 
+    /// <summary>
+    /// Returns an enumerator that iterates through the live elements
+    /// in a snapshot of the list.
+    /// </summary>
+    /// <returns>An enumerator for the list.</returns>
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-
-    // ─── free‑list operations ────────────────────────────────────────────────
-
+    /// <summary>
+    /// Attempts to pop a reclaimed node index from the free-list.
+    /// </summary>
+    /// <returns>
+    /// The index of a free node ready for reuse, or <c>NullIndex</c> if none are available.
+    /// </returns>
     private int PopFreeIndex()
     {
         while (true)
@@ -182,37 +230,32 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
                 return NullIndex;
 
             int next = _nodes[head].FreeNext;
-            if (Interlocked.CompareExchange(
-                    ref _freeListHead,
-                    next,
-                    head
-                ) == head)
-            {
+            if (Interlocked.CompareExchange(ref _freeListHead, next, head) == head)
                 return head;
-            }
         }
     }
 
+    /// <summary>
+    /// Pushes a node index onto the free-list for future reuse.
+    /// </summary>
+    /// <param name="idx">The node index to recycle.</param>
     private void PushFreeIndex(int idx)
     {
         while (true)
         {
             int oldHead = _freeListHead;
             _nodes[idx].FreeNext = oldHead;
-            if (Interlocked.CompareExchange(
-                    ref _freeListHead,
-                    idx,
-                    oldHead
-                ) == oldHead)
-            {
+            if (Interlocked.CompareExchange(ref _freeListHead, idx, oldHead) == oldHead)
                 return;
-            }
         }
     }
 
-
-    // ─── slot allocation & initialization ────────────────────────────────────
-
+    /// <summary>
+    /// Allocates a new slot in the internal array for the specified item,
+    /// growing the array if necessary.
+    /// </summary>
+    /// <param name="item">The element to store in the new slot.</param>
+    /// <returns>The index of the newly allocated slot.</returns>
     private int AllocateNewSlot(T item)
     {
         while (true)
@@ -231,6 +274,13 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
         }
     }
 
+    /// <summary>
+    /// Initializes the node at the given index with the specified value,
+    /// setting all linkage and marker fields to their default states.
+    /// </summary>
+    /// <param name="idx">The index of the node to initialize.</param>
+    /// <param name="item">The value to store in the node.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeNode(int idx, T item)
     {
         var nodes = _nodes;
@@ -240,6 +290,11 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
         nodes[idx].FreeNext = NullIndex;
     }
 
+    /// <summary>
+    /// Ensures the internal array is at least the specified size,
+    /// doubling its length or meeting the minimum as needed.
+    /// </summary>
+    /// <param name="minSize">The minimum required capacity.</param>
     private void GrowArray(int minSize)
     {
         while (true)
@@ -252,14 +307,8 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             var newArr = new Node[newSize];
             Array.Copy(oldArr, newArr, oldArr.Length);
 
-            if (Interlocked.CompareExchange(
-                    ref _nodes,
-                    newArr,
-                    oldArr
-                ) == oldArr)
-            {
+            if (Interlocked.CompareExchange(ref _nodes, newArr, oldArr) == oldArr)
                 return;
-            }
         }
     }
 }
