@@ -1,9 +1,13 @@
 ﻿using System;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
+using NexNet.Invocation;
+using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
 
@@ -16,8 +20,13 @@ public class NexusList<T>
     private VersionedList<T> _itemList = new();
     private LockFreeArrayList<Client> _nexusPipeList;
     private static readonly Type _tType = typeof(T);
+    private Client? _client;
     
-    private record Client(INexusDuplexPipe Pipe, INexusChannelReader<INexusListOperation> Reader, INexusChannelWriter<INexusListOperation> Writer);
+    private record Client(
+        INexusDuplexPipe Pipe, 
+        INexusChannelReader<INexusListOperation>? Reader,
+        INexusChannelWriter<INexusListOperation>? Writer,
+        ISessionContext Context);
 
     internal NexusList(NexusDictionaryMode mode, bool server)
     {
@@ -26,8 +35,11 @@ public class NexusList<T>
         _nexusPipeList = new LockFreeArrayList<Client>(64);
     }
 
-    public async ValueTask AddClient(INexusDuplexPipe pipe)
+    public async ValueTask AddClient(INexusDuplexPipe pipe, ISessionContext context)
     {
+        if(!_server)
+            throw new InvalidOperationException("List is not setup in Server mode.");
+        
         if (pipe.CompleteTask.IsCompleted)
             return;
 
@@ -49,8 +61,9 @@ public class NexusList<T>
         
         _nexusPipeList.Add(new Client(
             pipe, 
-            new NexusChannelReader<INexusListOperation>(pipe),
-            writer));
+            _mode == NexusDictionaryMode.BiDrirectional ? null : new NexusChannelReader<INexusListOperation>(pipe),
+            writer,
+            context));
         
         // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
@@ -62,9 +75,57 @@ public class NexusList<T>
         await pipe.CompleteTask;
     }
 
-    public void ConnectAsClient(INexusDuplexPipe pipe)
+    public void ConnectAsClient(INexusDuplexPipe pipe, ISessionContext context)
     {
+        if(!_server)
+            throw new InvalidOperationException("List is not setup in Client mode.");
+
+        _client = new Client(
+            pipe,
+            new NexusChannelReader<INexusListOperation>(pipe),
+            _mode == NexusDictionaryMode.BiDrirectional ? new NexusChannelWriter<INexusListOperation>(pipe) : null,
+            context);
         
+        Task.Factory.StartNew(async static state =>
+        {
+            var list = Unsafe.As<NexusList<T>>(state)!;
+
+            await list._client!.Pipe.ReadyTask;
+
+            await foreach (var operation in list._client!.Reader!)
+            {
+                var result = await ProcessOperation(list, operation);
+                
+                // If the result is false, close the whole pipe
+                if (!result)
+                {
+                    await list._client.Context.DisconnectAsync(DisconnectReason.ProtocolError);
+                    return;
+                }
+            }
+        }, this, TaskCreationOptions.LongRunning);
+        
+        
+    }
+
+    private static async ValueTask<bool> ProcessOperation(NexusList<T> list, INexusListOperation operation)
+    {
+        switch (operation)
+        {
+            case NexusListAddItemOperation addOperation:
+                if (list._server)
+                    return false;
+                
+                
+                break;
+            case NexusListResetOperation resetOperation:
+                if (list._server)
+                    return false;
+                
+                break;
+        }
+
+        return false;
     }
     
     public void Clear()

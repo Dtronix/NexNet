@@ -7,7 +7,7 @@ namespace NexNet.Collections;
 
 public enum NexusDictionaryMode 
 {
-    ClientReadOnly,
+    Unset,
     BiDrirectional
 }
 

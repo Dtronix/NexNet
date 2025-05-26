@@ -12,7 +12,7 @@ namespace NexNetSample.Asp.Shared;
 [MemoryPackable]
 [MemoryPackUnion(0, typeof(NexusListInsertOperation))]
 [MemoryPackUnion(1, typeof(NexusListAddItemOperation))]
-[MemoryPackUnion(2, typeof(NexusListFillCompleteOperation))]
+[MemoryPackUnion(2, typeof(NexusListResetOperation))]
 public partial interface INexusListOperation
 {
     
@@ -113,17 +113,17 @@ public partial class NexusListAddItemOperation : INexusListOperation
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
-public partial class NexusListFillCompleteOperation : INexusListOperation
+public partial class NexusListResetOperation : INexusListOperation
 {
-    public static readonly ConcurrentBag<NexusListFillCompleteOperation> Cache = new();
+    public static readonly ConcurrentBag<NexusListResetOperation> Cache = new();
     
     [MemoryPackOrder(0)]
     public int Version { get; set; }
     
-    public static NexusListFillCompleteOperation GetFromCache()
+    public static NexusListResetOperation GetFromCache()
     {
         if(!Cache.TryTake(out var operation))
-            operation = new NexusListFillCompleteOperation();
+            operation = new NexusListResetOperation();
 
         return operation;
     }

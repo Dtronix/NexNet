@@ -1,0 +1,46 @@
+﻿using System;
+using System.Collections.Immutable;
+
+namespace NexNet.Internals.Collections.Versioned;
+
+/// <summary>
+/// Represents an operation to clear the list.
+/// </summary>
+internal class ClearOperation<T> : Operation<T>, IEquatable<ClearOperation<T>>
+{
+    /// <inheritdoc />
+    public override void Apply(ref VersionedList<T>.ListState state)
+    {
+        ImmutableInterlocked.Update(ref state, static state => 
+            new VersionedList<T>.ListState(ImmutableList<T>.Empty, state.Version + 1));
+    }
+
+    /// <inheritdoc />
+    public override bool TransformAgainst(Operation<T> other)
+    {
+        return true;
+    }
+
+    /// <inheritdoc />
+    public override ClearOperation<T> Clone()
+    {
+        return new ClearOperation<T>();
+    }
+    
+    /// <inheritdoc />
+    public bool Equals(ClearOperation<T>? other)
+    {
+        if (other is null) return false;
+        if (ReferenceEquals(this, other)) return true;
+        return true;
+    }
+
+    /// <inheritdoc />
+    public override bool Equals(object? obj)
+    {
+        if (obj is null) return false;
+        if (ReferenceEquals(this, obj)) return true;
+        if (obj.GetType() != GetType()) return false;
+        return true;
+    }
+}

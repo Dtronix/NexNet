@@ -1,54 +1,35 @@
 ﻿using System.Threading.Tasks;
-using System;
-using NexNet.Cache;
-using NexNet.Internals;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NexNet.Logging;
 
 namespace NexNet.Invocation;
 
 /// <summary>
 /// Base context for hubs to use.
 /// </summary>
-/// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
-public abstract class SessionContext<TProxy> : ISessionContext
-    where TProxy : ProxyInvocationBase, IProxyInvoker, new()
+public interface ISessionContext
 {
-    internal INexusSession<TProxy> Session { get; }
-    internal SessionManager? SessionManager { get; }
-    internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
-
     /// <summary>
     /// Logger.
     /// </summary>
-    public INexusLogger? Logger => Session.Logger;
+    INexusLogger? Logger { get; }
 
     /// <summary>
     /// Store for this session used to keep and pass variables for the lifetime of this session.
     /// </summary>
-    public SessionStore Store => Session.SessionStore;
+    SessionStore Store { get; }
 
     /// <summary>
     /// Id of the current session.
     /// </summary>
-    public long Id => Session.Id;
-
-    internal SessionContext(INexusSession<TProxy> session, SessionManager? sessionManager)
-    {
-        Session = session;
-        SessionManager = sessionManager;
-    }
+    long Id { get; }
 
     /// <summary>
     /// Creates a pipe for use with the current session.
     /// </summary>
     /// <returns>Pipe for communication over teh current session.</returns>
-    public IRentedNexusDuplexPipe CreatePipe()
-    {
-        return Session.PipeManager.RentPipe() 
-               ?? throw new InvalidOperationException("Can't create a pipe due to session being closed.");
-    }
+    IRentedNexusDuplexPipe CreatePipe();
 
     /// <summary>
     /// Creates an unmanaged duplex channel for the specified type.
@@ -58,12 +39,8 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// <remarks>
     /// This method is optimized for unmanaged types and should be used over the non-unmanaged version when possible.
     /// </remarks>
-    public INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
-        where T : unmanaged
-    {
-        return CreatePipe().GetUnmanagedChannel<T>();
-    }
-
+    INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
+        where T : unmanaged;
 
     /// <summary>
     /// Creates a duplex channel for the specified type.
@@ -73,24 +50,21 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// <remarks>
     /// This method creates a channel from a rented pipe and is suitable for any MessagePack data type.
     /// </remarks>
-    public INexusDuplexChannel<T> CreateChannel<T>()
-    {
-        return CreatePipe().GetChannel<T>();
-    }
+    INexusDuplexChannel<T> CreateChannel<T>();
 
     /// <summary>
     /// Disconnect the current connection.
     /// </summary>
-    public Task DisconnectAsync()
-    {
-        return Session.DisconnectAsync(DisconnectReason.Graceful);
-    }
+    Task DisconnectAsync();
+    
+    /// <summary>
+    /// Disconnect the current connection.
+    /// </summary>
+    /// <param name="reason">Reason for the disconnection.</param>
+    internal Task DisconnectAsync(DisconnectReason reason);
 
-    Task ISessionContext.DisconnectAsync(DisconnectReason reason)
-    {
-        return Session.DisconnectAsync(reason);
-    }
-
-    /// <inheritdoc />
-    public abstract void Reset();
+    /// <summary>
+    /// Resets the context for closure.
+    /// </summary>
+    void Reset();
 }
