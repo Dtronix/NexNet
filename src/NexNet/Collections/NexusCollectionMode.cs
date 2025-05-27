@@ -2,6 +2,6 @@ namespace NexNet.Collections;
 
 public enum NexusCollectionMode 
 {
-    ClientReadOnly,
+    Unset,
     BiDrirectional
 }

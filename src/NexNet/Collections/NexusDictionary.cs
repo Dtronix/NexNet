@@ -4,23 +4,16 @@ using System.Diagnostics.CodeAnalysis;
 using NexNet.Invocation;
 
 namespace NexNet.Collections;
-
-public enum NexusDictionaryMode 
-{
-    Unset,
-    BiDrirectional
-}
-
 public class NexusDictionary<TKey, TValue> : IDictionary<TKey, TValue> 
     where TKey : notnull
 {
-    private readonly NexusDictionaryMode _mode;
+    private readonly NexusCollectionMode _mode;
     private readonly Dictionary<TKey, TValue> _inner = new();
     
     public int Count => _inner.Count;
     public bool IsReadOnly { get; } 
     
-    internal NexusDictionary(NexusDictionaryMode mode, IProxyInvoker invoker, int id)
+    internal NexusDictionary(NexusCollectionMode mode, IProxyInvoker invoker, int id)
     {
         _mode = mode;
         //invoker.ProxyGetDuplexPipeInitialId()

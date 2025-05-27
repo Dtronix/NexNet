@@ -16,7 +16,7 @@ namespace NexNet;
 /// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
-    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash
+    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private readonly Timer _pingTimer;
@@ -25,6 +25,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private readonly TClientNexus _nexus;
     private NexusSession<TClientNexus, TServerProxy>? _session;
     private TaskCompletionSource? _disconnectedTaskCompletionSource;
+    private readonly NexusCollectionManager _collectionManager;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
 
@@ -57,6 +58,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
         _cacheManager = new SessionCacheManager<TServerProxy>();
+        
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(false);
+        TClientNexus.ConfigureCollections(_collectionManager);
 
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
         _nexus = nexus;
@@ -119,7 +124,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             Id = 0, // Initial value.  Not set by the client.
             Nexus = _nexus,
             ReadyTaskCompletionSource = readyTaskCompletionSource,
-            DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource
+            DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
+            CollectionManager = _collectionManager
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)

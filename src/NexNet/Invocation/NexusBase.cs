@@ -3,6 +3,8 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections;
+using NexNet.Collections.Lists;
 using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
@@ -15,7 +17,7 @@ namespace NexNet.Invocation;
 /// Base hub with common methods used between server and client.
 /// </summary>
 /// <typeparam name="TProxy">Proxy type for the session.</typeparam>
-public abstract class NexusBase<TProxy> : IMethodInvoker
+public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
@@ -213,4 +215,25 @@ public abstract class NexusBase<TProxy> : IMethodInvoker
             _cache.Add(args);
         }
     }
+    
+    INexusList<T> ICollectionStore.GetList<T>(ushort id)
+    {
+        return SessionContext.Session.CollectionManager.GetList<T>(id);
+    }
+
+    ValueTask ICollectionStore.StartCollection<T>(ushort id, INexusDuplexPipe pipe)
+    {
+        return SessionContext.Session.CollectionManager.StartServerCollectionConnection<T>(id, pipe, SessionContext.Session);
+    }
+}
+
+public interface ICollectionStore
+{
+    INexusList<T> GetList<T>(ushort id);
+    ValueTask StartCollection<T>(ushort id, INexusDuplexPipe pipe);
+}
+
+public interface ICollectionConfigurer
+{
+    static abstract void ConfigureCollections(IConfigureCollectionManager manager);
 }

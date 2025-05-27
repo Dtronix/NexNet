@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -74,4 +75,7 @@ public interface IProxyInvoker
     /// <param name="pipe">Pipe to retrieve the Id of.</param>
     /// <returns>Initial id of the pipe.</returns>
     byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe);
+    
+    INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id);
+
 }

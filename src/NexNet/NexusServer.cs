@@ -18,7 +18,7 @@ namespace NexNet;
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
 public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
-    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     private readonly SessionManager _sessionManager = new();
@@ -34,7 +34,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
-    
+    private readonly NexusCollectionManager _collectionManager;
+
     /// <inheritdoc />
     public NexusServerState State => _state;
 
@@ -60,6 +61,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
+        
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(true);
+        TServerNexus.ConfigureCollections(_collectionManager);
+        
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
@@ -229,7 +235,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             SessionManager = _sessionManager,
             Client = null,
             Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
-            Nexus = _nexusFactory!.Invoke()
+            Nexus = _nexusFactory!.Invoke(),
+            CollectionManager = _collectionManager
         }, cancellationToken);
     }
 
@@ -342,7 +349,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Configs = _config,
                         SessionManager = _sessionManager,
                         Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
-                        Nexus = _nexusFactory!.Invoke()
+                        Nexus = _nexusFactory!.Invoke(),
+                        CollectionManager = _collectionManager
                     });
             }
         }

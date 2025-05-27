@@ -54,6 +54,11 @@ internal interface INexusSession : ISessionMessenger
     /// Contains 
     /// </summary>
     internal CacheManager CacheManager { get; }
+    
+    /// <summary>
+    /// Manager for all the shared collections.
+    /// </summary>
+    internal NexusCollectionManager CollectionManager { get; }
 
     /// <summary>
     /// Configurations for the session.

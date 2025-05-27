@@ -1,11 +1,12 @@
 ﻿using NexNet;
+using NexNet.Collections.Lists;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
 
 namespace NexNetSample.Asp.Server;
 
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+//[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus
 {
 #pragma warning disable CS8618, CS9264
@@ -80,7 +81,7 @@ public partial class ServerNexus
 
     public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
-        
+        this._cancellableInvocations
         //this.Context.d
         //pipe.GetChannelWriter<>()
         return default;
@@ -100,6 +101,8 @@ public partial class ServerNexus
             return ValueTask.CompletedTask;
 
         return OnConnectedEvent.Invoke(this);
+        
+        this.
     }
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
@@ -114,4 +117,6 @@ public partial class ServerNexus
     {
         return OnAuthenticateEvent!.Invoke(this);
     }
+    
 }
+

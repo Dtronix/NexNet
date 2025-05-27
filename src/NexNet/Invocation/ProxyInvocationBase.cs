@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -360,7 +361,16 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
          return nexusPipe.LocalId;
      }
-     
+
+    public INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id)
+    {
+        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
+        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
+            throw new InvalidOperationException("Session is not connected");
+        var list = _session?.CollectionManager.GetList<T>(id);
+        
+    }
+
 
     private void ReturnState(RegisteredInvocationState state)
     {

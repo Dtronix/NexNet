@@ -1,4 +1,5 @@
-﻿using NexNet.Pipes;
+﻿using NexNet.Collections.Lists;
+using NexNet.Pipes;
 
 namespace NexNetSample.Asp.Shared;
 
@@ -21,6 +22,7 @@ public partial interface IClientNexus
 
 public partial interface IServerNexus
 {
+    INexusList<int> IntegerList { get; }
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();
