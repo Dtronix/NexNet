@@ -80,7 +80,7 @@ public class VersionedListFuzzTests
             }
 
             // Choose a random valid baseVersion: [0 .. currentVersion]
-            int baseVersion = random.Next(versionedList.MinValidVersion, versionedList.Version + 1);
+            int baseVersion = random.Next((int)versionedList.MinValidVersion, versionedList.Version + 1);
 
             Assert.DoesNotThrow(() =>
                 {

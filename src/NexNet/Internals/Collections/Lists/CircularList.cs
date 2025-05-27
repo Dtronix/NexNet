@@ -66,6 +66,12 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
         return index;
     }
 
+    public void Clear()
+    {
+        _count = 0;
+        Array.Clear(_buffer, 0, _buffer.Length);
+    }
+
     /// <summary>
     /// Retrieves the item at the given global index.
     /// Valid indices are in the range [FirstIndex, LastIndex].

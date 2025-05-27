@@ -7,11 +7,11 @@ namespace NexNet.Internals.Collections.Versioned;
 /// </summary>
 internal class NoopOperation<T> : Operation<T>
 {
-    
+    public static readonly NoopOperation<T> Instance = new();
     /// <summary>
     /// Initializes a new instance of the <see cref="NoopOperation{T}"/> class.  Noop will be performed upon apply.
     /// </summary>
-    public NoopOperation()
+    private NoopOperation()
     {
     }
 

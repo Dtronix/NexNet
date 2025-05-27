@@ -29,7 +29,7 @@ internal class VersionedList<T> : IEquatable<T[]>
     /// </summary>
     public int MaxVersions { get; }
 
-    public int MinValidVersion => Math.Max(0, State.Version - MaxVersions);
+    public long MinValidVersion => _history.FirstIndex;
 
     /// <summary>
     /// Get a snapshot of the list.
@@ -83,13 +83,23 @@ internal class VersionedList<T> : IEquatable<T[]>
             result = ListProcessResult.InvalidVersion;
             return null;
         }
+        
+        switch (txOp)
+        {
+            case ClearOperation<T> cleOp:
+                _history.Clear();
+                txOp.Apply(ref State);
+                _history.Add(txOp);
+                result = ListProcessResult.Successful;
+                return cleOp;
+        }
 
         for (var i = baseVersion; i < _history.Count; i++)
         {
             if (!txOp.TransformAgainst(_history[i]))
             {
                 result = ListProcessResult.DiscardOperation;
-                return new NoopOperation<T>();
+                return NoopOperation<T>.Instance;
             }
         }
 

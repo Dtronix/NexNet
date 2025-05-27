@@ -13,7 +13,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
 {
     
     /// <summary>
-    /// Index to add the provided item.
+    /// Index to add the provided item.  -1 Indicates this is an add operation and the item will be appended.
     /// </summary>
     public int Index;
     
@@ -31,6 +31,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     public InsertOperation(int index, T item)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
+
         Index = index;
         Item = item;
     }
@@ -39,7 +40,9 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     public override void Apply(ref VersionedList<T>.ListState state)
     {
         ImmutableInterlocked.Update(ref state, static (state, args) => 
-            new VersionedList<T>.ListState(state.List.Insert(args.Index, args.Item), state.Version + 1),
+                new VersionedList<T>.ListState(args.Index == -1
+                ? state.List.Add(args.Item)
+                : state.List.Insert(args.Index, args.Item), state.Version + 1),
             (Index, Item));
     }
 
@@ -51,6 +54,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
             case InsertOperation<T> addOp:
                 if (addOp.Index <= Index)
                     Index++;
+                
                 return true;
 
             case RemoveOperation<T> remOp:
@@ -63,6 +67,11 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
                 return true;
             
             case ModifyOperation<T>:
+                return true;
+            
+            case ClearOperation<T>:
+                // We no longer have a correct order of things. Set the index to the beginning of the list.
+                Index = 0;
                 return true;
         }
             

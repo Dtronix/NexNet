@@ -50,10 +50,10 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
     {
         switch (other)
         {
-            case InsertOperation<T> addOp:
-                if (addOp.Index <= FromIndex)
+            case InsertOperation<T> insertOp:
+                if (insertOp.Index <= FromIndex)
                     FromIndex++;
-                if (addOp.Index <= ToIndex)
+                if (insertOp.Index <= ToIndex)
                     ToIndex++;
 
                 return true;
@@ -78,6 +78,9 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
 
             case ModifyOperation<T>:
                 return true;
+            
+            case ClearOperation<T> remOp:
+                return false;
         }
 
         throw new InvalidOperationException("Unknown operation");
