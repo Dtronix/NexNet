@@ -232,8 +232,3 @@ public interface ICollectionStore
     INexusList<T> GetList<T>(ushort id);
     ValueTask StartCollection<T>(ushort id, INexusDuplexPipe pipe);
 }
-
-public interface ICollectionConfigurer
-{
-    static abstract void ConfigureCollections(IConfigureCollectionManager manager);
-}

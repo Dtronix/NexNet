@@ -5,7 +5,7 @@ using NexNet.Invocation;
 
 namespace NexNetSample.Asp.Server;
 
-partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::NexNetSample.Asp.Server.ServerNexus.ClientProxy>, global::NexNetSample.Asp.Shared.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash, global::NexNet.Invocation.ICollectionConfigurer 
+partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::NexNetSample.Asp.Server.ServerNexus.ClientProxy>, global::NexNetSample.Asp.Shared.IServerNexus, global::NexNet.Invocation.IInvocationMethodHash, global::NexNet.Collections.ICollectionConfigurer 
 {
     public INexusList<int> IntegerList => Unsafe.As<ICollectionStore>(this).GetList<int>(100);
     

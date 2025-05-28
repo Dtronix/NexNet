@@ -50,7 +50,7 @@ public class Program
         
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
-        builder.Services.AddHostedService<SimpleService>();
+        //builder.Services.AddHostedService<SimpleService>();
 
         var app = builder.Build();
         

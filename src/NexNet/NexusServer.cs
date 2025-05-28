@@ -7,6 +7,7 @@ using NexNet.Cache;
 using NexNet.Invocation;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Logging;
 
@@ -62,10 +63,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
         
-        // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(true);
-        TServerNexus.ConfigureCollections(_collectionManager);
-        
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
@@ -82,6 +79,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
         ContextProvider = new ServerNexusContextProvider<TClientProxy>(_sessionManager, _cacheManager);
+        
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(true);
+        TServerNexus.ConfigureCollections(_collectionManager);
     }
 
     /// <summary>

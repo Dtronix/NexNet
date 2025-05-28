@@ -140,13 +140,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _client = configurations.Client;
         _nexus = configurations.Nexus;
         _disconnectionCts = new CancellationTokenSource();
+        CollectionManager = configurations.CollectionManager;
         _nexus.SessionContext = IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
         Logger = _config.Logger?.CreateLogger("NexusSession", Id.ToString());
-
-        CollectionManager = configurations.CollectionManager;
         
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);

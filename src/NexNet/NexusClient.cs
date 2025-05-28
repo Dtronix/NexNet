@@ -4,6 +4,7 @@ using NexNet.Messages;
 using System.Threading;
 using NexNet.Transports;
 using NexNet.Cache;
+using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Pipes;

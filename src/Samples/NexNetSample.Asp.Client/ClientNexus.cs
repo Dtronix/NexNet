@@ -135,7 +135,7 @@ public partial class ClientNexus
 /// <summary>
 /// Nexus used for handling all Client communications.
 /// </summary>
-public partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::NexNetSample.Asp.Client.ClientNexus.ServerProxy>, global::NexNetSample.Asp.Shared.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash, global::NexNet.Invocation.ICollectionConfigurer
+public partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<global::NexNetSample.Asp.Client.ClientNexus.ServerProxy>, global::NexNetSample.Asp.Shared.IClientNexus, global::NexNet.Invocation.IInvocationMethodHash, global::NexNet.Collections.ICollectionConfigurer
 {
     public static void ConfigureCollections(IConfigureCollectionManager manager)
     {

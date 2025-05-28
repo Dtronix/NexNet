@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -13,33 +14,37 @@ using NexNetSample.Asp.Shared;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusList<T> : INexusList<T>, INexusCollectionConnector
+internal abstract class NexusCollection<T, TBaseOperation> : INexusCollectionConnector
 {
-    private readonly ushort _id;
-    private readonly NexusCollectionMode _mode;
-    private readonly bool _isServer;
-    private VersionedList<T> _itemList = new();
-    private LockFreeArrayList<Client> _nexusPipeList;
-    private static readonly Type _tType = typeof(T);
-    private Client? _client;
-    
-    private record Client(
-        INexusDuplexPipe Pipe, 
-        INexusChannelReader<INexusListOperation>? Reader,
-        INexusChannelWriter<INexusListOperation>? Writer,
-        INexusSession Session);
+    protected readonly ushort Id;
+    protected readonly NexusCollectionMode Mode;
+    protected static readonly Type TType = typeof(T);
 
-    public NexusList(ushort id, NexusCollectionMode mode, bool isServer)
+    protected readonly bool IsServer;
+    
+    private Client? _client;
+    private IProxyInvoker? _invoker;
+    private INexusSession? _session;
+    
+    private LockFreeArrayList<Client> _nexusPipeList;
+
+    protected NexusCollection(ushort id, NexusCollectionMode mode, bool isServer)
     {
-        _id = id;
-        _mode = mode;
-        _isServer = isServer;
+        Id = id;
+        Mode = mode;
+        IsServer = isServer;
         _nexusPipeList = new LockFreeArrayList<Client>(64);
     }
 
+    private record Client(
+        INexusDuplexPipe Pipe, 
+        INexusChannelReader<TBaseOperation>? Reader,
+        INexusChannelWriter<TBaseOperation>? Writer,
+        INexusSession Session);
+    
     public async ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
     {
-        if(!_isServer)
+        if(!IsServer)
             throw new InvalidOperationException("List is not setup in Server mode.");
         
         if (pipe.CompleteTask.IsCompleted)
@@ -47,23 +52,13 @@ internal class NexusList<T> : INexusList<T>, INexusCollectionConnector
 
         await pipe.ReadyTask;
 
-        var writer = new NexusChannelWriter<INexusListOperation>(pipe);
-        var op = NexusListAddItemOperation.GetFromCache();
+        var writer = new NexusChannelWriter<TBaseOperation>(pipe);
         
-        // TODO: Look at chunking
-
-        var state = _itemList.CurrentState;
-        foreach (var item in state.List)
-        {
-            op.Value = MemoryPackSerializer.Serialize(_tType, item);
-            await writer.WriteAsync(op);
-        }
-        
-        NexusListAddItemOperation.Cache.Add(op);
+        await InitializeNewClient(writer);
         
         _nexusPipeList.Add(new Client(
             pipe, 
-            _mode == NexusCollectionMode.BiDrirectional ? null : new NexusChannelReader<INexusListOperation>(pipe),
+            Mode == NexusCollectionMode.BiDrirectional ? null : new NexusChannelReader<TBaseOperation>(pipe),
             writer,
             session));
         
@@ -77,62 +72,113 @@ internal class NexusList<T> : INexusList<T>, INexusCollectionConnector
         await pipe.CompleteTask;
     }
 
-    public async ValueTask ConnectAsClient(IProxyInvoker invoker, INexusSession session)
+    public async Task ConnectAsync()
     {
-        if(!_isServer)
-            throw new InvalidOperationException("List is not setup in Client mode.");
+        // Connect on the server is a noop.
+        if(IsServer)
+            return;
 
-        var pipe = session.PipeManager.RentPipe();
+        var pipe = _session.PipeManager.RentPipe();
 
         if (pipe == null)
             throw new Exception("Could not instance new pipe.");
         
         // Invoke the method on the server to activate the pipe.
-        invoker.Logger?.Log((invoker.Logger.Behaviors & Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? Logging.NexusLogLevel.Information : Logging.NexusLogLevel.Debug, invoker.Logger.Category, null, $"Connecting Proxy: ServerTaskValueWithDuplexPipe({_id});");
-        await invoker.ProxyInvokeMethodCore(_id, new ValueTuple<Byte>(invoker.ProxyGetDuplexPipeInitialId(pipe)), InvocationFlags.DuplexPipe);
+        _invoker.Logger?.Log((_invoker.Logger.Behaviors & Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? Logging.NexusLogLevel.Information : Logging.NexusLogLevel.Debug, _invoker.Logger.Category, null, $"Connecting Proxy Collection[{Id}];");
+        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<Byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)), InvocationFlags.DuplexPipe);
 
         await pipe.ReadyTask;
         
         _client = new Client(
             pipe,
-            new NexusChannelReader<INexusListOperation>(pipe),
-            _mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<INexusListOperation>(pipe) : null,
-            session);
+            new NexusChannelReader<TBaseOperation>(pipe),
+            Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<TBaseOperation>(pipe) : null,
+            _session);
         
         Task.Factory.StartNew(async static state =>
         {
-            var list = Unsafe.As<NexusList<T>>(state)!;
+            var collection = Unsafe.As<NexusCollection<T, TBaseOperation>>(state)!;
 
-            await list._client!.Pipe.ReadyTask;
+            await collection._client!.Pipe.ReadyTask;
 
-            await foreach (var operation in list._client!.Reader!)
+            await foreach (var operation in collection._client!.Reader!)
             {
-                var result = await ProcessOperation(list, operation);
+                var result = await collection.ProcessOperation(operation);
                 
                 // If the result is false, close the whole pipe
                 if (!result)
                 {
-                    await list._client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
+                    await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
                     return;
                 }
             }
         }, this, TaskCreationOptions.LongRunning);
+    }
+    
+    public async Task DisconnectAsync()
+    {
+        // Disconnect on the server is a noop.
+        if(IsServer)
+            return;
         
+        var client = _client;
+        if (client == null)
+            return;
+
+        await client.Pipe.CompleteAsync();
+    }
+
+
+    public void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
+    {
+        _invoker = invoker;
+        _session = session;
+    }
+    
+    protected abstract ValueTask InitializeNewClient(NexusChannelWriter<TBaseOperation> writer);
+    
+    protected abstract ValueTask<bool> ProcessOperation(TBaseOperation operation);
+
+}
+
+internal class NexusList<T> : NexusCollection<T, INexusListOperation>, INexusList<T>
+{
+    private readonly VersionedList<T> _itemList = new();
+    public int Count => _itemList.Count;
+    public bool IsReadOnly => IsServer ? false : Mode != NexusCollectionMode.BiDrirectional;
+    
+    public NexusList(ushort id, NexusCollectionMode mode, bool isServer)
+        : base(id, mode, isServer)
+    {
         
     }
 
-    private static async ValueTask<bool> ProcessOperation(NexusList<T> list, INexusListOperation operation)
+    protected override async ValueTask InitializeNewClient(NexusChannelWriter<INexusListOperation> writer)
+    {
+              
+        var op = NexusListAddItemOperation.GetFromCache();
+        var state = _itemList.CurrentState;
+        foreach (var item in state.List)
+        {
+            op.Value = MemoryPackSerializer.Serialize(TType, item);
+            await writer.WriteAsync(op);
+        }
+        
+        NexusListAddItemOperation.Cache.Add(op);
+    }
+
+    protected override async ValueTask<bool> ProcessOperation(INexusListOperation operation)
     {
         switch (operation)
         {
             case NexusListAddItemOperation addOperation:
-                if (list._isServer)
+                if (IsServer)
                     return false;
                 
                 
                 break;
             case NexusListResetOperation resetOperation:
-                if (list._isServer)
+                if (IsServer)
                     return false;
                 
                 break;
@@ -160,9 +206,6 @@ internal class NexusList<T> : INexusList<T>, INexusCollectionConnector
     {
         throw new System.NotImplementedException();
     }
-
-    public int Count { get; }
-    public bool IsReadOnly { get; }
     public int IndexOf(T item)
     {
         throw new System.NotImplementedException();
@@ -183,16 +226,6 @@ internal class NexusList<T> : INexusList<T>, INexusCollectionConnector
         get => throw new System.NotImplementedException();
         set => throw new System.NotImplementedException();
     }
-
-    public Task ConnectAsync()
-    {
-        throw new NotImplementedException();
-    }
-
-    public Task DisconnectAsync()
-    {
-        throw new NotImplementedException();
-    }
 }
 
 public interface INexusList<T> : INexusCollection
@@ -207,17 +240,30 @@ public interface INexusList<T> : INexusCollection
     void Insert(int index, T item);
     void RemoveAt(int index);
     T this[int index] { get; set; }
-    public Task ConnectAsync();
-    public Task DisconnectAsync();
+
     
 }
 
 internal interface INexusCollectionConnector
 {
+    /// <summary>
+    /// Server only
+    /// </summary>
+    /// <param name="pipe"></param>
+    /// <param name="context"></param>
+    /// <returns></returns>
     public ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession context);
+    
+    /// <summary>
+    /// Client Only
+    /// </summary>
+    /// <param name="invoker"></param>
+    /// <param name="session"></param>
+    void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session);
 }
 
 public interface INexusCollection
 {
-    
+    public Task ConnectAsync();
+    public Task DisconnectAsync();
 }

@@ -37,6 +37,12 @@ internal class Program
         var client = ClientNexus.CreateClient(clientHttpSocketConfig, nexus);
         
         await client.ConnectAsync();
+
+        await Task.Delay(3000);
+
+        await client.Proxy.IntegerList.ConnectAsync();
+        
+        await Task.Delay(3000);
         
         var val = await client.Proxy.ServerTaskValueWithParam(124);
         

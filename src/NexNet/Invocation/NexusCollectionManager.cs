@@ -36,7 +36,6 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         return connector.StartServerCollectionConnection(pipe, context);
     }
     
-    
     public void AddList<T>(ushort id, NexusCollectionMode mode)
     {
         if(_collectionBuilder == null)
@@ -51,6 +50,12 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         
         _collections = _collectionBuilder.ToFrozenDictionary();
         _collectionBuilder = null;
+    }
+
+    public void SetClientProxySession(ProxyInvocationBase proxy, INexusSession session)
+    {
+        foreach (var collectionKvp in _collections)
+            Unsafe.As<INexusCollectionConnector>(collectionKvp.Value).TryConfigureProxyCollection(proxy, session);
     }
 }
 

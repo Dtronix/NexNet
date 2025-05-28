@@ -44,6 +44,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     {
         _session = session;
         
+        // Sets all the proxy session required configurations for all clients.
+        session?.CollectionManager.SetClientProxySession(this, session);
+
         // If the sessionManager is null, this is a client session.
         _sessionManager = sessionManager;
         _mode = mode;
@@ -364,11 +367,16 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     public INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id)
     {
-        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
-        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
+        var session = _session;
+        if (session == null)
+            throw new InvalidOperationException("Method must be invoked on client only.");
+            
+        // Verify if we are on the server or client.  Client will use _session.
+        if (session.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
-        var list = _session?.CollectionManager.GetList<T>(id);
         
+        var list = session.CollectionManager.GetList<T>(id);
+        return list;
     }
 
 

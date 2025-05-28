@@ -81,9 +81,6 @@ public partial class ServerNexus
 
     public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
-        this._cancellableInvocations
-        //this.Context.d
-        //pipe.GetChannelWriter<>()
         return default;
     }
     
@@ -101,8 +98,6 @@ public partial class ServerNexus
             return ValueTask.CompletedTask;
 
         return OnConnectedEvent.Invoke(this);
-        
-        this.
     }
 
     protected override ValueTask OnDisconnected(DisconnectReason exception)
