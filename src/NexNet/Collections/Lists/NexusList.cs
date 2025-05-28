@@ -1,151 +1,18 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals;
-using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using NexNet.Invocation;
-using NexNet.Messages;
 using NexNet.Pipes;
-using NexNetSample.Asp.Shared;
 
 namespace NexNet.Collections.Lists;
 
-internal abstract class NexusCollection<T, TBaseOperation> : INexusCollectionConnector
-{
-    protected readonly ushort Id;
-    protected readonly NexusCollectionMode Mode;
-    protected static readonly Type TType = typeof(T);
-
-    protected readonly bool IsServer;
-    
-    private Client? _client;
-    private IProxyInvoker? _invoker;
-    private INexusSession? _session;
-    
-    private LockFreeArrayList<Client> _nexusPipeList;
-
-    protected NexusCollection(ushort id, NexusCollectionMode mode, bool isServer)
-    {
-        Id = id;
-        Mode = mode;
-        IsServer = isServer;
-        _nexusPipeList = new LockFreeArrayList<Client>(64);
-    }
-
-    private record Client(
-        INexusDuplexPipe Pipe, 
-        INexusChannelReader<TBaseOperation>? Reader,
-        INexusChannelWriter<TBaseOperation>? Writer,
-        INexusSession Session);
-    
-    public async ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
-    {
-        if(!IsServer)
-            throw new InvalidOperationException("List is not setup in Server mode.");
-        
-        if (pipe.CompleteTask.IsCompleted)
-            return;
-
-        await pipe.ReadyTask;
-
-        var writer = new NexusChannelWriter<TBaseOperation>(pipe);
-        
-        await InitializeNewClient(writer);
-        
-        _nexusPipeList.Add(new Client(
-            pipe, 
-            Mode == NexusCollectionMode.BiDrirectional ? null : new NexusChannelReader<TBaseOperation>(pipe),
-            writer,
-            session));
-        
-        // Add in the completion removal for execution later.
-        _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
-        {
-            var (pipe, list) = ((INexusDuplexPipe, LockFreeArrayList<INexusDuplexPipe>))state!;
-            list.Remove(pipe);
-        }, (pipe, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
-        
-        await pipe.CompleteTask;
-    }
-
-    public async Task ConnectAsync()
-    {
-        // Connect on the server is a noop.
-        if(IsServer)
-            return;
-
-        var pipe = _session.PipeManager.RentPipe();
-
-        if (pipe == null)
-            throw new Exception("Could not instance new pipe.");
-        
-        // Invoke the method on the server to activate the pipe.
-        _invoker.Logger?.Log((_invoker.Logger.Behaviors & Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? Logging.NexusLogLevel.Information : Logging.NexusLogLevel.Debug, _invoker.Logger.Category, null, $"Connecting Proxy Collection[{Id}];");
-        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<Byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)), InvocationFlags.DuplexPipe);
-
-        await pipe.ReadyTask;
-        
-        _client = new Client(
-            pipe,
-            new NexusChannelReader<TBaseOperation>(pipe),
-            Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<TBaseOperation>(pipe) : null,
-            _session);
-        
-        Task.Factory.StartNew(async static state =>
-        {
-            var collection = Unsafe.As<NexusCollection<T, TBaseOperation>>(state)!;
-
-            await collection._client!.Pipe.ReadyTask;
-
-            await foreach (var operation in collection._client!.Reader!)
-            {
-                var result = await collection.ProcessOperation(operation);
-                
-                // If the result is false, close the whole pipe
-                if (!result)
-                {
-                    await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
-                    return;
-                }
-            }
-        }, this, TaskCreationOptions.LongRunning);
-    }
-    
-    public async Task DisconnectAsync()
-    {
-        // Disconnect on the server is a noop.
-        if(IsServer)
-            return;
-        
-        var client = _client;
-        if (client == null)
-            return;
-
-        await client.Pipe.CompleteAsync();
-    }
-
-
-    public void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
-    {
-        _invoker = invoker;
-        _session = session;
-    }
-    
-    protected abstract ValueTask InitializeNewClient(NexusChannelWriter<TBaseOperation> writer);
-    
-    protected abstract ValueTask<bool> ProcessOperation(TBaseOperation operation);
-
-}
-
-internal class NexusList<T> : NexusCollection<T, INexusListOperation>, INexusList<T>
+internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList = new();
     public int Count => _itemList.Count;
-    public bool IsReadOnly => IsServer ? false : Mode != NexusCollectionMode.BiDrirectional;
+    public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
     
     public NexusList(ushort id, NexusCollectionMode mode, bool isServer)
         : base(id, mode, isServer)
@@ -153,10 +20,15 @@ internal class NexusList<T> : NexusCollection<T, INexusListOperation>, INexusLis
         
     }
 
-    protected override async ValueTask InitializeNewClient(NexusChannelWriter<INexusListOperation> writer)
+    protected override void DisconnectedFromServer()
+    {
+        _itemList.Reset();
+    }
+
+    protected override async ValueTask InitializeNewClient(NexusChannelWriter<INexusListMessage> writer)
     {
               
-        var op = NexusListAddItemOperation.GetFromCache();
+        var op = NexusListAddItemMessage.Rent();
         var state = _itemList.CurrentState;
         foreach (var item in state.List)
         {
@@ -164,106 +36,208 @@ internal class NexusList<T> : NexusCollection<T, INexusListOperation>, INexusLis
             await writer.WriteAsync(op);
         }
         
-        NexusListAddItemOperation.Cache.Add(op);
+        NexusListAddItemMessage.Cache.Add(op);
     }
 
-    protected override async ValueTask<bool> ProcessOperation(INexusListOperation operation)
+    private List<T>? _clientInitialization;
+    private int _clientInitializationVersion;
+
+    private bool RequireValidState()
+    {
+        if (_clientInitialization != null || _clientInitializationVersion != -1)
+            return false;
+
+        // If this is the server and we are not in bidirectional mode, then the client
+        // is sending messages when they are not supposed to.
+        if (IsServer && Mode != NexusCollectionMode.BiDrirectional)
+            return false;
+
+        return true;
+    }
+
+    private async ValueTask<bool> ProcessAndBroadcast(Operation<T> operation, int version)
+    {
+        var opResult = _itemList.ProcessOperation(
+            operation,
+            version,
+            out var processResult);
+
+        if (processResult != ListProcessResult.Successful)
+            return false;
+
+        if (IsServer && opResult != null)
+            await BroadcastAsync(opResult, _itemList.Version);
+
+        return true;
+    }
+    protected override ValueTask<bool> ProcessOperation(INexusListMessage operation)
     {
         switch (operation)
         {
-            case NexusListAddItemOperation addOperation:
+            case NexusListClearMessage op:
+                return !RequireValidState() 
+                    ? new ValueTask<bool>(false) 
+                    : ProcessAndBroadcast(new ClearOperation<T>(), op.Version);
+
+            case NexusListInsertMessage op:
+                return !RequireValidState()
+                    ? new ValueTask<bool>(false)
+                    : ProcessAndBroadcast(
+                        new InsertOperation<T>(op.Index, op.DeserializeValue<T>()!),
+                        op.Version);
+
+            case NexusListModifyMessage op:
+                return !RequireValidState()
+                    ? new ValueTask<bool>(false)
+                    : ProcessAndBroadcast(
+                        new ModifyOperation<T>(op.Index, op.DeserializeValue<T>()!),
+                        op.Version);
+
+            case NexusListMoveMessage op:
+                return !RequireValidState()
+                    ? new ValueTask<bool>(false)
+                    : ProcessAndBroadcast(
+                        new MoveOperation<T>(op.FromIndex, op.ToIndex),
+                        op.Version);
+
+            case NexusListRemoveMessage op:
+                return !RequireValidState()
+                    ? new ValueTask<bool>(false)
+                    : ProcessAndBroadcast(
+                        new RemoveOperation<T>(op.Index),
+                        op.Version);
+
+            // No broadcasting on the reset operations as they are only client operations.
+            case NexusListStartResetMessage resetOperation:
                 if (IsServer)
-                    return false;
-                
-                
+                    return new ValueTask<bool>(false);
+
+                _clientInitialization = new List<T>(resetOperation.Count);
+                _clientInitializationVersion = resetOperation.Version;
                 break;
-            case NexusListResetOperation resetOperation:
-                if (IsServer)
-                    return false;
+
+            case NexusListCompleteResetMessage:
+                if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
+                    return new ValueTask<bool>(false);
+
+                var list = ImmutableList<T>.Empty.AddRange(_clientInitialization);
+
+                // Reset the state manually.
+                _itemList.ResetTo(list, _clientInitializationVersion);
+
+                _clientInitialization.Clear();
+                _clientInitialization = null;
+                _clientInitializationVersion = -1;
+                break;
+
+            case NexusListAddItemMessage addOperation:
+                if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
+                    return new ValueTask<bool>(false);
+                
+                _clientInitialization.Add(addOperation.DeserializeValue<T>()!);
                 
                 break;
         }
 
-        return false;
+        return new ValueTask<bool>(false);
     }
-    
-    public void Clear()
+
+    protected override INexusListMessage ConvertToListOperation(IOperation operation, int version)
     {
-        throw new System.NotImplementedException();
+        switch (operation)
+        {
+            case ClearOperation<T>:
+            {
+                var message = NexusListClearMessage.Rent();
+                message.Version = version;
+                return message;
+            }
+            case InsertOperation<T> insert:
+            {
+                var message = NexusListInsertMessage.Rent();
+                message.Version = version;
+                message.Index = insert.Index;
+                message.Value = MemoryPackSerializer.Serialize(insert.Item);
+                return message;
+            }
+            case ModifyOperation<T> modify:
+            {
+                var message = NexusListModifyMessage.Rent();
+                message.Version = version;
+                message.Index = modify.Index;
+                message.Value = MemoryPackSerializer.Serialize(modify.Value);
+                return message;
+            }
+            case MoveOperation<T> move:
+            {
+                var message = NexusListMoveMessage.Rent();
+                message.Version = version;
+                message.FromIndex = move.FromIndex;
+                message.ToIndex = move.ToIndex;
+                return message;
+            }      
+            case RemoveOperation<T> remove:
+            {
+                var message = NexusListRemoveMessage.Rent();
+                message.Version = version;
+                message.Index = remove.Index;
+                return message;
+            }
+            default:
+                throw new InvalidOperationException($"Could not convert operation of type {operation.GetType()} to message");
+        }
     }
 
-    public bool Contains(T item)
+    public ValueTask Clear()
     {
-        throw new System.NotImplementedException();
+        if (IsReadOnly)
+            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
+        
+        var message = NexusListClearMessage.Rent();
+        message.Version = _itemList.Version;
+        return UpdateServerAsync(message);
     }
 
-    public void CopyTo(T[] array, int arrayIndex)
+    public bool Contains(T item) => _itemList.Contains(item);
+
+    public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
+
+    public async ValueTask<bool> Remove(T item)
     {
-        throw new System.NotImplementedException();
+        if (IsReadOnly)
+            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
+        var index = _itemList.IndexOf(item);
+        
+        if (index == -1)
+            return false;
+        
+        var message = NexusListRemoveMessage.Rent();
+        
+        message.Version = _itemList.Version;
+        message.Index = index;
+        await UpdateServerAsync(message);
+        return true;
     }
+    public int IndexOf(T item) => _itemList.IndexOf(item);
 
-    public bool Remove(T item)
+    public ValueTask Insert(int index, T item)
     {
-        throw new System.NotImplementedException();
+        var message = NexusListInsertMessage.Rent();
+        
+        message.Version = _itemList.Version;
+        message.Index = _itemList.IndexOf(item);
+        message.Value = MemoryPackSerializer.Serialize(item);
+        return UpdateServerAsync(message);
     }
-    public int IndexOf(T item)
+
+    public ValueTask RemoveAt(int index)
     {
-        throw new System.NotImplementedException();
+        var message = NexusListRemoveMessage.Rent();
+        
+        message.Version = _itemList.Version;
+        message.Index = index;
+        return UpdateServerAsync(message);
     }
 
-    public void Insert(int index, T item)
-    {
-        throw new System.NotImplementedException();
-    }
 
-    public void RemoveAt(int index)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public T this[int index]
-    {
-        get => throw new System.NotImplementedException();
-        set => throw new System.NotImplementedException();
-    }
-}
-
-public interface INexusList<T> : INexusCollection
-{
-    void Clear();
-    bool Contains(T item);
-    void CopyTo(T[] array, int arrayIndex);
-    bool Remove(T item);
-    int Count { get; }
-    bool IsReadOnly { get; }
-    int IndexOf(T item);
-    void Insert(int index, T item);
-    void RemoveAt(int index);
-    T this[int index] { get; set; }
-
-    
-}
-
-internal interface INexusCollectionConnector
-{
-    /// <summary>
-    /// Server only
-    /// </summary>
-    /// <param name="pipe"></param>
-    /// <param name="context"></param>
-    /// <returns></returns>
-    public ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession context);
-    
-    /// <summary>
-    /// Client Only
-    /// </summary>
-    /// <param name="invoker"></param>
-    /// <param name="session"></param>
-    void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session);
-}
-
-public interface INexusCollection
-{
-    public Task ConnectAsync();
-    public Task DisconnectAsync();
 }

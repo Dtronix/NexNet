@@ -139,7 +139,7 @@ public partial class ClientNexus : global::NexNet.Invocation.ClientNexusBase<glo
 {
     public static void ConfigureCollections(IConfigureCollectionManager manager)
     {
-        manager.AddList<int>(100, NexusCollectionMode.BiDrirectional);
+        manager.ConfigureList<int>(100, NexusCollectionMode.BiDrirectional);
         manager.CompleteConfigure();
     }
     

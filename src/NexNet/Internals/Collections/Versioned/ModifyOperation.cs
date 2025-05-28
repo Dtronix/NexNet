@@ -18,18 +18,18 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     /// <summary>
     /// Value to set.
     /// </summary>
-    public readonly T NewValue;
+    public readonly T Value;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModifyOperation{T}"/> class.
     /// </summary>
     /// <param name="index">The position of the item to modify.</param>
-    /// <param name="newValue">The new value to set at the specified index.</param>
-    public ModifyOperation(int index, T newValue)
+    /// <param name="value">The new value to set at the specified index.</param>
+    public ModifyOperation(int index, T value)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         Index = index;
-        NewValue = newValue;
+        Value = value;
     }
 
     /// <inheritdoc />
@@ -37,7 +37,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     {
         ImmutableInterlocked.Update(ref state, static (state, args) => 
                 new VersionedList<T>.ListState(state.List.SetItem(args.Index, args.NewValue), state.Version + 1),
-            (Index, NewValue));
+            (Index, NewValue: Value));
     }
 
     /// <inheritdoc />
@@ -74,7 +74,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     /// <inheritdoc />
     public override ModifyOperation<T> Clone()
     {
-        return new ModifyOperation<T>(Index, NewValue);
+        return new ModifyOperation<T>(Index, Value);
     }
 
     /// <inheritdoc />
@@ -82,7 +82,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
-        return Index == other.Index && EqualityComparer<T>.Default.Equals(NewValue, other.NewValue);
+        return Index == other.Index && EqualityComparer<T>.Default.Equals(Value, other.Value);
     }
 
     /// <inheritdoc />

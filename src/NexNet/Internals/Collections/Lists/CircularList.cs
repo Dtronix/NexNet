@@ -47,7 +47,7 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     /// Global index assigned to the most recently added element.
     /// </summary>
     public long LastIndex => _nextIndex - 1;
-
+    
     /// <summary>
     /// Adds an item, assigns it a global index, and returns that index.
     /// If the buffer is full, overwrites the oldest entry.
@@ -70,6 +70,12 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     {
         _count = 0;
         Array.Clear(_buffer, 0, _buffer.Length);
+    }
+    
+    public void Reset(int nextIndex = 0)
+    {
+        Clear();
+        _nextIndex = nextIndex;
     }
 
     /// <summary>

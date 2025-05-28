@@ -7,7 +7,7 @@ namespace NexNet.Internals.Collections.Versioned;
 /// application to a target list, transformation against concurrent operations,
 /// index transformation for moves, and cloning.
 /// </summary>
-internal abstract class Operation<T>
+internal abstract class Operation<T> : IOperation
 {
     /// <summary>
     /// Apply this operation to the target list.
@@ -60,4 +60,8 @@ internal abstract class Operation<T>
     /// </summary>
     /// <returns>A new Operation&lt;T&gt; that is a clone of this instance.</returns>
     public abstract Operation<T> Clone();
+}
+
+internal interface IOperation
+{
 }

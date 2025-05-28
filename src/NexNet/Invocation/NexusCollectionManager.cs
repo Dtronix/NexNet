@@ -36,11 +36,14 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         return connector.StartServerCollectionConnection(pipe, context);
     }
     
-    public void AddList<T>(ushort id, NexusCollectionMode mode)
+    public void ConfigureList<T>(ushort id, NexusCollectionMode mode)
     {
         if(_collectionBuilder == null)
             throw new InvalidOperationException("CollectionManager is already configured.  Can't add any new collections.");
-        _collectionBuilder.Add(id, new NexusList<T>(id, mode, _isServer));
+        var list = new NexusList<T>(id, mode, _isServer);
+        _collectionBuilder.Add(id, list);
+        
+        list.StartUpdateBroadcast();
     }
 
     public void CompleteConfigure()
@@ -61,7 +64,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
 
 public interface IConfigureCollectionManager
 {
-    void AddList<T>(ushort id, NexusCollectionMode mode);
+    void ConfigureList<T>(ushort id, NexusCollectionMode mode);
     
     void CompleteConfigure();
 }

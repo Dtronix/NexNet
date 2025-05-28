@@ -12,7 +12,7 @@ namespace NexNet.Internals.Collections.Versioned;
 /// allowing operational transforms to be processed against client operations
 /// for synchronization and conflict resolution.
 /// </summary>
-internal class VersionedList<T> : IEquatable<T[]>
+internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
 {
     internal ListState State;
     private readonly IndexedCircularList<Operation<T>> _history;
@@ -38,6 +38,7 @@ internal class VersionedList<T> : IEquatable<T[]>
     public ListState CurrentState => State;
 
     public int Count => State.List.Count;
+    public bool IsReadOnly { get; }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="VersionedList{T}"/> class with a specified initial capacity.
@@ -130,6 +131,12 @@ internal class VersionedList<T> : IEquatable<T[]>
         return txOp;
     }
 
+    public void ResetTo(ImmutableList<T> list, int version)
+    {
+        State = new ListState(list, version);
+        _history.Reset(version);
+    }
+
     /// <inheritdoc />
     public bool Equals(T[]? other)
     {
@@ -143,7 +150,7 @@ internal class VersionedList<T> : IEquatable<T[]>
         
         return true;
     }
-
+    
     /// <inheritdoc />
     public override bool Equals(object? obj)
     {
@@ -177,4 +184,26 @@ internal class VersionedList<T> : IEquatable<T[]>
 
         return sb.ToString();
     }
+    
+    public void Reset()
+    {
+        State = new ListState(ImmutableList<T>.Empty, 0);
+        _history.Clear();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator() => State.List.GetEnumerator();
+
+    IEnumerator<T> IEnumerable<T>.GetEnumerator() => State.List.GetEnumerator();
+
+
+    public int IndexOf(T item) => State.List.IndexOf(item);
+
+    public bool Contains(T item) => State.List.Contains(item);
+
+    public void CopyTo(T[] array, int arrayIndex)
+    {
+        State.List.CopyTo(array, arrayIndex);
+    }
+
+    public T this[int index] => State.List[index];
 }
