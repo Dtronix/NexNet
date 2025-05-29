@@ -10,8 +10,10 @@ using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Transports;
 
 namespace NexNet.Collections;
 
@@ -20,6 +22,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 {
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
+    private readonly ConfigBase _config;
     protected static readonly Type TType = typeof(T);
 
     protected readonly bool IsServer;
@@ -33,10 +36,11 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<(IOperation Op, int Version)> _broadcastChannel;
 
-    protected NexusCollection(ushort id, NexusCollectionMode mode, bool isServer)
+    protected NexusCollection(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
     {
         Id = id;
         Mode = mode;
+        _config = config;
         IsServer = isServer;
         _nexusPipeList = new LockFreeArrayList<Client>(64);
     }
@@ -59,42 +63,52 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         {
             var collection = Unsafe.As<NexusCollection<T, TBaseMessage>>(state)!;
 
-            try
+            while (true)
             {
-                await foreach (var operation in collection._broadcastChannel.Reader.ReadAllAsync(collection._broadcastCancellation!.Token))
+                try
                 {
-                    var message = collection.ConvertToListOperation(operation.Op, operation.Version);
-                    foreach (var client in collection._nexusPipeList)
+                    collection._config.Logger?.LogDebug( "Started broadcast reading loop.");
+                    await foreach (var operation in collection._broadcastChannel.Reader.ReadAllAsync(collection._broadcastCancellation!.Token))
                     {
-                        try
+                        var message = collection.ConvertToListOperation(operation.Op, operation.Version);
+                        foreach (var client in collection._nexusPipeList)
                         {
-                            // If the client is not accepting updates, then ignore the update and allow
-                            // for future poling for updates.  This happens when a client is initializing
-                            // all the items.
-                            if (client.State == Client.StateType.AcceptingUpdates)
+                            try
                             {
-                                await client.Writer!.WriteAsync(message);
-                                Console.WriteLine($"Wrote; {collection._broadcastChannel.Reader.Count}");
+                                // If the client is not accepting updates, then ignore the update and allow
+                                // for future poling for updates.  This happens when a client is initializing
+                                // all the items.
+                                if (client.State == Client.StateType.AcceptingUpdates)
+                                {
+                                    if (!client.ClientBroadcastChannel.Writer.TryWrite(message))
+                                    {
+                                        // Complete the pipe as it is full and not writing to the client at a decent
+                                        // rate.
+                                        await client.Pipe.CompleteAsync();
+                                    }
+
+                                    await client.Writer!.WriteAsync(message);
+                                }
                             }
-
+                            catch
+                            {
+                                // If we threw, the client is disconnected.  Remove the client.
+                                collection._nexusPipeList.Remove(client);
+                            }
                         }
-                        catch
-                        {
-                            // If we threw, the client is disconnected.  Remove the client.
-                            collection._nexusPipeList.Remove(client);
-                        }
+                        message.ReturnToCache();
                     }
-                    message.ReturnToCache();
+
+                    collection.DisconnectedFromServer();
                 }
-
-                collection.DisconnectedFromServer();
-            }
-            catch (Exception e)
-            {
-                
+                catch (Exception e)
+                {
+                    collection._config.Logger?.LogError(e, "Exception in UpdateBroadcast loop");
+                }
             }
 
-        }, this, TaskCreationOptions.LongRunning);
+
+        }, this, TaskCreationOptions.DenyChildAttach);
     }
 
     protected ValueTask BroadcastAsync(IOperation message, int version)
@@ -146,11 +160,17 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
         // Send initialization data.
         await SendClientInitData(writer);
+        
+        _ = Task.Run(() =>
+        {
+            pipe.
+        })
 
         client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
         if (reader != null)
         {
+            // Read through all the messages received until complete.
             await foreach (var operation in reader)
             {
                 var result = await ProcessOperation(operation);
@@ -258,6 +278,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         public readonly INexusChannelReader<TBaseMessage>? Reader;
         public readonly INexusChannelWriter<TBaseMessage>? Writer;
         public readonly INexusSession Session;
+        public readonly Channel<TBaseMessage> ClientBroadcastChannel;
 
         public StateType State;
 
@@ -270,6 +291,12 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             Reader = reader;
             Writer = writer;
             Session = session;
+            ClientBroadcastChannel = Channel.CreateBounded<TBaseMessage>(new BoundedChannelOptions(50)
+            {
+                SingleReader = true,
+                SingleWriter = true, 
+                FullMode = BoundedChannelFullMode.DropWrite
+            });
         }
         
         public enum StateType

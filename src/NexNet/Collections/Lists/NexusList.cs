@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Pipes;
+using NexNet.Transports;
 
 namespace NexNet.Collections.Lists;
 
@@ -17,8 +18,8 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     public int Count => _itemList.Count;
     public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
     
-    public NexusList(ushort id, NexusCollectionMode mode, bool isServer)
-        : base(id, mode, isServer)
+    public NexusList(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
+        : base(id, mode, config, isServer)
     {
         
     }

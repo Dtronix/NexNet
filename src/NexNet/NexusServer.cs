@@ -35,7 +35,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
-    private readonly NexusCollectionManager _collectionManager;
+    private NexusCollectionManager _collectionManager = null!;
 
     /// <inheritdoc />
     public NexusServerState State => _state;
@@ -79,10 +79,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
         ContextProvider = new ServerNexusContextProvider<TClientProxy>(_sessionManager, _cacheManager);
-        
-        // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(true);
-        TServerNexus.ConfigureCollections(_collectionManager);
     }
 
     /// <summary>
@@ -104,6 +100,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
+        
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(config);
+        TServerNexus.ConfigureCollections(_collectionManager);
     }
 
     /// <inheritdoc />
