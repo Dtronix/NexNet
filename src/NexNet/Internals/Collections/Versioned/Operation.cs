@@ -12,7 +12,7 @@ internal abstract class Operation<T> : IOperation
     /// <summary>
     /// Apply this operation to the target list.
     /// </summary>
-    public abstract void Apply(ref VersionedList<T>.ListState state);
+    public abstract void Apply(ref VersionedList<T>.ListState state, int? version = null);
 
     /// <summary>
     /// Transform (rebase) this operation against another concurrent operation.

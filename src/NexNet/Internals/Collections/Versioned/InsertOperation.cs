@@ -37,13 +37,13 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(ref VersionedList<T>.ListState state)
+    public override void Apply(ref VersionedList<T>.ListState state, int? version = null)
     {
         ImmutableInterlocked.Update(ref state, static (state, args) => 
                 new VersionedList<T>.ListState(args.Index == -1
                 ? state.List.Add(args.Item)
-                : state.List.Insert(args.Index, args.Item), state.Version + 1),
-            (Index, Item));
+                : state.List.Insert(args.Index, args.Item), args.version ?? (state.Version + 1)),
+            (Index, Item, version));
     }
 
     /// <inheritdoc />

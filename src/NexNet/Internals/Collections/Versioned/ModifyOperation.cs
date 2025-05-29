@@ -33,11 +33,11 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     }
 
     /// <inheritdoc />
-    public override void Apply(ref VersionedList<T>.ListState state)
+    public override void Apply(ref VersionedList<T>.ListState state, int? version = null)
     {
         ImmutableInterlocked.Update(ref state, static (state, args) => 
-                new VersionedList<T>.ListState(state.List.SetItem(args.Index, args.NewValue), state.Version + 1),
-            (Index, NewValue: Value));
+                new VersionedList<T>.ListState(state.List.SetItem(args.Index, args.Value), args.version ?? (state.Version + 1)),
+            (Index, Value, version));
     }
 
     /// <inheritdoc />

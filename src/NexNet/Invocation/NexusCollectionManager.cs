@@ -30,7 +30,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         return (NexusList<T>)_collections[id];
     }
     
-    public ValueTask StartServerCollectionConnection<T>(ushort id, INexusDuplexPipe pipe, INexusSession context)
+    public ValueTask  StartServerCollectionConnection<T>(ushort id, INexusDuplexPipe pipe, INexusSession context)
     {
         var connector = Unsafe.As<INexusCollectionConnector>(_collections[id]);
         return connector.StartServerCollectionConnection(pipe, context);

@@ -11,6 +11,9 @@ namespace NexNet.Collections.Lists;
 internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList = new();
+    private List<T>? _clientInitialization;
+    private int _clientInitializationVersion = -1;
+    
     public int Count => _itemList.Count;
     public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
     
@@ -39,9 +42,6 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         NexusListAddItemMessage.Cache.Add(op);
     }
 
-    private List<T>? _clientInitialization;
-    private int _clientInitializationVersion;
-
     private bool RequireValidState()
     {
         if (_clientInitialization != null || _clientInitializationVersion != -1)
@@ -57,17 +57,28 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
     private async ValueTask<bool> ProcessAndBroadcast(Operation<T> operation, int version)
     {
-        var opResult = _itemList.ProcessOperation(
-            operation,
-            version,
-            out var processResult);
+        ListProcessResult processResult;
+        if (IsServer)
+        {
+            var opResult = _itemList.ProcessOperation(
+                operation,
+                version,
+                out processResult);
+            
+            if (processResult != ListProcessResult.Successful)
+                return false;
 
+            if (IsServer && opResult != null)
+                await BroadcastAsync(opResult, _itemList.Version);
+            return true;
+        }
+
+        // Client processing.  No broadcasting of changes.
+        processResult = _itemList.ApplyOperation(operation, version);
+        
         if (processResult != ListProcessResult.Successful)
             return false;
-
-        if (IsServer && opResult != null)
-            await BroadcastAsync(opResult, _itemList.Version);
-
+        
         return true;
     }
     protected override ValueTask<bool> ProcessOperation(INexusListMessage operation)
@@ -188,7 +199,12 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         }
     }
 
-    public ValueTask Clear()
+    protected override ValueTask SendClientInitData(NexusChannelWriter<INexusListMessage> operation)
+    {
+        return default;
+    }
+
+    public ValueTask ClearAsync()
     {
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
@@ -198,11 +214,18 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return UpdateServerAsync(message);
     }
 
+    public void Reset()
+    {
+        _clientInitialization = null;
+        _clientInitializationVersion = -1;
+        _itemList.Reset();
+    }
+
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
 
-    public async ValueTask<bool> Remove(T item)
+    public async ValueTask<bool> RemoveAsync(T item)
     {
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
@@ -220,17 +243,17 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     }
     public int IndexOf(T item) => _itemList.IndexOf(item);
 
-    public ValueTask Insert(int index, T item)
+    public ValueTask InsertAsync(int index, T item)
     {
         var message = NexusListInsertMessage.Rent();
         
         message.Version = _itemList.Version;
-        message.Index = _itemList.IndexOf(item);
+        message.Index = index;
         message.Value = MemoryPackSerializer.Serialize(item);
         return UpdateServerAsync(message);
     }
 
-    public ValueTask RemoveAt(int index)
+    public ValueTask RemoveAtAsync(int index)
     {
         var message = NexusListRemoveMessage.Rent();
         
@@ -238,6 +261,11 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         message.Index = index;
         return UpdateServerAsync(message);
     }
+    
+    public ValueTask AddAsync(T item)
+    {
+        return InsertAsync(_itemList.Count, item);
+    }
 
-
+    public T this[int index] => _itemList[index];
 }

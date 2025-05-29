@@ -4,17 +4,18 @@ namespace NexNet.Collections.Lists;
 
 public interface INexusList<T> : INexusCollection
 {
-    ValueTask Clear();
+    ValueTask ClearAsync();
     bool Contains(T item);
     void CopyTo(T[] array, int arrayIndex);
     
-    ValueTask<bool> Remove(T item);
+    ValueTask<bool> RemoveAsync(T item);
     int Count { get; }
     bool IsReadOnly { get; }
     int IndexOf(T item);
-    ValueTask Insert(int index, T item);
-    ValueTask RemoveAt(int index);
-    T this[int index] { get; set; }
+    ValueTask InsertAsync(int index, T item);
+    ValueTask RemoveAtAsync(int index);
+    T this[int index] { get; }
 
-    
+
+    ValueTask AddAsync(T item);
 }

@@ -55,22 +55,22 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     /// Process a client operation generated at clientVersion.
     /// Rebase, apply, record, and assign new version.
     /// </summary>
-    /// <param name="txOp">The operation to process.</param>
+    /// <param name="op">The operation to process.</param>
     /// <param name="baseVersion">The client version on which the operation is based.</param>
     /// <param name="result">The result of the process.</param>
     /// <returns>
     /// The rebased operation after applying.
     /// <see cref="NoopOperation{T}"/> indicates that the passed operation was made irrelevant invalid and should be discarded. Normally due to the operating item being removed.
     /// Returns null if the operation provided is invalid for the provided baseVersion.  Normally means the client has provided bad data.</returns>
-    public Operation<T>? ProcessOperation(Operation<T> txOp, int baseVersion, out ListProcessResult result)
+    public Operation<T>? ProcessOperation(Operation<T> op, int baseVersion, out ListProcessResult result)
     {
-        ArgumentNullException.ThrowIfNull(txOp);
+        ArgumentNullException.ThrowIfNull(op);
         ArgumentOutOfRangeException.ThrowIfNegative(baseVersion);
 
-        if (txOp is NoopOperation<T>)
+        if (op is NoopOperation<T>)
         {
             result = ListProcessResult.DiscardOperation;
-            return txOp;
+            return op;
         }
 
         if (!_history.ValidateIndex(baseVersion-1) && baseVersion > 0)
@@ -85,50 +85,47 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
             return null;
         }
         
-        switch (txOp)
+        // Shortcut other logic as this is the only operation that is possible with a clear.
+        if (op is ClearOperation<T> cleOp)
         {
-            case ClearOperation<T> cleOp:
-                _history.Clear();
-                txOp.Apply(ref State);
-                _history.Add(txOp);
-                result = ListProcessResult.Successful;
-                return cleOp;
+            _history.Clear();
+            op.Apply(ref State);
+            _history.Add(op);
+            result = ListProcessResult.Successful;
+            return cleOp;
         }
 
         for (var i = baseVersion; i < _history.Count; i++)
         {
-            if (!txOp.TransformAgainst(_history[i]))
+            if (!op.TransformAgainst(_history[i]))
             {
                 result = ListProcessResult.DiscardOperation;
                 return NoopOperation<T>.Instance;
             }
         }
 
-        var itemCount = State.List.Count;
-        
-        // Invalid operation checks.
-        switch (txOp)
+        if (!ValidateOperation(op))
         {
-            case InsertOperation<T> insOp when insOp.Index < 0 || insOp.Index > itemCount:
-            case RemoveOperation<T> rmOp when rmOp.Index < 0 || rmOp.Index >= itemCount:
-            case ModifyOperation<T> modOp when modOp.Index < 0 || modOp.Index >= itemCount:
-            case MoveOperation<T> mvOp when
-                mvOp.FromIndex < 0 ||
-                mvOp.FromIndex >= itemCount ||
-                mvOp.ToIndex < 0 ||
-                mvOp.ToIndex >= itemCount ||
-                mvOp.FromIndex == mvOp.ToIndex:
-            {
-                result = ListProcessResult.BadOperation;
-                return null;
-            }
+            result = ListProcessResult.BadOperation;
+            return null;
         }
 
-        txOp.Apply(ref State);
-        _history.Add(txOp);
+        op.Apply(ref State);
+        _history.Add(op);
         
         result = ListProcessResult.Successful;
-        return txOp;
+        return op;
+    }
+
+
+    public ListProcessResult ApplyOperation(Operation<T> op, int version)
+    {
+        if (!ValidateOperation(op))
+            return ListProcessResult.BadOperation;
+        
+        op.Apply(ref State, version);
+        
+        return ListProcessResult.Successful;
     }
 
     public void ResetTo(ImmutableList<T> list, int version)
@@ -206,4 +203,28 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     }
 
     public T this[int index] => State.List[index];
+    
+    private bool ValidateOperation(Operation<T> op)
+    {
+        var itemCount = State.List.Count;
+
+        switch (op)
+        {
+            case InsertOperation<T> insOp when insOp.Index < 0 || insOp.Index > itemCount:
+            case RemoveOperation<T> rmOp when rmOp.Index < 0 || rmOp.Index >= itemCount:
+            case ModifyOperation<T> modOp when modOp.Index < 0 || modOp.Index >= itemCount:
+            case MoveOperation<T> mvOp when
+                mvOp.FromIndex < 0 ||
+                mvOp.FromIndex >= itemCount ||
+                mvOp.ToIndex < 0 ||
+                mvOp.ToIndex >= itemCount ||
+                mvOp.FromIndex == mvOp.ToIndex:
+            {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
 }

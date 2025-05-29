@@ -65,6 +65,7 @@ public class Program
             c.NexusConfig.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
             c.NexusConfig.AspEnableAuthentication = true;
             c.NexusConfig.AspAuthenticationScheme = "BearerToken";
+            
         }).StartAsync(app.Lifetime.ApplicationStopped);
         
         await app.RunAsync();

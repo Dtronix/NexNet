@@ -9,10 +9,10 @@ namespace NexNet.Internals.Collections.Versioned;
 internal class ClearOperation<T> : Operation<T>, IEquatable<ClearOperation<T>>
 {
     /// <inheritdoc />
-    public override void Apply(ref VersionedList<T>.ListState state)
+    public override void Apply(ref VersionedList<T>.ListState state, int? version = null)
     {
-        ImmutableInterlocked.Update(ref state, static state => 
-            new VersionedList<T>.ListState(ImmutableList<T>.Empty, state.Version + 1));
+        ImmutableInterlocked.Update(ref state, static (state, version) => 
+            new VersionedList<T>.ListState(ImmutableList<T>.Empty, version ?? (state.Version + 1)), version);
     }
 
     /// <inheritdoc />

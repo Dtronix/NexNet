@@ -16,7 +16,7 @@ internal class NoopOperation<T> : Operation<T>
     }
 
     /// <inheritdoc />
-    public override void Apply(ref VersionedList<T>.ListState state)
+    public override void Apply(ref VersionedList<T>.ListState state, int? version = null)
     {
         // Noop
     }

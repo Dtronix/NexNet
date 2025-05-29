@@ -154,7 +154,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
                 }
                 case 100:
                 {
-                    // ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
+                    // INexusList<int> IntegerList;
                     var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
                     duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);
                     this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 

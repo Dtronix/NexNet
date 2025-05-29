@@ -32,17 +32,16 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
         FromIndex = fromIndex;
         ToIndex = toIndex;
     }
-    
+
     /// <inheritdoc />
-    public override void Apply(ref VersionedList<T>.ListState state)
+    public override void Apply(ref VersionedList<T>.ListState state, int? version = null)
     {
         ImmutableInterlocked.Update(ref state, static (state, args) =>
         {
-            var currentState = state;
-            var currentList = currentState.List.RemoveAt(args.FromIndex);
-            currentList = currentList.Insert(args.ToIndex, currentState.List[args.FromIndex]);
-            return new VersionedList<T>.ListState(currentList, state.Version + 1);
-        }, (FromIndex, ToIndex));
+            var currentList = state.List.RemoveAt(args.FromIndex);
+            currentList = currentList.Insert(args.ToIndex, state.List[args.FromIndex]);
+            return new VersionedList<T>.ListState(currentList, args.version ?? (state.Version + 1));
+        }, (FromIndex, ToIndex, version));
     }
 
     /// <inheritdoc />

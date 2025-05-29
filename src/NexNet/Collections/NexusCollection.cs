@@ -58,30 +58,42 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         _ = Task.Factory.StartNew(async static state =>
         {
             var collection = Unsafe.As<NexusCollection<T, TBaseMessage>>(state)!;
-            
-            await foreach (var operation in collection._broadcastChannel.Reader.ReadAllAsync(collection._broadcastCancellation!.Token))
+
+            try
             {
-                var message = collection.ConvertToListOperation(operation.Op, operation.Version);
-                foreach (var client in collection._nexusPipeList)
+                await foreach (var operation in collection._broadcastChannel.Reader.ReadAllAsync(collection._broadcastCancellation!.Token))
                 {
-                    try
+                    var message = collection.ConvertToListOperation(operation.Op, operation.Version);
+                    foreach (var client in collection._nexusPipeList)
                     {
-                        // If the client is not accepting updates, then ignore the update and allow
-                        // for future poling for updates.  This happens when a client is initializing
-                        // all the items.
-                        if (client.State == Client.StateType.AcceptingUpdates)
-                            await client.Writer!.WriteAsync(message);
+                        try
+                        {
+                            // If the client is not accepting updates, then ignore the update and allow
+                            // for future poling for updates.  This happens when a client is initializing
+                            // all the items.
+                            if (client.State == Client.StateType.AcceptingUpdates)
+                            {
+                                await client.Writer!.WriteAsync(message);
+                                Console.WriteLine($"Wrote; {collection._broadcastChannel.Reader.Count}");
+                            }
+
+                        }
+                        catch
+                        {
+                            // If we threw, the client is disconnected.  Remove the client.
+                            collection._nexusPipeList.Remove(client);
+                        }
                     }
-                    catch
-                    {
-                        // If we threw, the client is disconnected.  Remove the client.
-                        collection._nexusPipeList.Remove(client);
-                    }
+                    message.ReturnToCache();
                 }
-                message.ReturnToCache();
+
+                collection.DisconnectedFromServer();
+            }
+            catch (Exception e)
+            {
+                
             }
 
-            collection.DisconnectedFromServer();
         }, this, TaskCreationOptions.LongRunning);
     }
 
@@ -114,23 +126,28 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             return;
 
         var writer = new NexusChannelWriter<TBaseMessage>(pipe);
-        var reader = Mode == NexusCollectionMode.BiDrirectional ? null : new NexusChannelReader<TBaseMessage>(pipe);
+        var reader = Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelReader<TBaseMessage>(pipe) : null;
         
         await InitializeNewClient(writer);
-        
-        _nexusPipeList.Add(new Client(
-            pipe, 
+
+        var client = new Client(
+            pipe,
             reader,
             writer,
-            session));
+            session) { State = Client.StateType.Initializing };
+        _nexusPipeList.Add(client);
         
         // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
         {
-            var (pipe, list) = ((INexusDuplexPipe, LockFreeArrayList<INexusDuplexPipe>))state!;
+            var (pipe, list) = ((Client,  LockFreeArrayList<Client>))state!;
             list.Remove(pipe);
-        }, (pipe, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
+        }, (client, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
 
+        // Send initialization data.
+        await SendClientInitData(writer);
+
+        client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
         if (reader != null)
         {
@@ -149,6 +166,8 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
         await pipe.CompleteTask;
     }
+    
+    protected abstract ValueTask SendClientInitData(NexusChannelWriter<TBaseMessage> operation);
 
     /// <summary>
     /// Client side connect.  Execution on the server is a noop.
@@ -257,6 +276,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         {
             Unset,
             AcceptingUpdates,
+            Initializing,
             Disconnected
         }
     }

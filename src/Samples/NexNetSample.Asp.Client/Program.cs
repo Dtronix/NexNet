@@ -38,13 +38,24 @@ internal class Program
         
         await client.ConnectAsync();
 
-        await Task.Delay(3000);
+        await Task.Delay(1000);
 
         await client.Proxy.IntegerList.ConnectAsync();
+        int counter = 10;
+        for (int i = 0; i < 500; i++)
+        {
+            await client.Proxy.IntegerList.AddAsync(counter++);
+        }
+
+
+        while (true)
+        {
+            Console.ReadLine();
+            await client.Proxy.IntegerList.AddAsync(counter++);
+        }
+
         
-        await Task.Delay(3000);
-        
-        var val = await client.Proxy.ServerTaskValueWithParam(124);
+        //var val = await client.Proxy.ServerTaskValueWithParam(124);
         
         Console.ReadLine();
     }
