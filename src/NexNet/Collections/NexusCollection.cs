@@ -161,10 +161,24 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         // Send initialization data.
         await SendClientInitData(writer);
         
-        _ = Task.Run(() =>
+        // Start the listener on the channel to handle sending updates to the client.
+        _ = Task.Factory.StartNew(static async state =>
         {
-            pipe.
-        })
+            var client = (Client)state!;
+
+            try
+            {
+                await foreach (var message in client.ClientBroadcastChannel.Reader.ReadAllAsync())
+                {
+                    await client.Writer!.WriteAsync(message);
+                }
+            }
+            catch (Exception e)
+            {
+                // Ignore and disconnect.
+            }
+
+        }, client, TaskCreationOptions.DenyChildAttach);
 
         client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
