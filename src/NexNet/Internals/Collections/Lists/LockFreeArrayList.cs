@@ -55,6 +55,15 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
 
     // Next available slot if the free-list is empty.
     private volatile int _freeListHead;
+    
+    private volatile int _liveCount;
+    
+    /// <summary>
+    /// Gets (an approximate) number of live elements in the list.
+    /// Because concurrent threads may be adding/removing, this is only
+    /// updated on each successful operation and represents a point‐in‐time count.
+    /// </summary>
+    public int Count => _liveCount;
 
 
     /// <summary>
@@ -93,7 +102,10 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             nodes[newIdx].Next = oldNext;
 
             if (Interlocked.CompareExchange(ref nodes[0].Next, newIdx, oldNext) == oldNext)
+            {
+                Interlocked.Increment(ref _liveCount);
                 return;
+            }
         }
     }
 
@@ -140,7 +152,11 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             var freshNodes = _nodes; // re‑read in case of a resize
             freshNodes[newIdx].Next = currIdx; // link forward
             if (Interlocked.CompareExchange(ref freshNodes[prevIdx].Next, newIdx, currIdx) == currIdx)
+            {
+                // increment live count only on successful insertion
+                Interlocked.Increment(ref _liveCount);
                 return;
+            }
 
             // 4) lost the race on that CAS: clean up and retry
             PushFreeIndex(newIdx);
@@ -183,6 +199,9 @@ internal class LockFreeArrayList<T> : IEnumerable<T>
             int nextIdx = nodes[currIdx].Next;
             if (Interlocked.CompareExchange(ref nodes[prevIdx].Next, nextIdx, currIdx) == currIdx)
             {
+                // decrement live count now that we’ve removed one node
+                Interlocked.Decrement(ref _liveCount);
+                
                 // reclaimed: push currIdx onto free‑list
                 PushFreeIndex(currIdx);
                 return true;

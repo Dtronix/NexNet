@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using MemoryPack;
 
 namespace NexNet.Collections;
@@ -11,7 +12,8 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
     where T : NexusCollectionMessage<T>, new()
 {
     public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
-    
+    private int _remaining;
+
     public static T Rent()
     {
         if(!Cache.TryTake(out var operation))
@@ -24,6 +26,21 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
     public virtual void ReturnToCache()
     {
         Cache.Add(this);
+    }
+
+    public void CompleteBroadcast()
+    {
+        if (Interlocked.Decrement(ref _remaining) == 0)
+        {
+            ReturnToCache();
+        }
+    }
+
+    [MemoryPackIgnore]
+    public int Remaining
+    {
+        get => _remaining;
+        set => _remaining = value;
     }
 }
 

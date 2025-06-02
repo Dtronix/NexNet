@@ -44,6 +44,8 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
                 ? state.List.Add(args.Item)
                 : state.List.Insert(args.Index, args.Item), args.version ?? (state.Version + 1)),
             (Index, Item, version));
+        
+        Console.WriteLine($"Insert {Index} {Item}");
     }
 
     /// <inheritdoc />

@@ -210,7 +210,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             await SendMessage(Unsafe.As<ClientGreetingMessage>(greetingMessage)).ConfigureAwait(false);
 
         // Start the reading loop on a dedicated long-running task.
-        _ = Task.Factory.StartNew(() => StartReadAsync(), TaskCreationOptions.LongRunning);
+        _ = Task.Factory.StartNew(static state => Unsafe.As<NexusSession<TNexus, TProxy>>(state!).StartReadAsync(), 
+            this, 
+            TaskCreationOptions.DenyChildAttach);
 
         Logger?.LogInfo("Client connected");
     }
