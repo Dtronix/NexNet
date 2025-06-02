@@ -21,7 +21,9 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
 
         return Unsafe.As<T>(operation);
     }
-
+    
+    [MemoryPackOrder(0)]
+    public int Id { get; set; }
 
     public virtual void ReturnToCache()
     {

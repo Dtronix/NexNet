@@ -2,6 +2,7 @@
 
 internal interface INexusCollectionMessage
 {
+    int Id { get; set; }
     void ReturnToCache();
 
     void CompleteBroadcast();

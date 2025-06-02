@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading.Tasks;
+using System.Xml.Schema;
 using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Pipes;
@@ -48,15 +49,12 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         if (_clientInitialization != null || _clientInitializationVersion != -1)
             return false;
 
-        // If this is the server and we are not in bidirectional mode, then the client
+        // If this is the server, and we are not in bidirectional mode, then the client
         // is sending messages when they are not supposed to.
-        if (IsServer && Mode != NexusCollectionMode.BiDrirectional)
-            return false;
-
-        return true;
+        return !IsServer || Mode == NexusCollectionMode.BiDrirectional;
     }
 
-    private async ValueTask<bool> ProcessAndBroadcast(Operation<T> operation, int version)
+    private (INexusListMessage? message, bool disconnect, INexusListMessage? ackMessage) ProcessMessage(Operation<T> operation, int version, int id)
     {
         ListProcessResult processResult;
         if (IsServer)
@@ -66,63 +64,72 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
                 version,
                 out processResult);
             
-            if (processResult != ListProcessResult.Successful)
-                return false;
+            // If the operational result is null, but the result is success, this is an unknown state.
+            // Ensure this is not just a noop.
+            if ((processResult != ListProcessResult.Successful && processResult != ListProcessResult.DiscardOperation)
+                || opResult == null)
+                return (null, true, null);
 
-            if (IsServer && opResult != null)
-                await BroadcastAsync(opResult, _itemList.Version);
-            return true;
+            var message = NexusCollectionAckMessage.Rent();
+            message.Remaining = 1;
+            message.Id = id;
+            return (ConvertOperationToMessage(opResult, _itemList.Version), false, message);
         }
 
         // Client processing.  No broadcasting of changes.
         processResult = _itemList.ApplyOperation(operation, version);
         
         if (processResult != ListProcessResult.Successful)
-            return false;
+            return (null, true, null);
         
-        return true;
+        return (null, false, null);
     }
-    protected override ValueTask<bool> ProcessOperation(INexusListMessage operation)
+    
+    protected override (INexusListMessage? message, bool disconnect, INexusListMessage? ackMessage) ProcessOperation(INexusListMessage operation)
     {
         switch (operation)
         {
             case NexusListClearMessage op:
-                return !RequireValidState() 
-                    ? new ValueTask<bool>(false) 
-                    : ProcessAndBroadcast(new ClearOperation<T>(), op.Version);
+                return !RequireValidState()
+                    ? (null, true, null)
+                    : ProcessMessage(new ClearOperation<T>(), op.Version, op.Id);
 
             case NexusListInsertMessage op:
                 return !RequireValidState()
-                    ? new ValueTask<bool>(false)
-                    : ProcessAndBroadcast(
+                    ? (null, true, null)
+                    : ProcessMessage(
                         new InsertOperation<T>(op.Index, op.DeserializeValue<T>()!),
-                        op.Version);
+                        op.Version,
+                        op.Id);
 
             case NexusListModifyMessage op:
                 return !RequireValidState()
-                    ? new ValueTask<bool>(false)
-                    : ProcessAndBroadcast(
+                    ? (null, true, null)
+                    : ProcessMessage(
                         new ModifyOperation<T>(op.Index, op.DeserializeValue<T>()!),
-                        op.Version);
+                        op.Version,
+                        op.Id);
 
             case NexusListMoveMessage op:
                 return !RequireValidState()
-                    ? new ValueTask<bool>(false)
-                    : ProcessAndBroadcast(
+                    ? (null, true, null)
+                    : ProcessMessage(
                         new MoveOperation<T>(op.FromIndex, op.ToIndex),
-                        op.Version);
+                        op.Version,
+                        op.Id);
 
             case NexusListRemoveMessage op:
                 return !RequireValidState()
-                    ? new ValueTask<bool>(false)
-                    : ProcessAndBroadcast(
+                    ? (null, true, null)
+                    : ProcessMessage(
                         new RemoveOperation<T>(op.Index),
-                        op.Version);
+                        op.Version,
+                        op.Id);
 
             // No broadcasting on the reset operations as they are only client operations.
             case NexusListStartResetMessage resetOperation:
                 if (IsServer)
-                    return new ValueTask<bool>(false);
+                    return (null, true, null);
 
                 _clientInitialization = new List<T>(resetOperation.Count);
                 _clientInitializationVersion = resetOperation.Version;
@@ -130,7 +137,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
             case NexusListCompleteResetMessage:
                 if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
-                    return new ValueTask<bool>(false);
+                    return (null, true, null);
 
                 var list = ImmutableList<T>.Empty.AddRange(_clientInitialization);
 
@@ -144,20 +151,26 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
             case NexusListAddItemMessage addOperation:
                 if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
-                    return new ValueTask<bool>(false);
+                    return (null, true, null);
                 
                 _clientInitialization.Add(addOperation.DeserializeValue<T>()!);
                 
                 break;
+            
+            case NexusCollectionAckMessage ackOperation:
+                return (null, false, null);
         }
 
-        return new ValueTask<bool>(false);
+        return (null, true, null);
     }
 
-    protected override INexusListMessage ConvertToListOperation(IOperation operation, int version)
+    private INexusListMessage? ConvertOperationToMessage(IOperation operation, int version)
     {
         switch (operation)
         {
+            case NoopOperation<T>:
+                return null;
+            
             case ClearOperation<T>:
             {
                 var message = NexusListClearMessage.Rent();
@@ -205,7 +218,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return default;
     }
 
-    public ValueTask ClearAsync()
+    public Task ClearAsync()
     {
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
@@ -226,7 +239,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
 
-    public async ValueTask<bool> RemoveAsync(T item)
+    public async Task<bool> RemoveAsync(T item)
     {
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
@@ -244,7 +257,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     }
     public int IndexOf(T item) => _itemList.IndexOf(item);
 
-    public ValueTask InsertAsync(int index, T item)
+    public Task InsertAsync(int index, T item)
     {
         var message = NexusListInsertMessage.Rent();
         
@@ -254,7 +267,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return UpdateServerAsync(message);
     }
 
-    public ValueTask RemoveAtAsync(int index)
+    public Task RemoveAtAsync(int index)
     {
         var message = NexusListRemoveMessage.Rent();
         
@@ -263,7 +276,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return UpdateServerAsync(message);
     }
     
-    public ValueTask AddAsync(T item)
+    public Task AddAsync(T item)
     {
         return InsertAsync(_itemList.Count, item);
     }

@@ -8,7 +8,7 @@ namespace NexNet.Generator;
 
 internal partial class InvocationInterfaceMeta
 {
-    private readonly HashSet<ushort> _methodIds = new HashSet<ushort>();
+    private readonly HashSet<ushort> _usedIds = new HashSet<ushort>();
 
     public INamedTypeSymbol Symbol { get; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
@@ -17,10 +17,11 @@ internal partial class InvocationInterfaceMeta
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
     public MethodMeta[] Methods { get; }
+    
+    public CollectionMeta[] Collections { get; set; }
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
-
     public string NamespaceName { get; }
 
     //public bool AlreadyGeneratedHash { get; }
@@ -42,6 +43,12 @@ internal partial class InvocationInterfaceMeta
             .Select(x => new MethodMeta(x))
             .Where(x => x.NexusMethodAttribute.Ignore == false) // Bypass ignored items.
             .ToArray();
+        
+        this.Collections = Symbol.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Select(x => new CollectionMeta(x))
+            .Where(x => x.NexusCollectionAttribute.Ignore == false) // Bypass ignored items.
+            .ToArray();
 
 
         // Get all pre-defined method ids first.
@@ -53,22 +60,46 @@ internal partial class InvocationInterfaceMeta
                 methodMeta.Id = methodMeta.NexusMethodAttribute.MethodId.Value;
 
                 // Add the id to the hash list to prevent reuse during automatic assignment.
-                _methodIds.Add(methodMeta.NexusMethodAttribute.MethodId.Value);
+                _usedIds.Add(methodMeta.NexusMethodAttribute.MethodId.Value);
+            }
+        }
+        
+        foreach (var collectionMeta in this.Collections)
+        {
+            if (collectionMeta.NexusCollectionAttribute.Id != null)
+            {
+                // Assign defined ids.
+                collectionMeta.Id = collectionMeta.NexusCollectionAttribute.Id.Value;
+
+                // Add the id to the hash list to prevent reuse during automatic assignment.
+                _usedIds.Add(collectionMeta.NexusCollectionAttribute.Id.Value);
             }
         }
 
-
-        // Automatic method id assignment.
+        // Automatic id assignment.
         ushort id = 0;
         foreach (var methodMeta in this.Methods)
         {
             if (methodMeta.Id == 0)
             {
                 // Make sure we get an ID which is not used.
-                while (_methodIds.Contains(id))
+                while (_usedIds.Contains(id))
                     id++;
 
                 methodMeta.Id = id++;
+            }
+        }
+        
+        // Automatic id assignment.
+        foreach (var collectionMeta in this.Collections)
+        {
+            if (collectionMeta.Id == 0)
+            {
+                // Make sure we get an ID which is not used.
+                while (_usedIds.Contains(id))
+                    id++;
+
+                collectionMeta.Id = id++;
             }
         }
 
@@ -95,9 +126,13 @@ internal partial class InvocationInterfaceMeta
     public int GetHash()
     {
         var hash = 0;
-        foreach (var methodMeta in Methods)
+        foreach (var meta in Methods)
         {
-            hash += methodMeta.GetHash();
+            hash += meta.GetHash();
+        }
+        foreach (var meta in Collections)
+        {
+            hash += meta.GetHash();
         }
 
         return hash;
@@ -211,6 +246,59 @@ internal class NexusMethodAttributeMeta : AttributeMetaBase
             var id = (ushort)GetItem(typedConstant);
             if (id != 0)
                 MethodId = id;
+        }
+        else if (key == "Ignore")
+        {
+            Ignore = (bool)GetItem(typedConstant);
+        }
+    }
+}
+
+internal enum NexusCollectionMode 
+{
+    Unset,
+    ServerToClient,
+    BiDrirectional
+}
+
+
+internal class NexusCollectionAttributeMeta : AttributeMetaBase
+{
+    /// <summary>
+    /// Ignore this method
+    /// </summary>
+    public bool Ignore { get; private set; }
+
+    /// <summary>
+    /// Manually specifies the ID of this method.  Used for invocations.
+    /// Useful for maintaining backward compatibility with a changing interface.
+    /// </summary>
+    public ushort? Id { get; private set; }   
+    
+    /// <summary>
+    /// Manually specifies the ID of this method.  Used for invocations.
+    /// Useful for maintaining backward compatibility with a changing interface.
+    /// </summary>
+    public NexusCollectionMode Mode { get; private set; }
+
+    public NexusCollectionAttributeMeta(ISymbol symbol)
+        : base("NexusCollectionAttribute", symbol)
+    {
+    }
+
+    protected override void ProcessArgument(string? key, int? constructorArgIndex, TypedConstant typedConstant)
+    {
+        if (key == "Id" || constructorArgIndex == 0)
+        {
+            var id = (ushort)GetItem(typedConstant);
+            if (id != 0)
+                Id = id;
+        }
+        else if (key == "Mode" || constructorArgIndex == 1)
+        {
+            var mode = (NexusCollectionMode)(int)GetItem(typedConstant);
+            if (mode != NexusCollectionMode.Unset)
+                Mode = mode;
         }
         else if (key == "Ignore")
         {
@@ -605,6 +693,116 @@ internal partial class MethodMeta
 
         sb.Append(")");
 
+        var stringMethod = sb.ToString();
+
+        SymbolUtilities.ReturnStringBuilder(sb);
+
+        return stringMethod;
+    }
+
+    public Location GetLocation(TypeDeclarationSyntax fallback)
+    {
+        var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
+        return location;
+    }
+}
+
+internal partial class CollectionMeta
+{
+    private static readonly XxHash32 _hash = new XxHash32();
+    public IPropertySymbol Symbol { get; }
+    public string Name { get; }
+    public bool IsStatic { get; }
+    public string? ReturnType { get; }
+    public string? ReturnTypeSource { get; }
+    public int ReturnArity { get; }
+    
+    public CollectionTypeValues CollectionType  { get; }
+    
+    /// <summary>
+    /// Assigned after parsing.
+    /// </summary>
+    public ushort Id { get; set; }
+    public NexusCollectionAttributeMeta NexusCollectionAttribute { get; }
+
+    public enum CollectionTypeValues
+    {
+        Unset,
+        List,
+    }
+
+    public CollectionMeta(IPropertySymbol symbol)
+    {
+        var returnSymbol = symbol.Type as INamedTypeSymbol;
+        this.Symbol = symbol;
+        this.Name = symbol.Name;
+        this.IsStatic = symbol.IsStatic;
+        CollectionType = returnSymbol!.OriginalDefinition.Name switch
+        {
+            "INexusList" => CollectionTypeValues.List,
+            _ => CollectionTypeValues.Unset
+        };
+        
+        this.ReturnArity = returnSymbol.Arity;
+        this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
+        this.NexusCollectionAttribute = new NexusCollectionAttributeMeta(symbol);
+
+        if (ReturnArity > 0)
+        {
+            this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
+            this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        }
+    }
+    
+    public int GetHash()
+    {
+        var hash = new HashCode();
+
+        //ReturnType + Name
+        if (ReturnType != null)
+        {
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(ReturnType)));
+        }
+
+        // Add the name of the method to the hash if we do not have a manually specified ID.
+        if (NexusCollectionAttribute.Id == null)
+        {
+            // Take the name of the method into consideration.
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(Name)));
+        }
+        else
+        {
+            hash.Add(NexusCollectionAttribute.Id.Value);
+        }
+        
+        return hash.ToHashCode();
+    }
+
+    public override string ToString()
+    {
+        var sb = SymbolUtilities.GetStringBuilder();
+
+        sb.Append(CollectionType switch
+        {
+            CollectionTypeValues.List => "INexusList",
+            CollectionTypeValues.Unset => "INVALID",
+        });
+
+        if (this.ReturnArity > 0)
+        {
+            sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+        }
+
+        sb.Append(" ");
+        sb.Append(this.Name).Append(" => Unsafe.As<IProxyInvoker>(this).");
+        sb.Append(CollectionType switch
+        {
+            CollectionTypeValues.List => "ProxyGetConfiguredNexusList<int>(",
+            CollectionTypeValues.Unset => "INVALID",
+        });
+        
+        sb.Append(this.Id).Append(");");
+        
         var stringMethod = sb.ToString();
 
         SymbolUtilities.ReturnStringBuilder(sb);

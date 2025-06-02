@@ -11,7 +11,7 @@ partial class ServerNexus : global::NexNet.Invocation.ServerNexusBase<global::Ne
     
     public static void ConfigureCollections(IConfigureCollectionManager manager)
     {
-        manager.ConfigureList<int>(100, NexusCollectionMode.BiDrirectional);
+        manager.ConfigureList<int>(100, global::NexNet.Collections.NexusCollectionMode.BiDrirectional);
         manager.CompleteConfigure();
     }
     
