@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading.Tasks;
-using System.Xml.Schema;
 using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Pipes;
@@ -37,7 +36,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         foreach (var item in state.List)
         {
             op.Value = MemoryPackSerializer.Serialize(TType, item);
-            await writer.WriteAsync(op);
+            await writer.WriteAsync(op).ConfigureAwait(false);
         }
         
         NexusListAddItemMessage.Cache.Add(op);
@@ -246,7 +245,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         
         message.Version = _itemList.Version;
         message.Index = index;
-        await UpdateServerAsync(message);
+        await UpdateServerAsync(message).ConfigureAwait(false);
         return true;
     }
     public int IndexOf(T item) => _itemList.IndexOf(item);

@@ -33,7 +33,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
     private static int _ackId = 0; 
     
-    private readonly LockFreeArrayList<Client>? _nexusPipeList;
+    private readonly SnapshotList<Client>? _nexusPipeList;
     
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<(Client client, TBaseMessage message)> _processChannel;
@@ -51,7 +51,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         
         if (isServer)
         {
-            _nexusPipeList = new LockFreeArrayList<Client>(64);
+            _nexusPipeList = new SnapshotList<Client>(64);
             
         }
         else
@@ -83,7 +83,9 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                 try
                 {
                     collection._config.Logger?.LogDebug("Started broadcast reading loop.");
-                    await foreach (var value in collection._processChannel.Reader.ReadAllAsync(collection._broadcastCancellation!.Token))
+                    await foreach (var value in collection._processChannel.Reader
+                                       .ReadAllAsync(collection._broadcastCancellation!.Token)
+                                       .ConfigureAwait(false))
                     {
                         var (message, disconnect, ackMessage) = collection.ProcessOperation(value.message);
 
@@ -91,7 +93,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                         if (disconnect)
                         {
                             value.client.Session.Logger?.LogWarning("Disconnected from collection due to protocol error.");
-                            await value.client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
+                            await value.client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                             continue;
                         }
                         
@@ -113,10 +115,8 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                                         {
                                             // Complete the pipe as it is full and not writing to the client at a decent
                                             // rate.
-                                            await client.Pipe.CompleteAsync();
+                                            await client.Pipe.CompleteAsync().ConfigureAwait(false);
                                         }
-
-                                        //await client.Writer!.WriteAsync(message);
                                     }
                                 }
                                 catch
@@ -134,7 +134,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                         if (!value.client.MessageSender.Writer.TryWrite(ackMessage))
                         {
                             value.client.Session.Logger?.LogWarning("Could not write to client message processor.");
-                            await value.client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
+                            await value.client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                         }
                     }
 
@@ -158,17 +158,17 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         message.Id = Interlocked.Increment(ref _ackId);
         
         //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
-        var tcs = new TaskCompletionSource<bool>();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _ackTcs!.TryAdd(message.Id, tcs);
-        var result = await _client.Writer.WriteAsync(message);
+        var result = await _client!.Writer!.WriteAsync(message).ConfigureAwait(false);
         
         // Since the message is only used by one writer, return it directly to the cache.
         message.ReturnToCache();
 
         if (result)
-            return await tcs.Task;
+            return await tcs.Task.ConfigureAwait(false);
 
-        await DisconnectAsync();
+        await DisconnectAsync().ConfigureAwait(false);
         return false;
 
     }
@@ -178,7 +178,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         if(!IsServer)
             throw new InvalidOperationException("List is not setup in Server mode.");
 
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
 
         // Check to see if the pipe was completed after the ready task.
         if (pipe.CompleteTask.IsCompleted)
@@ -188,7 +188,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         var reader = Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelReader<TBaseMessage>(pipe) : null;
         
         
-        await InitializeNewClient(writer);
+        await InitializeNewClient(writer).ConfigureAwait(false);
 
         var client = new Client(
             pipe,
@@ -200,12 +200,12 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
         {
-            var (pipe, list) = ((Client,  LockFreeArrayList<Client>))state!;
+            var (pipe, list) = ((Client,  SnapshotList<Client>))state!;
             list.Remove(pipe);
         }, (client, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
 
         // Send initialization data.
-        await SendClientInitData(writer);
+        await SendClientInitData(writer).ConfigureAwait(false);
         
         // Start the listener on the channel to handle sending updates to the client.
         _ = Task.Factory.StartNew(static async state =>
@@ -214,9 +214,9 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
             try
             {
-                await foreach (var message in client.MessageSender.Reader.ReadAllAsync())
+                await foreach (var message in client.MessageSender.Reader.ReadAllAsync().ConfigureAwait(false))
                 {
-                    await client.Writer!.WriteAsync(message);
+                    await client.Writer!.WriteAsync(message).ConfigureAwait(false);
                     message.CompleteBroadcast();
                 }
             }
@@ -235,10 +235,9 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             try
             {
                 // Read through all the messages received until complete.
-                await foreach (var message in reader)
+                await foreach (var message in reader.ConfigureAwait(false))
                 {
-                    _processChannel.Writer.WriteAsync((client, message));
-                    //await client.ClientMessageProcessor.Writer.WriteAsync((client, message));
+                    await _processChannel.Writer.WriteAsync((client, message)).ConfigureAwait(false);
 
                 }
             }
@@ -250,7 +249,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
         }
 
-        await pipe.CompleteTask;
+        await pipe.CompleteTask.ConfigureAwait(false);
     }
     
     protected abstract ValueTask SendClientInitData(NexusChannelWriter<TBaseMessage> operation);
@@ -279,9 +278,9 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             null,
             $"Connecting Proxy Collection[{Id}];");
         await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
-            InvocationFlags.DuplexPipe);
+            InvocationFlags.DuplexPipe).ConfigureAwait(false);
 
-        await pipe.ReadyTask;
+        await pipe.ReadyTask.ConfigureAwait(false);
 
         _client = new Client(
             pipe,
@@ -296,9 +295,9 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             var collection = Unsafe.As<NexusCollection<T, TBaseMessage>>(state)!;
             try
             {
-                await collection._client!.Pipe.ReadyTask;
+                await collection._client!.Pipe.ReadyTask.ConfigureAwait(false);
 
-                await foreach (var operation in collection._client!.Reader!)
+                await foreach (var operation in collection._client!.Reader!.ConfigureAwait(false))
                 {
                     
                     if (operation is NexusCollectionAckMessage ack)
@@ -315,7 +314,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                     // If the result is false, close the whole pipe
                     if (disconnect)
                     {
-                        await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError);
+                        await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                         return;
                     }
                 } 
@@ -340,7 +339,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         if (client == null)
             return;
 
-        await client.Pipe.CompleteAsync();
+        await client.Pipe.CompleteAsync().ConfigureAwait(false);
 
         foreach (var taskCompletionSource in _ackTcs)
             taskCompletionSource.Value.TrySetResult(false);
