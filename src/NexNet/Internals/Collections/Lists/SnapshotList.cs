@@ -189,7 +189,7 @@ internal class SnapshotList<T> : IEnumerable<T>
                 return false;
             
             // 2) stamp delete-version before we unlink
-            _nodes[currIdx].DeleteVersion = Interlocked.Increment(ref _globalVersion);
+            _nodes[currIdx].DeleteVersion = ++_globalVersion;
 
             // 3) physical unlink
             int nextIdx = _nodes[currIdx].Next;

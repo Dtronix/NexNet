@@ -1076,6 +1076,7 @@ public class SnapshotListTests
         //   (B) Remove the same small integers if they exist
         // Meanwhile, keep adding very large integers to force resizing.
         var cts = new CancellationTokenSource();
+        var ctsRemove = new CancellationTokenSource();
 
         // Task A: force resizing by appending large values
         var growTask = Task.Run(() =>
@@ -1108,7 +1109,7 @@ public class SnapshotListTests
         // Task C: remove numbers [200..299]
         var removeTask = Task.Run(() =>
         {
-            while (!cts.IsCancellationRequested)
+            while (!ctsRemove.IsCancellationRequested)
             {
                 for (int i = 200; i < 300; i++)
                 {
@@ -1120,14 +1121,17 @@ public class SnapshotListTests
         // Run for a short period (half a second)
         Thread.Sleep(200);
         cts.Cancel();
-        Task.WaitAll(new[] { growTask, insertTask, removeTask }, TimeSpan.FromSeconds(2));
+        Task.WaitAll(new[] { growTask, insertTask }, TimeSpan.FromSeconds(1));
+        
+        // Ensure the remove is done last.
+        ctsRemove.Cancel();
+        Task.WaitAll(new[] { removeTask }, TimeSpan.FromSeconds(1));
 
         // We expect that *none* of 200..299 ended up surviving in the final snapshot
         // because every time we insert them, Remove is racing to take them out.
-        var final = list.ToArray();
         for (int i = 200; i < 300; i++)
         {
-            Assert.That(final, Has.No.Member(i),
+            Assert.That(list, Has.No.Member(i),
                 $"Insert→Remove race should never allow an element {i} to survive after both tasks finish.");
         }
     }
