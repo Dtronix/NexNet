@@ -17,8 +17,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     private int _clientInitializationVersion = -1;
     
     public int Count => _itemList.Count;
-    public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
-    
+
     public NexusList(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
         : base(id, mode, config, isServer)
     {
@@ -218,16 +217,6 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return default;
     }
 
-    public Task ClearAsync()
-    {
-        if (IsReadOnly)
-            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
-        
-        var message = NexusListClearMessage.Rent();
-        message.Version = _itemList.Version;
-        return UpdateServerAsync(message);
-    }
-
     public void Reset()
     {
         _clientInitialization = null;
@@ -238,11 +227,16 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
+    
+    public Task<bool> ClearAsync()
+    {
+        var message = NexusListClearMessage.Rent();
+        message.Version = _itemList.Version;
+        return UpdateServerAsync(message);
+    }
 
     public async Task<bool> RemoveAsync(T item)
     {
-        if (IsReadOnly)
-            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
         var index = _itemList.IndexOf(item);
         
         if (index == -1)
@@ -257,11 +251,8 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     }
     public int IndexOf(T item) => _itemList.IndexOf(item);
 
-    public Task InsertAsync(int index, T item)
+    public Task<bool> InsertAsync(int index, T item)
     {
-        if (IsReadOnly)
-            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
-        
         var message = NexusListInsertMessage.Rent();
         
         message.Version = _itemList.Version;
@@ -270,11 +261,8 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return UpdateServerAsync(message);
     }
 
-    public Task RemoveAtAsync(int index)
+    public Task<bool> RemoveAtAsync(int index)
     {
-        if (IsReadOnly)
-            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
-        
         var message = NexusListRemoveMessage.Rent();
         
         message.Version = _itemList.Version;
@@ -282,7 +270,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         return UpdateServerAsync(message);
     }
     
-    public Task AddAsync(T item)
+    public Task<bool> AddAsync(T item)
     {
         return InsertAsync(_itemList.Count, item);
     }

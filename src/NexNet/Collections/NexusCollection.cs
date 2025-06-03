@@ -37,8 +37,10 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
     
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<(Client client, TBaseMessage message)> _processChannel;
-    private ConcurrentDictionary<int, TaskCompletionSource>? _ackTcs;
-
+    private ConcurrentDictionary<int, TaskCompletionSource<bool>>? _ackTcs;
+    
+    public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
+    
     protected NexusCollection(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
     {
         
@@ -54,7 +56,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         }
         else
         {
-            _ackTcs = new ConcurrentDictionary<int, TaskCompletionSource>();
+            _ackTcs = new ConcurrentDictionary<int, TaskCompletionSource<bool>>();
         }
     }
 
@@ -148,24 +150,27 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         }, this, TaskCreationOptions.DenyChildAttach);
     }
     
-    protected async Task UpdateServerAsync(TBaseMessage message)
+    protected async Task<bool> UpdateServerAsync(TBaseMessage message)
     {
-        var id = message.Id = Interlocked.Increment(ref _ackId);
+        if (IsReadOnly)
+            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
+        
+        message.Id = Interlocked.Increment(ref _ackId);
+        
+        //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
+        var tcs = new TaskCompletionSource<bool>();
+        _ackTcs!.TryAdd(message.Id, tcs);
         var result = await _client.Writer.WriteAsync(message);
         
         // Since the message is only used by one writer, return it directly to the cache.
         message.ReturnToCache();
 
-        if (result == false)
-        {
-            await DisconnectAsync();
-            return;
-        }
-        
-        //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
-        var tcs = new TaskCompletionSource();
-        _ackTcs!.TryAdd(id, tcs);
-        await tcs.Task;
+        if (result)
+            return await tcs.Task;
+
+        await DisconnectAsync();
+        return false;
+
     }
     
     public async ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
@@ -299,7 +304,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
                     if (operation is NexusCollectionAckMessage ack)
                     {
                         if(collection._ackTcs!.TryRemove(ack.Id, out var ackTcs))
-                            ackTcs.SetResult();
+                            ackTcs.TrySetResult(true);
                         else 
                             collection._client.Session.Logger?.LogWarning($"Could not find AckTcs for id {ack.Id}.");
                     }
@@ -336,6 +341,11 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             return;
 
         await client.Pipe.CompleteAsync();
+
+        foreach (var taskCompletionSource in _ackTcs)
+            taskCompletionSource.Value.TrySetResult(false);
+        
+        _ackTcs.Clear();
     }
 
 
@@ -344,7 +354,6 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
-
     
     protected abstract void DisconnectedFromServer();
     
@@ -358,7 +367,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
     protected abstract (TBaseMessage? message, bool disconnect, TBaseMessage? ackMessage) 
         ProcessOperation(TBaseMessage operation);
 
-    protected class Client
+    private class Client
     {
         public readonly INexusDuplexPipe Pipe;
         public readonly INexusChannelReader<TBaseMessage>? Reader;
