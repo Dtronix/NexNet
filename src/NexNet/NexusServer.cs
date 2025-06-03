@@ -62,10 +62,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
-        
-        _config = config;
-        _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger("NexusServer");
+
+        Configure(config, nexusFactory);
     }
     
     /// <summary>
