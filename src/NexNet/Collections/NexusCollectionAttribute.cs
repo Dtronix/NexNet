@@ -1,7 +1,6 @@
 ﻿using System;
-using NexNet.Collections;
 
-namespace NexNet;
+namespace NexNet.Collections;
 
 /// <summary>
 /// Attribute to configure the creation of the nexus property implementations.

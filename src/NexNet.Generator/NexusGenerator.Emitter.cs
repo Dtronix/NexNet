@@ -107,9 +107,39 @@ namespace {{Symbol.ContainingNamespace}}
     /// <summary>
     /// Nexus used for handling all {{EmitServerClientName()}} communications.
     /// </summary>
-    partial class {{TypeName}} : global::NexNet.Invocation.{{EmitServerClientName()}}NexusBase<{{this.Namespace}}.{{this.TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, {{this.NexusInterface.Namespace}}.{{this.NexusInterface.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
+    partial class {{TypeName}} : 
+        global::NexNet.Invocation.{{EmitServerClientName()}}NexusBase<{{this.Namespace}}.{{this.TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, 
+        {{this.NexusInterface.Namespace}}.{{this.NexusInterface.TypeName}}, 
+        global::NexNet.Invocation.IInvocationMethodHash,
+        global::NexNet.Collections.ICollectionConfigurer
     {
 """);
+        sb.AppendLine($$"""
+        /// <summary>
+        /// Configures the nexus's collections, if there are any.
+        /// </summary>
+        /// <param name="manager">Manager for configuring collections</param>
+        public static void ConfigureCollections(global::NexNet.Invocation.IConfigureCollectionManager manager)
+        {
+""");
+        if(NexusInterface.Collections.Length > 0)
+        {
+            foreach (var collection in NexusInterface.Collections)
+            {
+                collection.EmitCollectionConfigure(sb);
+            }
+        }
+        else
+        {
+            sb.AppendLine("            // No collections configured.");
+        }
+    
+        sb.AppendLine($$"""
+            manager.CompleteConfigure();
+        }
+        
+""");
+        
         if (NexusAttribute.IsServer)
         {
             sb.AppendLine($$"""
@@ -127,7 +157,6 @@ namespace {{Symbol.ContainingNamespace}}
         }
         else
         {
-
             sb.AppendLine($$"""
         /// <summary>
         /// Creates an instance of the client for this nexus and matching server.
@@ -177,7 +206,7 @@ namespace {{Symbol.ContainingNamespace}}
 
             if (NexusInterface.Collections.Length > 0)
             {
-                sb.Append("                      // Collection invocations:");
+                sb.AppendLine("                      // Collection invocations:");
             }
             
             for (int i = 0; i < NexusInterface.Collections.Length; i++)
@@ -188,7 +217,7 @@ namespace {{Symbol.ContainingNamespace}}
                         // {{NexusInterface.Collections[i]}}
 
 """);
-                NexusInterface.Collections[i].EmitNexusInvocation(sb, this.ProxyInterface, this);
+                NexusInterface.Collections[i].EmitNexusInvocation(sb);
                 sb.AppendLine("""
                         break;
                     }
@@ -554,255 +583,44 @@ partial class CollectionMeta
     public void EmitNexusInvocation(StringBuilder sb)
     {
         sb.Append(@"
-                    var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
-                    duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);
-                    this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 
-                            ? global::NexNet.Logging.NexusLogLevel.Information
-                            : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $""Nexus Collection Invocation: ").Append(Name).Append(@"pipe = {arguments.Item1}"");
-
-                    await Unsafe.As<ICollectionStore>(this).StartCollection<").Append(this.ReturnType).Append(">(").Append(Id).AppendLine(", duplexPipe);");
-        sb.AppendLine("                    break;");
-
+                        var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
+                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);
+                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 
+                                ? global::NexNet.Logging.NexusLogLevel.Information
+                                : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $""Nexus ").Append(CollectionTypeShortString).Append(" Collection connection Invocation: ").Append(Name).Append(@" pipe = {arguments.Item1}"");
+    
+                        await Unsafe.As<ICollectionStore>(this).StartCollection<").Append(this.ReturnTypeArity).Append(">(").Append(Id).AppendLine(", duplexPipe);");
     }
     
     public void EmitCollectionConfigure(StringBuilder sb)
     {
-        var mode = NexusCollectionAttribute.Mode switch
-        {
-            NexusCollectionMode.Unset => "Unknown",
-            NexusCollectionMode.ServerToClient => "global::NexNet.Collections.NexusCollectionMode.ServerToClient",
-            NexusCollectionMode.BiDrirectional => "global::NexNet.Collections.NexusCollectionMode.BiDrirectional",
-            _ => "Invalid Value",
-        };
-        sb.AppendLine("        manager.ConfigureList<").Append(this.ReturnType).Append(">(").Append(Id).Append(", ").Append(mode).AppendLine(");");
+        sb.Append("            manager.ConfigureList<").Append(this.ReturnTypeArity).Append(">(").Append(Id).Append(", ").Append(CollectionModeFullTypeString).AppendLine(");");
     }
+    
 
-    /// <summary>
-    /// Emits the invocation of the method on the nexus.
-    /// </summary>
-    /// <param name="sb"></param>
-    /// <param name="forLog">Change the output to write the output params. Used for logging.</param>
-    public void EmitNexusMethodInvocation(StringBuilder sb, bool forLog)
+    public void EmitProxyAccessor()
     {
-        sb.Append(this.Name).Append("(");
+        var sb = SymbolUtilities.GetStringBuilder();
 
+        sb.Append(CollectionTypeFullString);
+
+        if (this.ReturnArity > 0)
+        {
+            sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+        }
+
+        sb.Append(" ");
+        sb.Append(this.Name).Append(" => Unsafe.As<IProxyInvoker>(this).");
+        sb.Append(CollectionType switch
+        {
+            CollectionTypeValues.List => "ProxyGetConfiguredNexusList<int>(",
+            CollectionTypeValues.Unset => "INVALID",
+        });
         
-        bool addedParam = false;
-        foreach (var methodParameterMeta in Parameters)
-        {
-            // If we have a duplex pipe, we need to pass it in the correct parameter position,
-            // otherwise we need to pass the serialized value.
-            if (methodParameterMeta.IsDuplexPipe)
-            {
-                if (forLog)
-                {
-                    sb.Append(methodParameterMeta.Name)
-                        .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
-                        .Append("}, ");
-                }
-                else
-                {
-                    sb.Append("duplexPipe, ");
-                }
-
-                addedParam = true;
-            }
-            else if (methodParameterMeta.IsDuplexUnmanagedChannel)
-            {
-                if (forLog)
-                {
-                    sb.Append(methodParameterMeta.Name)
-                        .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
-                        .Append("}, ");
-                }
-                else
-                {
-                    sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetUnmanagedChannel<");
-                    sb.Append(methodParameterMeta.ChannelType);
-                    sb.Append(">(duplexPipe), ");
-                }
-
-                addedParam = true;
-            }
-            else if (methodParameterMeta.IsDuplexChannel)
-            {
-                if (forLog)
-                {
-                    sb.Append(methodParameterMeta.Name)
-                        .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
-                        .Append("}, ");
-                }
-                else
-                {
-                    sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetChannel<");
-                    sb.Append(methodParameterMeta.ChannelType);
-                    sb.Append(">(duplexPipe), ");
-                }
-
-                addedParam = true;
-            }
-            else if (methodParameterMeta.SerializedValue != null)
-            {
-                if (forLog)
-                {
-                    sb.Append(methodParameterMeta.Name)
-                        .Append(" = {arguments.Item")
-                        .Append(methodParameterMeta.SerializedId)
-                        .Append("}, ");
-                }
-                else
-                {
-                    sb.Append("arguments.Item").Append(methodParameterMeta.SerializedId).Append(", ");
-                }
-
-                addedParam = true;
-            }
-        }
-
-        if (CancellationTokenParameter != null)
-        {
-            if (forLog)
-            {
-                sb.Append(CancellationTokenParameter.Name).Append(" = ct");
-            }
-            else
-            {
-                sb.Append("cts.Token");
-            }
-        }
-        else
-        {
-            if(addedParam)
-                sb.Remove(sb.Length - 2, 2);
-        }
+        sb.Append(this.Id).Append(");");
         
-        // Configure the await if the method is not a void return type.
-        sb.Append(")").Append((this.IsReturnVoid || forLog) ? ";" : ".ConfigureAwait(false);");
-
-        if (!forLog)
-            sb.AppendLine();
+        var stringMethod = sb.ToString();
     }
-
-    public void EmitProxyMethodInvocation(StringBuilder sb)
-    {
-        sb.Append("             public ");
-
-        if (this.IsReturnVoid)
-        {
-            sb.Append("void ");
-        }
-        else if (this.IsAsync)
-        {
-            if (this.ReturnType != null)
-            {
-                sb.Append("global::System.Threading.Tasks.ValueTask<").Append(this.ReturnType).Append("> ");
-            }
-            else
-            {
-                sb.Append("global::System.Threading.Tasks.ValueTask ");
-            }
-        }
-
-        sb.Append(this.Name).Append("(");
-
-        foreach (var parameter in Parameters)
-        {
-            sb.Append(parameter.ParamType).Append(" ").Append(parameter.Name).Append(", ");
-        }
-
-        if(Parameters.Length > 0)
-            sb.Remove(sb.Length - 2, 2);
-        
-        sb.AppendLine(")");
-        sb.AppendLine("             {");
-        sb.AppendLine("                 var __proxyInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this);");
-        if (SerializedParameters > 0)
-        {
-            sb.Append("                 var __proxyInvocationArguments = new global::System.ValueTuple<");
-            
-            
-            foreach (var p in Parameters)
-            {
-                if(p.SerializedType == null)
-                    continue;
-
-                sb.Append(p.SerializedType).Append(", ");
-            }
-
-            sb.Remove(sb.Length - 2, 2);
-
-            sb.Append(">(");
-            foreach (var p in Parameters)
-            {
-                if (p.SerializedValue == null)
-                    continue;
-
-                sb.Append(p.SerializedValue).Append(", ");
-            }
-
-            sb.Remove(sb.Length - 2, 2);
-
-            sb.AppendLine(");");
-        }
-
-        // Logging
-        sb.Append("                 __proxyInvoker.Logger?.Log((__proxyInvoker.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? global::NexNet.Logging.NexusLogLevel.Information : global::NexNet.Logging.NexusLogLevel.Debug, __proxyInvoker.Logger.Category, null, $\"Proxy Invoking Method: ");
-        sb.Append(this.Name).Append("(");
-        for (var i = 0; i < Parameters.Length; i++)
-        {
-            if (Parameters[i].IsCancellationToken)
-            {
-                sb.Append(Parameters[i].Name)
-                    .Append(", ");
-            }
-            else
-            {
-                sb.Append(Parameters[i].Name)
-                    .Append(" = ")
-                    .Append("{__proxyInvocationArguments.Item").Append(i + 1)
-                    .Append("}, ");
-            }
-        }
-
-        if (Parameters.Length > 0) 
-            sb.Remove(sb.Length - 2, 2);
-        
-        sb.AppendLine(");\");");
-        sb.Append("                 ");
-
-
-        if (this.IsReturnVoid || this.DuplexPipeParameter != null)
-        {
-            // If we are a void method, we need to invoke the method and then ignore the return
-            // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
-            sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
-
-            sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
-            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, ");
-
-            // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
-            sb.Append("global::NexNet.Messages.InvocationFlags.").Append(this.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
-        }
-        else if (this.IsAsync)
-        {
-            sb.Append("return __proxyInvoker.ProxyInvokeAndWaitForResultCore");
-            if (this.ReturnType != null)
-            {
-                sb.Append("<").Append(this.ReturnType).Append(">");
-            }
-
-            sb.Append("(").Append(this.Id).Append(", "); // methodId
-            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, "); // arguments
-            sb.Append(CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
-        }
-
-        sb.AppendLine("             }");
-    }
-
-
 }
 
 

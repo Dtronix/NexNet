@@ -64,10 +64,3 @@ internal class NexusCollectionManager : IConfigureCollectionManager
             Unsafe.As<INexusCollectionConnector>(collectionKvp.Value).TryConfigureProxyCollection(proxy, session);
     }
 }
-
-public interface IConfigureCollectionManager
-{
-    void ConfigureList<T>(ushort id, NexusCollectionMode mode);
-    
-    void CompleteConfigure();
-}

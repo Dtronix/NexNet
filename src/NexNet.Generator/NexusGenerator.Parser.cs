@@ -40,6 +40,7 @@ internal partial class InvocationInterfaceMeta
         this.IsRecord = symbol.IsRecord;
         this.Methods = Symbol.GetMembers()
             .OfType<IMethodSymbol>()
+            .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
             .Select(x => new MethodMeta(x))
             .Where(x => x.NexusMethodAttribute.Ignore == false) // Bypass ignored items.
             .ToArray();
@@ -573,7 +574,6 @@ internal partial class MethodMeta
     public MethodMeta(IMethodSymbol symbol)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
-
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
@@ -713,11 +713,13 @@ internal partial class CollectionMeta
     public IPropertySymbol Symbol { get; }
     public string Name { get; }
     public bool IsStatic { get; }
-    public string? ReturnType { get; }
+    public string? ReturnTypeArity { get; }
     public string? ReturnTypeSource { get; }
     public int ReturnArity { get; }
-    
     public CollectionTypeValues CollectionType  { get; }
+    public string CollectionTypeShortString { get; set; }
+    public string CollectionTypeFullString { get; }
+    public string CollectionModeFullTypeString { get; }
     
     /// <summary>
     /// Assigned after parsing.
@@ -732,8 +734,9 @@ internal partial class CollectionMeta
     }
 
     public CollectionMeta(IPropertySymbol symbol)
-    {
+    {       
         var returnSymbol = symbol.Type as INamedTypeSymbol;
+        this.NexusCollectionAttribute = new NexusCollectionAttributeMeta(symbol);
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
@@ -742,26 +745,43 @@ internal partial class CollectionMeta
             "INexusList" => CollectionTypeValues.List,
             _ => CollectionTypeValues.Unset
         };
+        CollectionTypeFullString = CollectionType switch
+        {
+            CollectionTypeValues.List => "global::NexNet.Collections.Lists.INexusList",
+            _ => "INVALID",
+        };
+        
+        CollectionTypeShortString = CollectionType switch
+        {
+            CollectionTypeValues.List => "INexusList",
+            _ => "INVALID",
+        };
         
         this.ReturnArity = returnSymbol.Arity;
-        this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
-        this.NexusCollectionAttribute = new NexusCollectionAttributeMeta(symbol);
+
+        CollectionModeFullTypeString = NexusCollectionAttribute.Mode switch
+        {
+            NexusCollectionMode.ServerToClient => "global::NexNet.Collections.NexusCollectionMode.ServerToClient",
+            NexusCollectionMode.BiDrirectional => "global::NexNet.Collections.NexusCollectionMode.BiDrirectional",
+            _ => "INVALID",
+        };
 
         if (ReturnArity > 0)
         {
-            this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
+            this.ReturnTypeArity = SymbolUtilities.GetArityFullSymbolType(returnSymbol, 0);
             this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         }
     }
-    
+
+
     public int GetHash()
     {
         var hash = new HashCode();
 
         //ReturnType + Name
-        if (ReturnType != null)
+        if (ReturnTypeArity != null)
         {
-            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(ReturnType)));
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(ReturnTypeArity)));
         }
 
         // Add the name of the method to the hash if we do not have a manually specified ID.
@@ -782,26 +802,13 @@ internal partial class CollectionMeta
     {
         var sb = SymbolUtilities.GetStringBuilder();
 
-        sb.Append(CollectionType switch
-        {
-            CollectionTypeValues.List => "INexusList",
-            CollectionTypeValues.Unset => "INVALID",
-        });
+        // Use the short name description.
+        sb.Append(CollectionTypeShortString);
 
         if (this.ReturnArity > 0)
         {
-            sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+            sb.Append("<").Append(this.ReturnTypeSource).Append(">(").Append(this.Id).Append(");");;
         }
-
-        sb.Append(" ");
-        sb.Append(this.Name).Append(" => Unsafe.As<IProxyInvoker>(this).");
-        sb.Append(CollectionType switch
-        {
-            CollectionTypeValues.List => "ProxyGetConfiguredNexusList<int>(",
-            CollectionTypeValues.Unset => "INVALID",
-        });
-        
-        sb.Append(this.Id).Append(");");
         
         var stringMethod = sb.ToString();
 
