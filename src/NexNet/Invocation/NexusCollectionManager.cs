@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -17,10 +15,8 @@ internal class NexusCollectionManager : IConfigureCollectionManager
 {
     private readonly ConfigBase _config;
     private readonly bool _isServer;
-    ImmutableDictionary<ushort, INexusCollection> _lists = ImmutableDictionary<ushort, INexusCollection>.Empty;
-    
     private Dictionary<ushort, INexusCollection>? _collectionBuilder = new();
-    private FrozenDictionary<ushort, INexusCollection> _collections;
+    private FrozenDictionary<ushort, INexusCollection>? _collections;
 
     public NexusCollectionManager(ConfigBase config)
     {
@@ -30,12 +26,12 @@ internal class NexusCollectionManager : IConfigureCollectionManager
 
     public NexusList<T> GetList<T>(ushort id)
     {
-        return (NexusList<T>)_collections[id];
+        return (NexusList<T>)_collections![id];
     }
     
-    public ValueTask  StartServerCollectionConnection<T>(ushort id, INexusDuplexPipe pipe, INexusSession context)
+    public ValueTask  StartServerCollectionConnection(ushort id, INexusDuplexPipe pipe, INexusSession context)
     {
-        var connector = Unsafe.As<INexusCollectionConnector>(_collections[id]);
+        var connector = Unsafe.As<INexusCollectionConnector>(_collections![id]);
         return connector.StartServerCollectionConnection(pipe, context);
     }
     

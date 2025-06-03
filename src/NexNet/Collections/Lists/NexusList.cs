@@ -259,6 +259,9 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
     public Task InsertAsync(int index, T item)
     {
+        if (IsReadOnly)
+            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
+        
         var message = NexusListInsertMessage.Rent();
         
         message.Version = _itemList.Version;
@@ -269,6 +272,9 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
     public Task RemoveAtAsync(int index)
     {
+        if (IsReadOnly)
+            throw new InvalidOperationException("Cannot perform operations when collection is read-only");
+        
         var message = NexusListRemoveMessage.Rent();
         
         message.Version = _itemList.Version;

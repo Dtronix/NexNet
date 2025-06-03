@@ -42,18 +42,18 @@ internal class Program
 
         await client.Proxy.IntegerList.ConnectAsync();
         int counter = 10;
-        for (int i = 0; i < 100; i++)
-        {
-            await client.Proxy.IntegerList.AddAsync(counter++);
-            await Task.Delay(1);
-        }
+        //for (int i = 0; i < 100; i++)
+        //{
+        //    await client.Proxy.IntegerList.AddAsync(counter++);
+        //    await Task.Delay(1);
+        //}
 
 
         while (true)
         {
             Console.ReadLine();
             
-            for (int i = 0; i < 50; i++)
+            for (int i = 0; i < 1; i++)
             {
                 await client.Proxy.IntegerList.AddAsync(counter++);
             }

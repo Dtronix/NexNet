@@ -221,14 +221,8 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         return SessionContext.Session.CollectionManager.GetList<T>(id);
     }
 
-    ValueTask ICollectionStore.StartCollection<T>(ushort id, INexusDuplexPipe pipe)
+    ValueTask ICollectionStore.StartCollection(ushort id, INexusDuplexPipe pipe)
     {
-        return SessionContext.Session.CollectionManager.StartServerCollectionConnection<T>(id, pipe, SessionContext.Session);
+        return SessionContext.Session.CollectionManager.StartServerCollectionConnection(id, pipe, SessionContext.Session);
     }
-}
-
-public interface ICollectionStore
-{
-    INexusList<T> GetList<T>(ushort id);
-    ValueTask StartCollection<T>(ushort id, INexusDuplexPipe pipe);
 }

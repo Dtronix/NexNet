@@ -29,6 +29,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private readonly NexusCollectionManager _collectionManager;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
+    
+    /// <summary>
+    /// Provides access to the client's nexus.
+    /// </summary>
+    public TClientNexus Nexus => _nexus;
 
     /// <summary>
     /// Current state of the connection

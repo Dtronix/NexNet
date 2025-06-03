@@ -101,6 +101,7 @@ partial class NexusMeta
     private string EmitServerClientName() => NexusAttribute.IsServer ? "Server" : "Client";
     public void EmitNexus(StringBuilder sb)
     {
+        var collections = NexusAttribute.IsServer ? NexusInterface.Collections : ProxyInterface.Collections;
         sb.AppendLine($$"""
 namespace {{Symbol.ContainingNamespace}} 
 {
@@ -113,35 +114,16 @@ namespace {{Symbol.ContainingNamespace}}
         global::NexNet.Invocation.IInvocationMethodHash,
         global::NexNet.Collections.ICollectionConfigurer
     {
+    
 """);
-        sb.AppendLine($$"""
-        /// <summary>
-        /// Configures the nexus's collections, if there are any.
-        /// </summary>
-        /// <param name="manager">Manager for configuring collections</param>
-        public static void ConfigureCollections(global::NexNet.Invocation.IConfigureCollectionManager manager)
-        {
-""");
-        if(NexusInterface.Collections.Length > 0)
+        if (NexusAttribute.IsServer)
         {
             foreach (var collection in NexusInterface.Collections)
             {
-                collection.EmitCollectionConfigure(sb);
+                collection.EmitNexusAccessor(sb);
+                sb.AppendLine();
             }
-        }
-        else
-        {
-            sb.AppendLine("            // No collections configured.");
-        }
-    
-        sb.AppendLine($$"""
-            manager.CompleteConfigure();
-        }
-        
-""");
-        
-        if (NexusAttribute.IsServer)
-        {
+            
             sb.AppendLine($$"""
         /// <summary>
         /// Creates an instance of the server for this nexus and matching client.
@@ -181,7 +163,7 @@ namespace {{Symbol.ContainingNamespace}}
             try
             {
 """);
-        if (NexusInterface.Methods.Length > 0)
+        if (NexusInterface.Methods.Length > 0 || NexusInterface.Collections.Length > 0)
         {
             sb.AppendLine($$"""
                 switch (message.MethodId)
@@ -206,7 +188,7 @@ namespace {{Symbol.ContainingNamespace}}
 
             if (NexusInterface.Collections.Length > 0)
             {
-                sb.AppendLine("                      // Collection invocations:");
+                sb.AppendLine("                    // Collection invocations:");
             }
             
             for (int i = 0; i < NexusInterface.Collections.Length; i++)
@@ -215,7 +197,6 @@ namespace {{Symbol.ContainingNamespace}}
                     case {{NexusInterface.Collections[i].Id}}:
                     {
                         // {{NexusInterface.Collections[i]}}
-
 """);
                 NexusInterface.Collections[i].EmitNexusInvocation(sb);
                 sb.AppendLine("""
@@ -249,22 +230,53 @@ namespace {{Symbol.ContainingNamespace}}
             }
 
         }
-
+        
+""");
+        sb.AppendLine($$"""
+        /// <summary>
+        /// Configures the nexus collections, if there are any.
+        /// </summary>
+        /// <param name="manager">Manager for configuring collections</param>
+        static void global::NexNet.Collections.ICollectionConfigurer.ConfigureCollections(global::NexNet.Invocation.IConfigureCollectionManager manager)
+        {
+""");
+        if(collections.Length > 0)
+        {
+            foreach (var collection in collections)
+            {
+                collection.EmitCollectionConfigure(sb);
+            }
+        }
+        else
+        {
+            sb.AppendLine("            // No collections configured.");
+        }
+    
+        sb.AppendLine($$"""
+            manager.CompleteConfigure();
+        }
+        
+""");   
+        sb.AppendLine($$"""
         /// <summary>
         /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
         /// </summary>
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{this.NexusInterface.GetHash()}}; }
 """);
         
-        ProxyInterface.EmitProxyImpl(sb);
+        // We don't want to emit the proxy invocation on the server, only on the client.
+        ProxyInterface.EmitProxyImpl(sb, NexusAttribute.IsServer ? null : ProxyInterface);
 
         sb.AppendLine($$"""
     }
 }
 """);
     }
-
-
+    
+    public override string ToString()
+    {
+        return this.TypeName;
+    }
 }
 
 
@@ -568,8 +580,52 @@ partial class MethodMeta
 
         sb.AppendLine("             }");
     }
+    
+    public override string ToString()
+    {
+        var sb = SymbolUtilities.GetStringBuilder();
 
+        if (IsReturnVoid)
+        {
+            sb.Append("void");
+        }
+        else if (IsAsync)
+        {
+            sb.Append("ValueTask");
 
+            if (this.ReturnArity > 0)
+            {
+                sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+            }
+        }
+
+        sb.Append(" ");
+        sb.Append(this.Name).Append("(");
+
+        var paramsLength = this.Parameters.Length;
+        if (paramsLength > 0)
+        {
+            for (int i = 0; i < paramsLength; i++)
+            {
+                sb.Append(Parameters[i].ParamTypeSource);
+                sb.Append(" ");
+                sb.Append(Parameters[i].Name);
+
+                if (i + 1 < paramsLength)
+                {
+                    sb.Append(", ");
+                }
+            }
+        }
+
+        sb.Append(")");
+
+        var stringMethod = sb.ToString();
+
+        SymbolUtilities.ReturnStringBuilder(sb);
+
+        return stringMethod;
+    }
 }
 
 partial class CollectionMeta
@@ -589,7 +645,7 @@ partial class CollectionMeta
                                 ? global::NexNet.Logging.NexusLogLevel.Information
                                 : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $""Nexus ").Append(CollectionTypeShortString).Append(" Collection connection Invocation: ").Append(Name).Append(@" pipe = {arguments.Item1}"");
     
-                        await Unsafe.As<ICollectionStore>(this).StartCollection<").Append(this.ReturnTypeArity).Append(">(").Append(Id).AppendLine(", duplexPipe);");
+                        await global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.ICollectionStore>(this).StartCollection(").Append(Id).AppendLine(", duplexPipe);");
     }
     
     public void EmitCollectionConfigure(StringBuilder sb)
@@ -598,35 +654,70 @@ partial class CollectionMeta
     }
     
 
-    public void EmitProxyAccessor()
+    public void EmitProxyAccessor(StringBuilder sb)
     {
-        var sb = SymbolUtilities.GetStringBuilder();
-
+        sb.Append("            public ");
         sb.Append(CollectionTypeFullString);
 
         if (this.ReturnArity > 0)
         {
-            sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+            sb.Append("<").Append(this.ReturnTypeArity).Append(">");
         }
 
         sb.Append(" ");
-        sb.Append(this.Name).Append(" => Unsafe.As<IProxyInvoker>(this).");
+        sb.Append(this.Name).Append(" => global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this).");
         sb.Append(CollectionType switch
         {
-            CollectionTypeValues.List => "ProxyGetConfiguredNexusList<int>(",
+            CollectionTypeValues.List => "ProxyGetConfiguredNexusList<",
             CollectionTypeValues.Unset => "INVALID",
-        });
+        }).Append(this.ReturnTypeArity).Append(">(");
+        
+        sb.Append(this.Id).AppendLine(");");
+    } 
+    
+    public void EmitNexusAccessor(StringBuilder sb)
+    {
+        sb.Append("    public ");
+        sb.Append(CollectionTypeFullString);
+
+        if (this.ReturnArity > 0)
+        {
+            sb.Append("<").Append(this.ReturnTypeArity).Append(">");
+        }
+
+        sb.Append(" ");
+        sb.Append(this.Name).Append(" => global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.ICollectionStore>(this).");
+        sb.Append(CollectionType switch
+        {
+            CollectionTypeValues.List => "GetList<",
+            CollectionTypeValues.Unset => "INVALID",
+        }).Append(this.ReturnTypeArity).Append(">(");
         
         sb.Append(this.Id).Append(");");
+    }
+    
+    public override string ToString()
+    {
+        var sb = SymbolUtilities.GetStringBuilder();
+
+        // Use the short name description.
+        if (this.ReturnArity > 0)
+        {
+            sb.Append(this.ReturnTypeSource).Append("(").Append(this.Id).Append(");");;
+        }
         
         var stringMethod = sb.ToString();
+
+        SymbolUtilities.ReturnStringBuilder(sb);
+
+        return stringMethod;
     }
 }
 
 
 partial class InvocationInterfaceMeta
 {
-    public void EmitProxyImpl(StringBuilder sb)
+    public void EmitProxyImpl(StringBuilder sb, InvocationInterfaceMeta? proxyInterface)
     {
         sb.AppendLine($$"""
 
@@ -636,6 +727,15 @@ partial class InvocationInterfaceMeta
         public class {{ProxyImplName}} : global::NexNet.Invocation.ProxyInvocationBase, {{this.Namespace}}.{{this.TypeName}}, global::NexNet.Invocation.IInvocationMethodHash
         {
 """);
+        if (proxyInterface != null)
+        {
+            foreach (var collection in proxyInterface.Collections)
+            {
+                collection.EmitProxyAccessor(sb);
+                sb.AppendLine();
+            }
+        }
+
         foreach (var method in Methods)
         {
             method.EmitProxyMethodInvocation(sb);
@@ -651,6 +751,10 @@ partial class InvocationInterfaceMeta
         }
 """);
     }
-
+    
+    public override string ToString()
+    {
+        return this.TypeName;
+    }
 }
 

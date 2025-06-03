@@ -147,11 +147,6 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
 
         }, this, TaskCreationOptions.DenyChildAttach);
     }
-
-    //protected ValueTask BroadcastAsync(IOperation message, int version)
-    //{
-    //    return _processChannel.Writer.WriteAsync((message, version));
-    //}
     
     protected async Task UpdateServerAsync(TBaseMessage message)
     {
@@ -278,7 +273,7 @@ internal abstract class NexusCollection<T, TBaseMessage> : INexusCollectionConne
             _invoker.Logger.Category,
             null,
             $"Connecting Proxy Collection[{Id}];");
-        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<Byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
+        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
             InvocationFlags.DuplexPipe);
 
         await pipe.ReadyTask;
