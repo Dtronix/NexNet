@@ -201,5 +201,29 @@ partial class ServerNexus : IServerNexus {
 ");
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionAttributeMissing.Id), Is.True);
     }
+    
+    [Test]
+    public void Diagnostic_018()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
+using NexNet;
+using NexNet.Pipes;
+using System.Threading.Tasks;
+using NexNet.Collections.Lists;
+using NexNet.Collections;
+namespace NexNetDemo;
+partial interface IClientNexus {
+[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+INexusList<int> NumberList { get; }
+}
+partial interface IServerNexus { }
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus : IClientNexus{ }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus {
+}
+");
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionCanNotBeOnClient.Id), Is.True);
+    }
 }
 

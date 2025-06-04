@@ -284,23 +284,24 @@ internal partial class NexusMeta
 
     public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
     {
+        var nexusLocation = syntax.Identifier.GetLocation();
         bool failed = false;
         if (Symbol.IsGenericType)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NexusMustNotBeGeneric, syntax.Identifier.GetLocation(), Symbol.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NexusMustNotBeGeneric, nexusLocation, Symbol.Name));
             failed = true;
         }
 
         var invokeMethodCoreExists = Methods.FirstOrDefault(m => m.Name == "InvokeMethodCore");
         if (invokeMethodCoreExists != null)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, syntax.Identifier.GetLocation(), invokeMethodCoreExists.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, nexusLocation, invokeMethodCoreExists.Name));
             failed = true;
         }
 
         if (IsInterfaceOrAbstract)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustNotBeAbstractOrInterface, syntax.Identifier.GetLocation(), Symbol.Name));
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustNotBeAbstractOrInterface, nexusLocation, Symbol.Name));
             failed = true;
         }
 
@@ -310,7 +311,7 @@ internal partial class NexusMeta
             // Validate nexus method ids.
             if (nexusSet.Contains(method.Id))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, method.GetLocation(syntax), method.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, method.GetLocation(nexusLocation), method.Name));
                 failed = true;
             }
 
@@ -322,7 +323,7 @@ internal partial class NexusMeta
                 if (!method.Parameters.Last().IsCancellationToken)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken,
-                        method.GetLocation(syntax), method.Name));
+                        method.GetLocation(nexusLocation), method.Name));
                     failed = true;
                 }
             }
@@ -331,7 +332,7 @@ internal partial class NexusMeta
             if (method.MultipleCancellationTokenParameter)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyCancellationTokens,
-                    method.GetLocation(syntax), method.Name));
+                    method.GetLocation(nexusLocation), method.Name));
                 failed = true;
             }
 
@@ -339,7 +340,7 @@ internal partial class NexusMeta
             if (method.MultiplePipeParameters)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyPipes,
-                    method.GetLocation(syntax), method.Name));
+                    method.GetLocation(nexusLocation), method.Name));
                 failed = true;
             }
 
@@ -349,7 +350,7 @@ internal partial class NexusMeta
                 if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid,
-                        method.GetLocation(syntax), method.Name));
+                        method.GetLocation(nexusLocation), method.Name));
                     failed = true;
                 }
             }
@@ -364,7 +365,7 @@ internal partial class NexusMeta
                     || (method.IsAsync && method.ReturnArity == 1))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoidOrReturnTask,
-                        method.GetLocation(syntax), method.Name));
+                        method.GetLocation(nexusLocation), method.Name));
                     failed = true;
                 }
 
@@ -373,7 +374,7 @@ internal partial class NexusMeta
                 if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnMethodWithCancellationToken,
-                        method.GetLocation(syntax), method.Name));
+                        method.GetLocation(nexusLocation), method.Name));
                     failed = true;
                 }
             }
@@ -382,46 +383,56 @@ internal partial class NexusMeta
             if (!method.IsReturnVoid &&
                 !(method.IsAsync && method.ReturnArity <= 1))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, method.GetLocation(syntax), method.Name)); 
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, method.GetLocation(nexusLocation), method.Name)); 
                 failed = true;
             }
         }
 
         // Validate collections
+        
 
         foreach (var collection in this.NexusInterface.Collections)
         {
-            // Validate nexus method ids.
-            if (nexusSet.Contains(collection.Id))
+            if (!NexusAttribute.IsServer)
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId,
-                    collection.GetLocation(syntax), collection.Name));
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionCanNotBeOnClient,
+                    collection.GetLocation(nexusLocation), collection.Name));
                 failed = true;
             }
-
-            nexusSet.Add(collection.Id);
-
-            if (collection.CollectionType == CollectionMeta.CollectionTypeValues.Unset)
+            else
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownType,
-                    collection.GetLocation(syntax), collection.Name));
-                failed = true;
-            }
+                // Validate nexus method ids.
+                if (nexusSet.Contains(collection.Id))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
 
-            if (collection.NexusCollectionAttribute.Mode == NexusCollectionMode.Unset
-                || !Enum.IsDefined(typeof(NexusCollectionMode), collection.NexusCollectionAttribute.Mode))
-            {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownMode,
-                    collection.GetLocation(syntax), collection.Name));
-                failed = true;
-            }
+                nexusSet.Add(collection.Id);
 
-            if (!collection.NexusCollectionAttribute.AttributeExists
-                && collection.CollectionType != CollectionMeta.CollectionTypeValues.Unset)
-            {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionAttributeMissing,
-                    collection.GetLocation(syntax), collection.Name));
-                failed = true;
+                if (collection.CollectionType == CollectionMeta.CollectionTypeValues.Unset)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownType,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
+
+                if (collection.NexusCollectionAttribute.Mode == NexusCollectionMode.Unset
+                    || !Enum.IsDefined(typeof(NexusCollectionMode), collection.NexusCollectionAttribute.Mode))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownMode,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
+
+                if (!collection.NexusCollectionAttribute.AttributeExists
+                    && collection.CollectionType != CollectionMeta.CollectionTypeValues.Unset)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionAttributeMissing,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
             }
         }
 
@@ -615,9 +626,14 @@ internal partial class MethodMeta
         return hash.ToHashCode();
     }
 
-    public Location GetLocation(TypeDeclarationSyntax fallback)
+    public Location GetLocation(Location fallback)
     {
-        var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
+        var location = Symbol.Locations.FirstOrDefault();
+        if (location is null || location.IsInMetadata)
+        {
+            location = fallback;
+        }
+
         return location;
     }
 }
@@ -714,9 +730,14 @@ internal partial class CollectionMeta
         return hash.ToHashCode();
     }
 
-    public Location GetLocation(TypeDeclarationSyntax fallback)
+    public Location GetLocation(Location fallback)
     {
-        var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
+        var location = Symbol.Locations.FirstOrDefault();
+        if (location is null || location.IsInMetadata)
+        {
+            location = fallback;
+        }
+
         return location;
     }
 }

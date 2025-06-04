@@ -58,10 +58,5 @@ internal class Program
                 await client.Proxy.IntegerList.AddAsync(counter++);
             }
         }
-
-        
-        //var val = await client.Proxy.ServerTaskValueWithParam(124);
-        
-        Console.ReadLine();
     }
 }

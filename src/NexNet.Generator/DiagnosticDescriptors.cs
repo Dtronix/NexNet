@@ -141,4 +141,12 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor CollectionCanNotBeOnClient = new(
+        id: "NEXNET018",
+        title: "Nexus collection property is only allowed on server",
+        messageFormat: "The collection '{0}' is not allowed to be on a client nexus",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }
