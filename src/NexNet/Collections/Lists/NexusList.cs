@@ -211,8 +211,28 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         }
     }
 
-    protected override ValueTask SendClientInitData(NexusChannelWriter<INexusListMessage> operation)
+    protected override async ValueTask SendClientInitData(NexusChannelWriter<INexusListMessage> operation)
     {
+        var state = _itemList.State;
+
+        if (state.List.Count == 0)
+            return;
+        
+        var reset = NexusListStartResetMessage.Rent();
+        var resetComplete = NexusListCompleteResetMessage.Rent();
+        await operation.WriteAsync(reset);
+        
+        
+
+
+        foreach (var item in state.List)
+        {
+            
+        }
+        
+        await operation.WriteAsync(resetComplete);
+        reset.ReturnToCache();
+        resetComplete.ReturnToCache();
         return default;
     }
 
