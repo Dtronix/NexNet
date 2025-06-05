@@ -1,8 +1,9 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections;
+using System.Threading.Tasks;
 
 namespace NexNet.Collections;
 
-public interface INexusCollection
+public interface INexusCollection : IEnumerable
 {
     public Task ConnectAsync();
     public Task DisconnectAsync();

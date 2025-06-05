@@ -1,8 +1,9 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace NexNet.Collections.Lists;
 
-public interface INexusList<T> : INexusCollection
+public interface INexusList<T> : INexusCollection , IEnumerable<T>
 {
     Task<bool> ClearAsync();
     bool Contains(T item);

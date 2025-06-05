@@ -6,14 +6,26 @@ using NexNet.Messages;
 namespace NexNet.Collections.Lists;
 
 [MemoryPackable]
-[MemoryPackUnion(0, typeof(NexusListInsertMessage))]
-[MemoryPackUnion(1, typeof(NexusListModifyMessage))]
-[MemoryPackUnion(2, typeof(NexusListAddItemMessage))]
-[MemoryPackUnion(3, typeof(NexusListMoveMessage))]
-[MemoryPackUnion(4, typeof(NexusListRemoveMessage))]
-[MemoryPackUnion(5, typeof(NexusListStartResetMessage))]
-[MemoryPackUnion(6, typeof(NexusListCompleteResetMessage))]
-[MemoryPackUnion(7, typeof(NexusCollectionAckMessage))]
+[MemoryPackUnion(0, typeof(NexusCollectionAckMessage))]         
+[MemoryPackUnion(1, typeof(NexusCollectionResetStartMessage))]        
+[MemoryPackUnion(2, typeof(NexusCollectionResetValuesMessage))]      
+[MemoryPackUnion(3, typeof(NexusCollectionResetCompleteMessage))]                
+internal partial interface INexusListMessage2 : INexusCollectionMessage
+{
+
+}
+
+
+[MemoryPackable]
+[MemoryPackUnion(0, typeof(NexusCollectionAckMessage))]         
+[MemoryPackUnion(1, typeof(NexusCollectionResetStartMessage))]        
+[MemoryPackUnion(2, typeof(NexusCollectionResetValuesMessage))]      
+[MemoryPackUnion(3, typeof(NexusCollectionResetCompleteMessage))]                
+[MemoryPackUnion(4, typeof(NexusListInsertMessage))]
+[MemoryPackUnion(5, typeof(NexusListModifyMessage))]
+[MemoryPackUnion(6, typeof(NexusListAddItemMessage))]
+[MemoryPackUnion(7, typeof(NexusListMoveMessage))]
+[MemoryPackUnion(8, typeof(NexusListRemoveMessage))]
 internal partial interface INexusListMessage : INexusCollectionMessage
 {
 
@@ -95,22 +107,6 @@ internal partial class NexusListMoveMessage : NexusCollectionMessage<NexusListMo
     public int ToIndex { get; set; }
 }
 
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusListStartResetMessage : NexusCollectionMessage<NexusListStartResetMessage>, INexusListMessage
-{
-    [MemoryPackOrder(1)]
-    public int Version { get; set; }
-    
-    [MemoryPackOrder(2)]
-    public int Count { get; set; }
-}
-
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusListCompleteResetMessage :
-    NexusCollectionMessage<NexusListCompleteResetMessage>, INexusListMessage
-{
-    
-}
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusListClearMessage :
@@ -131,11 +127,5 @@ internal partial class NexusListRemoveMessage :
     
     [MemoryPackOrder(2)]
     public int Index { get; set; }
-}
-
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusCollectionAckMessage :
-    NexusCollectionMessage<NexusCollectionAckMessage>, INexusListMessage
-{
 }
 

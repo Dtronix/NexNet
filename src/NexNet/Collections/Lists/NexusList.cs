@@ -1,19 +1,24 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Pipes;
 using NexNet.Transports;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<T>
+internal class NexusList<T> : NexusCollection<INexusListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList = new();
     private List<T>? _clientInitialization;
     private int _clientInitializationVersion = -1;
+    private static readonly Type TType = typeof(T);
     
     public int Count => _itemList.Count;
 
@@ -30,7 +35,6 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
 
     protected override async ValueTask InitializeNewClient(NexusChannelWriter<INexusListMessage> writer)
     {
-              
         var op = NexusListAddItemMessage.Rent();
         var state = _itemList.CurrentState;
         foreach (var item in state.List)
@@ -87,53 +91,60 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     {
         switch (operation)
         {
-            case NexusListClearMessage op:
+            case NexusListClearMessage message:
                 return !RequireValidState()
                     ? (null, true, null)
-                    : ProcessMessage(new ClearOperation<T>(), op.Version, op.Id);
+                    : ProcessMessage(new ClearOperation<T>(), message.Version, message.Id);
 
-            case NexusListInsertMessage op:
+            case NexusListInsertMessage message:
                 return !RequireValidState()
                     ? (null, true, null)
                     : ProcessMessage(
-                        new InsertOperation<T>(op.Index, op.DeserializeValue<T>()!),
-                        op.Version,
-                        op.Id);
+                        new InsertOperation<T>(message.Index, message.DeserializeValue<T>()!),
+                        message.Version,
+                        message.Id);
 
-            case NexusListModifyMessage op:
+            case NexusListModifyMessage message:
                 return !RequireValidState()
                     ? (null, true, null)
                     : ProcessMessage(
-                        new ModifyOperation<T>(op.Index, op.DeserializeValue<T>()!),
-                        op.Version,
-                        op.Id);
+                        new ModifyOperation<T>(message.Index, message.DeserializeValue<T>()!),
+                        message.Version,
+                        message.Id);
 
-            case NexusListMoveMessage op:
+            case NexusListMoveMessage message:
                 return !RequireValidState()
                     ? (null, true, null)
                     : ProcessMessage(
-                        new MoveOperation<T>(op.FromIndex, op.ToIndex),
-                        op.Version,
-                        op.Id);
+                        new MoveOperation<T>(message.FromIndex, message.ToIndex),
+                        message.Version,
+                        message.Id);
 
-            case NexusListRemoveMessage op:
+            case NexusListRemoveMessage message:
                 return !RequireValidState()
                     ? (null, true, null)
                     : ProcessMessage(
-                        new RemoveOperation<T>(op.Index),
-                        op.Version,
-                        op.Id);
+                        new RemoveOperation<T>(message.Index),
+                        message.Version,
+                        message.Id);
 
             // No broadcasting on the reset operations as they are only client operations.
-            case NexusListStartResetMessage resetOperation:
+            case NexusCollectionResetStartMessage message:
                 if (IsServer)
                     return (null, true, null);
 
-                _clientInitialization = new List<T>(resetOperation.Count);
-                _clientInitializationVersion = resetOperation.Version;
+                _clientInitialization = new List<T>(message.Count);
+                _clientInitializationVersion = message.Version;
+                break;
+            
+            case NexusListBatchValueMessage message:
+                if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
+                    return (null, true, null);
+                
+                _clientInitialization!.AddRange(MemoryPackSerializer.Deserialize<T>(message.Values.Span));
                 break;
 
-            case NexusListCompleteResetMessage:
+            case NexusCollectionResetCompleteMessage:
                 if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
                     return (null, true, null);
 
@@ -152,7 +163,6 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
                     return (null, true, null);
                 
                 _clientInitialization.Add(addOperation.DeserializeValue<T>()!);
-                
                 break;
             
             case NexusCollectionAckMessage ackOperation:
@@ -211,31 +221,6 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         }
     }
 
-    protected override async ValueTask SendClientInitData(NexusChannelWriter<INexusListMessage> operation)
-    {
-        var state = _itemList.State;
-
-        if (state.List.Count == 0)
-            return;
-        
-        var reset = NexusListStartResetMessage.Rent();
-        var resetComplete = NexusListCompleteResetMessage.Rent();
-        await operation.WriteAsync(reset);
-        
-        
-
-
-        foreach (var item in state.List)
-        {
-            
-        }
-        
-        await operation.WriteAsync(resetComplete);
-        reset.ReturnToCache();
-        resetComplete.ReturnToCache();
-        return default;
-    }
-
     public void Reset()
     {
         _clientInitialization = null;
@@ -251,7 +236,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     {
         var message = NexusListClearMessage.Rent();
         message.Version = _itemList.Version;
-        return UpdateServerAsync(message);
+        return UpdateAndWaitAsync(message);
     }
 
     public async Task<bool> RemoveAsync(T item)
@@ -265,7 +250,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         
         message.Version = _itemList.Version;
         message.Index = index;
-        await UpdateServerAsync(message).ConfigureAwait(false);
+        await UpdateAndWaitAsync(message).ConfigureAwait(false);
         return true;
     }
     public int IndexOf(T item) => _itemList.IndexOf(item);
@@ -277,7 +262,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         message.Version = _itemList.Version;
         message.Index = index;
         message.Value = MemoryPackSerializer.Serialize(item);
-        return UpdateServerAsync(message);
+        return UpdateAndWaitAsync(message);
     }
 
     public Task<bool> RemoveAtAsync(int index)
@@ -286,7 +271,7 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
         
         message.Version = _itemList.Version;
         message.Index = index;
-        return UpdateServerAsync(message);
+        return UpdateAndWaitAsync(message);
     }
     
     public Task<bool> AddAsync(T item)
@@ -295,4 +280,13 @@ internal class NexusList<T> : NexusCollection<T, INexusListMessage>, INexusList<
     }
 
     public T this[int index] => _itemList[index];
+    public override IEnumerator<T> GetEnumerator()
+    {
+        return _itemList.State.List.GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return _itemList.State.List.GetEnumerator();
+    }
 }

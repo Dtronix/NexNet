@@ -1,4 +1,6 @@
-﻿using NexNet.Messages;
+﻿using NexNet.Collections;
+using NexNet.Collections.Lists;
+using NexNet.Messages;
 using NexNet.Pipes;
 
 // ReSharper disable InconsistentNaming
@@ -26,6 +28,11 @@ public partial interface IClientNexus
 
 public partial interface IServerNexus
 {
+    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    INexusList<int> IntListBi { get; }
+    
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    INexusList<int> IntListSvToCl { get; }
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

@@ -18,8 +18,8 @@ public interface IProxyInvoker
     /// <summary>
     /// Configures the proxy invoker with the specified parameters.
     /// </summary>
-    /// <param name="session">The session to be used by the proxy invoker. Can be null.</param>
-    /// <param name="sessionManager">The session manager to be used by the proxy invoker. Can be null.</param>
+    /// <param name="session">The session to be used by the proxy invoker. Null on the server.</param>
+    /// <param name="sessionManager">The session manager to be used by the proxy invoker. Null on the client</param>
     /// <param name="mode">The invocation mode to be used by the proxy invoker.</param>
     /// <param name="modeArguments">The arguments for the invocation mode. Can be null.</param>
     internal void Configure(
