@@ -1,17 +1,13 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Dataflow;
 using MemoryPack;
-using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
-using NexNet.Internals.Collections.Versioned;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -20,8 +16,7 @@ using NexNet.Transports;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnector
-    where TBaseMessage : class, INexusCollectionMessage
+internal abstract class NexusCollection : INexusCollectionConnector
 {
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
@@ -41,8 +36,9 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<ProcessRequest> _processChannel;
     private ConcurrentDictionary<int, TaskCompletionSource<bool>>? _ackTcs;
-    
-    private record struct ProcessRequest(Client? Client, TBaseMessage Message, TaskCompletionSource<bool>? Tcs);
+    protected bool IsClientResetting { get; private set; }
+
+    private record struct ProcessRequest(Client? Client, INexusCollectionMessage Message, TaskCompletionSource<bool>? Tcs);
     
     public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
     
@@ -65,6 +61,46 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
         }
     }
 
+    protected record struct ProcessServerOperationResult(INexusCollectionMessage? Message, bool Disconnect, bool Ack);
+    private ProcessServerOperationResult ProcessServerOperation(INexusCollectionMessage clientMessage)
+    {
+        switch (clientMessage)
+        {
+
+        }
+    }
+    
+    protected abstract bool OnProcessClientMessage(INexusCollectionMessage message);
+    
+    private bool ProcessClientOperation(INexusCollectionMessage serverMessage)
+    {
+        switch (serverMessage)
+        {
+            // No broadcasting on the reset operations as they are only client operations.
+            case NexusCollectionResetStartMessage:
+                IsClientResetting = true;
+                break;
+            
+            case NexusCollectionResetValuesMessage message:
+                if (!IsClientResetting)
+                    return false;
+                break;
+
+            case NexusCollectionResetCompleteMessage:
+                if (!IsClientResetting)
+                    return false;
+
+                IsClientResetting = false;
+                break;
+            
+            case NexusCollectionAckMessage ackOperation:
+                _ackTcs.
+        }
+        
+        return OnProcessClientMessage(serverMessage);
+    }
+
+
     public void StartUpdateBroadcast()
     {
         if(_broadcastCancellation != null)
@@ -81,7 +117,7 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
 
         _ = Task.Factory.StartNew(async static state =>
         {
-            var collection = Unsafe.As<NexusCollection<TBaseMessage>>(state)!;
+            var collection = Unsafe.As<NexusCollection>(state)!;
 
             while (true)
             {
@@ -168,7 +204,7 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
         }, this, TaskCreationOptions.DenyChildAttach);
     }
     
-    protected async Task<bool> UpdateAndWaitAsync(TBaseMessage message)
+    protected async Task<bool> UpdateAndWaitAsync(INexusCollectionMessage message)
     {
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
@@ -212,8 +248,8 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
         if (pipe.CompleteTask.IsCompleted)
             return;
 
-        var writer = new NexusChannelWriter<TBaseMessage>(pipe);
-        var reader = Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelReader<TBaseMessage>(pipe) : null;
+        var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
+        var reader = Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelReader<INexusCollectionMessage>(pipe) : null;
         
         await InitializeNewClient(writer).ConfigureAwait(false);
 
@@ -310,23 +346,23 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
 
         _client = new Client(
             pipe,
-            new NexusChannelReader<TBaseMessage>(pipe),
-            Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<TBaseMessage>(pipe) : null,
+            new NexusChannelReader<INexusCollectionMessage>(pipe),
+            Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null,
             _session);
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
 
         {
-            var collection = Unsafe.As<NexusCollection<T, TBaseMessage>>(state)!;
+            var collection = Unsafe.As<NexusCollection>(state)!;
             try
             {
                 await collection._client!.Pipe.ReadyTask.ConfigureAwait(false);
 
-                await foreach (var operation in collection._client!.Reader!.ConfigureAwait(false))
+                await foreach (var message in collection._client!.Reader!.ConfigureAwait(false))
                 {
                     
-                    if (operation is NexusCollectionAckMessage ack)
+                    if (message is NexusCollectionAckMessage ack)
                     {
                         if(collection._ackTcs!.TryRemove(ack.Id, out var ackTcs))
                             ackTcs.TrySetResult(true);
@@ -334,15 +370,15 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
                             collection._client.Session.Logger?.LogWarning($"Could not find AckTcs for id {ack.Id}.");
                     }
                     
-                    (_, bool disconnect, _) = collection.ProcessOperation(operation);
+                    var success = collection.ProcessClientOperation(message);
                     
                     // Don't return these messages to the cache as they are created on reading.
                     //operation.ReturnToCache();
-                    if(operation is INexusCollectionValueMessage valueMessage)
+                    if(message is INexusCollectionValueMessage valueMessage)
                         valueMessage.ReturnValueToPool();
        
                     // If the result is false, close the whole pipe
-                    if (disconnect)
+                    if (!success)
                     {
                         await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
                         return;
@@ -359,30 +395,23 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
         }, this, TaskCreationOptions.DenyChildAttach);
     }
     
+    protected abstract IEnumerable<NexusCollectionResetValuesMessage> ResetValuesEnumerator(
+        NexusCollectionResetValuesMessage message);
     
-    
-    protected async ValueTask SendClientInitData(NexusChannelWriter<TBaseMessage> writer)
+    protected async ValueTask SendClientInitData(NexusChannelWriter<INexusCollectionMessage> writer)
     {
-        var state = _itemList.State;
 
-        if (state.List.Count == 0)
-            return;
         
         var reset = NexusCollectionResetStartMessage.Rent();
         var resetComplete = NexusCollectionResetCompleteMessage.Rent();
         var batchValue = NexusCollectionResetValuesMessage.Rent();
-        var bufferSize = Math.Min(state.List.Count, 40);
-        
-        reset.Count = state.List.Count;
-        reset.Version = state.Version;
+ 
+        await writer.WriteAsync(reset);
 
-        await writer.WriteAsync(Unsafe.As<TBaseMessage>(reset));
-        foreach (var item in state.List.MemoryChunk(bufferSize))
+        foreach (var values in ResetValuesEnumerator(batchValue))
         {
-            batchValue.Values = MemoryPackSerializer.Serialize(item);
-            await writer.WriteAsync(batchValue);
+            await writer.WriteAsync(values);
         }
-  
         await writer.WriteAsync(resetComplete);
         
         reset.ReturnToCache();
@@ -416,37 +445,35 @@ internal abstract class NexusCollection<TBaseMessage> : INexusCollectionConnecto
     }
     
     protected abstract void DisconnectedFromServer();
-    
-    protected abstract ValueTask InitializeNewClient(NexusChannelWriter<TBaseMessage> writer);
 
     /// <summary>
     /// Process the message into an operation.  The client is only passed on server.
     /// </summary>
     /// <param name="operation">Operational message to process.</param>
     /// <returns>True on successful processing.  False on error.  When false, the channel to the client will close.</returns>
-    protected abstract (TBaseMessage? message, bool disconnect, TBaseMessage? ackMessage) 
-        ProcessOperation(TBaseMessage operation);
+    protected abstract (INexusCollectionMessage? message, bool disconnect, INexusCollectionMessage? ackMessage) 
+        ProcessOperation(INexusCollectionMessage operation);
 
     private class Client
     {
         public readonly INexusDuplexPipe Pipe;
-        public readonly INexusChannelReader<TBaseMessage>? Reader;
-        public readonly INexusChannelWriter<TBaseMessage>? Writer;
+        public readonly INexusChannelReader<INexusCollectionMessage>? Reader;
+        public readonly INexusChannelWriter<INexusCollectionMessage>? Writer;
         public readonly INexusSession Session;
-        public readonly Channel<TBaseMessage> MessageSender;
+        public readonly Channel<INexusCollectionMessage> MessageSender;
 
         public StateType State;
 
         public Client(INexusDuplexPipe pipe, 
-            INexusChannelReader<TBaseMessage>? reader,
-            INexusChannelWriter<TBaseMessage>? writer,
+            INexusChannelReader<INexusCollectionMessage>? reader,
+            INexusChannelWriter<INexusCollectionMessage>? writer,
             INexusSession session)
         {
             Pipe = pipe;
             Reader = reader;
             Writer = writer;
             Session = session;
-            MessageSender = Channel.CreateBounded<TBaseMessage>(new BoundedChannelOptions(10)
+            MessageSender = Channel.CreateBounded<INexusCollectionMessage>(new BoundedChannelOptions(10)
             {
                 SingleReader = true,
                 SingleWriter = true, 
