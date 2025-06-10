@@ -7,5 +7,7 @@ namespace NexNet.Collections;
 public interface INexusCollection : IEnumerable
 {
     public Task<bool> ConnectAsync(CancellationToken token = default);
-    public Task DisconnectAsync();
+    public Task  DisconnectAsync();
+    
+    public NexusCollectionState State { get; }
 }

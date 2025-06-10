@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
@@ -45,6 +46,12 @@ internal class ClearOperation<T> : Operation<T>, IEquatable<ClearOperation<T>>
         return true;
     }
     
+
+    public override int GetHashCode()
+    {
+        return RuntimeHelpers.GetHashCode(this);
+    }
+
     public static ClearOperation<T> Rent() => ObjectCache<ClearOperation<T>>.Rent();
     public override void Return() => ObjectCache<ClearOperation<T>>.Return(this);
 }

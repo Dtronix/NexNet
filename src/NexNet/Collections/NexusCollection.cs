@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Invocation;
@@ -16,19 +15,12 @@ using NexNet.Transports;
 
 namespace NexNet.Collections;
 
-public enum NexusCollectionState
-{
-    Unset,
-    Disconnected,
-    Connected
-} 
 internal abstract class NexusCollection : INexusCollectionConnector
 {
     private NexusCollectionState _state;
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
-    private readonly ConfigBase _config;
-    
+
 
     protected readonly bool IsServer;
     
@@ -45,7 +37,10 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private ConcurrentDictionary<int, TaskCompletionSource<bool>>? _ackTcs;
     protected readonly INexusLogger? Logger;
     private TaskCompletionSource? _clientConnectTcs;
+    private TaskCompletionSource? _disconnectTcs;
     protected bool IsClientResetting { get; private set; }
+    
+    public NexusCollectionState State => _state;
 
     /// <summary>
     /// Internal testing for times the server does not ack a message, when it would normally do so.
@@ -61,13 +56,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
     
     protected NexusCollection(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
     {
-        
         Id = id;
         Mode = mode;
-        _config = config;
         IsServer = isServer;
         
-        Logger = _config.Logger?.CreateLogger("NexusCollection", $"{this.GetType().Name}:{id}");
+        Logger = config.Logger?.CreateLogger("NexusCollection", $"{this.GetType().Name}:{id}");
         
         if (isServer)
         {
@@ -309,7 +302,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         _nexusPipeList.Add(client);
         
         // Add in the completion removal for execution later.
-        _ = pipe.CompleteTask.ContinueWith(static (saf, state )=>
+        _ = pipe.CompleteTask.ContinueWith(static (_, state )=>
         {
             var (client, list) = ((Client,  SnapshotList<Client>))state!;
             list.Remove(client);
@@ -413,6 +406,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
             _session);
         
         _clientConnectTcs = new TaskCompletionSource();
+        _disconnectTcs = new TaskCompletionSource();
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
@@ -558,7 +552,14 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (client == null)
             return;
 
+        
         await client.Pipe.CompleteAsync().ConfigureAwait(false);
+
+        if (_disconnectTcs != null)
+        {
+            await _disconnectTcs.Task;
+            _disconnectTcs = null;
+        }
     }
 
 
@@ -574,8 +575,17 @@ internal abstract class NexusCollection : INexusCollectionConnector
             taskCompletionSource.Value.TrySetResult(false);
         
         _ackTcs.Clear();
+
+        try
+        {
+            OnClientDisconnected();
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Error while disconnecting client.");
+        }
         
-        OnClientDisconnected();
+        _disconnectTcs?.SetResult();
     }
     protected abstract void OnClientDisconnected();
 

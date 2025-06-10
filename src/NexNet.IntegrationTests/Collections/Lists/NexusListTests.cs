@@ -129,7 +129,7 @@ internal class NexusListTests : BaseTests
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
         await Task.Delay(50); // allow propagation
 
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 77 }));
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
 
     [TestCase(Type.Quic)]
@@ -146,12 +146,10 @@ internal class NexusListTests : BaseTests
         // seed, then remove on server
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await Task.Delay(50);
-
         await serverNexus.IntListBi.RemoveAsync(1).Timeout(1);
-        await Task.Delay(50);
+        await Task.Delay(30);
 
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 2 }));
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2]));
     }
     
     [TestCase(Type.Quic)]
@@ -376,7 +374,7 @@ internal class NexusListTests : BaseTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.True);
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 1, 2 }));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([1, 2]));
         });
     }
     
@@ -451,7 +449,7 @@ internal class NexusListTests : BaseTests
         Assert.Multiple(() =>
         {
             Assert.That(removed, Is.False);
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 7 }));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([7]));
         });
     }
     
@@ -473,7 +471,7 @@ internal class NexusListTests : BaseTests
         {
             Assert.That(first, Is.True);
             Assert.That(second, Is.True);
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 42, 42 }));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([42, 42]));
         });
     }
     
@@ -488,8 +486,8 @@ internal class NexusListTests : BaseTests
         Assert.Multiple(() =>
         {
             Assert.That(result, Is.True);
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(new[] { 99 }));
-            Assert.That(serverNexus.IntListBi, Is.EquivalentTo(new[] { 99 }));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([99]));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([99]));
         });
     }
     
@@ -506,7 +504,7 @@ internal class NexusListTests : BaseTests
         var array = new int[3];
         client.Proxy.IntListBi.CopyTo(array, 0);
 
-        Assert.That(array, Is.EquivalentTo(new[] { 3, 6, 9 }));
+        Assert.That(array, Is.EquivalentTo([3, 6, 9]));
     }
     
     [Test]
@@ -554,6 +552,35 @@ internal class NexusListTests : BaseTests
 
         var list = client.Proxy.IntListBi.ToList();
         Assert.That(list, Is.EqualTo(new[] { 5, 10, 15 }));
+    }
+    
+    [Test]
+    public async Task ClientDisconnectsAndClearsLocalList()
+    {
+        var (_, _, client, _) = await ConnectServerAndClient(Type.Uds);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+
+        await client.Proxy.IntListBi.AddAsync(5).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(10).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(15).Timeout(1);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+    }
+    
+    [Test]
+    public async Task ClientDisconnectsAndReconnects()
+    {
+        var (_, _, client, _) = await ConnectServerAndClient(Type.Uds);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+
+        await client.Proxy.IntListBi.AddAsync(5).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(10).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(15).Timeout(1);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([5, 10, 15]));
     }
     
         

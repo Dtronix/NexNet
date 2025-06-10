@@ -34,7 +34,7 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     }
 
     /// <summary>
-    /// Current number of elements stored (<= Capacity).
+    /// Current number of elements stored (&lt;= Capacity).
     /// </summary>
     public int Count => _count;
 

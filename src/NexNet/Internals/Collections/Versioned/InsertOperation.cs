@@ -106,6 +106,12 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return Equals((InsertOperation<T>)obj);
     }
+    
+    public override int GetHashCode()
+    {
+        return RuntimeHelpers.GetHashCode(this);
+    }
+
 
     public static InsertOperation<T> Rent() => ObjectCache<InsertOperation<T>>.Rent();
     public override void Return() => ObjectCache<InsertOperation<T>>.Return(this);

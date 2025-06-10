@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Runtime.CompilerServices;
 using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
@@ -99,6 +100,12 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return Equals((ModifyOperation<T>)obj);
     }
+    
+    public override int GetHashCode()
+    {
+        return RuntimeHelpers.GetHashCode(this);
+    }
+
     
     public static ModifyOperation<T> Rent() => ObjectCache<ModifyOperation<T>>.Rent();
     public override void Return() => ObjectCache<ModifyOperation<T>>.Return(this);
