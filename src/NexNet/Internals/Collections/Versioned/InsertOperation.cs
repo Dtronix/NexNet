@@ -1,8 +1,11 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using NexNet.Cache;
+using NexNet.Collections;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -11,7 +14,6 @@ namespace NexNet.Internals.Collections.Versioned;
 /// </summary>
 internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
 {
-    
     /// <summary>
     /// Index to add the provided item.  -1 Indicates this is an add operation and the item will be appended.
     /// </summary>
@@ -20,8 +22,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     /// <summary>
     /// Item that is being inserted at the specified index.
     /// </summary>
-    public readonly T Item;
-
+    public T Item;
     
     /// <summary>
     /// Initializes a new instance of the <see cref="InsertOperation{T}"/> class.
@@ -34,6 +35,11 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
 
         Index = index;
         Item = item;
+    }
+
+    public InsertOperation()
+    {
+        
     }
 
     /// <inheritdoc />
@@ -100,4 +106,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return Equals((InsertOperation<T>)obj);
     }
+
+    public static InsertOperation<T> Rent() => ObjectCache<InsertOperation<T>>.Rent();
+    public override void Return() => ObjectCache<InsertOperation<T>>.Return(this);
 }

@@ -1,4 +1,6 @@
-﻿using System.Collections.Immutable;
+﻿using System;
+using System.Collections.Immutable;
+using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -11,7 +13,7 @@ internal class NoopOperation<T> : Operation<T>
     /// <summary>
     /// Initializes a new instance of the <see cref="NoopOperation{T}"/> class.  Noop will be performed upon apply.
     /// </summary>
-    private NoopOperation()
+    public NoopOperation()
     {
     }
 
@@ -32,4 +34,7 @@ internal class NoopOperation<T> : Operation<T>
     {
         return new NoopOperation<T>();
     }
+    
+    public static NoopOperation<T> Rent() => throw new InvalidOperationException();
+    public override void Return() => throw new InvalidOperationException();
 }

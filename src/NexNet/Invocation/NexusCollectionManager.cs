@@ -32,7 +32,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
     public ValueTask  StartServerCollectionConnection(ushort id, INexusDuplexPipe pipe, INexusSession context)
     {
         var connector = Unsafe.As<INexusCollectionConnector>(_collections![id]);
-        return connector.StartServerCollectionConnection(pipe, context);
+        return connector.ServerStartCollectionConnection(pipe, context);
     }
     
     public void ConfigureList<T>(ushort id, NexusCollectionMode mode)
@@ -42,7 +42,9 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         var list = new NexusList<T>(id, mode, _config, _isServer);
         _collectionBuilder.Add(id, list);
         
-        list.StartUpdateBroadcast();
+        // Only broadcast on the server.
+        if(_isServer)
+            list.StartUpdateBroadcast();
     }
 
     public void CompleteConfigure()

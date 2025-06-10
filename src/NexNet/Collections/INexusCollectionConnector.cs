@@ -13,7 +13,7 @@ internal interface INexusCollectionConnector
     /// <param name="pipe"></param>
     /// <param name="context"></param>
     /// <returns></returns>
-    public ValueTask StartServerCollectionConnection(INexusDuplexPipe pipe, INexusSession context);
+    public ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession context);
     
     /// <summary>
     /// Client Only

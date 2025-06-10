@@ -1,4 +1,5 @@
 ﻿using System.Collections.Immutable;
+using NexNet.Collections;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -60,6 +61,8 @@ internal abstract class Operation<T> : IOperation
     /// </summary>
     /// <returns>A new Operation&lt;T&gt; that is a clone of this instance.</returns>
     public abstract Operation<T> Clone();
+    
+    public abstract void Return();
 }
 
 internal interface IOperation

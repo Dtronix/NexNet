@@ -18,10 +18,10 @@ internal class NexusListTests : BaseTests
     {
         var (server, serverNexus, client, clientNexus) = await ConnectServerAndClient(type);
 
-        await client.Proxy.IntListBi.ConnectAsync();
-        await client.Proxy.IntListBi.AddAsync(1);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.AddAsync(3);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(1).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(2).Timeout(1);
+        await client.Proxy.IntListBi.AddAsync(3).Timeout(1);
         Assert.Multiple(() =>
         {
             Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));

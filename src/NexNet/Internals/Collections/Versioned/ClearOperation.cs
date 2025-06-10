@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -43,4 +44,7 @@ internal class ClearOperation<T> : Operation<T>, IEquatable<ClearOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return true;
     }
+    
+    public static ClearOperation<T> Rent() => ObjectCache<ClearOperation<T>>.Rent();
+    public override void Return() => ObjectCache<ClearOperation<T>>.Return(this);
 }

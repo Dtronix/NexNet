@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
+using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -31,6 +32,11 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
         
         FromIndex = fromIndex;
         ToIndex = toIndex;
+    }
+
+    public MoveOperation()
+    {
+        
     }
 
     /// <inheritdoc />
@@ -107,4 +113,7 @@ internal class MoveOperation<T> : Operation<T>, IEquatable<MoveOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return Equals((MoveOperation<T>)obj);
     }
+    
+    public static MoveOperation<T> Rent() => ObjectCache<MoveOperation<T>>.Rent();
+    public override void Return() => ObjectCache<MoveOperation<T>>.Return(this);
 }

@@ -11,9 +11,8 @@ namespace NexNet.Collections;
 [MemoryPackUnion(3, typeof(NexusCollectionResetCompleteMessage))]                
 [MemoryPackUnion(4, typeof(NexusListInsertMessage))]
 [MemoryPackUnion(5, typeof(NexusListModifyMessage))]
-[MemoryPackUnion(6, typeof(NexusListAddItemMessage))]
-[MemoryPackUnion(7, typeof(NexusListMoveMessage))]
-[MemoryPackUnion(8, typeof(NexusListRemoveMessage))]
+[MemoryPackUnion(6, typeof(NexusListMoveMessage))]
+[MemoryPackUnion(7, typeof(NexusListRemoveMessage))]
 internal partial interface INexusCollectionMessage
 {
     int Id { get; set; }
@@ -37,7 +36,11 @@ internal partial class NexusCollectionAckMessage :
 internal partial class NexusCollectionResetStartMessage 
     : NexusCollectionMessage<NexusCollectionResetStartMessage>
 {
-
+    [MemoryPackOrder(1)]
+    public int Version { get; set; }
+    
+    [MemoryPackOrder(2)]
+    public int TotalValues { get; set; }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -102,21 +105,6 @@ internal partial class NexusListModifyMessage : NexusCollectionValueMessage<Nexu
     public int Index { get; set; }
     
     [MemoryPackOrder(3)]
-    [MemoryPoolFormatter<byte>]
-    public Memory<byte> Value
-    {
-        get => base.ValueCore;
-        set => base.ValueCore = value;
-    }
-
-    [MemoryPackOnDeserialized]
-    private void OnDeserialized() => base.OnDeserializedCore();
-}
-
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusListAddItemMessage : NexusCollectionValueMessage<NexusListAddItemMessage>
-{
-    [MemoryPackOrder(1)]
     [MemoryPoolFormatter<byte>]
     public Memory<byte> Value
     {

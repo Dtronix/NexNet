@@ -1,19 +1,17 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Linq;
-using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
-using NexNet.Pipes;
+using NexNet.Logging;
 using NexNet.Transports;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusList<T> : NexusCollection, INexusList<T>
+internal partial class NexusList<T> : NexusCollection, INexusList<T>
 {
     private readonly VersionedList<T> _itemList = new();
     private List<T>? _clientInitialization;
@@ -27,138 +25,58 @@ internal class NexusList<T> : NexusCollection, INexusList<T>
     {
         
     }
-
-    protected override void DisconnectedFromServer()
-    {
-        _itemList.Reset();
-    }
-
-    private bool RequireValidState()
-    {
-        if (_clientInitialization != null || _clientInitializationVersion != -1)
-            return false;
-
-        // If this is the server, and we are not in bidirectional mode, then the client
-        // is sending messages when they are not supposed to.
-        return !IsServer || Mode == NexusCollectionMode.BiDrirectional;
-    }
-
-    private (INexusCollectionMessage? message, bool disconnect, INexusCollectionMessage? ackMessage) ProcessMessage(Operation<T> operation, int version, int id)
-    {
-        ListProcessResult processResult;
-        if (IsServer)
-        {
-            var opResult = _itemList.ProcessOperation(
-                operation,
-                version,
-                out processResult);
-            
-            // If the operational result is null, but the result is success, this is an unknown state.
-            // Ensure this is not just a noop.
-            if ((processResult != ListProcessResult.Successful && processResult != ListProcessResult.DiscardOperation)
-                || opResult == null)
-                return (null, true, null);
-
-            var message = NexusCollectionAckMessage.Rent();
-            message.Remaining = 1;
-            message.Id = id;
-            return (ConvertOperationToMessage(opResult, _itemList.Version), false, message);
-        }
-
-        // Client processing.  No broadcasting of changes.
-        processResult = _itemList.ApplyOperation(operation, version);
-        
-        if (processResult != ListProcessResult.Successful)
-            return (null, true, null);
-        
-        return (null, false, null);
-    }
     
-    protected override (INexusCollectionMessage? message, bool disconnect, INexusCollectionMessage? ackMessage) ProcessOperation(INexusCollectionMessage operation)
+    private (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message)
     {
-        switch (operation)
+        Operation<T>? op;
+        int version;
+        switch (message)
         {
-            case NexusListClearMessage message:
-                return !RequireValidState()
-                    ? (null, true, null)
-                    : ProcessMessage(new ClearOperation<T>(), message.Version, message.Id);
-
-            case NexusListInsertMessage message:
-                return !RequireValidState()
-                    ? (null, true, null)
-                    : ProcessMessage(
-                        new InsertOperation<T>(message.Index, message.DeserializeValue<T>()!),
-                        message.Version,
-                        message.Id);
-
-            case NexusListModifyMessage message:
-                return !RequireValidState()
-                    ? (null, true, null)
-                    : ProcessMessage(
-                        new ModifyOperation<T>(message.Index, message.DeserializeValue<T>()!),
-                        message.Version,
-                        message.Id);
-
-            case NexusListMoveMessage message:
-                return !RequireValidState()
-                    ? (null, true, null)
-                    : ProcessMessage(
-                        new MoveOperation<T>(message.FromIndex, message.ToIndex),
-                        message.Version,
-                        message.Id);
-
-            case NexusListRemoveMessage message:
-                return !RequireValidState()
-                    ? (null, true, null)
-                    : ProcessMessage(
-                        new RemoveOperation<T>(message.Index),
-                        message.Version,
-                        message.Id);
-
-            
-
-            case NexusListAddItemMessage addOperation:
-                if (IsServer || _clientInitialization == null || _clientInitializationVersion == -1)
-                    return (null, true, null);
-                
-                _clientInitialization.Add(addOperation.DeserializeValue<T>()!);
+            case NexusListClearMessage msg:
+                op = ClearOperation<T>.Rent();
+                version = msg.Version;
                 break;
             
-            case NexusCollectionAckMessage ackOperation:
-                return (null, false, null);
-        }
-
-        return (null, true, null);
-    }
-
-    protected override bool OnProcessClientMessage(INexusCollectionMessage serverMessage)
-    {
-        switch (serverMessage)
-        {
-            case NexusCollectionResetStartMessage:
-                _clientInitialization = new List<T>();
-                return true;
+            case NexusListInsertMessage msg:
+                var insOp = InsertOperation<T>.Rent();
+                insOp.Index = msg.Index;
+                insOp.Item = msg.DeserializeValue<T>()!;
+                op = insOp;
+                version = msg.Version;
+                break;
             
-            case NexusCollectionResetValuesMessage message:
-                _clientInitialization!.AddRange(MemoryPackSerializer.Deserialize<T>(message.Values.Span));
-                return true;
-
-            case NexusCollectionResetCompleteMessage:
-                var list = ImmutableList<T>.Empty.AddRange(_clientInitialization);
-
-                // Reset the state manually.
-                _itemList.ResetTo(list, _clientInitializationVersion);
-
-                _clientInitialization.Clear();
-                _clientInitialization = null;
-                _clientInitializationVersion = -1;
-                return true;
+            case NexusListModifyMessage msg:
+                var modOp = ModifyOperation<T>.Rent();
+                modOp.Index = msg.Index;
+                modOp.Value = msg.DeserializeValue<T>()!;
+                op = modOp;
+                version = msg.Version;
+                break;
+            
+            case NexusListMoveMessage msg:
+                var mvOp = MoveOperation<T>.Rent();
+                mvOp.FromIndex = msg.FromIndex;
+                mvOp.ToIndex = msg.ToIndex;
+                op = mvOp;
+                version = msg.Version;
+                break;
+            
+            case NexusListRemoveMessage msg:
+                var rmOp = RemoveOperation<T>.Rent();
+                rmOp.Index = msg.Index;
+                op = rmOp;
+                version = msg.Version;
+                break;
+            
+            default:
+                Logger?.LogError("Could not determine what type of message server sent to client.");
+                return (null, -1);
         }
-
-        return false;
+        
+        return (op, version);
     }
-
-    private INexusCollectionMessage? ConvertOperationToMessage(IOperation operation, int version)
+    
+    private INexusCollectionMessage? GetRentedMessage(IOperation operation, int version)
     {
         switch (operation)
         {
@@ -207,21 +125,6 @@ internal class NexusList<T> : NexusCollection, INexusList<T>
         }
     }
 
-    protected override IEnumerable<NexusCollectionResetValuesMessage> ResetValuesEnumerator(NexusCollectionResetValuesMessage message)
-    {
-        var state = _itemList.State;
-
-        if (state.List.Count == 0)
-            yield break;
-        
-        var bufferSize = Math.Min(state.List.Count, 40);
-        
-        foreach (var item in state.List.MemoryChunk(bufferSize))
-        {
-            message.Values = MemoryPackSerializer.Serialize(item);
-            yield return message;
-        }
-    }
 
     public void Reset()
     {
@@ -282,7 +185,8 @@ internal class NexusList<T> : NexusCollection, INexusList<T>
     }
 
     public T this[int index] => _itemList[index];
-    public override IEnumerator<T> GetEnumerator()
+    
+    public IEnumerator<T> GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
     }

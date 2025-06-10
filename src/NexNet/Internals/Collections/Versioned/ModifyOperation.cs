@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using NexNet.Cache;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -18,7 +19,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     /// <summary>
     /// Value to set.
     /// </summary>
-    public readonly T Value;
+    public T Value;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModifyOperation{T}"/> class.
@@ -30,6 +31,11 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         Index = index;
         Value = value;
+    }
+
+    public ModifyOperation()
+    {
+        
     }
 
     /// <inheritdoc />
@@ -93,5 +99,8 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
         if (obj.GetType() != GetType()) return false;
         return Equals((ModifyOperation<T>)obj);
     }
+    
+    public static ModifyOperation<T> Rent() => ObjectCache<ModifyOperation<T>>.Rent();
+    public override void Return() => ObjectCache<ModifyOperation<T>>.Return(this);
 
 }
