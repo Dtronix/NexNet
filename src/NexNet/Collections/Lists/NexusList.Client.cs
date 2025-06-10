@@ -10,19 +10,19 @@ namespace NexNet.Collections.Lists;
 
 internal partial class NexusList<T>
 {
-    protected override void DisconnectedFromServer()
+    protected override void OnClientDisconnected()
     {
         _itemList.Reset();
     }
     
-    protected override bool OnClientProcessResetStarted(int version, int totalValues)
+    protected override bool OnClientResetStarted(int version, int totalValues)
     {
         _clientInitialization = new List<T>(totalValues);
         _clientInitializationVersion = version;
         return true;
     }
     
-    protected override bool OnClientProcessResetValues(ReadOnlySpan<byte> data)
+    protected override bool OnClientResetValues(ReadOnlySpan<byte> data)
     {
         var values = MemoryPackSerializer.Deserialize<T[]>(data);
         if(values != null)
@@ -31,7 +31,7 @@ internal partial class NexusList<T>
     }
 
 
-    protected override bool OnClientProcessResetCompleted()
+    protected override bool OnClientResetCompleted()
     {
         if (_clientInitialization == null)
             return false;

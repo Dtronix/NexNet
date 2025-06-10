@@ -16,8 +16,15 @@ using NexNet.Transports;
 
 namespace NexNet.Collections;
 
+public enum NexusCollectionState
+{
+    Unset,
+    Disconnected,
+    Connected
+} 
 internal abstract class NexusCollection : INexusCollectionConnector
 {
+    private NexusCollectionState _state;
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
     private readonly ConfigBase _config;
@@ -39,6 +46,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected readonly INexusLogger? Logger;
     private TaskCompletionSource? _clientConnectTcs;
     protected bool IsClientResetting { get; private set; }
+
+    /// <summary>
+    /// Internal testing for times the server does not ack a message, when it would normally do so.
+    /// </summary>
+    internal bool DoNotSendAck = false;
 
     private record struct ProcessRequest(
         Client? Client,
@@ -94,11 +106,18 @@ internal abstract class NexusCollection : INexusCollectionConnector
         }
     }
     
+    public Task<bool> ClearAsync()
+    {
+        var message = NexusCollectionClearMessage.Rent();
+        message.Version = GetVersion();
+        return UpdateAndWaitAsync(message);
+    }
+    
     protected abstract ServerProcessMessageResult OnServerProcessMessage(INexusCollectionMessage message);
     protected abstract bool OnClientProcessMessage(INexusCollectionMessage message);
-    protected abstract bool OnClientProcessResetValues(ReadOnlySpan<byte> data);
-    protected abstract bool OnClientProcessResetStarted(int version, int totalValues);
-    protected abstract bool OnClientProcessResetCompleted();
+    protected abstract bool OnClientResetValues(ReadOnlySpan<byte> data);
+    protected abstract bool OnClientResetStarted(int version, int totalValues);
+    protected abstract bool OnClientResetCompleted();
     
     private bool ClientProcessMessage(INexusCollectionMessage serverMessage)
     {
@@ -111,26 +130,34 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     if (IsClientResetting)
                         return false;
                     IsClientResetting = true;
-                    return OnClientProcessResetStarted(message.Version, message.TotalValues);
+                    return OnClientResetStarted(message.Version, message.TotalValues);
             
                 case NexusCollectionResetValuesMessage message:
                     if (!IsClientResetting)
                         return false;
-                    return OnClientProcessResetValues(message.Values.Span);
+                    return OnClientResetValues(message.Values.Span);
 
                 case NexusCollectionResetCompleteMessage:
                     if (!IsClientResetting)
                         return false;
                     IsClientResetting = false;
-                    var completeResult = OnClientProcessResetCompleted();
+                    var completeResult = OnClientResetCompleted();
                     _clientConnectTcs?.SetResult();
-                    return completeResult;
-            
+                    return completeResult;      
+                
+                case NexusCollectionClearMessage message:
+                    if (IsClientResetting)
+                        return false;
+                    return OnClientClear(message.Version);
+                    
                 case NexusCollectionAckMessage ackOperation:
                     if(_ackTcs!.TryRemove(ackOperation.Id, out var tcs))
                         tcs.TrySetResult(true);
                     return true;
             }
+
+            if (IsClientResetting)
+                return false;
             
             return OnClientProcessMessage(serverMessage);
         }
@@ -140,7 +167,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
             return false;
         }
     }
-    
+
+    protected abstract bool OnClientClear(int version);
+
     protected bool RequireValidProcessState()
     {
         if (IsClientResetting)
@@ -231,7 +260,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                         req.Tcs?.TrySetResult(true);
 
                         // Notify the sending client that the operation was complete.
-                        if (result.Ack && req.Client != null)
+                        if (result.Ack && req.Client != null && !collection.DoNotSendAck)
                         {
                             var ackMessage = NexusCollectionAckMessage.Rent();
                             ackMessage.Remaining = 1;
@@ -244,8 +273,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
                             }
                         }
                     }
-
-                    collection.DisconnectedFromServer();
                 }
                 catch (Exception e)
                 {
@@ -255,6 +282,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
 
         }, this, TaskCreationOptions.DenyChildAttach);
+
+        // The server is always connected.
+        _state = NexusCollectionState.Connected;
     }
 
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
@@ -350,6 +380,10 @@ internal abstract class NexusCollection : INexusCollectionConnector
         // Connect on the server is a noop.
         if (IsServer)
             return false;
+        
+        // Client is already connected.
+        if(_state == NexusCollectionState.Connected)
+            return true;
 
         var pipe = _session!.PipeManager.RentPipe();
 
@@ -368,6 +402,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
             InvocationFlags.DuplexPipe).ConfigureAwait(false);
 
         await pipe.ReadyTask.ConfigureAwait(false);
+
+        _ = pipe.CompleteTask.ContinueWith((s, state) => 
+            Unsafe.As<NexusCollection>(state)!.ClientDisconnected(), this, token);
 
         _client = new Client(
             pipe,
@@ -418,21 +455,28 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 collection._client?.Session.Logger?.LogInfo(e, "Error while reading session collection message.");
             }
 
-            collection.DisconnectedFromServer();
+            collection.ClientDisconnected();
             
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Wait for either the complete task fires or the client is actually connected.
         await Task.WhenAny(_client!.Pipe.CompleteTask, _clientConnectTcs.Task).ConfigureAwait(false);
         
+        // Check to see if we have connected or have just been disconnected.
         var isConnected = _clientConnectTcs.Task.IsCompleted;
         _clientConnectTcs = null;
+
+        if (isConnected)
+            _state = NexusCollectionState.Connected;
 
         return isConnected;
     }
 
     protected async Task<bool> UpdateAndWaitAsync(INexusCollectionMessage message)
     {
+        if (_state != NexusCollectionState.Connected)
+            throw new InvalidOperationException("Client is not connected.");
+        
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
 
@@ -445,7 +489,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
         }
         else
         {
-
             message.Id = Interlocked.Increment(ref _ackId);
 
             //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
@@ -457,7 +500,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
             message.ReturnToCache();
 
             if (result)
+            {
                 return await tcs.Task.ConfigureAwait(false);
+            }
 
             await DisconnectAsync().ConfigureAwait(false);
             return false;
@@ -505,7 +550,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
     public async Task DisconnectAsync()
     {
         // Disconnect on the server is a noop.
-        if(IsServer)
+        if(IsServer 
+           || Interlocked.Exchange(ref _state, NexusCollectionState.Disconnected) == NexusCollectionState.Disconnected)
             return;
         
         var client = _client;
@@ -513,11 +559,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
             return;
 
         await client.Pipe.CompleteAsync().ConfigureAwait(false);
-
-        foreach (var taskCompletionSource in _ackTcs)
-            taskCompletionSource.Value.TrySetResult(false);
-        
-        _ackTcs.Clear();
     }
 
 
@@ -526,8 +567,19 @@ internal abstract class NexusCollection : INexusCollectionConnector
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
-    
-    protected abstract void DisconnectedFromServer();
+
+    protected void ClientDisconnected()
+    {
+        foreach (var taskCompletionSource in _ackTcs)
+            taskCompletionSource.Value.TrySetResult(false);
+        
+        _ackTcs.Clear();
+        
+        OnClientDisconnected();
+    }
+    protected abstract void OnClientDisconnected();
+
+    protected abstract int GetVersion();
     
 
     private class Client

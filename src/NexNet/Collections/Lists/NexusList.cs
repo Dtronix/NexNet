@@ -25,18 +25,19 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     {
         
     }
-    
+
+    protected override int GetVersion() => _itemList.Version;
+
     private (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message)
     {
         Operation<T>? op;
         int version;
         switch (message)
         {
-            case NexusListClearMessage msg:
+            case NexusCollectionClearMessage msg:
                 op = ClearOperation<T>.Rent();
                 version = msg.Version;
                 break;
-            
             case NexusListInsertMessage msg:
                 var insOp = InsertOperation<T>.Rent();
                 insOp.Index = msg.Index;
@@ -85,7 +86,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             
             case ClearOperation<T>:
             {
-                var message = NexusListClearMessage.Rent();
+                var message = NexusCollectionClearMessage.Rent();
                 message.Version = version;
                 return message;
             }
@@ -136,13 +137,6 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
-    
-    public Task<bool> ClearAsync()
-    {
-        var message = NexusListClearMessage.Rent();
-        message.Version = _itemList.Version;
-        return UpdateAndWaitAsync(message);
-    }
 
     public async Task<bool> RemoveAsync(T item)
     {
@@ -162,6 +156,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
 
     public Task<bool> InsertAsync(int index, T item)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListInsertMessage.Rent();
         
         message.Version = _itemList.Version;
@@ -172,6 +167,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
 
     public Task<bool> RemoveAtAsync(int index)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListRemoveMessage.Rent();
         
         message.Version = _itemList.Version;
@@ -194,5 +190,13 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     IEnumerator IEnumerable.GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
+    }
+
+    protected override bool OnClientClear(int version)
+    {
+        var op = ClearOperation<T>.Rent();
+        var result = _itemList.ApplyOperation(op, version);
+        op.Return();
+        return result is ListProcessResult.Successful or ListProcessResult.DiscardOperation;
     }
 }

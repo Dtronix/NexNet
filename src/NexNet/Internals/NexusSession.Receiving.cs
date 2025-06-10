@@ -206,9 +206,18 @@ internal partial class NexusSession<TNexus, TProxy>
                 break;
             }
 
-            //Logger?.LogTrace($"Read all the {_recMessageHeader.BodyLength} body bytes.");
-            var bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
-
+            ReadOnlySequence<byte> bodySlice;
+            try
+            {
+                bodySlice = sequence.Slice(position, _recMessageHeader.BodyLength);
+            }
+            catch (Exception e)
+            {
+                Logger?.LogCritical(e, $"Attempted to read beyond the end of the available sequence. Length: {sequence.Length}; Position: {position}; BodyLength: {_recMessageHeader.BodyLength}");
+                disconnect = DisconnectReason.ProtocolError;
+                break;
+            }
+     
             position += _recMessageHeader.BodyLength;
             IMessageBase? messageBody = null;
             bool disposeMessage = true;
