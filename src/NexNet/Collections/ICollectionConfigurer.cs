@@ -2,6 +2,9 @@
 
 namespace NexNet.Collections;
 
+/// <summary>
+/// Allows for configuration of synchronized collections.
+/// </summary>
 public interface ICollectionConfigurer
 {
     /// <summary>

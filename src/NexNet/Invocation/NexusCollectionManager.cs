@@ -58,7 +58,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
 
     public void SetClientProxySession(ProxyInvocationBase proxy, INexusSession session)
     {
-        foreach (var collectionKvp in _collections)
+        foreach (var collectionKvp in _collections!)
             Unsafe.As<INexusCollectionConnector>(collectionKvp.Value).TryConfigureProxyCollection(proxy, session);
     }
 }

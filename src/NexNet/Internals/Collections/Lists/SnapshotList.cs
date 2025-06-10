@@ -302,7 +302,7 @@ internal class SnapshotList<T> : IEnumerable<T>
     {
         private readonly long _version;
         private readonly Node[] _snapshot;
-        private T _current;
+        private T _current = default!;
         private int _index;
         
         public T Current

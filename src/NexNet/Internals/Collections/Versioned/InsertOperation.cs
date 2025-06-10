@@ -22,7 +22,7 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     /// <summary>
     /// Item that is being inserted at the specified index.
     /// </summary>
-    public T Item;
+    public T Item = default!;
     
     /// <summary>
     /// Initializes a new instance of the <see cref="InsertOperation{T}"/> class.

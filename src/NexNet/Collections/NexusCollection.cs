@@ -33,7 +33,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private readonly SnapshotList<Client>? _nexusPipeList;
     
     private CancellationTokenSource? _broadcastCancellation;
-    private Channel<ProcessRequest> _processChannel;
+    private Channel<ProcessRequest>? _processChannel;
     private ConcurrentDictionary<int, TaskCompletionSource<bool>>? _ackTcs;
     protected readonly INexusLogger? Logger;
     private TaskCompletionSource? _clientConnectTcs;
@@ -197,7 +197,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 try
                 {
                     collection.Logger?.LogDebug("Started broadcast reading loop.");
-                    await foreach (var req in collection._processChannel.Reader
+                    await foreach (var req in collection._processChannel!.Reader
                                        .ReadAllAsync(collection._broadcastCancellation!.Token)
                                        .ConfigureAwait(false))
                     {
@@ -299,7 +299,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
             reader,
             writer,
             session) { State = Client.StateType.Initializing };
-        _nexusPipeList.Add(client);
+        _nexusPipeList!.Add(client);
         
         // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (_, state )=>
@@ -348,7 +348,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
                     Logger?.LogTrace($"Received message. {message.GetType()}");
-                    await _processChannel.Writer.WriteAsync(new ProcessRequest(client, message, null)).ConfigureAwait(false);
+                    await _processChannel!.Writer.WriteAsync(new ProcessRequest(client, message, null)).ConfigureAwait(false);
 
                 }
             }
@@ -477,7 +477,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (IsServer)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await _processChannel.Writer.WriteAsync(new ProcessRequest(null, message, tcs)).ConfigureAwait(false);
+            await _processChannel!.Writer.WriteAsync(new ProcessRequest(null, message, tcs)).ConfigureAwait(false);
 
             return await tcs.Task.ConfigureAwait(false);
         }
@@ -571,7 +571,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
     protected void ClientDisconnected()
     {
-        foreach (var taskCompletionSource in _ackTcs)
+        foreach (var taskCompletionSource in _ackTcs!)
             taskCompletionSource.Value.TrySetResult(false);
         
         _ackTcs.Clear();

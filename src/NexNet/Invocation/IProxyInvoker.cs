@@ -76,6 +76,16 @@ public interface IProxyInvoker
     /// <returns>Initial id of the pipe.</returns>
     byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe);
     
+    
+    /// <summary>
+    /// Provides client side access to a configured list. 
+    /// </summary>
+    /// <param name="id">
+    /// A unique identifier for the list collection to configure.  
+    /// This must match the identifier used when retrieving or starting the collection.
+    /// </param>
+    /// <typeparam name="T">The element type stored in the list.</typeparam>
+    /// <returns>List ready for use.</returns>
     INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id);
 
 }

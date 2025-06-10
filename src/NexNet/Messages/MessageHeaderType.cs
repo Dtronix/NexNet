@@ -119,9 +119,4 @@ public enum MessageType : byte
     /// Header for <see cref="DuplexPipeUpdateStateMessage"/>.
     /// </summary>
     DuplexPipeUpdateState = 120,
-    
-    /// <summary>
-    /// Header for <see cref="CollectionUpdateMessage"/>.
-    /// </summary>
-    CollectionUpdate = 130,
 }

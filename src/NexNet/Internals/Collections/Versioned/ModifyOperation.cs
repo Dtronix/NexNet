@@ -20,7 +20,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     /// <summary>
     /// Value to set.
     /// </summary>
-    public T Value;
+    public T Value = default!;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ModifyOperation{T}"/> class.

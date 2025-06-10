@@ -365,6 +365,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
          return nexusPipe.LocalId;
      }
 
+
+    /// <inheritdoc />
     public INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id)
     {
         var session = _session;

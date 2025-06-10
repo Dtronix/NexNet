@@ -40,8 +40,6 @@ public class NexusCollectionAttribute : Attribute
     /// Creates the attribute with the passed type.
     /// </summary>
     /// <param name="mode">Mode of the collection operation.</param>
-    /// <param name="id">Manually assigned id for the attached method.  Cannot overlap with other ids.
-    /// Must be greater than 0, otherwise it will be auto-assigned.</param>
     public NexusCollectionAttribute(NexusCollectionMode mode)
     {
         Mode = mode;
