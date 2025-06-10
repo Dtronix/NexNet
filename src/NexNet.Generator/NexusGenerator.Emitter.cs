@@ -634,8 +634,6 @@ partial class CollectionMeta
     /// Emit the code for the the nexus.
     /// </summary>
     /// <param name="sb"></param>
-    /// <param name="proxyImplementation"></param>
-    /// <param name="nexus"></param>
     public void EmitNexusInvocation(StringBuilder sb)
     {
         sb.Append(@"
@@ -669,7 +667,7 @@ partial class CollectionMeta
         sb.Append(CollectionType switch
         {
             CollectionTypeValues.List => "ProxyGetConfiguredNexusList<",
-            CollectionTypeValues.Unset => "INVALID",
+            _ => "INVALID"
         }).Append(this.ReturnTypeArity).Append(">(");
         
         sb.Append(this.Id).AppendLine(");");
@@ -690,7 +688,7 @@ partial class CollectionMeta
         sb.Append(CollectionType switch
         {
             CollectionTypeValues.List => "GetList<",
-            CollectionTypeValues.Unset => "INVALID",
+            _ => "INVALID",
         }).Append(this.ReturnTypeArity).Append(">(");
         
         sb.Append(this.Id).Append(");");

@@ -192,7 +192,7 @@ public class SnapshotListTests
     [Test]
     public void Remove_NullReferenceType_Works()
     {
-        var list = new SnapshotList<string>();
+        var list = new SnapshotList<string?>();
         list.Add(null);
         list.Add("foo");
         Assert.That(list.Remove(null), Is.True);
@@ -203,7 +203,7 @@ public class SnapshotListTests
     [Test]
     public void Remove_NullNotPresent_ReturnsFalse()
     {
-        var list = new SnapshotList<string>();
+        var list = new SnapshotList<string?>();
         list.Add("bar");
         Assert.That(list.Remove(null), Is.False);
     }
@@ -397,9 +397,9 @@ public class SnapshotListTests
 
     private class Person
     {
-        public string Name;
+        public string? Name { get; init; }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
             => obj is Person p && p.Name == Name;
 
         public override int GetHashCode() => Name?.GetHashCode() ?? 0;
@@ -638,10 +638,10 @@ public class SnapshotListTests
     [Test]
     public void Insert_NullReferenceTypeAtIndex_Works()
     {
-        var list = new SnapshotList<string>();
+        var list = new SnapshotList<string?>();
         list.Add("a");
         list.Insert(1, null);
-        Assert.That(list.ToArray(), Is.EqualTo(new string[] { "a", null }));
+        Assert.That(list.ToArray(), Is.EqualTo(new[] { "a", null }));
     }
 
     [Test]
