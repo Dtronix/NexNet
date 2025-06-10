@@ -165,8 +165,6 @@ internal class NexusListTests : BaseTests
 
         await serverNexus.IntListBi.AddAsync(9).Timeout(1);
         await serverNexus.IntListBi.AddAsync(8).Timeout(1);
-        await Task.Delay(50);
-
         await serverNexus.IntListBi.ClearAsync().Timeout(1);
         await Task.Delay(50);
 
@@ -387,7 +385,7 @@ internal class NexusListTests : BaseTests
     public async Task StopsAsyncAwaitProcessOnDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var (_, serverNexus, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
         
         var internalList = (NexusCollection)serverNexus.IntListBi;
