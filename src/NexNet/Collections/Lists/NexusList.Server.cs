@@ -36,6 +36,29 @@ internal partial class NexusList<T>
         
         op.Operation.Return();
         
+        switch (message)
+        {
+            case NexusListInsertMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
+                break;
+            
+            case NexusListModifyMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
+                break;
+            
+            case NexusListMoveMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
+                break;
+            
+            case NexusListRemoveMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
+                break;
+            
+            case NexusCollectionClearMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                break;
+        }
+        
         return new ServerProcessMessageResult(resultMessage, false, true);
     }
 }

@@ -125,9 +125,12 @@ internal class NexusListTests : BaseTests
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-
+        
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+        
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await Task.Delay(50); // allow propagation
+
+        await eventReg.Wait();
 
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
@@ -590,6 +593,105 @@ internal class NexusListTests : BaseTests
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.RemoveAtAsync(-1).Timeout(1));
     }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerAddAsync_NotifiesServer(Type type)
+    {
+        var tcs = new TaskCompletionSource<NexusCollectionChangedAction>();
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var _ = serverNexus.IntListBi.Changed.Subscribe(e => tcs.SetResult(e.ChangedAction));
+        
+        await serverNexus.IntListBi.AddAsync(77).Timeout(1);
+        
+        Assert.That(await tcs.Task.Timeout(1), Is.EqualTo(NexusCollectionChangedAction.Add));
+        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerAddAsync_NotifiesClient(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
+
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        
+        await serverNexus.IntListBi.AddAsync(77).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientReceivesResetNoticeOnConnection(Type type)
+    {
+        var (_, _, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset);
+
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientReceivesResetNoticeOnDisconnection(Type type)
+    {
+        var (_, _, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 3);
+
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        await eventReg.Wait();
+
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientReceivesResetNoticeOnReConnection(Type type)
+    {
+        var counter = 0;
+        var tcs = new TaskCompletionSource();
+        var (_, _, client, _) = await ConnectServerAndClient(type);
+        using var _ = client.Proxy.IntListBi.Changed.Subscribe(e =>
+        {
+            if(e.ChangedAction == NexusCollectionChangedAction.Reset && ++counter == 3)
+                tcs.SetResult();
+        });
+
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await tcs.Task.Timeout(1);
+
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+    }
+
+
 
     private async Task<(NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
         ServerNexus serverNexus,

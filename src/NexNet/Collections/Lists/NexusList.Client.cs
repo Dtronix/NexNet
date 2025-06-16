@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Collections.Specialized;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
@@ -58,10 +59,10 @@ internal partial class NexusList<T>
         reset.TotalValues = state.List.Count;
         
         yield return reset;
-        
+
         if (state.List.Count == 0)
             yield break;
-        
+
         var bufferSize = Math.Min(state.List.Count, 40);
         
         reset.ReturnToCache();
@@ -71,6 +72,15 @@ internal partial class NexusList<T>
             message.Values = MemoryPackSerializer.Serialize(item);
             yield return message;
         }
+        
+    }
+
+    protected override bool OnClientClear(int version)
+    {
+        var op = ClearOperation<T>.Rent();
+        var result = _itemList.ApplyOperation(op, version);
+        op.Return();
+        return result is ListProcessResult.Successful or ListProcessResult.DiscardOperation;
     }
 
     protected override bool OnClientProcessMessage(INexusCollectionMessage serverMessage)
@@ -88,7 +98,33 @@ internal partial class NexusList<T>
         op.Return();
 
         if (result == ListProcessResult.Successful)
+        {
+            switch (serverMessage)
+            {
+                case NexusListInsertMessage:
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
+                    break;
+            
+                case NexusListModifyMessage:
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
+                    break;
+            
+                case NexusListMoveMessage:
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
+                    break;
+            
+                case NexusListRemoveMessage:
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
+                    break;
+                
+                case NexusCollectionClearMessage:
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                    break;
+            }
+            
             return true;
+        }
+        op.Return();
 
         Logger?.LogError($"Processing failed. Returned result {result}");
         return false;

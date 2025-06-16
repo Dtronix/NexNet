@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections.Lists;
 
 namespace NexNet.Collections;
 
@@ -36,4 +37,9 @@ public interface INexusCollection : IEnumerable
     /// A <see cref="Task"/> that completes once disconnection is finished.
     /// </returns>
     public Task  DisconnectAsync();
+    
+    /// <summary>
+    /// Event raised when the collection has been changed by the server.
+    /// </summary>
+    public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed { get; }
 }

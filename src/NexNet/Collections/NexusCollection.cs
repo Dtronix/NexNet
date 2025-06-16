@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -39,6 +40,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private TaskCompletionSource? _clientConnectTcs;
     private TaskCompletionSource? _disconnectTcs;
     protected bool IsClientResetting { get; private set; }
+    
+    
+    protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent = new();
     
     public NexusCollectionState State => _state;
 
@@ -136,13 +140,16 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     IsClientResetting = false;
                     var completeResult = OnClientResetCompleted();
                     _clientConnectTcs?.SetResult();
-                    return completeResult;      
-                
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                    return completeResult;
+
                 case NexusCollectionClearMessage message:
                     if (IsClientResetting)
                         return false;
-                    return OnClientClear(message.Version);
-                    
+                    var clearResult = OnClientClear(message.Version);
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                    return clearResult;
+
                 case NexusCollectionAckMessage ackOperation:
                     if(_ackTcs!.TryRemove(ackOperation.Id, out var tcs))
                         tcs.TrySetResult(true);
@@ -552,7 +559,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (client == null)
             return;
 
-        
         await client.Pipe.CompleteAsync().ConfigureAwait(false);
 
         if (_disconnectTcs != null)
@@ -584,6 +590,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
         {
             Logger?.LogError(e, "Error while disconnecting client.");
         }
+        
+        CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
         
         _disconnectTcs?.SetResult();
     }

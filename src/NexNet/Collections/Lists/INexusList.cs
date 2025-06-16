@@ -10,7 +10,7 @@ namespace NexNet.Collections.Lists;
 /// enumeration over the items.
 /// </summary>
 /// <typeparam name="T">The type of elements held in the list.</typeparam>
-public interface INexusList<T> : INexusCollection , IEnumerable<T>
+public interface INexusList<T> : INexusCollection, IEnumerable<T>
 {
     /// <summary>
     /// Removes all items from the list on the server.

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
@@ -16,14 +18,17 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     private readonly VersionedList<T> _itemList = new();
     private List<T>? _clientInitialization;
     private int _clientInitializationVersion = -1;
-    private static readonly Type TType = typeof(T);
+    private static readonly Type _tType = typeof(T);
+
+    /// <inheritdoc />
+    public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
     
     public int Count => _itemList.Count;
 
     public NexusList(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
         : base(id, mode, config, isServer)
     {
-        
+
     }
 
     protected override int GetVersion() => _itemList.Version;
@@ -190,13 +195,5 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     IEnumerator IEnumerable.GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
-    }
-
-    protected override bool OnClientClear(int version)
-    {
-        var op = ClearOperation<T>.Rent();
-        var result = _itemList.ApplyOperation(op, version);
-        op.Return();
-        return result is ListProcessResult.Successful or ListProcessResult.DiscardOperation;
     }
 }
