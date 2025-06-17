@@ -36,7 +36,14 @@ public interface INexusCollection : IEnumerable
     /// <returns>
     /// A <see cref="Task"/> that completes once disconnection is finished.
     /// </returns>
-    public Task  DisconnectAsync();
+    public Task DisconnectAsync();
+    
+    /// <summary>
+    /// Task that completes upon client disconnection from the server.
+    /// Is only valid after the ConnectAsync method completes successfully.
+    /// On the server, this task will is not used and will always be complete.
+    /// </summary>
+    public Task DisconnectedTask { get; }
     
     /// <summary>
     /// Event raised when the collection has been changed by the server.

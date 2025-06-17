@@ -524,4 +524,35 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientDisconnectionTaskCompletesOnDisconnect(Type type)
+    {
+        var (_, _, client, _) = await ConnectServerAndClient(type);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        Assert.That(client.Proxy.IntListBi.DisconnectedTask.IsCompleted, Is.False);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        Assert.That(client.Proxy.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerDisconnectionTaskIsAlwaysCompleted(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+    }
 }

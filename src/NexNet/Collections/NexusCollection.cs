@@ -21,8 +21,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private NexusCollectionState _state;
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
-
-
+    
     protected readonly bool IsServer;
     
     private Client? _client;
@@ -39,9 +38,12 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected readonly INexusLogger? Logger;
     private TaskCompletionSource? _clientConnectTcs;
     private TaskCompletionSource? _disconnectTcs;
+    private Task _disconnectedTask = Task.CompletedTask;
     protected bool IsClientResetting { get; private set; }
-    
-    
+
+    public Task DisconnectedTask => _disconnectedTask;
+
+
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent = new();
     
     public NexusCollectionState State => _state;
@@ -70,6 +72,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
         {
             _nexusPipeList = new SnapshotList<Client>(64);
             
+            // This task is always compelted on the server.
+            _disconnectedTask = Task.CompletedTask;
         }
         else
         {
@@ -415,6 +419,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         
         _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _disconnectedTask = _disconnectTcs.Task;
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
@@ -592,7 +597,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         
         CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
         
-        _disconnectTcs?.SetResult();
+        _disconnectTcs?.TrySetResult();
     }
     protected abstract void OnClientDisconnected();
 
