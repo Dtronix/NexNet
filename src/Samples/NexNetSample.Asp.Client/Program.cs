@@ -38,8 +38,6 @@ internal class Program
         
         await client.ConnectAsync();
 
-        await Task.Delay(1000);
-
         await client.Proxy.IntegerList.ConnectAsync();
         int counter = 10;
         /*for (int i = 0; i < 100; i++)
