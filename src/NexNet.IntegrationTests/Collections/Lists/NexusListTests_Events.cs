@@ -416,7 +416,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ClientReceivesResetNoticeOnDisconnection(Type type)
     {
-        var (_, _, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        var (_, _, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 2);
 
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);

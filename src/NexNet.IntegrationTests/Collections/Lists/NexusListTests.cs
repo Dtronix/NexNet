@@ -123,7 +123,7 @@ internal class NexusListTests : NexusCollectionBaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ServerCanAdd(Type type)
     {
-        var (_, serverNexus, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
         
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
@@ -560,7 +560,7 @@ internal class NexusListTests : NexusCollectionBaseTests
     public async Task StopsAsyncAwaitProcessOnClientSideDisconnect(Type type)
     {
         var tcs = new TaskCompletionSource();
-        var (_, serverNexus, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
         
         var internalList = (NexusCollection)serverNexus.IntListBi;
