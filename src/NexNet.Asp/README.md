@@ -2,15 +2,17 @@ This package adds the WebSocket and custom HttpSocket negotiation transport prot
 
 NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional, multiplexing, and event-driven functionality into applications. This framework streamlines the transmission of data bidirectionally between servers and clients with resilient connections.
 
+
 ## Features
 - Automatic reconnection upon timeout or socket losing connection.
 - High performance Socket and Pipeline usage.
 - Multiple transports and easy extensibility.
 - Strong Typed Hubs & Clients.
 - Server <-> Client communication
+    - Synchronized collections (INexusList)
     - Cancellable Invocations
     - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
-    - Streaming classes/structs data via `NexusChannel<T>`
+    - Streaming classes/structs data via `NexusChannel<T>` and simplified reading with IAsyncEnumerable
     - Multiplexing method invocations
     - Proxies can return:
         - void for "fire and forget" invocation situations such as notifications.
@@ -24,6 +26,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Full asynchronous TPL usage throughout socket reading/writing, processing and execution of invocations and their return values.
 - Minimal external package requirements.
 - Optional server integration with ASP.NET Core, which enables features such as authentication, proxying, and running multiple Nexus servers on the same application.
+
 
 ## Transports Supported
 - Unix Domain Sockets (UDS)
@@ -52,7 +55,6 @@ WebSockets enable real-time, bidirectional data exchange between client and serv
 HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
 
 Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
-
 ## ASP.NET Server Integration
 
 The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
