@@ -1,4 +1,5 @@
 ﻿using NexNet;
+using NexNet.Collections.Lists;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
@@ -80,9 +81,9 @@ public partial class ServerNexus
 
     public ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
-        return ServerTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+        return default;
     }
-
+    
     public ValueTask ServerData(byte[] data)
     {
         if (ServerDataEvent == null)
@@ -111,4 +112,6 @@ public partial class ServerNexus
     {
         return OnAuthenticateEvent!.Invoke(this);
     }
+    
 }
+

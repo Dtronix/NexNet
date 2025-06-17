@@ -1,6 +1,5 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.Collections.Immutable;
 using System.Text;
 using static NexNet.Generator.NexusGenerator;
 
@@ -8,7 +7,7 @@ namespace NexNet.Generator;
 
 internal partial class InvocationInterfaceMeta
 {
-    private readonly HashSet<ushort> _methodIds = new HashSet<ushort>();
+    private readonly HashSet<ushort> _usedIds = new HashSet<ushort>();
 
     public INamedTypeSymbol Symbol { get; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
@@ -17,10 +16,11 @@ internal partial class InvocationInterfaceMeta
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
     public MethodMeta[] Methods { get; }
+    
+    public CollectionMeta[] Collections { get; set; }
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
-
     public string NamespaceName { get; }
 
     //public bool AlreadyGeneratedHash { get; }
@@ -39,8 +39,15 @@ internal partial class InvocationInterfaceMeta
         this.IsRecord = symbol.IsRecord;
         this.Methods = Symbol.GetMembers()
             .OfType<IMethodSymbol>()
+            .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
             .Select(x => new MethodMeta(x))
-            .Where(x => x.NexusMethodAttribute.Ignore == false) // Bypass ignored items.
+            .Where(x => x.NexusMethodAttribute is { Ignore: false }) // Bypass ignored items.
+            .ToArray();
+        
+        this.Collections = Symbol.GetMembers()
+            .OfType<IPropertySymbol>()
+            .Select(x => new CollectionMeta(x))
+            .Where(x => x.NexusCollectionAttribute is { Ignore: false }) // Bypass ignored items.
             .ToArray();
 
 
@@ -53,22 +60,46 @@ internal partial class InvocationInterfaceMeta
                 methodMeta.Id = methodMeta.NexusMethodAttribute.MethodId.Value;
 
                 // Add the id to the hash list to prevent reuse during automatic assignment.
-                _methodIds.Add(methodMeta.NexusMethodAttribute.MethodId.Value);
+                _usedIds.Add(methodMeta.NexusMethodAttribute.MethodId.Value);
+            }
+        }
+        
+        foreach (var collectionMeta in this.Collections)
+        {
+            if (collectionMeta.NexusCollectionAttribute.Id != null)
+            {
+                // Assign defined ids.
+                collectionMeta.Id = collectionMeta.NexusCollectionAttribute.Id.Value;
+
+                // Add the id to the hash list to prevent reuse during automatic assignment.
+                _usedIds.Add(collectionMeta.NexusCollectionAttribute.Id.Value);
             }
         }
 
-
-        // Automatic method id assignment.
+        // Automatic id assignment.
         ushort id = 0;
         foreach (var methodMeta in this.Methods)
         {
             if (methodMeta.Id == 0)
             {
                 // Make sure we get an ID which is not used.
-                while (_methodIds.Contains(id))
+                while (_usedIds.Contains(id))
                     id++;
 
                 methodMeta.Id = id++;
+            }
+        }
+        
+        // Automatic id assignment.
+        foreach (var collectionMeta in this.Collections)
+        {
+            if (collectionMeta.Id == 0)
+            {
+                // Make sure we get an ID which is not used.
+                while (_usedIds.Contains(id))
+                    id++;
+
+                collectionMeta.Id = id++;
             }
         }
 
@@ -95,74 +126,16 @@ internal partial class InvocationInterfaceMeta
     public int GetHash()
     {
         var hash = 0;
-        foreach (var methodMeta in Methods)
+        foreach (var meta in Methods)
         {
-            hash += methodMeta.GetHash();
+            hash += meta.GetHash();
+        }
+        foreach (var meta in Collections)
+        {
+            hash += meta.GetHash();
         }
 
         return hash;
-    }
-
-    public override string ToString()
-    {
-        return this.TypeName;
-    }
-}
-
-internal abstract class AttributeMetaBase
-{
-    private readonly string _attributeClassName;
-
-    protected AttributeMetaBase(string attributeClassName, ISymbol symbol)
-    {
-        _attributeClassName = attributeClassName;
-        Parse(symbol);
-    }
-
-    private void Parse(ISymbol symbol)
-    {
-        foreach (AttributeData attributeData in symbol.GetAttributes())
-        {
-            if (attributeData.AttributeClass!.Name != _attributeClassName)
-                continue;
-            // supports: [Attribute<INexus, IProxy>(NexusType.Client)]
-            // supports: [Attribute<INexus, IProxy>(NexusType: NexusType.Client)]
-            if (attributeData.ConstructorArguments.Any())
-            {
-                ImmutableArray<TypedConstant> items = attributeData.ConstructorArguments;
-
-                for (var i = 0; i < items.Length; i++)
-                {
-                    ProcessArgument(null, i, items[i]);
-                }
-            }
-
-            // argument syntax takes parameters. e.g. EventId = 0
-            // supports: e.g. [NexusAttribute<INexus, IProxy>(Type = NexusType.Client)]
-            if (attributeData.NamedArguments.Any())
-            {
-                foreach (KeyValuePair<string, TypedConstant> namedArgument in attributeData.NamedArguments)
-                {
-                    TypedConstant value = namedArgument.Value;
-                    ProcessArgument(namedArgument.Key, null, value);
-                }
-            }
-        }
-    }
-    protected abstract void ProcessArgument(string? key, int? constructorArgIndex, TypedConstant typedConstant);
-
-
-
-    protected static object GetItem(TypedConstant arg)
-    {
-        if (arg.Kind == TypedConstantKind.Array)
-        {
-            return arg.Values;
-        }
-        else
-        {
-            return arg.Value ?? new object();
-        }
     }
 }
 
@@ -219,6 +192,55 @@ internal class NexusMethodAttributeMeta : AttributeMetaBase
     }
 }
 
+internal enum NexusCollectionMode 
+{
+    Unset,
+    ServerToClient,
+    BiDrirectional
+}
+
+
+internal class NexusCollectionAttributeMeta : AttributeMetaBase
+{
+    /// <summary>
+    /// Ignore this method
+    /// </summary>
+    public bool Ignore { get; private set; }
+
+    /// <summary>
+    /// Manually specifies the ID of this method.  Used for invocations.
+    /// Useful for maintaining backward compatibility with a changing interface.
+    /// </summary>
+    public ushort? Id { get; private set; }
+
+    /// <summary>
+    /// Manually specifies the ID of this method.  Used for invocations.
+    /// Useful for maintaining backward compatibility with a changing interface.
+    /// </summary>
+    public NexusCollectionMode Mode { get; private set; } = NexusCollectionMode.Unset;
+
+    public NexusCollectionAttributeMeta(ISymbol symbol)
+        : base("NexusCollectionAttribute", symbol)
+    {
+    }
+
+    protected override void ProcessArgument(string? key, int? constructorArgIndex, TypedConstant typedConstant)
+    {
+        if (key == "Mode" || constructorArgIndex == 0)
+        {
+            var mode = (NexusCollectionMode)(int)GetItem(typedConstant);
+            if (mode != NexusCollectionMode.Unset)
+                Mode = mode;
+        }
+        else if (key == "Id" || constructorArgIndex == 1)
+        {
+            var id = (ushort)GetItem(typedConstant);
+            if (id != 0)
+                Id = id;
+        }
+    }
+}
+
 internal partial class NexusMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
@@ -262,26 +284,26 @@ internal partial class NexusMeta
 
     public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
     {
+        var nexusLocation = syntax.Identifier.GetLocation();
+        bool failed = false;
         if (Symbol.IsGenericType)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NexusMustNotBeGeneric, syntax.Identifier.GetLocation(), Symbol.Name));
-            return false;
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NexusMustNotBeGeneric, nexusLocation, Symbol.Name));
+            failed = true;
         }
 
         var invokeMethodCoreExists = Methods.FirstOrDefault(m => m.Name == "InvokeMethodCore");
         if (invokeMethodCoreExists != null)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, syntax.Identifier.GetLocation(), invokeMethodCoreExists.Name));
-            return false;
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvokeMethodCoreReservedMethodName, nexusLocation, invokeMethodCoreExists.Name));
+            failed = true;
         }
 
         if (IsInterfaceOrAbstract)
         {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustNotBeAbstractOrInterface, syntax.Identifier.GetLocation(), Symbol.Name));
-            return false;
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustNotBeAbstractOrInterface, nexusLocation, Symbol.Name));
+            failed = true;
         }
-
-
 
         var nexusSet = new HashSet<ushort>();
         foreach (var method in this.NexusInterface.Methods)
@@ -289,13 +311,11 @@ internal partial class NexusMeta
             // Validate nexus method ids.
             if (nexusSet.Contains(method.Id))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, method.GetLocation(syntax), method.Name));
-                return false;
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId, method.GetLocation(nexusLocation), method.Name));
+                failed = true;
             }
-            else
-            {
-                nexusSet.Add(method.Id);
-            }
+
+            nexusSet.Add(method.Id);
 
             // Confirm the cancellation token parameter is the last parameter.
             if (method.CancellationTokenParameter != null)
@@ -303,8 +323,8 @@ internal partial class NexusMeta
                 if (!method.Parameters.Last().IsCancellationToken)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidCancellationToken,
-                        method.GetLocation(syntax), method.Name));
-                    return false;
+                        method.GetLocation(nexusLocation), method.Name));
+                    failed = true;
                 }
             }
 
@@ -312,16 +332,16 @@ internal partial class NexusMeta
             if (method.MultipleCancellationTokenParameter)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyCancellationTokens,
-                    method.GetLocation(syntax), method.Name));
-                return false;
+                    method.GetLocation(nexusLocation), method.Name));
+                failed = true;
             }
 
             // Confirm there is only one pipe parameter.
             if (method.MultiplePipeParameters)
             {
                 context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.TooManyPipes,
-                    method.GetLocation(syntax), method.Name));
-                return false;
+                    method.GetLocation(nexusLocation), method.Name));
+                failed = true;
             }
 
             // Null return types.
@@ -330,8 +350,8 @@ internal partial class NexusMeta
                 if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CancellationTokenOnVoid,
-                        method.GetLocation(syntax), method.Name));
-                    return false;
+                        method.GetLocation(nexusLocation), method.Name));
+                    failed = true;
                 }
             }
 
@@ -345,8 +365,8 @@ internal partial class NexusMeta
                     || (method.IsAsync && method.ReturnArity == 1))
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnVoidOrReturnTask,
-                        method.GetLocation(syntax), method.Name));
-                    return false;
+                        method.GetLocation(nexusLocation), method.Name));
+                    failed = true;
                 }
 
                 // This code block checks if a method has both a duplex pipe parameter and a cancellation token parameter.
@@ -354,8 +374,8 @@ internal partial class NexusMeta
                 if (method.CancellationTokenParameter != null)
                 {
                     context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.PipeOnMethodWithCancellationToken,
-                        method.GetLocation(syntax), method.Name));
-                    return false;
+                        method.GetLocation(nexusLocation), method.Name));
+                    failed = true;
                 }
             }
 
@@ -363,19 +383,60 @@ internal partial class NexusMeta
             if (!method.IsReturnVoid &&
                 !(method.IsAsync && method.ReturnArity <= 1))
             {
-                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, method.GetLocation(syntax), method.Name)); 
-                return false;
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.InvalidReturnValue, method.GetLocation(nexusLocation), method.Name)); 
+                failed = true;
             }
         }
 
-        // Validate method nexuses
+        // Validate collections
+        
 
-        return true;
-    }
+        foreach (var collection in this.NexusInterface.Collections)
+        {
+            if (!NexusAttribute.IsServer)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionCanNotBeOnClient,
+                    collection.GetLocation(nexusLocation), collection.Name));
+                failed = true;
+            }
+            else
+            {
+                // Validate nexus method ids.
+                if (nexusSet.Contains(collection.Id))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.DuplicatedMethodId,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
 
-    public override string ToString()
-    {
-        return this.TypeName;
+                nexusSet.Add(collection.Id);
+
+                if (collection.CollectionType == CollectionMeta.CollectionTypeValues.Unset)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownType,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
+
+                if (collection.NexusCollectionAttribute.Mode == NexusCollectionMode.Unset
+                    || !Enum.IsDefined(typeof(NexusCollectionMode), collection.NexusCollectionAttribute.Mode))
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionUnknownMode,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
+
+                if (!collection.NexusCollectionAttribute.AttributeExists
+                    && collection.CollectionType != CollectionMeta.CollectionTypeValues.Unset)
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.CollectionAttributeMissing,
+                        collection.GetLocation(nexusLocation), collection.Name));
+                    failed = true;
+                }
+            }
+        }
+
+        return !failed;
     }
 }
 
@@ -485,7 +546,6 @@ internal partial class MethodMeta
     public MethodMeta(IMethodSymbol symbol)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
-
         this.Symbol = symbol;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
@@ -566,55 +626,118 @@ internal partial class MethodMeta
         return hash.ToHashCode();
     }
 
-    public override string ToString()
+    public Location GetLocation(Location fallback)
     {
-        var sb = SymbolUtilities.GetStringBuilder();
-
-        if (IsReturnVoid)
+        var location = Symbol.Locations.FirstOrDefault();
+        if (location is null || location.IsInMetadata)
         {
-            sb.Append("void");
-        }
-        else if (IsAsync)
-        {
-            sb.Append("ValueTask");
-
-            if (this.ReturnArity > 0)
-            {
-                sb.Append("<").Append(this.ReturnTypeSource).Append(">");
-            }
+            location = fallback;
         }
 
-        sb.Append(" ");
-        sb.Append(this.Name).Append("(");
+        return location;
+    }
+}
 
-        var paramsLength = this.Parameters.Length;
-        if (paramsLength > 0)
-        {
-            for (int i = 0; i < paramsLength; i++)
-            {
-                sb.Append(Parameters[i].ParamTypeSource);
-                sb.Append(" ");
-                sb.Append(Parameters[i].Name);
+internal partial class CollectionMeta
+{
+    private static readonly XxHash32 _hash = new XxHash32();
+    public IPropertySymbol Symbol { get; }
+    public string Name { get; }
+    public bool IsStatic { get; }
+    public string? ReturnTypeArity { get; }
+    public string? ReturnTypeSource { get; }
+    public int ReturnArity { get; }
+    public CollectionTypeValues CollectionType  { get; }
+    public string CollectionTypeShortString { get; set; }
+    public string CollectionTypeFullString { get; }
+    public string CollectionModeFullTypeString { get; }
+    
+    /// <summary>
+    /// Assigned after parsing.
+    /// </summary>
+    public ushort Id { get; set; }
+    public NexusCollectionAttributeMeta NexusCollectionAttribute { get; }
 
-                if (i + 1 < paramsLength)
-                {
-                    sb.Append(", ");
-                }
-            }
-        }
-
-        sb.Append(")");
-
-        var stringMethod = sb.ToString();
-
-        SymbolUtilities.ReturnStringBuilder(sb);
-
-        return stringMethod;
+    public enum CollectionTypeValues
+    {
+        Unset,
+        List,
     }
 
-    public Location GetLocation(TypeDeclarationSyntax fallback)
+    public CollectionMeta(IPropertySymbol symbol)
+    {       
+        var returnSymbol = symbol.Type as INamedTypeSymbol;
+        this.NexusCollectionAttribute = new NexusCollectionAttributeMeta(symbol);
+        this.Symbol = symbol;
+        this.Name = symbol.Name;
+        this.IsStatic = symbol.IsStatic;
+        
+        CollectionType = returnSymbol!.OriginalDefinition.Name switch
+        {
+            "INexusList" => CollectionTypeValues.List,
+            _ => CollectionTypeValues.Unset
+        };
+        CollectionTypeFullString = CollectionType switch
+        {
+            CollectionTypeValues.List => "global::NexNet.Collections.Lists.INexusList",
+            _ => "INVALID",
+        };
+        
+        CollectionTypeShortString = CollectionType switch
+        {
+            CollectionTypeValues.List => "INexusList",
+            _ => "INVALID",
+        };
+        
+        this.ReturnArity = returnSymbol.Arity;
+
+        CollectionModeFullTypeString = NexusCollectionAttribute.Mode switch
+        {
+            NexusCollectionMode.ServerToClient => "global::NexNet.Collections.NexusCollectionMode.ServerToClient",
+            NexusCollectionMode.BiDrirectional => "global::NexNet.Collections.NexusCollectionMode.BiDrirectional",
+            _ => "INVALID",
+        };
+
+        if (ReturnArity > 0)
+        {
+            this.ReturnTypeArity = SymbolUtilities.GetArityFullSymbolType(returnSymbol, 0);
+            this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        }
+    }
+
+
+    public int GetHash()
     {
-        var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
+        var hash = new HashCode();
+
+        //ReturnType + Name
+        if (ReturnTypeArity != null)
+        {
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(ReturnTypeArity)));
+        }
+
+        // Add the name of the method to the hash if we do not have a manually specified ID.
+        if (NexusCollectionAttribute.Id == null)
+        {
+            // Take the name of the method into consideration.
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(Name)));
+        }
+        else
+        {
+            hash.Add(NexusCollectionAttribute.Id.Value);
+        }
+        
+        return hash.ToHashCode();
+    }
+
+    public Location GetLocation(Location fallback)
+    {
+        var location = Symbol.Locations.FirstOrDefault();
+        if (location is null || location.IsInMetadata)
+        {
+            location = fallback;
+        }
+
         return location;
     }
 }

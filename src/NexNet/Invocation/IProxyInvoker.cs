@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -17,8 +18,8 @@ public interface IProxyInvoker
     /// <summary>
     /// Configures the proxy invoker with the specified parameters.
     /// </summary>
-    /// <param name="session">The session to be used by the proxy invoker. Can be null.</param>
-    /// <param name="sessionManager">The session manager to be used by the proxy invoker. Can be null.</param>
+    /// <param name="session">The session to be used by the proxy invoker. Null on the server.</param>
+    /// <param name="sessionManager">The session manager to be used by the proxy invoker. Null on the client</param>
     /// <param name="mode">The invocation mode to be used by the proxy invoker.</param>
     /// <param name="modeArguments">The arguments for the invocation mode. Can be null.</param>
     internal void Configure(
@@ -74,4 +75,17 @@ public interface IProxyInvoker
     /// <param name="pipe">Pipe to retrieve the Id of.</param>
     /// <returns>Initial id of the pipe.</returns>
     byte ProxyGetDuplexPipeInitialId(INexusDuplexPipe? pipe);
+    
+    
+    /// <summary>
+    /// Provides client side access to a configured list. 
+    /// </summary>
+    /// <param name="id">
+    /// A unique identifier for the list collection to configure.  
+    /// This must match the identifier used when retrieving or starting the collection.
+    /// </param>
+    /// <typeparam name="T">The element type stored in the list.</typeparam>
+    /// <returns>List ready for use.</returns>
+    INexusList<T> ProxyGetConfiguredNexusList<T>(ushort id);
+
 }

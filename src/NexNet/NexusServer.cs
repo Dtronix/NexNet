@@ -7,6 +7,7 @@ using NexNet.Cache;
 using NexNet.Invocation;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Logging;
 
@@ -18,7 +19,7 @@ namespace NexNet;
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
 public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
-    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     private readonly SessionManager _sessionManager = new();
@@ -34,7 +35,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
-    
+    private NexusCollectionManager _collectionManager = null!;
+
     /// <inheritdoc />
     public NexusServerState State => _state;
 
@@ -60,9 +62,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
-        _config = config;
-        _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger("NexusServer");
+
+        Configure(config, nexusFactory);
     }
     
     /// <summary>
@@ -97,6 +98,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
+        
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(config);
+        TServerNexus.ConfigureCollections(_collectionManager);
     }
 
     /// <inheritdoc />
@@ -229,7 +234,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             SessionManager = _sessionManager,
             Client = null,
             Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
-            Nexus = _nexusFactory!.Invoke()
+            Nexus = _nexusFactory!.Invoke(),
+            CollectionManager = _collectionManager
         }, cancellationToken);
     }
 
@@ -238,7 +244,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         try
         {
             var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
-            await RunClientAsync(arguments);
+            await RunClientAsync(arguments).ConfigureAwait(false);
         }
         catch (Exception e)
         {
@@ -342,7 +348,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         Configs = _config,
                         SessionManager = _sessionManager,
                         Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
-                        Nexus = _nexusFactory!.Invoke()
+                        Nexus = _nexusFactory!.Invoke(),
+                        CollectionManager = _collectionManager
                     });
             }
         }

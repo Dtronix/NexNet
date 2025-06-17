@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Transports;
@@ -19,7 +20,7 @@ public static partial class NexNetMiddlewareExtensions
     /// <param name="services">The <see cref="IServiceCollection"/> to add the service to.</param>
     /// <returns>A reference to this instance after the operation has completed.</returns>
     public static IServiceCollection AddNexusServer<TServerNexus, TClientProxy>(this IServiceCollection services)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         // Add the nexus to the services as a transient service to allow for instancing on each connection

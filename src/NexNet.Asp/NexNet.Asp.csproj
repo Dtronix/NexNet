@@ -3,13 +3,19 @@
   <PropertyGroup>
     <Description>ASP.NET Core middleware for NexNet servers.</Description>
     <Nullable>enable</Nullable>
-    <Version>0.9.1</Version>
+    <Version>0.10.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

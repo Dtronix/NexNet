@@ -36,7 +36,9 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
         Groups = new GroupManager(session, sessionManager);
     }
 
-    internal override void Reset()
+
+    /// <inheritdoc />
+    public override void Reset()
     {
         _proxy.Reset();
     }

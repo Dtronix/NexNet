@@ -1,4 +1,6 @@
-﻿using NexNet.Pipes;
+﻿using NexNet.Collections;
+using NexNet.Collections.Lists;
+using NexNet.Pipes;
 
 namespace NexNetSample.Asp.Shared;
 
@@ -21,6 +23,8 @@ public partial interface IClientNexus
 
 public partial interface IServerNexus
 {
+    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    INexusList<int> IntegerList { get; }
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();
@@ -32,6 +36,5 @@ public partial interface IServerNexus
     ValueTask<int> ServerTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ServerTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
-
     ValueTask ServerData(byte[] data);
 }

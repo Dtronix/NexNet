@@ -152,4 +152,40 @@ internal class Utilities
             throw new NotSupportedException();
         }
     }
+    
+    /// <summary>
+    /// Starts the async operation, then yields back to the TaskScheduler,
+    /// then fires <paramref name="onAwait"/>, then awaits the rest.
+    /// </summary>
+    public static async Task InvokeAndNotifyAwait(
+        Func<Task> task,
+        Action onAwait)
+    {
+        // Kick off the async method (runs synchronously up to its first await)
+        var runningTask = task();
+
+        // force an asynchronous “hop” back to the scheduler
+        await Task.Yield();
+
+        // now we know the asyncMethod has already registered its continuation,
+        // and we're running on a thread‐pool (or captured) context
+        onAwait();
+
+        // finally await the original task to observe its completion/exceptions
+        await runningTask;
+    }
+
+    /// <summary>
+    /// Starts the async operation, then yields back to the TaskScheduler,
+    /// then fires <paramref name="onAwait"/>, then awaits the rest.
+    /// </summary>
+    public static async Task<T> InvokeAndNotifyAwait<T>(
+        Func<Task<T>> asyncMethod,
+        Action onAwait)
+    {
+        Task<T> task = asyncMethod();
+        await Task.Yield();
+        onAwait();
+        return await task;
+    }
 }

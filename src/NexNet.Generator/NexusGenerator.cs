@@ -21,7 +21,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
         // return dir of info output or null .
         var typeDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
                 NexusAttributeFullName,
-                predicate: static (node, _) => (node is ClassDeclarationSyntax), // search [NexNetHubAttribute] class or struct or interface or record
+                predicate: static (node, _) => (node is ClassDeclarationSyntax), // search [NexusAttribute] class
                 transform: static (context, _) => (TypeDeclarationSyntax)context.TargetNode);
 
         var parseOptions = context.ParseOptionsProvider.Select((parseOptions, _) =>
@@ -30,21 +30,19 @@ internal partial class NexusGenerator : IIncrementalGenerator
             var langVersion = csOptions.LanguageVersion;
             return langVersion;
         });
+        
+        var source = typeDeclarations
+            .Combine(context.CompilationProvider)
+            .WithComparer(Comparer.Instance)
+            .Combine(parseOptions);
 
+        context.RegisterSourceOutput(source, static (context, source) =>
         {
-            var source = typeDeclarations
-                .Combine(context.CompilationProvider)
-                .WithComparer(Comparer.Instance)
-                .Combine(parseOptions);
+            var (typeDeclaration, compilation) = source.Left;
+            var langVersion = source.Right;
 
-            context.RegisterSourceOutput(source, static (context, source) =>
-            {
-                var (typeDeclaration, compilation) = source.Left;
-                var langVersion = source.Right;
-
-                Generate(typeDeclaration, compilation, new GeneratorContext(context, langVersion));
-            });
-        }
+            Generate(typeDeclaration, compilation, new GeneratorContext(context, langVersion));
+        });
     }
 
     class Comparer : IEqualityComparer<(TypeDeclarationSyntax, Compilation)>

@@ -96,12 +96,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public INexusLogger? Logger { get; }
     CacheManager INexusSession.CacheManager => CacheManager;
 
-    public List<int> RegisteredGroups { get; } = new List<int>();
+    public List<int> RegisteredGroups { get; } = new();
     
-    public Lock RegisteredGroupsLock { get; } = new Lock();
+    public Lock RegisteredGroupsLock { get; } = new();
 
     public SessionCacheManager<TProxy> CacheManager => _cacheManager;
     public SessionStore SessionStore { get; }
+    
+    public NexusCollectionManager CollectionManager { get; }
 
     public Action? OnDisconnected { get; init; }
     
@@ -138,28 +140,28 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _client = configurations.Client;
         _nexus = configurations.Nexus;
         _disconnectionCts = new CancellationTokenSource();
+        CollectionManager = configurations.CollectionManager;
         _nexus.SessionContext = IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = configurations.Configs.Logger?.CreateLogger("NexusSession", Id.ToString());
-
+        Logger = _config.Logger?.CreateLogger("NexusSession", Id.ToString());
+        
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);
 
-        SessionInvocationStateManager = new SessionInvocationStateManager(configurations.Cache, _config.Logger);
+        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger);
         SessionStore = new SessionStore();
-        _invocationSemaphore = new SemaphoreSlim(configurations.Configs.MaxConcurrentConnectionInvocations,
-            configurations.Configs.MaxConcurrentConnectionInvocations);
+        _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
+            _config.MaxConcurrentConnectionInvocations);
 
         // Register the session if there is a manager.
-        configurations.SessionManager?.RegisterSession(this);
+        _sessionManager?.RegisterSession(this);
 
         _config.InternalOnSessionSetup?.Invoke(this);
 
         Logger?.LogInfo($"Created session {Id}");
     }
-
 
     public Task DisconnectAsync(DisconnectReason reason)
     {
@@ -208,7 +210,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             await SendMessage(Unsafe.As<ClientGreetingMessage>(greetingMessage)).ConfigureAwait(false);
 
         // Start the reading loop on a dedicated long-running task.
-        _ = Task.Factory.StartNew(() => StartReadAsync(), TaskCreationOptions.LongRunning);
+        _ = Task.Factory.StartNew(static state => Unsafe.As<NexusSession<TNexus, TProxy>>(state!).StartReadAsync(), 
+            this, 
+            TaskCreationOptions.DenyChildAttach);
 
         Logger?.LogInfo("Client connected");
     }

@@ -31,7 +31,8 @@ public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>
     }
 
 
-    internal override void Reset()
+    /// <inheritdoc />
+    public override void Reset()
     {
         if (_proxy != null)
         {

@@ -8,9 +8,10 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Multiple transports and easy extensibility.
 - Strong Typed Hubs & Clients.
 - Server <-> Client communication
+  - Synchronized collections (INexusList)
   - Cancellable Invocations
   - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
-  - Streaming classes/structs data via `NexusChannel<T>`
+  - Streaming classes/structs data via `NexusChannel<T>` and simplified reading with IAsyncEnumerable
   - Multiplexing method invocations
   - Proxies can return:
     - void for "fire and forget" invocation situations such as notifications.
@@ -138,6 +139,37 @@ Notes:
 - `CancellationToken`s can't be combined with `NexusDuplexPipe` nor `INexusChannel<T>` due to pipes/channels having built-in cancellation/completion notifications.
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
+### Synchronized Collection Usage
+The synchronized collections exists on the server nexus and is accessed through the server proxy on the client.  Collections must be decorated with NexusCollectionAttribute, otherwise the Server nexus it will throw.  Synchronized collections are only allowed on the server nexus.  Collections are to be configured as either `BiDrirectional` or `ServerToClient`.
+
+INexusList offers a list-like API but with each mutation routed to the server.  Methods like AddAsync, InsertAsync, RemoveAsync, RemoveAtAsync, ClearAsync, MoveAsync, and ReplaceAsync all return Task, where the completion indicates acceptance or rejection by the server (noop).  All data accessed in the synchronous methods access the current state on the client.
+
+``` cs
+public partial interface IClientNexus { }
+public partial interface IServerNexus
+{
+    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    INexusList<int> IntList { get; }
+}
+
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+public partial class ClientNexus { }
+
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+public partial class ServerNexus { }
+
+await ServerNexus.CreateServer(..., ...).StartAsync();
+
+var client = ClientNexus.CreateClient(..., ...);
+await client.ConnectAsync();
+
+// Connect to the list (internally starts a duplex pipe for communication).
+await client.Proxy.IntList.ConnectAsync();
+
+// Add the value to the synchronized collection. This will return upon acknowledgement by the server of addition.
+await client.Proxy.IntList.AddAsync(12345);
+```
+
 ## Duplex Pipe Usage
 NexNet has a limitation where the total arguments passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
 
@@ -157,6 +189,18 @@ Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionCo
 The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine-tuned for performance.
 
 Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
+
+#### IAsyncEnumerable Usage
+
+The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
+```cs
+var writer = await pipe.GetUnmanagedChannelWriter<int>();
+int counter = 0;
+await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
+{
+    // Do something with the message.
+}
+```
 
 ## Lifetimes
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
