@@ -42,7 +42,7 @@ internal partial class NexusList<T>
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
                 break;
             
-            case NexusListModifyMessage:
+            case NexusListReplaceMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
                 break;
             

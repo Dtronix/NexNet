@@ -11,7 +11,7 @@ namespace NexNet.Collections;
 [MemoryPackUnion(3, typeof(NexusCollectionResetCompleteMessage))]                
 [MemoryPackUnion(4, typeof(NexusCollectionClearMessage))]                
 [MemoryPackUnion(5, typeof(NexusListInsertMessage))]
-[MemoryPackUnion(6, typeof(NexusListModifyMessage))]
+[MemoryPackUnion(6, typeof(NexusListReplaceMessage))]
 [MemoryPackUnion(7, typeof(NexusListMoveMessage))]
 [MemoryPackUnion(8, typeof(NexusListRemoveMessage))]
 internal partial interface INexusCollectionMessage
@@ -97,7 +97,7 @@ internal partial class NexusListInsertMessage : NexusCollectionValueMessage<Nexu
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusListModifyMessage : NexusCollectionValueMessage<NexusListModifyMessage>
+internal partial class NexusListReplaceMessage : NexusCollectionValueMessage<NexusListReplaceMessage>
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }

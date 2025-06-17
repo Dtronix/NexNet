@@ -194,6 +194,45 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
     }
     
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerReplaceAsync_NotifiesServer(Type type)
+    {
+        var (_, serverNexus, _, _) = await ConnectServerAndClient(type);
+        
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+        await serverNexus.IntListBi.ReplaceAsync(0,3).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerReplaceAsync_NotifiesClient(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await serverNexus.IntListBi.ReplaceAsync(0,3).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
+    }
+    
     #endregion
     
     #region Client Change Notifications
@@ -385,6 +424,46 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await eventReg.Wait();
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientReplaceAsync_NotifiesServer(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientReplaceAsync_NotifiesClient(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
     }
     
 

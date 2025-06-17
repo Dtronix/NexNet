@@ -136,4 +136,16 @@ public interface INexusList<T> : INexusCollection, IEnumerable<T>
     /// if either index was invalid or the move was a no-op (e.g., same source and destination).
     /// </returns>
     Task<bool> MoveAsync(int fromIndex, int toIndex);
+    
+    /// <summary>
+    /// Replaces the item at the specified index with a new value on the server.
+    /// </summary>
+    /// <param name="index">The zero-based index of the item to replace.</param>
+    /// <param name="value">The new value to set at the specified index.</param>
+    /// <returns>
+    /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the modification
+    /// was accepted and applied by the server; otherwise <c>false</c> if the index was invalid
+    /// or the value was unchanged (no-op).
+    /// </returns>
+    Task<bool> ReplaceAsync(int index, T value);
 }

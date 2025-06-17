@@ -46,7 +46,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
                 version = msg.Version;
                 break;
             
-            case NexusListModifyMessage msg:
+            case NexusListReplaceMessage msg:
                 var modOp = ModifyOperation<T>.Rent();
                 modOp.Index = msg.Index;
                 modOp.Value = msg.DeserializeValue<T>()!;
@@ -100,7 +100,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             }
             case ModifyOperation<T> modify:
             {
-                var message = NexusListModifyMessage.Rent();
+                var message = NexusListReplaceMessage.Rent();
                 message.Version = version;
                 message.Index = modify.Index;
                 message.Value = MemoryPackSerializer.Serialize(modify.Value);
@@ -165,6 +165,17 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         message.Version = _itemList.Version;
         message.FromIndex = fromIndex;
         message.ToIndex = toIndex;
+        return UpdateAndWaitAsync(message);
+    }
+
+    public Task<bool> ReplaceAsync(int index, T value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        var message = NexusListReplaceMessage.Rent();
+        
+        message.Version = _itemList.Version;
+        message.Index = index;
+        message.Value = MemoryPackSerializer.Serialize(value);
         return UpdateAndWaitAsync(message);
     }
 

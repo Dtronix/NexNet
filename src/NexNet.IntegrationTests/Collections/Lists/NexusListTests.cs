@@ -114,6 +114,28 @@ internal class NexusListTests : NexusCollectionBaseTests
             Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1,2,0]));
         });
     }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientCanReplace(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.AddAsync(0);
+        await client.Proxy.IntListBi.AddAsync(1);
+        await client.Proxy.IntListBi.AddAsync(2);
+        await client.Proxy.IntListBi.ReplaceAsync(0,3);
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3,1,2]));
+        });
+    }
 
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
@@ -235,6 +257,31 @@ internal class NexusListTests : NexusCollectionBaseTests
         {
             Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
             Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1,2,0]));
+        });
+    }
+    
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanReplace(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Replace);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await serverNexus.IntListBi.AddAsync(0);
+        await serverNexus.IntListBi.AddAsync(1);
+        await serverNexus.IntListBi.AddAsync(2);
+        await serverNexus.IntListBi.ReplaceAsync(0,3);
+
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3,1,2]));
         });
     }
 
