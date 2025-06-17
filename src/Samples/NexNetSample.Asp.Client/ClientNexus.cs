@@ -1,4 +1,8 @@
-﻿using NexNet;
+﻿using System.Runtime.CompilerServices;
+using NexNet;
+using NexNet.Collections;
+using NexNet.Collections.Lists;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
@@ -6,7 +10,7 @@ using NexNetSample.Asp.Shared;
 namespace NexNetSample.Asp.Client;
 
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
-partial class ClientNexus
+public partial class ClientNexus
 {
     public Action<ClientNexus>? ClientVoidEvent = null;
     public Action<ClientNexus, int>? ClientVoidWithParamEvent = null;

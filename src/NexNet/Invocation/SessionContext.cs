@@ -12,7 +12,7 @@ namespace NexNet.Invocation;
 /// Base context for hubs to use.
 /// </summary>
 /// <typeparam name="TProxy">Proxy class used for invocation.</typeparam>
-public abstract class SessionContext<TProxy>
+public abstract class SessionContext<TProxy> : ISessionContext
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     internal INexusSession<TProxy> Session { get; }
@@ -27,7 +27,7 @@ public abstract class SessionContext<TProxy>
     /// <summary>
     /// Store for this session used to keep and pass variables for the lifetime of this session.
     /// </summary>
-    public SessionStore Store => Session.SessionStore!;
+    public SessionStore Store => Session.SessionStore;
 
     /// <summary>
     /// Id of the current session.
@@ -86,5 +86,11 @@ public abstract class SessionContext<TProxy>
         return Session.DisconnectAsync(DisconnectReason.Graceful);
     }
 
-    internal abstract void Reset();
+    Task ISessionContext.DisconnectAsync(DisconnectReason reason)
+    {
+        return Session.DisconnectAsync(reason);
+    }
+
+    /// <inheritdoc />
+    public abstract void Reset();
 }

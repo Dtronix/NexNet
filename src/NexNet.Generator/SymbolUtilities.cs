@@ -47,6 +47,24 @@ internal class SymbolUtilities
             }
         }
 
+        return FullSymbolType(typeSymbol);
+    }
+    
+    public static string GetArityFullSymbolType(ITypeSymbol? typeSymbol, int index)
+    {
+        if(typeSymbol == null)
+            return "UNKNOWN TYPE";
+
+        if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
+        {
+            typeSymbol = namedTypeSymbol.TypeArguments[index];
+        }
+
+        return FullSymbolType(typeSymbol);
+    }
+    
+    public static string FullSymbolType(ITypeSymbol typeSymbol)
+    {
         var sb = GetStringBuilder();
         sb.Append(typeSymbol.ToDisplayString(NullableFlowState.NotNull, _symbolDisplayFormat));
 

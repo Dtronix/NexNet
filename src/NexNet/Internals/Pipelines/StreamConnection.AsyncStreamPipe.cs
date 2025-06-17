@@ -138,7 +138,7 @@ internal static partial class StreamConnection
                         await _inner.FlushAsync().ConfigureAwait(false);
                         DebugLog($"flushed");
                     }
-                    var result = await pending;
+                    var result = await pending.ConfigureAwait(false);
                     ReadOnlySequence<byte> buffer;
                     do
                     {
@@ -173,7 +173,7 @@ internal static partial class StreamConnection
                 {
                     Helpers.DebugLog(nname, $"writing {segment.Length} bytes to '{ttarget}'...");
 #if SOCKET_STREAM_BUFFERS
-                    await ttarget.WriteAsync(segment);
+                    await ttarget.WriteAsync(segment).ConfigureAwait(false);
 #else
                         var arr = segment.GetArray();
                         await ttarget.WriteAsync(arr.Array, arr.Offset, arr.Count).ConfigureAwait(false);

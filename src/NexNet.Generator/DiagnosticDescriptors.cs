@@ -117,4 +117,36 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor CollectionUnknownType = new(
+        id: "NEXNET015",
+        title: "Nexus collection type unsupported",
+        messageFormat: "The collection type '{0}' is unsupported. Use INexusList<T> instead.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor CollectionUnknownMode = new(
+        id: "NEXNET016",
+        title: "Nexus collection mode type is unsupported",
+        messageFormat: "The collection mode set for '{0}' is unsupported. Use ServerToClient or BiDrirectional.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor CollectionAttributeMissing = new(
+        id: "NEXNET017",
+        title: "Nexus collection property is unconfigured",
+        messageFormat: "The collection '{0}' must have an attached NexusCollectionAttribute to set the collection mode",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor CollectionCanNotBeOnClient = new(
+        id: "NEXNET018",
+        title: "Nexus collection property is only allowed on server",
+        messageFormat: "The collection '{0}' is not allowed to be on a client nexus",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }

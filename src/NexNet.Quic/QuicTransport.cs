@@ -44,7 +44,7 @@ internal class QuicTransport : ITransport
     /// </summary>
     public static async ValueTask<ITransport> CreateFromConnection(QuicConnection connection, QuicServerConfig config)
     {
-        var stream = await connection.AcceptInboundStreamAsync(CancellationToken.None);
+        var stream = await connection.AcceptInboundStreamAsync(CancellationToken.None).ConfigureAwait(false);
         return new QuicTransport(connection, stream);
     }
 
@@ -73,12 +73,12 @@ internal class QuicTransport : ITransport
         };
 
         using var timeoutCancellation = new CancellationTokenSource(clientConfig.ConnectionTimeout);
-        await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel);
+        await using var cancellationTokenRegistration = cancellationToken.Register(timeoutCancellation.Cancel).ConfigureAwait(false);
 
         QuicConnection quicConnection;
         try
         {
-            quicConnection = await QuicConnection.ConnectAsync(connectionOptions, timeoutCancellation.Token);
+            quicConnection = await QuicConnection.ConnectAsync(connectionOptions, timeoutCancellation.Token).ConfigureAwait(false);
         }
         catch (QuicException e)
         {
@@ -89,7 +89,7 @@ internal class QuicTransport : ITransport
             throw new TransportException(TransportError.ConnectionRefused, e.Message, e);
         }
 
-        var mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token);
+        var mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token).ConfigureAwait(false);
 
         return new QuicTransport(quicConnection, mainStream);
     }

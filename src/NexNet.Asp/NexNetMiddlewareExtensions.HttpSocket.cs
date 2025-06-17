@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NexNet.Asp.HttpSocket;
+using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
@@ -35,7 +36,7 @@ public static partial class NexNetMiddlewareExtensions
         this WebApplication app,
         HttpSocketServerConfig config,
         NexusServer<TServerNexus, TClientProxy>? server = null)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -54,7 +55,7 @@ public static partial class NexNetMiddlewareExtensions
                 if (server.State != NexusServerState.Running
                     || httpSocket?.IsHttpSocketRequest != true)
                 {
-                    await next(context);
+                    await next(context).ConfigureAwait(false);
                     return;
                 }
 
@@ -69,7 +70,7 @@ public static partial class NexNetMiddlewareExtensions
                 return;
             }
             
-            await next(context);
+            await next(context).ConfigureAwait(false);
 
         });
     }
@@ -85,7 +86,7 @@ public static partial class NexNetMiddlewareExtensions
     public static NexusServer<TServerNexus, TClientProxy> UseHttpSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
         Action<HttpSocketConfigure>? configure = null)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         ArgumentNullException.ThrowIfNull(app);

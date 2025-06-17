@@ -90,7 +90,7 @@ internal class QuicTransportListener : ITransportListener
                 // Callback to provide options for the incoming connections, it gets called once per each connection.
                 ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
                 ListenBacklog = config.AcceptorBacklog
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
 
             return new QuicTransportListener(config, listener);
         }

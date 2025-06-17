@@ -2,6 +2,7 @@
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.WebSockets;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -71,8 +72,9 @@ internal class WebSocketTransport : ITransport
             
             // Run receive loop on a long-running task.
             _ = Task.Factory.StartNew(
-                async () => await pipe.RunAsync(CancellationToken.None).ConfigureAwait(false), 
-                TaskCreationOptions.LongRunning);
+                static async pipe => await Unsafe.As<IWebSocketPipe>(pipe!).RunAsync(CancellationToken.None).ConfigureAwait(false), 
+                pipe,
+                TaskCreationOptions.DenyChildAttach);
             return new WebSocketTransport(pipe, client);
 
         }

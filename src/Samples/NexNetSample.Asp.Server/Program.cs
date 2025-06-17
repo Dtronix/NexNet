@@ -2,6 +2,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.HttpOverrides;
+using NexNet;
 using NexNet.Asp;
 using NexNet.Logging;
 
@@ -50,7 +51,7 @@ public class Program
         
         builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
         
-        builder.Services.AddHostedService<SimpleService>();
+        //builder.Services.AddHostedService<SimpleService>();
 
         var app = builder.Build();
         
@@ -65,6 +66,7 @@ public class Program
             c.NexusConfig.Logger!.Behaviors = NexusLogBehaviors.LocalInvocationsLogAsInfo;
             c.NexusConfig.AspEnableAuthentication = true;
             c.NexusConfig.AspAuthenticationScheme = "BearerToken";
+            
         }).StartAsync(app.Lifetime.ApplicationStopped);
         
         await app.RunAsync();

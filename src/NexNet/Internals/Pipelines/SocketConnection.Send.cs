@@ -42,7 +42,7 @@ internal partial class SocketConnection
                     Helpers.Incr(Counter.OpenSendReadAsync);
                     var read = _sendToSocket.Reader.ReadAsync();
                     Helpers.Incr(read.IsCompleted ? Counter.SocketPipeReadReadSync : Counter.SocketPipeReadReadAsync);
-                    result = await read;
+                    result = await read.ConfigureAwait(false);
                     Helpers.Decr(Counter.OpenSendReadAsync);
                 }
                 var buffer = result.Buffer;

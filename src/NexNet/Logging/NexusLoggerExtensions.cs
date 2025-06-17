@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Text;
 
 namespace NexNet.Logging;
@@ -13,6 +14,7 @@ public static class NexusLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
+    [Conditional("DEBUG")]
     public static void LogTrace(this INexusLogger logger, string message)
     {
         logger.LogTrace(null, message);
@@ -24,6 +26,7 @@ public static class NexusLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
     /// <param name="data">Data to log.</param>
+    [Conditional("DEBUG")]
     internal static void LogTraceArray(this INexusLogger logger, string message, ReadOnlyMemory<byte> data)
     {
         var sb = new StringBuilder(message);
@@ -44,6 +47,7 @@ public static class NexusLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
+    [Conditional("DEBUG")]
     public static void LogTrace(this INexusLogger logger, Exception? ex, string message)
     {
         logger.Log(NexusLogLevel.Trace, logger.Category, ex, message);
@@ -54,6 +58,7 @@ public static class NexusLoggerExtensions
     /// </summary>
     /// <param name="logger">Logger for this method.</param>
     /// <param name="message">Log message.</param>
+    [Conditional("DEBUG")]
     public static void LogDebug(this INexusLogger logger, string message)
     {
         logger.LogDebug(null, message);
@@ -66,6 +71,7 @@ public static class NexusLoggerExtensions
     /// <param name="logger">Logger for this method.</param>
     /// <param name="ex">Optional exception which is associated with this log event.</param>
     /// <param name="message">Log message.</param>
+    [Conditional("DEBUG")]
     public static void LogDebug(this INexusLogger logger, Exception? ex, string message)
     {
         logger.Log(NexusLogLevel.Debug, logger.Category, ex, message);

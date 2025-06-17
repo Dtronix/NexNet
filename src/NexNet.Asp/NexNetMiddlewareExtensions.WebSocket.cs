@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NexNet.Asp.WebSocket;
+using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Transports;
 using NexNet.Transports.WebSocket;
@@ -29,7 +30,7 @@ public static partial class NexNetMiddlewareExtensions
         this WebApplication app, 
         WebSocketServerConfig config,
         NexusServer<TServerNexus, TClientProxy>? server = null)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -46,7 +47,7 @@ public static partial class NexNetMiddlewareExtensions
                 // Check to see if the server is running.
                 if (server.State != NexusServerState.Running)
                 {
-                    await next(context);
+                    await next(context).ConfigureAwait(false);
                     return;
                 }
                 
@@ -67,7 +68,7 @@ public static partial class NexNetMiddlewareExtensions
                 {
                     var state = Unsafe.As<WebSocketReadingState>(obj)!;
                     await state.Pipe.RunAsync(state.CancellationToken).ConfigureAwait(false);
-                }, new WebSocketReadingState(pipe, cts.Token), cts.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+                }, new WebSocketReadingState(pipe, cts.Token), cts.Token, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
                 
                 await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new WebSocketTransport(pipe), cts.Token).ConfigureAwait(false);
             }
@@ -91,7 +92,7 @@ public static partial class NexNetMiddlewareExtensions
     public static NexusServer<TServerNexus, TClientProxy> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
         Action<WebSocketConfigure>? configure = null)
-        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
