@@ -139,7 +139,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                         return false;
                     IsClientResetting = false;
                     var completeResult = OnClientResetCompleted();
-                    _clientConnectTcs?.SetResult();
+                    _clientConnectTcs?.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return completeResult;
 
@@ -403,8 +403,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
         await pipe.ReadyTask.ConfigureAwait(false);
 
-        _ = pipe.CompleteTask.ContinueWith((s, state) => 
-            Unsafe.As<NexusCollection>(state)!.ClientDisconnected(), this, token);
+        _ = pipe.CompleteTask.ContinueWith((s, state) =>
+        {
+            Unsafe.As<NexusCollection>(state)!.Logger?.LogError("Disconnected with CompletedTask");
+            Unsafe.As<NexusCollection>(state)!.ClientDisconnected();
+        }, this, token);
 
         _client = new Client(
             pipe,
@@ -412,8 +415,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
             Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null,
             _session);
         
-        _clientConnectTcs = new TaskCompletionSource();
-        _disconnectTcs = new TaskCompletionSource();
+        _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>

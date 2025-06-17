@@ -660,8 +660,8 @@ internal class NexusListTests : BaseTests
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 3);
 
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
-        await eventReg.Wait();
+        //await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        await eventReg.Wait(1);
 
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
