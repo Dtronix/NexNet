@@ -55,28 +55,6 @@ internal class NexusListTests : NexusCollectionBaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task ClientCanRemoveAt(Type type)
-    {
-        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
-
-        await client.Proxy.IntListBi.ConnectAsync();
-        await client.Proxy.IntListBi.AddAsync(0);
-        await client.Proxy.IntListBi.AddAsync(111);
-        await client.Proxy.IntListBi.AddAsync(2);
-        await client.Proxy.IntListBi.RemoveAtAsync(1);
-        Assert.Multiple(() =>
-        {
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
-            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([0, 2]));
-        });
-    }
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
     public async Task ClientCanRemove(Type type)
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
@@ -92,7 +70,174 @@ internal class NexusListTests : NexusCollectionBaseTests
             Assert.That(serverNexus.IntListBi, Is.EquivalentTo([0, 2]));
         });
     }
-    
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientCanRemoveAt(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.AddAsync(0);
+        await client.Proxy.IntListBi.AddAsync(111);
+        await client.Proxy.IntListBi.AddAsync(2);
+        await client.Proxy.IntListBi.RemoveAtAsync(1);
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([0, 2]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientCanMove(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.AddAsync(0);
+        await client.Proxy.IntListBi.AddAsync(1);
+        await client.Proxy.IntListBi.AddAsync(2);
+        await client.Proxy.IntListBi.MoveAsync(0,2);
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1,2,0]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanAdd(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
+        
+        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(3).Timeout(1);
+
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 2, 3]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanInsert(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await serverNexus.IntListBi.InsertAsync(0, 2);
+        await serverNexus.IntListBi.InsertAsync(1, 3);
+        await serverNexus.IntListBi.InsertAsync(0, 1);
+        
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 2, 3]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanRemove(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+        
+        await client.Proxy.IntListBi.ConnectAsync();
+        await serverNexus.IntListBi.AddAsync(0);
+        await serverNexus.IntListBi.AddAsync(111);
+        await serverNexus.IntListBi.AddAsync(2);
+        await serverNexus.IntListBi.RemoveAsync(111);
+
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([0, 2]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanRemoveAt(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await serverNexus.IntListBi.AddAsync(0);
+        await serverNexus.IntListBi.AddAsync(111);
+        await serverNexus.IntListBi.AddAsync(2);
+        await serverNexus.IntListBi.RemoveAtAsync(1);
+
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([0, 2]));
+        });
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ServerCanMove(Type type)
+    {
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Move);
+
+        await client.Proxy.IntListBi.ConnectAsync();
+        await serverNexus.IntListBi.AddAsync(0);
+        await serverNexus.IntListBi.AddAsync(1);
+        await serverNexus.IntListBi.AddAsync(2);
+        await serverNexus.IntListBi.MoveAsync(0,2);
+
+        await eventReg.Wait();
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1,2,0]));
+        });
+    }
+
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]

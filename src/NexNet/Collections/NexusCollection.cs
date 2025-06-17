@@ -315,12 +315,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
             list.Remove(client);
         }, (client, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
 
-        Logger?.LogTrace("Sending client init data");
-        // Initialize the client's data.
-        var initResult = await SendClientInitData(writer).ConfigureAwait(false);
-        
-        if (!initResult)
-            return;
         
         Logger?.LogTrace("Starting channel listener.");
         
@@ -344,6 +338,13 @@ internal abstract class NexusCollection : INexusCollectionConnector
             }
 
         }, client, TaskCreationOptions.DenyChildAttach);
+        
+        Logger?.LogTrace("Sending client init data");
+        // Initialize the client's data.
+        var initResult = await SendClientInitData(writer).ConfigureAwait(false);
+        
+        if (!initResult)
+            return;
 
         client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
@@ -435,7 +436,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                             collection.Logger?.LogWarning($"Could not find AckTcs for id {ack.Id}.");
                     }
                     
-                    collection.Logger?.LogTrace($"Client received message. {message.GetType()}");
+                    collection.Logger?.LogTrace($"<--- Receiving {message.GetType()}");
                     var success = collection.ClientProcessMessage(message);
                     
                     // Don't return these messages to the cache as they are created on reading.
@@ -478,6 +479,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
 
+        Logger?.LogInfo($"--> Sending {message.GetType()} message.");
         if (IsServer)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
