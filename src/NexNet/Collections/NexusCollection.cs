@@ -436,7 +436,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                             collection.Logger?.LogWarning($"Could not find AckTcs for id {ack.Id}.");
                     }
                     
-                    collection.Logger?.LogTrace($"<--- Receiving {message.GetType()}");
+                    collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
                     var success = collection.ClientProcessMessage(message);
                     
                     // Don't return these messages to the cache as they are created on reading.
@@ -479,7 +479,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
 
-        Logger?.LogInfo($"--> Sending {message.GetType()} message.");
+        Logger?.LogTrace($"--> Sending {message.GetType()} message.");
         if (IsServer)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
