@@ -242,10 +242,10 @@ internal class IndexedCircularListTests
     [Test]
     public void TryGetValue_ValidIndex_ReturnsTrueAndValue()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add("A");
         list.Add("B");
-        string value;
+        string? value;
         var result = list.TryGetValue(1, out value);
         Assert.That(result, Is.True);
         Assert.That(value, Is.EqualTo("B"));
@@ -254,9 +254,9 @@ internal class IndexedCircularListTests
     [Test]
     public void TryGetValue_IndexBelowFirst_ReturnsFalseAndNull()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add("A");
-        string value;
+        string? value;
         var result = list.TryGetValue(-1, out value);
         Assert.That(result, Is.False);
         Assert.That(value, Is.Null);
@@ -265,9 +265,9 @@ internal class IndexedCircularListTests
     [Test]
     public void TryGetValue_IndexAboveLast_ReturnsFalseAndNull()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add("A");
-        string value;
+        string? value;
         var result = list.TryGetValue(1, out value);
         Assert.That(result, Is.False);
         Assert.That(value, Is.Null);
@@ -290,11 +290,11 @@ internal class IndexedCircularListTests
     [Test]
     public void Clear_ClearsBuffer()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add("A");
         list.Add("B");
         list.Clear();
-        string value;
+        string? value;
         var result = list.TryGetValue(0, out value);
         Assert.That(result, Is.False);
         Assert.That(value, Is.Null);
@@ -403,7 +403,7 @@ internal class IndexedCircularListTests
     [Test]
     public void Add_NullValueAllowed()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         var idx = list.Add(null);
         Assert.That(idx, Is.EqualTo(0));
         Assert.That(list[0], Is.Null);
@@ -412,9 +412,9 @@ internal class IndexedCircularListTests
     [Test]
     public void TryGetValue_NullStored_ReturnsTrueAndNull()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add(null);
-        string value;
+        string? value;
         var result = list.TryGetValue(0, out value);
         Assert.That(result, Is.True);
         Assert.That(value, Is.Null);
@@ -423,7 +423,7 @@ internal class IndexedCircularListTests
     [Test]
     public void Indexer_NullStored_ReturnsNull()
     {
-        var list = new IndexedCircularList<string>(3);
+        var list = new IndexedCircularList<string?>(3);
         list.Add(null);
         Assert.That(list[0], Is.Null);
     }

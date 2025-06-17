@@ -11,7 +11,7 @@ namespace NexNet.Internals.Collections.Lists;
 /// </summary>
 /// <typeparam name="T">Type of items to store.</typeparam>
 internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
-    where T : class
+    where T : class?
 {
     private readonly T[] _buffer;
     private readonly int _capacity;
@@ -116,7 +116,7 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     /// <param name="index">Value Index to attempt retrieval.</param>
     /// <param name="value">Value to retrieve.  Null if the method returns false.</param>
     /// <returns>False if the index is inside the current bounds, false otherwise.</returns>
-    public bool TryGetValue(long index, [NotNullWhen(true)] out T? value)
+    public bool TryGetValue(long index, out T? value)
     {
         if (index < FirstIndex || index > LastIndex)
         {
