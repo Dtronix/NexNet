@@ -403,11 +403,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
         await pipe.ReadyTask.ConfigureAwait(false);
 
-        _ = pipe.CompleteTask.ContinueWith((s, state) =>
-        {
-            Unsafe.As<NexusCollection>(state)!.Logger?.LogError("Disconnected with CompletedTask");
-            Unsafe.As<NexusCollection>(state)!.ClientDisconnected();
-        }, this, token);
+        _ = pipe.CompleteTask.ContinueWith((s, state) => 
+            Unsafe.As<NexusCollection>(state)!.ClientDisconnected(), this, token);
 
         _client = new Client(
             pipe,
@@ -458,9 +455,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
             {
                 collection._client?.Session.Logger?.LogInfo(e, "Error while reading session collection message.");
             }
-
-            collection.ClientDisconnected();
-            
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Wait for either the complete task fires or the client is actually connected.
