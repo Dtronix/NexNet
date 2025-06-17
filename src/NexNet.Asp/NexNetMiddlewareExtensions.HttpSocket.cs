@@ -55,7 +55,7 @@ public static partial class NexNetMiddlewareExtensions
                 if (server.State != NexusServerState.Running
                     || httpSocket?.IsHttpSocketRequest != true)
                 {
-                    await next(context);
+                    await next(context).ConfigureAwait(false);
                     return;
                 }
 
@@ -70,7 +70,7 @@ public static partial class NexNetMiddlewareExtensions
                 return;
             }
             
-            await next(context);
+            await next(context).ConfigureAwait(false);
 
         });
     }

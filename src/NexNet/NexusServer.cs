@@ -244,7 +244,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         try
         {
             var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
-            await RunClientAsync(arguments);
+            await RunClientAsync(arguments).ConfigureAwait(false);
         }
         catch (Exception e)
         {

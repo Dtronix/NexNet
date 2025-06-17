@@ -97,7 +97,7 @@ internal partial class SocketConnection
                 }
                 else
                 {
-                    result = await flushTask;
+                    result = await flushTask.ConfigureAwait(false);
                     DebugLog("pipe flushed (async)");
                 }
                 Helpers.Decr(Counter.OpenReceiveFlushAsync);

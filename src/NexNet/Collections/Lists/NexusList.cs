@@ -1,12 +1,8 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
 using NexNet.Transports;
@@ -18,7 +14,6 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     private readonly VersionedList<T> _itemList = new();
     private List<T>? _clientInitialization;
     private int _clientInitializationVersion = -1;
-    private static readonly Type _tType = typeof(T);
 
     /// <inheritdoc />
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
@@ -131,14 +126,6 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         }
     }
 
-
-    public void Reset()
-    {
-        _clientInitialization = null;
-        _clientInitializationVersion = -1;
-        _itemList.Reset();
-    }
-
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
@@ -167,6 +154,17 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         message.Version = _itemList.Version;
         message.Index = index;
         message.Value = MemoryPackSerializer.Serialize(item);
+        return UpdateAndWaitAsync(message);
+    }
+    
+    public Task<bool> MoveAsync(int fromIndex, int toIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
+        var message = NexusListMoveMessage.Rent();
+        
+        message.Version = _itemList.Version;
+        message.FromIndex = fromIndex;
+        message.ToIndex = toIndex;
         return UpdateAndWaitAsync(message);
     }
 

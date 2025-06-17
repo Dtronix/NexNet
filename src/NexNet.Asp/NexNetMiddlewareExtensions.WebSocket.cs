@@ -47,7 +47,7 @@ public static partial class NexNetMiddlewareExtensions
                 // Check to see if the server is running.
                 if (server.State != NexusServerState.Running)
                 {
-                    await next(context);
+                    await next(context).ConfigureAwait(false);
                     return;
                 }
                 

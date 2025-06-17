@@ -124,4 +124,16 @@ public interface INexusList<T> : INexusCollection, IEnumerable<T>
     /// Thrown if <paramref name="index"/> is less than 0 or greater than or equal to <see cref="Count"/>.
     /// </exception>
     T this[int index] { get; }
+
+    /// <summary>
+    /// Moves an item from one index to another within the list on the server.
+    /// </summary>
+    /// <param name="fromIndex">The zero-based index of the item to move.</param>
+    /// <param name="toIndex">The zero-based index to which the item should be moved.</param>
+    /// <returns>
+    /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the move
+    /// operation was accepted and completed by the server; otherwise <c>false</c>
+    /// if either index was invalid or the move was a no-op (e.g., same source and destination).
+    /// </returns>
+    Task<bool> MoveAsync(int fromIndex, int toIndex);
 }

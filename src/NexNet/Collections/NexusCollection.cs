@@ -521,7 +521,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
             foreach (var values in ResetValuesEnumerator(batchValue))
             {
                 sentData = true;
-                await writer.WriteAsync(values);
+                await writer.WriteAsync(values).ConfigureAwait(false);
             }
             
             batchValue.ReturnToCache();
@@ -533,7 +533,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 return false;
             }
             
-            await writer.WriteAsync(resetComplete);
+            await writer.WriteAsync(resetComplete).ConfigureAwait(false);
             resetComplete.ReturnToCache();
         }
         catch (Exception e)
@@ -560,7 +560,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
         if (_disconnectTcs != null)
         {
-            await _disconnectTcs.Task;
+            await _disconnectTcs.Task.ConfigureAwait(false);
             _disconnectTcs = null;
         }
     }
