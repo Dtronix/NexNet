@@ -430,6 +430,44 @@ namespace HubNameSpaces2.Seven.Eight
 """);
         Assert.That(diagnostic, Is.Empty);
     }
+    
+    [Test]
+    public void CompilesServerNexusAcrossMultipleInterfaces()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V4")]
+partial interface IServerNexusV4 : IServerNexusV3 { void Update3(string[]? val); }
+[NexusVersion(Version = "V3")]
+partial interface IServerNexusV3 : IServerNexusV2, IServerNexusV2_2 { void Update2(string[]? val); }
+[NexusVersion(Version = "V2")]
+partial interface IServerNexusV2 : IServerNexus { void Update1(string[]? val); }
+[NexusVersion(Version = "V2.1")]
+partial interface IServerNexusV2_1 : IServerNexusV2 { void Update1_1(string[]? val); }
+[NexusVersion(Version = "V2.2")]
+partial interface IServerNexusV2_2 : IServerNexusV2_1 { void Update1_2(string[]? val); }
+partial interface IServerNexus { void UpdateBase(string[]? val); }
+
+//[Nexus<IClientNexus, IServerNexusV2_2>(NexusType = NexusType.Client)]
+//partial class ClientNexus { }
+
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(string[]? val){ }
+    public void Update1_1(string[]? val){ }
+    public void Update1_2(string[]? val){ }
+    public void Update2(string[]? val){ }
+    public void Update3(string[]? val){ }
+    public void UpdateBase(string[]? val){ }
+
+}
+""");
+        Assert.That(diagnostic, Is.Empty);
+    }
 
 }
 

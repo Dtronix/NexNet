@@ -101,7 +101,7 @@ partial class NexusMeta
     private string EmitServerClientName() => NexusAttribute.IsServer ? "Server" : "Client";
     public void EmitNexus(StringBuilder sb)
     {
-        var collections = NexusAttribute.IsServer ? NexusInterface.Collections : ProxyInterface.Collections;
+        var collections = NexusAttribute.IsServer ? NexusInterface.AllCollections : ProxyInterface.AllCollections;
         sb.AppendLine($$"""
 namespace {{Symbol.ContainingNamespace}} 
 {
@@ -163,7 +163,7 @@ namespace {{Symbol.ContainingNamespace}}
             try
             {
 """);
-        if (NexusInterface.Methods.Length > 0 || NexusInterface.Collections.Length > 0)
+        if (NexusInterface.AllMethods!.Length > 0 || NexusInterface.AllCollections!.Length > 0)
         {
             sb.AppendLine($$"""
                 switch (message.MethodId)
@@ -171,15 +171,15 @@ namespace {{Symbol.ContainingNamespace}}
 """);
 
 
-            for (int i = 0; i < NexusInterface.Methods.Length; i++)
+            foreach (var method in NexusInterface.AllMethods)
             {
                 sb.Append($$"""
-                    case {{NexusInterface.Methods[i].Id}}:
+                    case {{method.Id}}:
                     {
-                        // {{NexusInterface.Methods[i].ToString()}}
+                        // {{method}}
 
 """);
-                NexusInterface.Methods[i].EmitNexusInvocation(sb, this.ProxyInterface, this);
+                method.EmitNexusInvocation(sb, this.ProxyInterface, this);
                 sb.AppendLine("""
                         break;
                     }
@@ -240,7 +240,7 @@ namespace {{Symbol.ContainingNamespace}}
         static void global::NexNet.Collections.ICollectionConfigurer.ConfigureCollections(global::NexNet.Invocation.IConfigureCollectionManager manager)
         {
 """);
-        if(collections.Length > 0)
+        if(collections!.Length > 0)
         {
             foreach (var collection in collections)
             {
@@ -734,7 +734,7 @@ partial class InvocationInterfaceMeta
             }
         }
 
-        foreach (var method in Methods)
+        foreach (var method in MethodEnumerator())
         {
             method.EmitProxyMethodInvocation(sb);
         }

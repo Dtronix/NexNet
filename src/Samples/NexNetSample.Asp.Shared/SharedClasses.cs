@@ -19,12 +19,14 @@ public partial interface IClientNexus
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
-
-
-public partial interface IServerNexus
+public partial interface IServerNexusV2 : IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDrirectional)]
     INexusList<int> IntegerList { get; }
+}
+
+public partial interface IServerNexus
+{
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

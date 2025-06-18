@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Collections.ObjectModel;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Text;
 using static NexNet.Generator.NexusGenerator;
@@ -8,29 +9,53 @@ namespace NexNet.Generator;
 internal partial class InvocationInterfaceMeta
 {
     private readonly HashSet<ushort> _usedIds = new HashSet<ushort>();
-
     public INamedTypeSymbol Symbol { get; }
+    public NexusAttributeMeta NexusAttribute { get; }
+
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
     public bool IsValueType { get; }
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
+    
+    /// <summary>
+    /// Collections are only the methods this interface directly specifies.
+    /// </summary>
     public MethodMeta[] Methods { get; }
     
-    public CollectionMeta[] Collections { get; set; }
+    /// <summary>
+    /// AllCollections are all the methods this interface directly and indirectly implements.
+    /// </summary>
+    public MethodMeta[]? AllMethods { get; private set; }
+    public NexusVersionAttributeMeta VersionAttribute { get; }
+    
+    /// <summary>
+    /// Collections are only the collection objects this interface directly specifies.
+    /// </summary>
+    public CollectionMeta[] Collections { get; }
+    
+    /// <summary>
+    /// AllCollections are all the collection objects this interface directly and indirectly implements.
+    /// </summary>
+    public CollectionMeta[]? AllCollections { get; private set; }
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
     public string NamespaceName { get; }
 
+    public InvocationInterfaceMeta[] Interfaces { get; private set; } = Array.Empty<InvocationInterfaceMeta>();
+    
+    public InvocationInterfaceMeta[] Versions { get; private set; } = Array.Empty<InvocationInterfaceMeta>();
+
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, bool isServer)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, NexusAttributeMeta attribute)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
         this.Symbol = symbol;
+        this.NexusAttribute = attribute;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
@@ -50,9 +75,58 @@ internal partial class InvocationInterfaceMeta
             .Where(x => x.NexusCollectionAttribute is { Ignore: false }) // Bypass ignored items.
             .ToArray();
 
+        VersionAttribute = new NexusVersionAttributeMeta(symbol);
 
+        this.ProxyImplName = attribute.IsClient ? $"ServerProxy" : "ClientProxy";
+        this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
+    }
+
+    public void BuildVersions()
+    {
+        var interfaceMap = new Dictionary<INamedTypeSymbol, InvocationInterfaceMeta>(SymbolEqualityComparer.Default);
+        var baseInterfaces = new List<InvocationInterfaceMeta>();
+        var versions = new List<InvocationInterfaceMeta>();
+        foreach (var interfaceSymbol in Symbol.AllInterfaces)
+        {
+            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute));
+        }
+
+        // Only generate the versioning information if we are versioning.
+        if (NexusAttribute.VersionNegotiation)
+        {
+            foreach (var interfaceMeta in interfaceMap)
+            {
+                baseInterfaces.Clear();
+                var value = interfaceMeta.Value;
+                if (!value.VersionAttribute.AttributeExists)
+                    continue;
+
+                foreach (var interfaceSymbol in value.Symbol.AllInterfaces)
+                {
+                    baseInterfaces.Add(interfaceMap[interfaceSymbol]);
+                }
+
+                value.Interfaces = baseInterfaces.ToArray();
+                versions.Add(value);
+            }
+            
+            // Add this interface if it has a version attribute
+            if(VersionAttribute.AttributeExists)
+                versions.Add(this);
+        
+            Versions = versions.ToArray();
+        }
+
+        Interfaces = interfaceMap.Values.ToArray();
+    }
+
+    public void BuildMethodIds()
+    {
+        AllMethods = MethodEnumerator().ToArray();
+        AllCollections = CollectionEnumerator().ToArray();
+        
         // Get all pre-defined method ids first.
-        foreach (var methodMeta in this.Methods)
+        foreach (var methodMeta in MethodEnumerator())
         {
             if (methodMeta.NexusMethodAttribute.MethodId != null)
             {
@@ -64,7 +138,7 @@ internal partial class InvocationInterfaceMeta
             }
         }
         
-        foreach (var collectionMeta in this.Collections)
+        foreach (var collectionMeta in CollectionEnumerator())
         {
             if (collectionMeta.NexusCollectionAttribute.Id != null)
             {
@@ -78,7 +152,7 @@ internal partial class InvocationInterfaceMeta
 
         // Automatic id assignment.
         ushort id = 0;
-        foreach (var methodMeta in this.Methods)
+        foreach (var methodMeta in MethodEnumerator())
         {
             if (methodMeta.Id == 0)
             {
@@ -91,7 +165,7 @@ internal partial class InvocationInterfaceMeta
         }
         
         // Automatic id assignment.
-        foreach (var collectionMeta in this.Collections)
+        foreach (var collectionMeta in CollectionEnumerator())
         {
             if (collectionMeta.Id == 0)
             {
@@ -102,40 +176,51 @@ internal partial class InvocationInterfaceMeta
                 collectionMeta.Id = id++;
             }
         }
-
-        this.ProxyImplName = !isServer ? $"ServerProxy" : "ClientProxy";
-        //this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
-        this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
-        //this.AlreadyGeneratedHash = false;
     }
-
-    public bool Validate(TypeDeclarationSyntax syntax, GeneratorContext context)
+    
+    /// <summary>
+    /// This will enumerate over all the methods in this interface and all implemented interfaces.
+    /// </summary>
+    private IEnumerable<MethodMeta> MethodEnumerator()
     {
-        var noError = true;
+        foreach (var m in Methods)
+            yield return m;
         
-        // ALl Members
-        if (Methods.Length >= ushort.MaxValue) // MemoryPackCode.Reserved1
+        foreach (var child in Interfaces)
         {
-            //context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MembersCountOver250, syntax.Identifier.GetLocation(), Symbol.Name, Members.Length));
-            //noError = false;
+            foreach (var m in child.Methods)
+                yield return m;
         }
-
-        return noError;
+    }
+    
+    /// <summary>
+    /// This will enumerate over all the methods in this interface and all implemented interfaces.
+    /// </summary>
+    private IEnumerable<CollectionMeta> CollectionEnumerator()
+    {
+        foreach (var m in Collections)
+            yield return m;
+        
+        foreach (var child in Interfaces)
+        {
+            foreach (var m in child.Collections)
+                yield return m;
+        }
     }
 
     public int GetHash()
     {
-        var hash = 0;
-        foreach (var meta in Methods)
+        var hashCode = new HashCode();
+        foreach (var meta in MethodEnumerator())
         {
-            hash += meta.GetHash();
+            hashCode.Add(meta.GetHash());
         }
-        foreach (var meta in Collections)
+        foreach (var meta in CollectionEnumerator())
         {
-            hash += meta.GetHash();
+            hashCode.Add(meta.GetHash());
         }
-
-        return hash;
+        
+        return hashCode.ToHashCode();
     }
 }
 
@@ -143,6 +228,8 @@ internal class NexusAttributeMeta : AttributeMetaBase
 {
     public bool IsClient { get; private set; }
     public bool IsServer { get; private set; }
+    public bool VersionMustMatch { get; private set; } = true;
+    public bool VersionNegotiation { get; private set; }
 
     public NexusAttributeMeta(INamedTypeSymbol symbol)
         : base("NexusAttribute", symbol)
@@ -155,6 +242,11 @@ internal class NexusAttributeMeta : AttributeMetaBase
         {
             IsClient = (int)GetItem(typedConstant) == 0;
             IsServer = (int)GetItem(typedConstant) == 1;
+        }
+        else if (key == "Versioning" || constructorArgIndex == 1)
+        {
+            VersionMustMatch = (int)GetItem(typedConstant) == 0;
+            VersionNegotiation = (int)GetItem(typedConstant) == 1;
         }
     }
 }
@@ -190,6 +282,28 @@ internal class NexusMethodAttributeMeta : AttributeMetaBase
             Ignore = (bool)GetItem(typedConstant);
         }
     }
+}
+
+internal class NexusVersionAttributeMeta : AttributeMetaBase
+{
+    public string? Version { get; private set; }
+
+    public NexusVersionAttributeMeta(ISymbol symbol)
+        : base("NexusVersionAttribute", symbol)
+    {
+    }
+
+    protected override void ProcessArgument(string? key, int? constructorArgIndex, TypedConstant typedConstant)
+    {
+        if (key == "Version" || constructorArgIndex == 0)
+        {
+            var id = (string?)GetItem(typedConstant);
+            if (id != null)
+                Version = id;
+        }
+    }
+
+    public override string ToString() => $"Version: {Version}";
 }
 
 internal enum NexusCollectionMode 
@@ -268,9 +382,16 @@ internal partial class NexusMeta
 
         var nexusAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexusAttribute");
         NexusInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute.IsServer);
+            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute);
         ProxyInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute.IsServer);
+            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute);
+        
+        // Build the versioning trees and method ids.
+        NexusInterface.BuildVersions();
+        NexusInterface.BuildMethodIds();
+        ProxyInterface.BuildVersions();
+        ProxyInterface.BuildMethodIds();
+        
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
@@ -306,7 +427,7 @@ internal partial class NexusMeta
         }
 
         var nexusSet = new HashSet<ushort>();
-        foreach (var method in this.NexusInterface.Methods)
+        foreach (var method in this.NexusInterface.AllMethods!)
         {
             // Validate nexus method ids.
             if (nexusSet.Contains(method.Id))
