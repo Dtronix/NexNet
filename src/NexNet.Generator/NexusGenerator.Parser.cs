@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using System.Collections.Frozen;
+using System.Collections.ObjectModel;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Text;
@@ -9,8 +10,22 @@ namespace NexNet.Generator;
 internal partial class InvocationInterfaceMeta
 {
     private readonly HashSet<ushort> _usedIds = new HashSet<ushort>();
+    private int? _hashCode;
+    private MethodMeta[]? _allMethods;
+    private CollectionMeta[]? _allCollections;
     public INamedTypeSymbol Symbol { get; }
     public NexusAttributeMeta NexusAttribute { get; }
+    public InvocationInterfaceMeta RootInterface { get; }
+    
+    /// <summary>
+    /// Null on every interface except the root.
+    /// </summary>
+    public FrozenDictionary<IMethodSymbol, MethodMeta>? MethodTable { get; private set; }
+    
+    /// <summary>
+    /// Null on every interface except the root.
+    /// </summary>
+    public FrozenDictionary<IPropertySymbol, CollectionMeta> CollectionsTable { get; private set;}
 
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
@@ -22,22 +37,27 @@ internal partial class InvocationInterfaceMeta
     /// Collections are only the methods this interface directly specifies.
     /// </summary>
     public MethodMeta[] Methods { get; }
-    
+
     /// <summary>
     /// AllCollections are all the methods this interface directly and indirectly implements.
     /// </summary>
-    public MethodMeta[]? AllMethods { get; private set; }
+    public MethodMeta[]? AllMethods { get; set; }
+
     public NexusVersionAttributeMeta VersionAttribute { get; }
     
     /// <summary>
     /// Collections are only the collection objects this interface directly specifies.
     /// </summary>
     public CollectionMeta[] Collections { get; }
-    
+
     /// <summary>
     /// AllCollections are all the collection objects this interface directly and indirectly implements.
     /// </summary>
-    public CollectionMeta[]? AllCollections { get; private set; }
+    public CollectionMeta[]? AllCollections
+    {
+        get => _allCollections ??= CollectionEnumerator().ToArray();
+    }
+
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
     public string Namespace { get; }
@@ -49,31 +69,50 @@ internal partial class InvocationInterfaceMeta
 
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, NexusAttributeMeta attribute)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, NexusAttributeMeta attribute, InvocationInterfaceMeta? rootInterface)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
         this.Symbol = symbol;
         this.NexusAttribute = attribute;
+        this.RootInterface = rootInterface ?? this;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
         this.IsRecord = symbol.IsRecord;
-        this.Methods = Symbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-            .Select(x => new MethodMeta(x))
-            .Where(x => x.NexusMethodAttribute is { Ignore: false }) // Bypass ignored items.
-            .ToArray();
-        
-        this.Collections = Symbol.GetMembers()
-            .OfType<IPropertySymbol>()
-            .Select(x => new CollectionMeta(x))
-            .Where(x => x.NexusCollectionAttribute is { Ignore: false }) // Bypass ignored items.
-            .ToArray();
+
+        if (rootInterface == null)
+        {
+            var methodEnumerator = EnumMethods(Symbol.GetMembers());
+
+            foreach (var interf in this.Symbol.AllInterfaces)
+                methodEnumerator = methodEnumerator.Concat(EnumMethods(interf.GetMembers()));
+
+            this.AllMethods = methodEnumerator.ToArray();
+
+            this.Collections = Symbol.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Select(x => new CollectionMeta(x))
+                .Where(x => x.NexusCollectionAttribute is { Ignore: false }) // Bypass ignored items.
+                .ToArray();
+        }
+        else
+        {
+            // Don't reparse the same data again, use the already parsed data from the root interface.
+            this.Methods = Symbol.GetMembers()
+                .OfType<IMethodSymbol>()
+                .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
+                .Select(p => this.RootInterface.MethodTable![p])
+                .ToArray();
+            
+            this.Collections = Symbol.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Select(p => this.RootInterface.CollectionsTable![p])
+                .ToArray();
+        }
 
         VersionAttribute = new NexusVersionAttributeMeta(symbol);
 
@@ -81,14 +120,26 @@ internal partial class InvocationInterfaceMeta
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
     }
 
+    private IEnumerable<MethodMeta> EnumMethods(IEnumerable<ISymbol> symbols)
+    {
+        symbols.OfType<IMethodSymbol>()
+            .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
+            .Select(x => new MethodMeta(x))
+            .Where(x => x.NexusMethodAttribute is { Ignore: false }); // Bypass ignored items.
+    }
+
     public void BuildVersions()
     {
         var interfaceMap = new Dictionary<INamedTypeSymbol, InvocationInterfaceMeta>(SymbolEqualityComparer.Default);
         var baseInterfaces = new List<InvocationInterfaceMeta>();
         var versions = new List<InvocationInterfaceMeta>();
+        
+        this.MethodTable = this.Methods.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
+        this.CollectionsTable = this.Collections.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
+        
         foreach (var interfaceSymbol in Symbol.AllInterfaces)
         {
-            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute));
+            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface));
         }
 
         foreach (var interfaceMeta in interfaceMap)
@@ -118,9 +169,6 @@ internal partial class InvocationInterfaceMeta
 
     public void BuildMethodIds()
     {
-        AllMethods = MethodEnumerator().ToArray();
-        AllCollections = CollectionEnumerator().ToArray();
-        
         // Get all pre-defined method ids first.
         foreach (var methodMeta in MethodEnumerator())
         {
@@ -206,17 +254,20 @@ internal partial class InvocationInterfaceMeta
 
     public int GetHash()
     {
+        if (_hashCode != null)
+            return _hashCode.Value;
+        
         var hashCode = new HashCode();
-        foreach (var meta in MethodEnumerator())
+        foreach (var meta in AllMethods!)
         {
             hashCode.Add(meta.GetHash());
         }
-        foreach (var meta in CollectionEnumerator())
+        foreach (var meta in AllCollections!)
         {
             hashCode.Add(meta.GetHash());
         }
         
-        return hashCode.ToHashCode();
+        return (_hashCode = hashCode.ToHashCode()).Value;
     }
 }
 
@@ -378,9 +429,9 @@ internal partial class NexusMeta
 
         var nexusAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexusAttribute");
         NexusInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute);
+            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute, null);
         ProxyInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute);
+            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute, null);
         
         // Build the versioning trees and method ids.
         NexusInterface.BuildVersions();

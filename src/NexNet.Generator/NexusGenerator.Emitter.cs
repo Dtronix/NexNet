@@ -281,7 +281,25 @@ namespace {{Symbol.ContainingNamespace}}
         
             sb.AppendLine("""
         });
+        
+        static bool global::NexNet.Invocation.IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
+        {
 """);
+            foreach (var versionInterface in this.NexusInterface.Versions)
+            {
+                sb.Append("            if (version == ").Append(versionInterface.GetHash()).AppendLine(")");
+                sb.AppendLine("                return methodId switch");
+                sb.AppendLine("                {");
+
+                foreach (var method in versionInterface.AllMethods)
+                {
+                    sb.Append("                    ").Append(method.Id).AppendLine(" => true,");
+                }
+                sb.AppendLine("                    _ = false");
+                sb.AppendLine("                };");
+            }
+            sb.AppendLine("        };");
+            
         }
         else
         {
