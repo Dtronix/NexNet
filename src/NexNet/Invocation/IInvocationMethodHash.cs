@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 
 namespace NexNet.Invocation;
 
@@ -14,6 +15,8 @@ public interface IInvocationMethodHash
     public static abstract int MethodHash { get; }
     
     public static abstract FrozenDictionary<string, int> VersionHashTable { get; }
+    public static abstract FrozenSet<long>? VersionMethodHashSet { get; }
 
-    public static abstract bool ValidateMethodVersion(int version, int methodId);
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static abstract long CreateVerionHash(int version, ushort methodId);
 }

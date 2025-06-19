@@ -11,8 +11,6 @@ internal partial class InvocationInterfaceMeta
 {
     private readonly HashSet<ushort> _usedIds = new HashSet<ushort>();
     private int? _hashCode;
-    private MethodMeta[]? _allMethods;
-    private CollectionMeta[]? _allCollections;
     public INamedTypeSymbol Symbol { get; }
     public NexusAttributeMeta NexusAttribute { get; }
     public InvocationInterfaceMeta RootInterface { get; }
@@ -41,7 +39,7 @@ internal partial class InvocationInterfaceMeta
     /// <summary>
     /// AllCollections are all the methods this interface directly and indirectly implements.
     /// </summary>
-    public MethodMeta[]? AllMethods { get; set; }
+    public MethodMeta[]? AllMethods { get; }
 
     public NexusVersionAttributeMeta VersionAttribute { get; }
     
@@ -53,10 +51,7 @@ internal partial class InvocationInterfaceMeta
     /// <summary>
     /// AllCollections are all the collection objects this interface directly and indirectly implements.
     /// </summary>
-    public CollectionMeta[]? AllCollections
-    {
-        get => _allCollections ??= CollectionEnumerator().ToArray();
-    }
+    public CollectionMeta[]? AllCollections { get; }
 
     public string ProxyImplName { get; }
     public string ProxyImplNameWithNamespace { get; }
@@ -69,7 +64,9 @@ internal partial class InvocationInterfaceMeta
 
     //public bool AlreadyGeneratedHash { get; }
 
-    public InvocationInterfaceMeta(INamedTypeSymbol? symbol, NexusAttributeMeta attribute, InvocationInterfaceMeta? rootInterface)
+    public InvocationInterfaceMeta(INamedTypeSymbol? symbol,
+        NexusAttributeMeta attribute,
+        InvocationInterfaceMeta? rootInterface)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
@@ -78,54 +75,56 @@ internal partial class InvocationInterfaceMeta
         this.NexusAttribute = attribute;
         this.RootInterface = rootInterface ?? this;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat).Replace("global::", "");
+        this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            .Replace("global::", "");
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;
         this.IsRecord = symbol.IsRecord;
 
+        // If the root interface is null, then this is the root interface.
+
+        var methods = EnumMethods(Symbol.GetMembers(), rootInterface).ToList();
+
+        foreach (var interf in this.Symbol.AllInterfaces)
+            methods.AddRange(EnumMethods(interf.GetMembers(), rootInterface));
+
+        this.AllMethods = methods.ToArray();
+
+        var collections = EnumCollections(Symbol.GetMembers(), rootInterface).ToList();
+        this.Collections = collections.ToArray();
+
+        foreach (var interf in this.Symbol.AllInterfaces)
+            collections.AddRange(EnumCollections(interf.GetMembers(), rootInterface));
+
+        this.AllCollections = collections.ToArray();
+
         if (rootInterface == null)
         {
-            var methodEnumerator = EnumMethods(Symbol.GetMembers());
-
-            foreach (var interf in this.Symbol.AllInterfaces)
-                methodEnumerator = methodEnumerator.Concat(EnumMethods(interf.GetMembers()));
-
-            this.AllMethods = methodEnumerator.ToArray();
-
-            this.Collections = Symbol.GetMembers()
-                .OfType<IPropertySymbol>()
-                .Select(x => new CollectionMeta(x))
-                .Where(x => x.NexusCollectionAttribute is { Ignore: false }) // Bypass ignored items.
-                .ToArray();
-        }
-        else
-        {
-            // Don't reparse the same data again, use the already parsed data from the root interface.
-            this.Methods = Symbol.GetMembers()
-                .OfType<IMethodSymbol>()
-                .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-                .Select(p => this.RootInterface.MethodTable![p])
-                .ToArray();
-            
-            this.Collections = Symbol.GetMembers()
-                .OfType<IPropertySymbol>()
-                .Select(p => this.RootInterface.CollectionsTable![p])
-                .ToArray();
+            this.MethodTable = this.AllMethods.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
+            this.CollectionsTable = this.Collections.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
         }
 
         VersionAttribute = new NexusVersionAttributeMeta(symbol);
 
         this.ProxyImplName = attribute.IsClient ? $"ServerProxy" : "ClientProxy";
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
-    }
 
-    private IEnumerable<MethodMeta> EnumMethods(IEnumerable<ISymbol> symbols)
-    {
-        symbols.OfType<IMethodSymbol>()
-            .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-            .Select(x => new MethodMeta(x))
-            .Where(x => x.NexusMethodAttribute is { Ignore: false }); // Bypass ignored items.
+        static IEnumerable<MethodMeta> EnumMethods(IEnumerable<ISymbol> symbols, InvocationInterfaceMeta? rootInterface)
+        {
+            return symbols.OfType<IMethodSymbol>()
+                .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
+                .Select(x => rootInterface == null ? new MethodMeta(x) : rootInterface.MethodTable![x])
+                .Where(x => x.NexusMethodAttribute is { Ignore: false }); // Bypass ignored items.
+        }
+
+        static IEnumerable<CollectionMeta> EnumCollections(IEnumerable<ISymbol> symbols,
+            InvocationInterfaceMeta? rootInterface)
+        {
+            return symbols.OfType<IPropertySymbol>()
+                .Select(x => rootInterface == null ? new CollectionMeta(x) : rootInterface.CollectionsTable![x])
+                .Where(x => x.NexusCollectionAttribute is { Ignore: false }); // Bypass ignored items.
+        }
     }
 
     public void BuildVersions()
@@ -134,8 +133,7 @@ internal partial class InvocationInterfaceMeta
         var baseInterfaces = new List<InvocationInterfaceMeta>();
         var versions = new List<InvocationInterfaceMeta>();
         
-        this.MethodTable = this.Methods.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
-        this.CollectionsTable = this.Collections.ToFrozenDictionary(meta => meta.Symbol, meta => meta);
+
         
         foreach (var interfaceSymbol in Symbol.AllInterfaces)
         {
@@ -170,7 +168,7 @@ internal partial class InvocationInterfaceMeta
     public void BuildMethodIds()
     {
         // Get all pre-defined method ids first.
-        foreach (var methodMeta in MethodEnumerator())
+        foreach (var methodMeta in AllMethods!)
         {
             if (methodMeta.NexusMethodAttribute.MethodId != null)
             {
@@ -182,7 +180,7 @@ internal partial class InvocationInterfaceMeta
             }
         }
         
-        foreach (var collectionMeta in CollectionEnumerator())
+        foreach (var collectionMeta in AllCollections!)
         {
             if (collectionMeta.NexusCollectionAttribute.Id != null)
             {
@@ -196,7 +194,7 @@ internal partial class InvocationInterfaceMeta
 
         // Automatic id assignment.
         ushort id = 0;
-        foreach (var methodMeta in MethodEnumerator())
+        foreach (var methodMeta in AllMethods!)
         {
             if (methodMeta.Id == 0)
             {
@@ -209,7 +207,7 @@ internal partial class InvocationInterfaceMeta
         }
         
         // Automatic id assignment.
-        foreach (var collectionMeta in CollectionEnumerator())
+        foreach (var collectionMeta in AllCollections!)
         {
             if (collectionMeta.Id == 0)
             {
@@ -221,7 +219,7 @@ internal partial class InvocationInterfaceMeta
             }
         }
     }
-    
+    /*
     /// <summary>
     /// This will enumerate over all the methods in this interface and all implemented interfaces.
     /// </summary>
@@ -251,7 +249,7 @@ internal partial class InvocationInterfaceMeta
                 yield return m;
         }
     }
-
+    */
     public int GetHash()
     {
         if (_hashCode != null)

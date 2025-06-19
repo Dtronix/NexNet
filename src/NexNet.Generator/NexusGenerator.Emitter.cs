@@ -777,7 +777,7 @@ partial class InvocationInterfaceMeta
             }
         }
 
-        foreach (var method in MethodEnumerator())
+        foreach (var method in AllMethods)
         {
             method.EmitProxyMethodInvocation(sb);
         }

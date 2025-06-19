@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using NexNet;
 using NexNet.Collections.Lists;
 using NexNet.Invocation;
@@ -29,7 +30,7 @@ public partial class ServerNexus
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
-    
+
     public void ServerVoid()
     {
         ServerVoidEvent.Invoke(this);
@@ -113,7 +114,36 @@ public partial class ServerNexus
     protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticateEvent!.Invoke(this);
+        new HashSet<string>().ToFrozenSet()
+        ;
     }
+    
+    public double Hours {
+        get;
+        set => field = (value >= 0)
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(value), "The value must not be negative");
+    }
+
+    static global::System.Collections.Frozen.FrozenSet<long>? global::NexNet.Invocation.IInvocationMethodHash.VersionMethodHashSet
+    {
+        get
+        {
+            return field ??= global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
+                Pack(2, 24),
+            ]);
+
+            static long Pack(int version, ushort methodId) => ((long)version << 16) | methodId;
+        }
+    }
+    //    = global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
+    //Pack(2, 24),
+    //]);
+     
+     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static long global::NexNet.Invocation.IInvocationMethodHash.CreateVerionHash(int version, ushort methodId)
+        => ((long)version << 16) | methodId;
     
     //static bool IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
     //{
@@ -135,5 +165,6 @@ public partial class ServerNexus
     //}
 
 
+   
 }
 
