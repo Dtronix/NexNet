@@ -454,7 +454,7 @@ partial interface IServerNexus { void UpdateBase(string[]? val); }
 //[Nexus<IClientNexus, IServerNexusV2_2>(NexusType = NexusType.Client)]
 //partial class ClientNexus { }
 
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexusV4, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus
 {
     public void Update1(string[]? val){ }

@@ -91,31 +91,27 @@ internal partial class InvocationInterfaceMeta
             interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute));
         }
 
-        // Only generate the versioning information if we are versioning.
-        if (NexusAttribute.VersionNegotiation)
+        foreach (var interfaceMeta in interfaceMap)
         {
-            foreach (var interfaceMeta in interfaceMap)
+            baseInterfaces.Clear();
+            var value = interfaceMeta.Value;
+            if (!value.VersionAttribute.AttributeExists)
+                continue;
+
+            foreach (var interfaceSymbol in value.Symbol.AllInterfaces)
             {
-                baseInterfaces.Clear();
-                var value = interfaceMeta.Value;
-                if (!value.VersionAttribute.AttributeExists)
-                    continue;
-
-                foreach (var interfaceSymbol in value.Symbol.AllInterfaces)
-                {
-                    baseInterfaces.Add(interfaceMap[interfaceSymbol]);
-                }
-
-                value.Interfaces = baseInterfaces.ToArray();
-                versions.Add(value);
+                baseInterfaces.Add(interfaceMap[interfaceSymbol]);
             }
-            
-            // Add this interface if it has a version attribute
-            if(VersionAttribute.AttributeExists)
-                versions.Add(this);
-        
-            Versions = versions.ToArray();
+
+            value.Interfaces = baseInterfaces.ToArray();
+            versions.Add(value);
         }
+            
+        // Add this interface if it has a version attribute
+        if(VersionAttribute.AttributeExists)
+            versions.Add(this);
+        
+        Versions = versions.ToArray();
 
         Interfaces = interfaceMap.Values.ToArray();
     }

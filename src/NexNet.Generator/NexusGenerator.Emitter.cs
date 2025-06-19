@@ -257,12 +257,37 @@ namespace {{Symbol.ContainingNamespace}}
         }
         
 """);   
-        sb.AppendLine($$"""
+        sb.Append($$"""
         /// <summary>
         /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
         /// </summary>
         static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{this.NexusInterface.GetHash()}}; }
+        
+        /// <summary>
+        /// Hash table for all the versions that this nexus implements.
+        /// </summary>
+        static global::System.Collections.Frozen.FrozenDictionary<string, int> global::NexNet.Invocation.IInvocationMethodHash.VersionHashTable { get; } = 
 """);
+
+        if (NexusAttribute.IsServer)
+        {
+            sb.AppendLine(
+                "global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.KeyValuePair<string, int>[] {");
+            foreach (var versionInterface in this.NexusInterface.Versions)
+            {
+                sb.Append("            new(\"").Append(versionInterface.VersionAttribute.Version).Append("\", ")
+                    .Append(versionInterface.GetHash()).AppendLine("),");
+            }
+        
+            sb.AppendLine("""
+        });
+""");
+        }
+        else
+        {
+            sb.AppendLine("global::System.Collections.Frozen.FrozenDictionary<string, int>.Empty;");
+        }
+
         
         // We don't want to emit the proxy invocation on the server, only on the client.
         ProxyInterface.EmitProxyImpl(sb, NexusAttribute.IsServer ? null : ProxyInterface);
@@ -740,14 +765,43 @@ partial class InvocationInterfaceMeta
         }
 
 
-        sb.AppendLine($$"""
+        sb.Append($$"""
 
             /// <summary>
-            /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
+            /// Hash for methods on this proxy or nexus.  Used to perform a simple client and server match check.
             /// </summary>
             static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{GetHash()}}; }
+            
+            /// <summary>
+            /// Hash table for all the versions that this nexus implements.
+            /// </summary>
+            static global::System.Collections.Frozen.FrozenDictionary<string, int> global::NexNet.Invocation.IInvocationMethodHash.VersionHashTable { get; } = 
+""");
+
+        if (NexusAttribute.IsServer)
+        {
+            // 
+            sb.AppendLine("global::System.Collections.Frozen.FrozenDictionary<string, int>.Empty;");
+        }
+        else
+        {
+            // On the client proxy, we only emit the version ID specified on the nexus interface.
+            var lastVersion = Versions.LastOrDefault();
+            var versionName = lastVersion == null
+                ? VersionAttribute.Version ?? ""
+                : lastVersion.VersionAttribute.Version;
+            sb.AppendLine(
+                "global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.KeyValuePair<string, int>[] {");
+            sb.Append("                new(\"").Append(versionName).Append("\", ").Append(lastVersion?.GetHash() ?? GetHash()).AppendLine("),");
+                    sb.AppendLine("""
+            });
+""");
+        }
+        
+        sb.AppendLine("""
         }
 """);
+        
     }
     
     public override string ToString()

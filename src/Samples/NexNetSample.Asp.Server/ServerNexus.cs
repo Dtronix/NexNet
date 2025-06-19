@@ -1,4 +1,5 @@
-﻿using NexNet;
+﻿using System.Collections.Frozen;
+using NexNet;
 using NexNet.Collections.Lists;
 using NexNet.Messages;
 using NexNet.Pipes;
@@ -6,7 +7,7 @@ using NexNetSample.Asp.Shared;
 
 namespace NexNetSample.Asp.Server;
 
-[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server, Versioning = NexusVersioning.Negotiation)]
 public partial class ServerNexus
 {
 #pragma warning disable CS8618, CS9264
@@ -113,5 +114,6 @@ public partial class ServerNexus
         return OnAuthenticateEvent!.Invoke(this);
     }
     
+
 }
 
