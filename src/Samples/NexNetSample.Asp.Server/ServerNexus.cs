@@ -1,6 +1,7 @@
 ﻿using System.Collections.Frozen;
 using NexNet;
 using NexNet.Collections.Lists;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
@@ -114,6 +115,25 @@ public partial class ServerNexus
         return OnAuthenticateEvent!.Invoke(this);
     }
     
+    static bool IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
+    {
+        if (version == 35151251)
+            return methodId switch
+            {
+                1 => true,
+                _ => false
+            };
+        
+        if (version == 3552251)
+            return methodId switch
+            {
+                1 => true,
+                _ => false
+            };
+
+        return false;
+    }
+
 
 }
 

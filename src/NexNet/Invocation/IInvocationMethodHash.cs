@@ -14,4 +14,6 @@ public interface IInvocationMethodHash
     public static abstract int MethodHash { get; }
     
     public static abstract FrozenDictionary<string, int> VersionHashTable { get; }
+
+    public static abstract bool ValidateMethodVersion(int version, int methodId);
 }
