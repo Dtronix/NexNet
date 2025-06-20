@@ -15,8 +15,5 @@ public interface IInvocationMethodHash
     public static abstract int MethodHash { get; }
     
     public static abstract FrozenDictionary<string, int> VersionHashTable { get; }
-    public static abstract FrozenSet<long>? VersionMethodHashSet { get; }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static abstract long CreateVerionHash(int version, ushort methodId);
+    public static abstract FrozenSet<long> VersionMethodHashSet { get; }
 }

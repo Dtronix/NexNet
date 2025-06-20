@@ -272,38 +272,46 @@ namespace {{Symbol.ContainingNamespace}}
         if (NexusAttribute.IsServer)
         {
             sb.AppendLine(
-                "global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.KeyValuePair<string, int>[] {");
+                "        global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.KeyValuePair<string, int>[] {");
             foreach (var versionInterface in this.NexusInterface.Versions)
             {
                 sb.Append("            new(\"").Append(versionInterface.VersionAttribute.Version).Append("\", ")
                     .Append(versionInterface.GetHash()).AppendLine("),");
             }
-        
-            sb.AppendLine("""
-        });
-        
-        static bool global::NexNet.Invocation.IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
-        {
-""");
-            foreach (var versionInterface in this.NexusInterface.Versions)
-            {
-                sb.Append("            if (version == ").Append(versionInterface.GetHash()).AppendLine(")");
-                sb.AppendLine("                return methodId switch");
-                sb.AppendLine("                {");
 
-                foreach (var method in versionInterface.AllMethods)
-                {
-                    sb.Append("                    ").Append(method.Id).AppendLine(" => true,");
-                }
-                sb.AppendLine("                    _ = false");
-                sb.AppendLine("                };");
-            }
-            sb.AppendLine("        };");
-            
+            sb.AppendLine("        });");
         }
         else
         {
             sb.AppendLine("global::System.Collections.Frozen.FrozenDictionary<string, int>.Empty;");
+        }
+
+        sb.AppendLine();
+        
+                sb.Append($$"""
+        /// <summary>
+        /// Version + Method hashes.  Only implemented on the server nexus.
+        /// </summary>
+        static global::System.Collections.Frozen.FrozenSet<long> global::NexNet.Invocation.IInvocationMethodHash.VersionMethodHashSet { get; } =  
+""");
+
+        if (NexusAttribute.IsServer)
+        {
+            sb.AppendLine("global::System.Collections.Frozen.FrozenSet.ToFrozenSet([");
+            foreach (var versionInterface in this.NexusInterface.Versions)
+            {
+                var versionHash = versionInterface.GetHash();
+
+                foreach (var method in versionInterface.AllMethods!)
+                {
+                    sb.Append("            ((long)").Append(versionHash).Append(" << 16) | ").Append(method.Id).AppendLine(",");
+                }
+            }
+            sb.AppendLine("        ]);");
+        }
+        else
+        {
+            sb.AppendLine("global::System.Collections.Frozen.FrozenSet<long>.Empty;");
         }
 
         
@@ -791,7 +799,7 @@ partial class InvocationInterfaceMeta
             static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{GetHash()}}; }
             
             /// <summary>
-            /// Hash table for all the versions that this nexus implements.
+            /// Hash table for all the versions that this proxy can invoke.
             /// </summary>
             static global::System.Collections.Frozen.FrozenDictionary<string, int> global::NexNet.Invocation.IInvocationMethodHash.VersionHashTable { get; } = 
 """);
@@ -815,6 +823,14 @@ partial class InvocationInterfaceMeta
             });
 """);
         }
+        
+        sb.Append($$"""
+
+            /// <summary>
+            /// Version + Method hashes.  Always empty on the proxy.
+            /// </summary>
+            static global::System.Collections.Frozen.FrozenSet<long> global::NexNet.Invocation.IInvocationMethodHash.VersionMethodHashSet { get; } = global::System.Collections.Frozen.FrozenSet<long>.Empty; 
+""");
         
         sb.AppendLine("""
         }

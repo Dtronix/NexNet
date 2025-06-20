@@ -125,24 +125,17 @@ public partial class ServerNexus
             : throw new ArgumentOutOfRangeException(nameof(value), "The value must not be negative");
     }
 
-    static global::System.Collections.Frozen.FrozenSet<long>? global::NexNet.Invocation.IInvocationMethodHash.VersionMethodHashSet
-    {
-        get
-        {
-            return field ??= global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
-                Pack(2, 24),
-            ]);
-
-            static long Pack(int version, ushort methodId) => ((long)version << 16) | methodId;
-        }
-    }
+    //static global::System.Collections.Frozen.FrozenSet<long>? global::NexNet.Invocation.IInvocationMethodHash.
+    //    VersionMethodHashSet { get; } = global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
+    //    ((long)2 << 16) | 24235,
+    //]);
     //    = global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
     //Pack(2, 24),
     //]);
      
      
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    static long global::NexNet.Invocation.IInvocationMethodHash.CreateVerionHash(int version, ushort methodId)
+    static long CreateVerionHash(int version, ushort methodId)
         => ((long)version << 16) | methodId;
     
     //static bool IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
