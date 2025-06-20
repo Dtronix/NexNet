@@ -114,50 +114,19 @@ public partial class ServerNexus
     protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticateEvent!.Invoke(this);
-        new HashSet<string>().ToFrozenSet()
-        ;
     }
-    
-    public double Hours {
-        get;
-        set => field = (value >= 0)
-            ? value
-            : throw new ArgumentOutOfRangeException(nameof(value), "The value must not be negative");
-    }
-
-    //static global::System.Collections.Frozen.FrozenSet<long>? global::NexNet.Invocation.IInvocationMethodHash.
-    //    VersionMethodHashSet { get; } = global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
-    //    ((long)2 << 16) | 24235,
-    //]);
-    //    = global::System.Collections.Frozen.FrozenSet.ToFrozenSet([
-    //Pack(2, 24),
-    //]);
      
      
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     static long CreateVerionHash(int version, ushort methodId)
         => ((long)version << 16) | methodId;
     
-    //static bool IInvocationMethodHash.ValidateMethodVersion(int version, int methodId)
-    //{
-    //    if (version == 35151251)
-    //        return methodId switch
-    //        {
-    //            1 => true,
-    //            _ => false
-    //        };
-    //    
-    //    if (version == 3552251)
-    //        return methodId switch
-    //        {
-    //            1 => true,
-    //            _ => false
-    //        };
-//
-    //    return false;
-    //}
-
-
    
 }
 
+static file class Helpers
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static long CreateVerionHash(int version, ushort methodId)
+        => ((long)version << 16) | methodId;
+}

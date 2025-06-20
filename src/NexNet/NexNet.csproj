@@ -5,7 +5,6 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>A real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.</Description>
     <Version>0.10.0</Version>
-    <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
