@@ -44,10 +44,7 @@ partial class MethodMeta
             sb.AppendLine(").ConfigureAwait(false);");
         }
 
-        sb.AppendLine("                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 ");
-        sb.AppendLine("                            ? global::NexNet.Logging.NexusLogLevel.Information");
-        sb.Append("                            : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $\"Invoking Method: ");
-
+        sb.Append("                        this.Context.Logger?.NexusLog(\"");
         EmitNexusMethodInvocation(sb, true);
         sb.AppendLine("\");");
         sb.Append("                        ");
@@ -250,7 +247,7 @@ partial class MethodMeta
         }
 
         // Logging
-        sb.Append("                 __proxyInvoker.Logger?.Log((__proxyInvoker.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 ? global::NexNet.Logging.NexusLogLevel.Information : global::NexNet.Logging.NexusLogLevel.Debug, __proxyInvoker.Logger.Category, null, $\"Proxy Invoking Method: ");
+        sb.Append("                 __proxyInvoker.Logger?.ProxyLog($\"Proxy Invoking Method: ");
         sb.Append(this.Name).Append("(");
         for (var i = 0; i < Parameters.Length; i++)
         {

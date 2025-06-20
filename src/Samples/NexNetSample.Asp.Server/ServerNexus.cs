@@ -121,7 +121,6 @@ public partial class ServerNexus
     static long CreateVerionHash(int version, ushort methodId)
         => ((long)version << 16) | methodId;
     
-   
 }
 
 static file class Helpers
@@ -130,3 +129,5 @@ static file class Helpers
     static long CreateVerionHash(int version, ushort methodId)
         => ((long)version << 16) | methodId;
 }
+
+

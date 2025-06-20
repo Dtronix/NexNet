@@ -229,12 +229,23 @@ namespace {{Symbol.ContainingNamespace}}
     
     static file class Util
     {
-        /// <summary>
-        /// Internal method to assist with creation of Version + Method hashes.
-        /// </summary>
+    
         [global::System.Runtime.CompilerServices.MethodImpl(global::System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-        public static long VMHash(int version, ushort methodId)
-            => ((long)version << 16) | methodId;
+        public static long VMHash(int version, ushort methodId) => ((long)version << 16) | methodId;
+
+        public static void NexusLog(this global::NexNet.Logging.INexusLogger logger, string message)
+        {
+         logger.Log((logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 
+             ? global::NexNet.Logging.NexusLogLevel.Information
+             : global::NexNet.Logging.NexusLogLevel.Debug, logger.Category, null, message);
+        }
+
+        public static void ProxyLog(this global::NexNet.Logging.INexusLogger logger, string message)
+        {
+         logger.Log((logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 
+             ? global::NexNet.Logging.NexusLogLevel.Information
+             : global::NexNet.Logging.NexusLogLevel.Debug, logger.Category, null, message);
+        }
     }
 }
 
