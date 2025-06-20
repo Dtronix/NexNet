@@ -824,7 +824,7 @@ partial class InvocationInterfaceMeta
 """);
         }
         
-        sb.Append($$"""
+        sb.AppendLine($$"""
 
             /// <summary>
             /// Version + Method hashes.  Always empty on the proxy.
