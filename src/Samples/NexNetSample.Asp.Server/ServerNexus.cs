@@ -1,12 +1,15 @@
-﻿using NexNet;
+﻿using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
+using NexNet;
 using NexNet.Collections.Lists;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNetSample.Asp.Shared;
 
 namespace NexNetSample.Asp.Server;
 
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server, Versioning = NexusVersioning.Negotiation)]
 public partial class ServerNexus
 {
 #pragma warning disable CS8618, CS9264
@@ -27,7 +30,7 @@ public partial class ServerNexus
     public Func<ServerNexus, ValueTask>? OnConnectedEvent;
     public Func<ServerNexus, ValueTask>? OnDisconnectedEvent;
     public Func<ServerNexus, ValueTask<IIdentity?>>? OnAuthenticateEvent;
-    
+
     public void ServerVoid()
     {
         ServerVoidEvent.Invoke(this);
@@ -112,6 +115,19 @@ public partial class ServerNexus
     {
         return OnAuthenticateEvent!.Invoke(this);
     }
+     
+     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static long CreateVerionHash(int version, ushort methodId)
+        => ((long)version << 16) | methodId;
     
 }
+
+static file class Helpers
+{
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static long CreateVerionHash(int version, ushort methodId)
+        => ((long)version << 16) | methodId;
+}
+
 

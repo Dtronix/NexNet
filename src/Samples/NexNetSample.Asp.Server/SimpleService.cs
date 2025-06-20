@@ -1,4 +1,5 @@
-﻿using NexNet.Invocation;
+﻿using System.Collections.Frozen;
+using NexNet.Invocation;
 
 namespace NexNetSample.Asp.Server;
 
@@ -19,6 +20,8 @@ public class SimpleService : BackgroundService
             await Task.Delay(4000, stoppingToken);
             await context.Proxy.All.ClientTaskWithParam(54321);
         }
+        
+        
     }
     
 }
