@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using MemoryPack.Generator;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NexNet.Generator.MetaGenerator;
@@ -76,8 +77,10 @@ internal partial class NexusGenerator : IIncrementalGenerator
             context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
             return;
         }
+        
+        var memoryPackReference = new ReferenceSymbols(compilation);
 
-        var nexusMeta = new NexusMeta(typeSymbol);
+        var nexusMeta = new NexusMeta(typeSymbol, memoryPackReference);
 
         // ReportDiagnostic when validate failed.
         if (!nexusMeta.Validate(syntax, context))

@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using MemoryPack.Generator;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NexNet.Generator.MetaGenerator;
@@ -6,6 +7,8 @@ namespace NexNet.Generator.MetaGenerator;
 internal partial class NexusMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
+    public ReferenceSymbols MemoryPackReference { get; }
+
     public string TypeName { get; }
     //public string ClassName { get; }
     public bool IsValueType { get; set; }
@@ -20,10 +23,11 @@ internal partial class NexusMeta
     public InvocationInterfaceMeta ProxyInterface { get; }
     public MethodMeta[] Methods { get; }
 
-    public NexusMeta(INamedTypeSymbol symbol)
+    public NexusMeta(INamedTypeSymbol symbol, ReferenceSymbols memoryPackReference)
     {
         
         this.Symbol = symbol;
+        this.MemoryPackReference = memoryPackReference;
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.Namespace = Symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NexusAttribute = new NexusAttributeMeta(symbol);
@@ -46,7 +50,7 @@ internal partial class NexusMeta
         this.IsRecord = symbol.IsRecord;
         this.Methods = Symbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Select(x => new MethodMeta(x))
+            .Select(x => new MethodMeta(x, memoryPackReference))
             .ToArray();
     }
 

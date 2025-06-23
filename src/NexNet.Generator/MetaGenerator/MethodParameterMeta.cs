@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using MemoryPack.Generator;
+using Microsoft.CodeAnalysis;
 
 namespace NexNet.Generator.MetaGenerator;
 
@@ -8,6 +9,7 @@ internal class MethodParameterMeta
     public string Name { get; }
 
     public int Index { get; }
+    public ReferenceSymbols MemoryPackReferences { get; }
 
     public string ParamType { get; }
     public string? SerializedType { get; }
@@ -34,11 +36,15 @@ internal class MethodParameterMeta
     public string ParamTypeSource { get; }
     public int SerializedId { get; set; }
 
-    public MethodParameterMeta(IParameterSymbol symbol, int index)
+    public TypeMeta? MemoryPackType { get; }
+
+    public MethodParameterMeta(IParameterSymbol symbol, int index, ReferenceSymbols memoryPackReferences)
     {
         this.Index = index;
+        this.MemoryPackReferences = memoryPackReferences;
         this.Symbol = symbol;
         this.Name = symbol.Name;
+
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
         this.ParamTypeSource = symbol.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
@@ -67,6 +73,10 @@ internal class MethodParameterMeta
             // Type is not serialized.
             SerializedType = null;
             SerializedValue = null;
+        }
+        else if (true)
+        {
+            MemoryPackType = new TypeMeta(symbol.Type as INamedTypeSymbol, MemoryPackReferences);
         }
         else
         {

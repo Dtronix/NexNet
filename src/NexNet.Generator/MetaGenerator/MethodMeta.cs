@@ -1,4 +1,5 @@
 ﻿using System.Text;
+using MemoryPack.Generator;
 using Microsoft.CodeAnalysis;
 
 namespace NexNet.Generator.MetaGenerator;
@@ -7,6 +8,7 @@ internal partial class MethodMeta
 {
     private static readonly XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }
+    public ReferenceSymbols MemoryPackReferences { get; }
     public string Name { get; }
     public bool IsStatic { get; }
 
@@ -29,10 +31,11 @@ internal partial class MethodMeta
     public ushort Id { get; set; }
     public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
-    public MethodMeta(IMethodSymbol symbol)
+    public MethodMeta(IMethodSymbol symbol, ReferenceSymbols memoryPackReferences)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
         this.Symbol = symbol;
+        this.MemoryPackReferences = memoryPackReferences;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
         this.IsAsync = returnSymbol!.OriginalDefinition.Name == "ValueTask";
@@ -45,7 +48,7 @@ internal partial class MethodMeta
         var pipeCount = 0;
         for (var i = 0; i < symbol.Parameters.Length; i++)
         {
-            var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i);
+            var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i, MemoryPackReferences);
 
             if (param.SerializedType != null)
                 param.SerializedId = seralizedParamId++;
