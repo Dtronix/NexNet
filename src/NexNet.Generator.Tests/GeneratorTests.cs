@@ -482,6 +482,7 @@ partial class DataObject {
     public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
+[NexusVersion(Version = "v2", HashLock=-1549245336)]
 partial interface IServerNexus {  void Update(DataObject data); }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 

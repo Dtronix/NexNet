@@ -253,7 +253,7 @@ internal partial class InvocationInterfaceMeta
         }
     }
     */
-    public int GetHash()
+    public int GetNexusHash()
     {
         if (_hashCode != null)
             return _hashCode.Value;
@@ -261,11 +261,11 @@ internal partial class InvocationInterfaceMeta
         var hashCode = new HashCode();
         foreach (var meta in AllMethods!)
         {
-            hashCode.Add(meta.GetHash());
+            hashCode.Add(meta.GetNexusHash());
         }
         foreach (var meta in AllCollections!)
         {
-            hashCode.Add(meta.GetHash());
+            hashCode.Add(meta.GetNexusHash());
         }
         
         return (_hashCode = hashCode.ToHashCode()).Value;

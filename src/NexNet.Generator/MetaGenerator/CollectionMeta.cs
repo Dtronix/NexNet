@@ -5,6 +5,7 @@ namespace NexNet.Generator.MetaGenerator;
 
 internal partial class CollectionMeta
 {
+    private int? _nexusHash;
     private static readonly XxHash32 _hash = new XxHash32();
     public IPropertySymbol Symbol { get; }
     public string Name { get; }
@@ -71,8 +72,11 @@ internal partial class CollectionMeta
     }
 
 
-    public int GetHash()
+    public int GetNexusHash()
     {
+        if (_nexusHash != null)
+            return _nexusHash.Value;
+        
         var hash = new HashCode();
 
         //ReturnType + Name
@@ -92,7 +96,8 @@ internal partial class CollectionMeta
             hash.Add(NexusCollectionAttribute.Id.Value);
         }
         
-        return hash.ToHashCode();
+        _nexusHash = hash.ToHashCode();
+        return _nexusHash.Value;
     }
 
     public Location GetLocation(Location fallback)

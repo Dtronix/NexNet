@@ -34,7 +34,7 @@ partial class InvocationInterfaceMeta
             /// <summary>
             /// Hash for methods on this proxy or nexus.  Used to perform a simple client and server match check.
             /// </summary>
-            static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{GetHash()}}; }
+            static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{GetNexusHash()}}; }
             
             /// <summary>
             /// Hash table for all the versions that this proxy can invoke.
@@ -56,7 +56,7 @@ partial class InvocationInterfaceMeta
                 : lastVersion.VersionAttribute.Version;
             sb.AppendLine(
                 "global::System.Collections.Frozen.FrozenDictionary.ToFrozenDictionary(new global::System.Collections.Generic.KeyValuePair<string, int>[] {");
-            sb.Append("                new(\"").Append(versionName).Append("\", ").Append(lastVersion?.GetHash() ?? GetHash()).AppendLine("),");
+            sb.Append("                new(\"").Append(versionName).Append("\", ").Append(lastVersion?.GetNexusHash() ?? GetNexusHash()).AppendLine("),");
                     sb.AppendLine("""
             });
 """);

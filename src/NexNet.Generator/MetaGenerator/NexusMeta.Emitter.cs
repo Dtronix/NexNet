@@ -19,7 +19,7 @@ namespace {{Symbol.ContainingNamespace}}
         if (NexusAttribute.IsServer)
         {
             sb.Append("    /// [NexusVersion(Version=\"\", HashLock=")
-                .Append(this.NexusInterface.GetHash())
+                .Append(this.NexusInterface.GetNexusHash())
                 .AppendLine(")]");
             ;
         }
@@ -178,7 +178,7 @@ namespace {{Symbol.ContainingNamespace}}
         /// <summary>
         /// Hash for this the methods on this proxy or nexus.  Used to perform a simple client and server match check.
         /// </summary>
-        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{this.NexusInterface.GetHash()}}; }
+        static int global::NexNet.Invocation.IInvocationMethodHash.MethodHash { get => {{this.NexusInterface.GetNexusHash()}}; }
         
         /// <summary>
         /// Hash table for all the versions that this nexus implements.
@@ -193,7 +193,7 @@ namespace {{Symbol.ContainingNamespace}}
             foreach (var versionInterface in this.NexusInterface.Versions)
             {
                 sb.Append("            new(\"").Append(versionInterface.VersionAttribute.Version).Append("\", ")
-                    .Append(versionInterface.GetHash()).AppendLine("),");
+                    .Append(versionInterface.GetNexusHash()).AppendLine("),");
             }
 
             sb.AppendLine("        });");
@@ -217,7 +217,7 @@ namespace {{Symbol.ContainingNamespace}}
             sb.AppendLine("global::System.Collections.Frozen.FrozenSet.ToFrozenSet([");
             foreach (var versionInterface in this.NexusInterface.Versions)
             {
-                var versionHash = versionInterface.GetHash();
+                var versionHash = versionInterface.GetNexusHash();
 
                 foreach (var method in versionInterface.AllMethods!)
                 {

@@ -149,4 +149,20 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor VersionHashLockMismatch = new(
+        id: "NEXNET019",
+        title: "NexusVersion invalid hash lock",
+        messageFormat: "The NexusVersion on '{0}' does not match the calculated HashLock of '{1}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor VersionHashLockNotSet = new(
+        id: "NEXNET020",
+        title: "NexusVersion HashLock not set",
+        messageFormat: "The NexusVersion on '{0}' does not specify the calculated HashLock of '{1}'. Set this value prior to shipping your API to ensure API changes to no accidentally occur.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
 }
