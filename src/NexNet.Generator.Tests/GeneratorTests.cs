@@ -468,6 +468,28 @@ partial class ServerNexus
 """);
         Assert.That(diagnostic, Is.Empty);
     }
+    
+        [Test]
+    public void MemoryPackableObjects()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using MemoryPack;
+namespace NexNetDemo;
+[MemoryPackable]
+partial class DataObject { 
+    public string Value1 { get; set; } 
+    public int Value2 { get; set; } 
+}
+partial interface IClientNexus { }
+partial interface IServerNexus {  void Update(DataObject data); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { 
+    void Update(DataObject data) { }
+}
+""");
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+    }
 
 }
 

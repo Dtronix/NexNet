@@ -14,6 +14,17 @@ namespace {{Symbol.ContainingNamespace}}
     /// <summary>
     /// Nexus used for handling all {{EmitServerClientName()}} communications.
     /// </summary>
+    /// <remarks>
+""");
+        if (NexusAttribute.IsServer)
+        {
+            sb.Append("    /// [NexusVersion(Version=\"\", HashLock=")
+                .Append(this.NexusInterface.GetHash())
+                .AppendLine(")]");
+            ;
+        }
+        sb.AppendLine($$"""
+    /// </remarks>
     partial class {{TypeName}} : 
         global::NexNet.Invocation.{{EmitServerClientName()}}NexusBase<{{this.Namespace}}.{{this.TypeName}}.{{this.ProxyInterface.ProxyImplName}}>, 
         {{this.NexusInterface.Namespace}}.{{this.NexusInterface.TypeName}}, 

@@ -62,7 +62,7 @@ internal abstract class AttributeMetaBase
         
     }
 
-    protected static object GetItem(TypedConstant arg)
+    protected static object? GetItem(TypedConstant arg)
     {
         if (arg.Kind == TypedConstantKind.Array)
         {
@@ -70,7 +70,7 @@ internal abstract class AttributeMetaBase
         }
         else
         {
-            return arg.Value ?? new object();
+            return arg.Value;
         }
     }
 }

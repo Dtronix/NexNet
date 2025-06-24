@@ -76,6 +76,11 @@ public sealed class NexusVersionAttribute : Attribute
     public required string Version { get; init; }
 
     /// <summary>
+    /// Locked in hash for the version. Used to ensure the nexus members and member's arguments remains constant.
+    /// </summary>
+    public int HashLock { get; init; } = -1;
+
+    /// <summary>
     /// Initializes a new instance of the <see cref="NexusVersionAttribute"/> class.
     /// </summary>
     public NexusVersionAttribute()

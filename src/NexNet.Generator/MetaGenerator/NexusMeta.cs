@@ -34,9 +34,9 @@ internal partial class NexusMeta
 
         var nexusAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexusAttribute");
         NexusInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute, null);
+            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute, null, MemoryPackReference);
         ProxyInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute, null);
+            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute, null, MemoryPackReference);
         
         // Build the versioning trees and method ids.
         NexusInterface.BuildVersions();

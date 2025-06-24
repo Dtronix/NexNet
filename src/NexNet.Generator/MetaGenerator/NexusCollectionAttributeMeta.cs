@@ -30,13 +30,13 @@ internal class NexusCollectionAttributeMeta : AttributeMetaBase
     {
         if (key == "Mode" || constructorArgIndex == 0)
         {
-            var mode = (NexusCollectionMode)(int)GetItem(typedConstant);
+            var mode = (NexusCollectionMode)(int)GetItem(typedConstant)!;
             if (mode != NexusCollectionMode.Unset)
                 Mode = mode;
         }
         else if (key == "Id" || constructorArgIndex == 1)
         {
-            var id = (ushort)GetItem(typedConstant);
+            var id = (ushort)GetItem(typedConstant)!;
             if (id != 0)
                 Id = id;
         }

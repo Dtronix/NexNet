@@ -18,7 +18,7 @@ internal class MethodParameterMeta
     //public string? DeserializedParameterValue { get; }
 
     public bool IsParamsArray { get; }
-
+    public bool IsMemoryPackObject { get; }
     public bool IsArrayType { get; }
     public bool IsDuplexPipe { get; }
     public bool IsDuplexUnmanagedChannel { get; }
@@ -44,7 +44,7 @@ internal class MethodParameterMeta
         this.MemoryPackReferences = memoryPackReferences;
         this.Symbol = symbol;
         this.Name = symbol.Name;
-
+        this.IsMemoryPackObject = symbol.Type.ContainsAttribute(memoryPackReferences.MemoryPackableAttribute);
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
         this.ParamTypeSource = symbol.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
@@ -54,7 +54,13 @@ internal class MethodParameterMeta
         this.IsDuplexUnmanagedChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
         this.IsDuplexChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
         this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
-        if (IsDuplexPipe)
+        if (IsMemoryPackObject)
+        {
+            MemoryPackType = new TypeMeta((INamedTypeSymbol)symbol.Type, MemoryPackReferences);
+            SerializedType = ParamType;
+            SerializedValue = Name;
+        }
+        else if (IsDuplexPipe)
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
@@ -73,10 +79,6 @@ internal class MethodParameterMeta
             // Type is not serialized.
             SerializedType = null;
             SerializedValue = null;
-        }
-        else if (true)
-        {
-            MemoryPackType = new TypeMeta(symbol.Type as INamedTypeSymbol, MemoryPackReferences);
         }
         else
         {

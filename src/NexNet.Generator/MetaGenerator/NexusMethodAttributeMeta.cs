@@ -24,13 +24,13 @@ internal class NexusMethodAttributeMeta : AttributeMetaBase
     {
         if (key == "MethodId" || constructorArgIndex == 0)
         {
-            var id = (ushort)GetItem(typedConstant);
+            var id = (ushort)GetItem(typedConstant)!;
             if (id != 0)
                 MethodId = id;
         }
         else if (key == "Ignore")
         {
-            Ignore = (bool)GetItem(typedConstant);
+            Ignore = (bool)GetItem(typedConstant)!;
         }
     }
 }

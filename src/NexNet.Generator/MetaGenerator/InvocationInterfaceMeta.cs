@@ -1,4 +1,5 @@
 ﻿using System.Collections.Frozen;
+using MemoryPack.Generator;
 using Microsoft.CodeAnalysis;
 
 namespace NexNet.Generator.MetaGenerator;
@@ -9,6 +10,7 @@ internal partial class InvocationInterfaceMeta
     private int? _hashCode;
     public INamedTypeSymbol Symbol { get; }
     public NexusAttributeMeta NexusAttribute { get; }
+    public ReferenceSymbols MemoryPackReference { get; }
     public InvocationInterfaceMeta RootInterface { get; }
     
     /// <summary>
@@ -62,13 +64,15 @@ internal partial class InvocationInterfaceMeta
 
     public InvocationInterfaceMeta(INamedTypeSymbol? symbol,
         NexusAttributeMeta attribute,
-        InvocationInterfaceMeta? rootInterface)
+        InvocationInterfaceMeta? rootInterface,
+        ReferenceSymbols memoryPackReference)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
         this.Symbol = symbol;
         this.NexusAttribute = attribute;
+        this.MemoryPackReference = memoryPackReference;
         this.RootInterface = rootInterface ?? this;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
@@ -80,10 +84,10 @@ internal partial class InvocationInterfaceMeta
 
         // If the root interface is null, then this is the root interface.
 
-        var methods = EnumMethods(Symbol.GetMembers(), rootInterface).ToList();
+        var methods = EnumMethods(Symbol.GetMembers(), rootInterface, memoryPackReference).ToList();
 
         foreach (var interf in this.Symbol.AllInterfaces)
-            methods.AddRange(EnumMethods(interf.GetMembers(), rootInterface));
+            methods.AddRange(EnumMethods(interf.GetMembers(), rootInterface, memoryPackReference));
 
         this.AllMethods = methods.ToArray();
 
@@ -106,11 +110,14 @@ internal partial class InvocationInterfaceMeta
         this.ProxyImplName = attribute.IsClient ? $"ServerProxy" : "ClientProxy";
         this.ProxyImplNameWithNamespace = $"{Namespace}.{ProxyImplName}";
 
-        static IEnumerable<MethodMeta> EnumMethods(IEnumerable<ISymbol> symbols, InvocationInterfaceMeta? rootInterface)
+        static IEnumerable<MethodMeta> EnumMethods(
+            IEnumerable<ISymbol> symbols,
+            InvocationInterfaceMeta? rootInterface,
+            ReferenceSymbols memoryPackReference)
         {
             return symbols.OfType<IMethodSymbol>()
                 .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-                .Select(x => rootInterface == null ? new MethodMeta(x) : rootInterface.MethodTable![x])
+                .Select(x => rootInterface == null ? new MethodMeta(x, memoryPackReference) : rootInterface.MethodTable![x])
                 .Where(x => x.NexusMethodAttribute is { Ignore: false }); // Bypass ignored items.
         }
 
@@ -133,7 +140,7 @@ internal partial class InvocationInterfaceMeta
         
         foreach (var interfaceSymbol in Symbol.AllInterfaces)
         {
-            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface));
+            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface, MemoryPackReference));
         }
 
         foreach (var interfaceMeta in interfaceMap)

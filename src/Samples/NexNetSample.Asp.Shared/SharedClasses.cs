@@ -26,7 +26,7 @@ public partial interface IClientNexus
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
-[NexusVersion(Version = "v2")]
+[NexusVersion(Version = "v2", HashLock=-1549245336)]
 public partial interface IServerNexusV2 : IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDrirectional)]

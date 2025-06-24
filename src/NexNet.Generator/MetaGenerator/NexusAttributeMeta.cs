@@ -18,13 +18,13 @@ internal class NexusAttributeMeta : AttributeMetaBase
     {
         if (key == "NexusType" || constructorArgIndex == 0)
         {
-            IsClient = (int)GetItem(typedConstant) == 0;
-            IsServer = (int)GetItem(typedConstant) == 1;
+            IsClient = (int)GetItem(typedConstant)! == 0;
+            IsServer = (int)GetItem(typedConstant)! == 1;
         }
         else if (key == "Versioning" || constructorArgIndex == 1)
         {
-            VersionMustMatch = (int)GetItem(typedConstant) == 0;
-            VersionNegotiation = (int)GetItem(typedConstant) == 1;
+            VersionMustMatch = (int)GetItem(typedConstant)! == 0;
+            VersionNegotiation = (int)GetItem(typedConstant)! == 1;
         }
     }
 }

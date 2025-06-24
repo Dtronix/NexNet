@@ -109,7 +109,43 @@ internal partial class MethodMeta
 
         foreach (var param in Parameters)
         {
-            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
+            var memPack = param.MemoryPackType;
+            // If we have a memorypack type we need to hash the members.
+            if (memPack != null)
+            {
+                // Order + Generated Type + MemberTypeHash
+
+                if (memPack.IsUnmanagedType)
+                {
+                    hash.Add(100);
+                }
+                else
+                {
+                    hash.Add((int)memPack.GenerateType);
+                    if (memPack.GenerateType == GenerateType.Collection)
+                    {
+                        var kind = TypeMeta.ParseCollectionKind(memPack.Symbol, MemoryPackReferences);
+                        hash.Add((int)kind.Item1);
+                    }
+                }
+
+                hash.Add(memPack.IsValueType ? 1 : 0);
+                hash.Add(memPack.IsUnion ? 1 : 0);
+                hash.Add(memPack.IsRecord ? 1 : 0);
+                hash.Add(memPack.IsInterfaceOrAbstract ? 1 : 0);
+                foreach (var item in memPack.Members)
+                {
+                    // Order + Type.
+                    // We ignore the name as the name could be different, but produce the same binary data.
+                    hash.Add(item.Order);
+                    hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(item.MemberType.ToString())));
+                }
+            }
+            else
+            {
+                hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
+            }
+            
         }
 
         return hash.ToHashCode();
