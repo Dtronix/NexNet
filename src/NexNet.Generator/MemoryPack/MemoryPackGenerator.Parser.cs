@@ -107,7 +107,7 @@ internal class TypeMeta
             this.UnionTags = symbol.GetAttributes()
                 .Where(x => SymbolEqualityComparer.Default.Equals(x.AttributeClass, reference.MemoryPackUnionAttribute))
                 .Where(x => x.ConstructorArguments.Length == 2)
-                .Select(x => ((ushort)x.ConstructorArguments[0].Value!, new TypeMeta((INamedTypeSymbol)x.ConstructorArguments[1].Value!, reference)))
+                .Select(x => ((ushort)x.ConstructorArguments[0].Value!, reference.GetOrCreateType((INamedTypeSymbol)x.ConstructorArguments[1].Value!)))
                 .ToArray();
         }
         else
@@ -215,7 +215,7 @@ internal class MemberMeta
     //public bool IsAssignable { get; }
     public int Order { get; }
     //public bool HasExplicitOrder { get; }
-    //public MemberKind Kind { get; }
+    public MemberKind Kind { get; }
     //public bool SuppressDefaultInitialization { get; }
 
     MemberMeta(int order)
@@ -296,7 +296,7 @@ internal class MemberMeta
             }
         }
         */
-        //Kind = ParseMemberKind(symbol, MemberType, references);
+        Kind = ParseMemberKind(symbol, MemberType, references);
     }
 
     public static MemberMeta CreateEmpty(int order)
@@ -309,18 +309,20 @@ internal class MemberMeta
         var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
         return location;
     }
-    /*
+    
     static MemberKind ParseMemberKind(ISymbol? memberSymbol, ITypeSymbol memberType, ReferenceSymbols references)
     {
         if (memberType.SpecialType is SpecialType.System_Object or SpecialType.System_Array or SpecialType.System_Delegate or SpecialType.System_MulticastDelegate || memberType.TypeKind == TypeKind.Delegate)
         {
             return MemberKind.NonSerializable; // object, Array, delegate is not allowed
         }
-        else if (memberType.TypeKind == TypeKind.Enum)
+
+        if (memberType.TypeKind == TypeKind.Enum)
         {
             return MemberKind.Enum;
         }
-        else if (memberType.IsUnmanagedType)
+
+        if (memberType.IsUnmanagedType)
         {
             if (memberType is INamedTypeSymbol unmanagedNts)
             {
@@ -335,24 +337,25 @@ internal class MemberMeta
                     {
                         return MemberKind.UnmanagedNullable;
                     }
-                    else
-                    {
-                        return MemberKind.Nullable;
-                    }
+
+                    return MemberKind.Nullable;
                 }
             }
 
             return MemberKind.Unmanaged;
         }
-        else if (memberType.SpecialType == SpecialType.System_String)
+
+        if (memberType.SpecialType == SpecialType.System_String)
         {
             return MemberKind.String;
         }
-        else if (memberType.AllInterfaces.Any(x => x.EqualsUnconstructedGenericType(references.IMemoryPackable)))
+
+        if (memberType.AllInterfaces.Any(x => x.EqualsUnconstructedGenericType(references.IMemoryPackable)))
         {
             return MemberKind.MemoryPackable;
         }
-        else if (memberType.TryGetMemoryPackableType(references, out var generateType, out _))
+
+        if (memberType.TryGetMemoryPackableType(references, out var generateType, out _))
         {
             switch (generateType)
             {
@@ -369,11 +372,13 @@ internal class MemberMeta
                     return MemberKind.MemoryPackableNoGenerate;
             }
         }
-        else if (memberType.IsWillImplementMemoryPackUnion(references))
+
+        if (memberType.IsWillImplementMemoryPackUnion(references))
         {
             return MemberKind.MemoryPackUnion;
         }
-        else if (memberType.TypeKind == TypeKind.Array)
+
+        if (memberType.TypeKind == TypeKind.Array)
         {
             if (memberType is IArrayTypeSymbol array)
             {
@@ -387,75 +392,68 @@ internal class MemberMeta
                             // T?[] can not use Write/ReadUnmanagedArray
                             return MemberKind.Array;
                         }
-                        else
-                        {
-                            return MemberKind.UnmanagedArray;
-                        }
-                    }
-                    else
-                    {
-                        if (elemType.TryGetMemoryPackableType(references, out var elemGenerateType, out _) && elemGenerateType is GenerateType.Object or GenerateType.VersionTolerant or GenerateType.CircularReference)
-                        {
-                            return MemberKind.MemoryPackableArray;
-                        }
 
-                        return MemberKind.Array;
+                        return MemberKind.UnmanagedArray;
                     }
-                }
-                else
-                {
-                    // allows 2, 3, 4
-                    if (array.Rank <= 4)
+
+                    if (elemType.TryGetMemoryPackableType(references, out var elemGenerateType, out _) && elemGenerateType is GenerateType.Object or GenerateType.VersionTolerant or GenerateType.CircularReference)
                     {
-                        return MemberKind.Object;
+                        return MemberKind.MemoryPackableArray;
                     }
+
+                    return MemberKind.Array;
+                }
+
+                // allows 2, 3, 4
+                if (array.Rank <= 4)
+                {
+                    return MemberKind.Object;
                 }
             }
 
             return MemberKind.NonSerializable;
         }
-        else if (memberType.TypeKind == TypeKind.TypeParameter) // T
+
+        if (memberType.TypeKind == TypeKind.TypeParameter) // T
         {
             return MemberKind.Object;
         }
-        else
-        {
-            // or non unmanaged type
-            if (memberType is INamedTypeSymbol nts)
-            {
-                if (nts.IsRefLikeType)
-                {
-                    return MemberKind.RefLike;
-                }
-                if (nts.EqualsUnconstructedGenericType(references.KnownTypes.System_Nullable_T))
-                {
-                    return MemberKind.Nullable;
-                }
 
-                if (nts.EqualsUnconstructedGenericType(references.KnownTypes.System_Collections_Generic_List_T))
-                {
-                    if (nts.TypeArguments[0].TryGetMemoryPackableType(references, out var elemGenerateType, out _) && elemGenerateType is GenerateType.Object or GenerateType.VersionTolerant or GenerateType.CircularReference)
-                    {
-                        return MemberKind.MemoryPackableList;
-                    }
-                    return MemberKind.KnownType;
-                }
+        // or non unmanaged type
+        if (memberType is INamedTypeSymbol nts)
+        {
+            if (nts.IsRefLikeType)
+            {
+                return MemberKind.RefLike;
+            }
+            if (nts.EqualsUnconstructedGenericType(references.KnownTypes.System_Nullable_T))
+            {
+                return MemberKind.Nullable;
             }
 
-            if (references.KnownTypes.Contains(memberType))
+            if (nts.EqualsUnconstructedGenericType(references.KnownTypes.System_Collections_Generic_List_T))
             {
+                if (nts.TypeArguments[0].TryGetMemoryPackableType(references, out var elemGenerateType, out _) && elemGenerateType is GenerateType.Object or GenerateType.VersionTolerant or GenerateType.CircularReference)
+                {
+                    return MemberKind.MemoryPackableList;
+                }
                 return MemberKind.KnownType;
             }
-
-            if (memberSymbol != null)
-            {
-                if (memberSymbol.ContainsAttribute(references.MemoryPackAllowSerializeAttribute))
-                {
-                    return MemberKind.AllowSerialize;
-                }
-            }
-
-            return MemberKind.NonSerializable; // maybe can't serialize, diagnostics target
         }
-    }*/
+
+        if (references.KnownTypes.Contains(memberType, out _))
+        {
+            return MemberKind.KnownType;
+        }
+
+        if (memberSymbol != null)
+        {
+            if (memberSymbol.ContainsAttribute(references.MemoryPackAllowSerializeAttribute))
+            {
+                return MemberKind.AllowSerialize;
+            }
+        }
+
+        return MemberKind.NonSerializable; // maybe can't serialize, diagnostics target
+    }
 }

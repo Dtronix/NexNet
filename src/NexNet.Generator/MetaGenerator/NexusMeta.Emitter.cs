@@ -18,9 +18,13 @@ namespace {{Symbol.ContainingNamespace}}
 """);
         if (NexusAttribute.IsServer)
         {
-            sb.Append("    /// [NexusVersion(Version=\"\", HashLock=")
-                .Append(this.NexusInterface.GetNexusHash())
-                .AppendLine(")]");
+            foreach (var nexusInterface in this.NexusInterface.Interfaces.Concat([this.NexusInterface]))
+            {
+                sb.Append("    /// ").Append(nexusInterface.TypeName).Append(" [NexusVersion(Version=\"").Append(nexusInterface.VersionAttribute.Version).Append("\", HashLock=")
+                    .Append(nexusInterface.GetNexusHash())
+                    .AppendLine(")]");
+            }
+
             ;
         }
         sb.AppendLine($$"""
@@ -214,7 +218,7 @@ namespace {{Symbol.ContainingNamespace}}
 
         if (NexusAttribute.IsServer && this.NexusInterface.Versions.Length > 0)
         {
-            sb.AppendLine("global::System.Collections.Frozen.FrozenSet.ToFrozenSet([");
+            sb.AppendLine("global::System.Collections.Frozen.FrozenSet.ToFrozenSet(new long[] {");
             foreach (var versionInterface in this.NexusInterface.Versions)
             {
                 var versionHash = versionInterface.GetNexusHash();
@@ -224,7 +228,7 @@ namespace {{Symbol.ContainingNamespace}}
                     sb.Append("            Util.VMHash(").Append(versionHash).Append(", ").Append(method.Id).AppendLine("),");
                 }
             }
-            sb.AppendLine("        ]);");
+            sb.AppendLine("        });");
         }
         else
         {

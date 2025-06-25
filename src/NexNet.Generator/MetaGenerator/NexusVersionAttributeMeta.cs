@@ -7,6 +7,7 @@ internal class NexusVersionAttributeMeta : AttributeMetaBase
     public string? Version { get; private set; }
     public int Hash { get; private set; }
 
+    public bool IsHashSet { get; private set; }
     public NexusVersionAttributeMeta(ISymbol symbol)
         : base("NexusVersionAttribute", symbol)
     {
@@ -22,6 +23,7 @@ internal class NexusVersionAttributeMeta : AttributeMetaBase
         }
         else if (key == "HashLock" || constructorArgIndex == 1)
         {
+            IsHashSet = true;
             Hash = (int)GetItem(typedConstant)!;
         }
     }

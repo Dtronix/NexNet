@@ -3,7 +3,8 @@
 namespace NexNet.Generator.MemoryPack;
 
 internal class ReferenceSymbols
-{
+{    
+    private List<TypeMeta> _parsedTypes { get; } = new();
     public Compilation Compilation { get; }
 
     public INamedTypeSymbol MemoryPackableAttribute { get; }
@@ -60,6 +61,19 @@ internal class ReferenceSymbols
         }
         return symbol;
     }
+    
+    
+    public TypeMeta GetOrCreateType(INamedTypeSymbol type)
+    {
+        var typeMeta = _parsedTypes.FirstOrDefault(t => t.Symbol.Equals(type, SymbolEqualityComparer.Default));
+        if (typeMeta == null)
+        {
+            typeMeta = new TypeMeta(type, this);
+            _parsedTypes.Add(typeMeta);
+        }
+
+        return typeMeta;
+    }
 
     // UnamnaagedType no need.
     public class WellKnownTypes
@@ -99,8 +113,8 @@ internal class ReferenceSymbols
         const string System_ReadOnlyMemory_T = "global::System.ReadOnlyMemory<>";
         const string System_Buffers_ReadOnlySequence_T = "global::System.Buffers.ReadOnlySequence<>";
         const string System_Collections_Generic_PriorityQueue_T = "global::System.Collections.Generic.PriorityQueue<,>";
-
-        readonly HashSet<ITypeSymbol> knownTypes;
+        
+        readonly HashSet<ITypeSymbol> _knownTypes;
 
         public WellKnownTypes(ReferenceSymbols parent)
         {
@@ -131,7 +145,7 @@ internal class ReferenceSymbols
             System_DateTimeOffset = GetTypeByMetadataName("System.DateTimeOffset");
             System_Runtime_InteropServices_StructLayout = GetTypeByMetadataName("System.Runtime.InteropServices.StructLayoutAttribute");
 
-            knownTypes = new HashSet<ITypeSymbol>(new[]
+            _knownTypes = new HashSet<ITypeSymbol>(new[]
             {
                 System_Collections_Generic_IEnumerable_T,
                 System_Collections_Generic_ICollection_T,
@@ -155,16 +169,20 @@ internal class ReferenceSymbols
             }, SymbolEqualityComparer.Default);
         }
 
-        public bool Contains(ITypeSymbol symbol)
+        public bool Contains(ITypeSymbol symbol, out bool isGeneric)
         {
             var constructedSymbol = symbol;
+
+            isGeneric = false;
             if (symbol is INamedTypeSymbol nts && nts.IsGenericType)
             {
+                isGeneric = true;
                 symbol = nts.ConstructUnboundGenericType();
             }
 
-            var contains1 = knownTypes.Contains(symbol);
-            if (contains1) return true;
+            var contains1 = _knownTypes.Contains(symbol);
+            if (contains1)
+                return true;
 
             var fullyQualifiedString = symbol.FullyQualifiedToString();
             if (fullyQualifiedString is System_Memory_T or System_ReadOnlyMemory_T or System_Buffers_ReadOnlySequence_T or System_Collections_Generic_PriorityQueue_T)
@@ -187,8 +205,8 @@ internal class ReferenceSymbols
 
             return false;
         }
-
-
+        
+        
         INamedTypeSymbol GetTypeByMetadataName(string metadataName) => parent.GetTypeByMetadataName(metadataName);
     }
 }

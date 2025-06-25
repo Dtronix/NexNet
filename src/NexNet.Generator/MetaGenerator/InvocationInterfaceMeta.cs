@@ -136,8 +136,6 @@ internal partial class InvocationInterfaceMeta
         var baseInterfaces = new List<InvocationInterfaceMeta>();
         var versions = new List<InvocationInterfaceMeta>();
         
-
-        
         foreach (var interfaceSymbol in Symbol.AllInterfaces)
         {
             interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface, MemoryPackReference));
@@ -257,17 +255,20 @@ internal partial class InvocationInterfaceMeta
     {
         if (_hashCode != null)
             return _hashCode.Value;
-        
+
         var hashCode = new HashCode();
         foreach (var meta in AllMethods!)
         {
             hashCode.Add(meta.GetNexusHash());
         }
+
         foreach (var meta in AllCollections!)
         {
             hashCode.Add(meta.GetNexusHash());
         }
-        
-        return (_hashCode = hashCode.ToHashCode()).Value;
+
+        _hashCode = hashCode.ToHashCode();
+
+        return _hashCode.Value;
     }
 }

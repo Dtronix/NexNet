@@ -208,6 +208,37 @@ internal partial class NexusMeta
                 }
             }
         }
+        
+                    
+        //Validate all the interface version information
+        foreach (var nexusInterface in this.NexusInterface.Interfaces.Concat([this.NexusInterface]))
+        {
+            if (nexusInterface.VersionAttribute.AttributeExists)
+            {
+                var hash = nexusInterface.GetNexusHash();
+                if (nexusInterface.VersionAttribute.IsHashSet)
+                {
+                    if (nexusInterface.VersionAttribute.Hash != hash)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.VersionHashLockMismatch,
+                            nexusInterface.VersionAttribute.GetLocation(nexusLocation),
+                            nexusInterface.TypeName,
+                            hash));
+                        failed = true;
+                    }
+                }
+                else
+                {
+                    context.ReportDiagnostic(Diagnostic.Create(
+                        DiagnosticDescriptors.VersionHashLockNotSet,
+                        nexusInterface.VersionAttribute.GetLocation(nexusLocation),
+                        nexusInterface.TypeName,
+                        hash));
+                }
+            }
+        }
+
 
         return !failed;
     }

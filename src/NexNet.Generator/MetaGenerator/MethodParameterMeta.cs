@@ -32,9 +32,10 @@ internal class MethodParameterMeta
 
     public bool IsCancellationToken { get; }
 
-
     public string ParamTypeSource { get; }
     public int SerializedId { get; set; }
+
+    public bool IsSerializable { get; }
 
     public TypeMeta? MemoryPackType { get; }
 
@@ -56,7 +57,7 @@ internal class MethodParameterMeta
         this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
         if (IsMemoryPackObject)
         {
-            MemoryPackType = new TypeMeta((INamedTypeSymbol)symbol.Type, MemoryPackReferences);
+            MemoryPackType = memoryPackReferences.GetOrCreateType((INamedTypeSymbol)symbol.Type);
             SerializedType = ParamType;
             SerializedValue = Name;
         }
@@ -82,11 +83,55 @@ internal class MethodParameterMeta
         }
         else
         {
+            if (symbol.Type is not INamedTypeSymbol namedSymbol)
+                return;
+
+            List<INamedTypeSymbol> notSerializable = new();
+            List<TypeMeta> serializable = new();
+            IsSerializable = CheckIsSerializable(namedSymbol, notSerializable, serializable);
             // Normal serialized type.
+            
+            if(IsSerializable == false)
             SerializedType = ParamType;
             SerializedValue = Name;
+            
+            IsSerializable
         }
 
+    }
+
+    private bool CheckIsSerializable(INamedTypeSymbol symbol, List<INamedTypeSymbol> notSerializable, List<TypeMeta> serializable)
+    {
+        if (symbol.ContainsAttribute(MemoryPackReferences.MemoryPackableAttribute))
+        {
+            serializable.Add(MemoryPackReferences.GetOrCreateType(symbol));
+            return true;
+        }
+
+        if (!MemoryPackReferences!.KnownTypes.Contains(symbol, out var isGeneric))
+        {
+            notSerializable.Add(symbol);
+            return false;
+        }
+        
+        if (isGeneric)
+        {
+            bool foundInvalid = false;
+            foreach (var arg in symbol.TypeArguments)
+            {
+                if (arg is not INamedTypeSymbol namedArg)
+                    return false;
+
+                if (!CheckIsSerializable(namedArg, notSerializable, serializable))
+                    foundInvalid = true;
+            }
+
+            return foundInvalid;
+        }
+        
+        notSerializable.Add(symbol);
+
+        return false;
     }
 
 }

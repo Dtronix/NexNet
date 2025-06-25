@@ -37,14 +37,18 @@ public static class CSharpGeneratorRunner
         baseCompilation = compilation;
     }
 
-    public static Diagnostic[] RunGenerator(string source, string[]? preprocessorSymbols = null, AnalyzerConfigOptionsProvider? options = null)
+    public static Diagnostic[] RunGenerator(
+        string source, 
+        string[]? preprocessorSymbols = null,
+        DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error, 
+        AnalyzerConfigOptionsProvider? options = null)
     {
         if (preprocessorSymbols == null)
         {
             preprocessorSymbols = new[] { "NET7_0_OR_GREATER" };
         }
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp11, preprocessorSymbols: preprocessorSymbols);
-
+        
         var driver = CSharpGeneratorDriver.Create(new NexusGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
@@ -55,9 +59,8 @@ public static class CSharpGeneratorRunner
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
 
-
         // combine diagnostics as result.(ignore warning)
         var compilationDiagnostics = newCompilation.GetDiagnostics();
-        return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
     }
 }
