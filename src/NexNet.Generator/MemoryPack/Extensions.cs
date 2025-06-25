@@ -1,7 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace MemoryPack.Generator;
+namespace NexNet.Generator.MemoryPack;
 
 internal static class Extensions
 {

@@ -1,21 +1,15 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
+﻿using System.Text;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using System.ComponentModel;
-using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Runtime.Serialization;
-using System.Text;
-using NexNet.Generator;
 
-namespace MemoryPack.Generator;
+namespace NexNet.Generator.MemoryPack;
 
-public enum CollectionKind
+internal enum CollectionKind
 {
     None, Collection, Set, Dictionary
 }
 
-public enum MemberKind
+internal enum MemberKind
 {
     MemoryPackable, // IMemoryPackable<> or [MemoryPackable]
     Unmanaged,
@@ -43,18 +37,18 @@ public enum MemberKind
     CustomFormatter, // used [MemoryPackCustomFormatterAttribtue]
 }
 
-internal partial class TypeMeta
+internal class TypeMeta
 {
     private readonly ReferenceSymbols _reference;
     private static readonly XxHash32 _hash = new XxHash32();
     private int? _nexusHash = null;
-    public INamedTypeSymbol Symbol { get; set; }
+    public INamedTypeSymbol Symbol { get; }
     public GenerateType GenerateType { get; }
-    public SerializeLayout SerializeLayout { get; }
+    //public SerializeLayout SerializeLayout { get; }
     /// <summary>MinimallyQualifiedFormat(include generics T)</summary>
     public string TypeName { get; }
-    public MemberMeta[] Members { get; private set; }
-    public bool IsValueType { get; set; }
+    public MemberMeta[] Members { get; }
+    public bool IsValueType { get; }
     public bool IsUnmanagedType { get; }
     public bool IsUnion { get; }
     public bool IsRecord { get; }
@@ -66,9 +60,9 @@ internal partial class TypeMeta
         _reference = reference;
         this.Symbol = symbol;
 
-        symbol.TryGetMemoryPackableType(reference, out var generateType, out var serializeLayout);
+        symbol.TryGetMemoryPackableType(reference, out var generateType, out _);
         this.GenerateType = generateType;
-        this.SerializeLayout = serializeLayout;
+        //this.SerializeLayout = serializeLayout;
 
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
@@ -208,79 +202,70 @@ internal partial class TypeMeta
 
 }
 
-partial class MemberMeta
+internal class MemberMeta
 {
     public ISymbol Symbol { get; }
-    public string Name { get; }
+    //public string Name { get; }
     public ITypeSymbol MemberType { get; }
-    public INamedTypeSymbol? CustomFormatter { get; }
-    public string? CustomFormatterName { get; }
-    public bool IsField { get; }
-    public bool IsProperty { get; }
-    public bool IsSettable { get; }
-    public bool IsAssignable { get; }
-    public string? ConstructorParameterName { get; }
+    //public INamedTypeSymbol? CustomFormatter { get; }
+    //public string? CustomFormatterName { get; }
+    //public bool IsField { get; }
+    //public bool IsProperty { get; }
+    //public bool IsSettable { get; }
+    //public bool IsAssignable { get; }
     public int Order { get; }
-    public bool HasExplicitOrder { get; }
-    public MemberKind Kind { get; }
-    public bool SuppressDefaultInitialization { get; }
+    //public bool HasExplicitOrder { get; }
+    //public MemberKind Kind { get; }
+    //public bool SuppressDefaultInitialization { get; }
 
     MemberMeta(int order)
     {
         this.Symbol = null!;
-        this.Name = null!;
+        //this.Name = null!;
         this.MemberType = null!;
         this.Order = order;
-        this.Kind = MemberKind.Blank;
+        //this.Kind = MemberKind.Blank;
     }
 
     public MemberMeta(ISymbol symbol, ReferenceSymbols references, int sequentialOrder)
     {
         this.Symbol = symbol;
-        this.Name = symbol.Name;
+        //this.Name = symbol.Name;
         this.Order = sequentialOrder;
-        this.SuppressDefaultInitialization = symbol.ContainsAttribute(references.SkipOverwriteDefaultAttribute);
+        //this.SuppressDefaultInitialization = symbol.ContainsAttribute(references.SkipOverwriteDefaultAttribute);
         var orderAttr = symbol.GetAttribute(references.MemoryPackOrderAttribute);
         if (orderAttr != null)
         {
             this.Order = (int)(orderAttr.ConstructorArguments[0].Value ?? sequentialOrder);
-            this.HasExplicitOrder = true;
+            //this.HasExplicitOrder = true;
 
         }
         else
         {
-            this.HasExplicitOrder = false;
+            //this.HasExplicitOrder = false;
         }
 
         if (symbol is IFieldSymbol f)
         {
-            IsProperty = false;
-            IsField = true;
-            IsSettable = !f.IsReadOnly; // readonly field can not set.
-            IsAssignable = IsSettable
-#if !ROSLYN3
-                 && !f.IsRequired
-#endif
-                ;
+            //IsProperty = false;
+            //IsField = true;
+            //IsSettable = !f.IsReadOnly; // readonly field can not set.
+            //IsAssignable = IsSettable && !f.IsRequired
             MemberType = f.Type;
         }
         else if (symbol is IPropertySymbol p)
         {
-            IsProperty = true;
-            IsField = false;
-            IsSettable = !p.IsReadOnly;
-            IsAssignable = IsSettable
-#if !ROSLYN3
-                && !p.IsRequired
-#endif
-                && (p.SetMethod != null && !p.SetMethod.IsInitOnly);
+            //IsProperty = true;
+            //IsField = false;
+            //IsSettable = !p.IsReadOnly;
+            //IsAssignable = IsSettable && !p.IsRequired && (p.SetMethod != null && !p.SetMethod.IsInitOnly);
             MemberType = p.Type;
         }
         else
         {
             throw new Exception("member is not field or property.");
         }
-
+        /*
         if (references.MemoryPackCustomFormatterAttribute != null)
         {
             var genericFormatter = false;
@@ -294,7 +279,7 @@ partial class MemberMeta
             if (customFormatterAttr != null)
             {
                 CustomFormatter = customFormatterAttr.AttributeClass!;
-                Kind = MemberKind.CustomFormatter;
+                //Kind = MemberKind.CustomFormatter;
 
                 string formatterName;
                 if (genericFormatter)
@@ -306,12 +291,12 @@ partial class MemberMeta
                 {
                     formatterName = $"IMemoryPackFormatter<{MemberType.FullyQualifiedToString()}>";
                 }
-                CustomFormatterName = formatterName;
+                //CustomFormatterName = formatterName;
                 return;
             }
         }
-
-        Kind = ParseMemberKind(symbol, MemberType, references);
+        */
+        //Kind = ParseMemberKind(symbol, MemberType, references);
     }
 
     public static MemberMeta CreateEmpty(int order)
@@ -324,7 +309,7 @@ partial class MemberMeta
         var location = Symbol.Locations.FirstOrDefault() ?? fallback.Identifier.GetLocation();
         return location;
     }
-
+    /*
     static MemberKind ParseMemberKind(ISymbol? memberSymbol, ITypeSymbol memberType, ReferenceSymbols references)
     {
         if (memberType.SpecialType is SpecialType.System_Object or SpecialType.System_Array or SpecialType.System_Delegate or SpecialType.System_MulticastDelegate || memberType.TypeKind == TypeKind.Delegate)
@@ -367,7 +352,7 @@ partial class MemberMeta
         {
             return MemberKind.MemoryPackable;
         }
-        else if (memberType.TryGetMemoryPackableType(references, out var generateType, out var serializeLayout))
+        else if (memberType.TryGetMemoryPackableType(references, out var generateType, out _))
         {
             switch (generateType)
             {
@@ -472,5 +457,5 @@ partial class MemberMeta
 
             return MemberKind.NonSerializable; // maybe can't serialize, diagnostics target
         }
-    }
+    }*/
 }

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Frozen;
-using MemoryPack.Generator;
 using Microsoft.CodeAnalysis;
+using NexNet.Generator.MemoryPack;
 
 namespace NexNet.Generator.MetaGenerator;
 

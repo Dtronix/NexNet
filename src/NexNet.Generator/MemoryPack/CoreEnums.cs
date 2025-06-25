@@ -1,7 +1,7 @@
-﻿namespace MemoryPack.Generator;
+﻿namespace NexNet.Generator.MemoryPack;
 
 // should synchronize with MemoryPack.Core.Attributes.cs GenerateType
-public enum GenerateType
+internal enum GenerateType
 {
     Object,
     VersionTolerant,
@@ -13,7 +13,7 @@ public enum GenerateType
     Union
 }
 
-public enum SerializeLayout
+internal enum SerializeLayout
 {
     Sequential, // default
     Explicit

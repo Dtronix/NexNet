@@ -1,7 +1,7 @@
-﻿using MemoryPack.Generator;
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NexNet.Generator.MemoryPack;
 using NexNet.Generator.MetaGenerator;
 
 namespace NexNet.Generator;

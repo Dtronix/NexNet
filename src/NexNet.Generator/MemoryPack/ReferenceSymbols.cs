@@ -1,8 +1,6 @@
 ﻿using Microsoft.CodeAnalysis;
-using System.Reflection;
-using System.Runtime.InteropServices;
 
-namespace MemoryPack.Generator;
+namespace NexNet.Generator.MemoryPack;
 
 internal class ReferenceSymbols
 {
