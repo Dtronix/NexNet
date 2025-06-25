@@ -59,7 +59,7 @@ internal partial class TypeMeta
     public bool IsUnion { get; }
     public bool IsRecord { get; }
     public bool IsInterfaceOrAbstract { get; }
-    public (ushort Tag, INamedTypeSymbol Type)[] UnionTags { get; }
+    public (ushort Tag, TypeMeta Type)[] UnionTags { get; }
 
     public TypeMeta(INamedTypeSymbol symbol, ReferenceSymbols reference)
     {
@@ -113,12 +113,12 @@ internal partial class TypeMeta
             this.UnionTags = symbol.GetAttributes()
                 .Where(x => SymbolEqualityComparer.Default.Equals(x.AttributeClass, reference.MemoryPackUnionAttribute))
                 .Where(x => x.ConstructorArguments.Length == 2)
-                .Select(x => ((ushort)x.ConstructorArguments[0].Value!, (INamedTypeSymbol)x.ConstructorArguments[1].Value!))
+                .Select(x => ((ushort)x.ConstructorArguments[0].Value!, new TypeMeta((INamedTypeSymbol)x.ConstructorArguments[1].Value!, reference)))
                 .ToArray();
         }
         else
         {
-            this.UnionTags = Array.Empty<(ushort, INamedTypeSymbol)>();
+            this.UnionTags = [];
         }
     }
 
@@ -174,7 +174,7 @@ internal partial class TypeMeta
         var hash = new HashCode();
         if (IsUnmanagedType)
         {
-            hash.Add(100);
+            hash.Add(10000);
         }
         else
         {
@@ -187,7 +187,6 @@ internal partial class TypeMeta
         }
 
         hash.Add(IsValueType ? 1 : 0);
-        hash.Add(IsUnion ? 1 : 0);
         hash.Add(IsRecord ? 1 : 0);
         hash.Add(IsInterfaceOrAbstract ? 1 : 0);
         foreach (var item in Members)
@@ -196,6 +195,12 @@ internal partial class TypeMeta
             // We ignore the name as the name could be different, but produce the same binary data.
             hash.Add(item.Order);
             hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(item.MemberType.ToString())));
+        }
+
+        foreach (var union in UnionTags)
+        {
+            hash.Add(union.Tag);
+            hash.Add(union.Type.GetNexusHash());
         }
 
         return hash.ToHashCode();
