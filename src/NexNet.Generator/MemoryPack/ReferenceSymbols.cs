@@ -4,7 +4,7 @@ namespace NexNet.Generator.MemoryPack;
 
 internal class ReferenceSymbols
 {    
-    private List<TypeMeta> _parsedTypes { get; } = new();
+    private List<MemoryPackTypeMeta> _parsedTypes { get; } = new();
     public Compilation Compilation { get; }
 
     public INamedTypeSymbol MemoryPackableAttribute { get; }
@@ -63,12 +63,12 @@ internal class ReferenceSymbols
     }
     
     
-    public TypeMeta GetOrCreateType(INamedTypeSymbol type)
+    public MemoryPackTypeMeta GetOrCreateType(INamedTypeSymbol type)
     {
         var typeMeta = _parsedTypes.FirstOrDefault(t => t.Symbol.Equals(type, SymbolEqualityComparer.Default));
         if (typeMeta == null)
         {
-            typeMeta = new TypeMeta(type, this);
+            typeMeta = new MemoryPackTypeMeta(type, this);
             _parsedTypes.Add(typeMeta);
         }
 

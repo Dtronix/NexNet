@@ -37,7 +37,7 @@ internal class MethodParameterMeta
 
     public bool IsSerializable { get; }
 
-    public TypeMeta? MemoryPackType { get; }
+    public MemoryPackTypeMeta? MemoryPackType { get; }
 
     public MethodParameterMeta(IParameterSymbol symbol, int index, ReferenceSymbols memoryPackReferences)
     {
@@ -87,7 +87,7 @@ internal class MethodParameterMeta
                 return;
 
             List<INamedTypeSymbol> notSerializable = new();
-            List<TypeMeta> serializable = new();
+            List<MemoryPackTypeMeta> serializable = new();
             IsSerializable = CheckIsSerializable(namedSymbol, notSerializable, serializable);
             // Normal serialized type.
             
@@ -100,7 +100,7 @@ internal class MethodParameterMeta
 
     }
 
-    private bool CheckIsSerializable(INamedTypeSymbol symbol, List<INamedTypeSymbol> notSerializable, List<TypeMeta> serializable)
+    private bool CheckIsSerializable(INamedTypeSymbol symbol, List<INamedTypeSymbol> notSerializable, List<MemoryPackTypeMeta> serializable)
     {
         if (symbol.ContainsAttribute(MemoryPackReferences.MemoryPackableAttribute))
         {
