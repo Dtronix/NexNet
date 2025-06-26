@@ -28,7 +28,7 @@ internal class MemoryPackMemberMeta
         //this.Kind = MemberKind.Blank;
     }
 
-    public MemoryPackMemberMeta(ISymbol symbol, ReferenceSymbols references, int sequentialOrder)
+    public MemoryPackMemberMeta(ISymbol symbol, MemoryPackReferences references, int sequentialOrder)
     {
         this.Symbol = symbol;
         //this.Name = symbol.Name;
@@ -111,7 +111,7 @@ internal class MemoryPackMemberMeta
         return location;
     }
     
-    static MemberKind ParseMemberKind(ISymbol? memberSymbol, ITypeSymbol memberType, ReferenceSymbols references)
+    static MemberKind ParseMemberKind(ISymbol? memberSymbol, ITypeSymbol memberType, MemoryPackReferences references)
     {
         if (memberType.SpecialType is SpecialType.System_Object or SpecialType.System_Array or SpecialType.System_Delegate or SpecialType.System_MulticastDelegate || memberType.TypeKind == TypeKind.Delegate)
         {

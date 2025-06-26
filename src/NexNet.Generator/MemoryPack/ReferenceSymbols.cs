@@ -2,7 +2,7 @@
 
 namespace NexNet.Generator.MemoryPack;
 
-internal class ReferenceSymbols
+internal class MemoryPackReferences
 {    
     private List<MemoryPackTypeMeta> _parsedTypes { get; } = new();
     public Compilation Compilation { get; }
@@ -27,7 +27,7 @@ internal class ReferenceSymbols
 
     public WellKnownTypes KnownTypes { get; }
 
-    public ReferenceSymbols(Compilation compilation)
+    public MemoryPackReferences(Compilation compilation)
     {
         Compilation = compilation;
 
@@ -62,6 +62,8 @@ internal class ReferenceSymbols
         return symbol;
     }
     
+    public (int )
+    
     
     public MemoryPackTypeMeta GetOrCreateType(INamedTypeSymbol type)
     {
@@ -78,7 +80,7 @@ internal class ReferenceSymbols
     // UnamnaagedType no need.
     public class WellKnownTypes
     {
-        readonly ReferenceSymbols parent;
+        readonly MemoryPackReferences parent;
 
         public INamedTypeSymbol System_Collections_Generic_IEnumerable_T { get; }
         public INamedTypeSymbol System_Collections_Generic_ICollection_T { get; }
@@ -116,7 +118,7 @@ internal class ReferenceSymbols
         
         readonly HashSet<ITypeSymbol> _knownTypes;
 
-        public WellKnownTypes(ReferenceSymbols parent)
+        public WellKnownTypes(MemoryPackReferences parent)
         {
             this.parent = parent;
             System_Collections_Generic_IEnumerable_T = GetTypeByMetadataName("System.Collections.Generic.IEnumerable`1").ConstructUnboundGenericType();

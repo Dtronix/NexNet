@@ -5,7 +5,7 @@ namespace NexNet.Generator.MemoryPack;
 
 internal class MemoryPackTypeMeta
 {
-    private readonly ReferenceSymbols _reference;
+    private readonly MemoryPackReferences _reference;
     private static readonly XxHash32 _hash = new XxHash32();
     private int? _nexusHash = null;
     public INamedTypeSymbol Symbol { get; }
@@ -21,7 +21,7 @@ internal class MemoryPackTypeMeta
     public bool IsInterfaceOrAbstract { get; }
     public (ushort Tag, MemoryPackTypeMeta Type)[] UnionTags { get; }
 
-    public MemoryPackTypeMeta(INamedTypeSymbol symbol, ReferenceSymbols reference)
+    public MemoryPackTypeMeta(INamedTypeSymbol symbol, MemoryPackReferences reference)
     {
         _reference = reference;
         this.Symbol = symbol;
@@ -82,7 +82,7 @@ internal class MemoryPackTypeMeta
         }
     }
 
-    public static (CollectionKind, INamedTypeSymbol?) ParseCollectionKind(INamedTypeSymbol? symbol, ReferenceSymbols reference)
+    public static (CollectionKind, INamedTypeSymbol?) ParseCollectionKind(INamedTypeSymbol? symbol, MemoryPackReferences reference)
     {
         if (symbol == null) goto NONE;
 

@@ -10,7 +10,7 @@ internal partial class InvocationInterfaceMeta
     private int? _hashCode;
     public INamedTypeSymbol Symbol { get; }
     public NexusAttributeMeta NexusAttribute { get; }
-    public ReferenceSymbols MemoryPackReference { get; }
+    public MemoryPackReferences MemoryPackReference { get; }
     public InvocationInterfaceMeta RootInterface { get; }
     
     /// <summary>
@@ -65,7 +65,7 @@ internal partial class InvocationInterfaceMeta
     public InvocationInterfaceMeta(INamedTypeSymbol? symbol,
         NexusAttributeMeta attribute,
         InvocationInterfaceMeta? rootInterface,
-        ReferenceSymbols memoryPackReference)
+        MemoryPackReferences memoryPackReference)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
@@ -113,7 +113,7 @@ internal partial class InvocationInterfaceMeta
         static IEnumerable<MethodMeta> EnumMethods(
             IEnumerable<ISymbol> symbols,
             InvocationInterfaceMeta? rootInterface,
-            ReferenceSymbols memoryPackReference)
+            MemoryPackReferences memoryPackReference)
         {
             return symbols.OfType<IMethodSymbol>()
                 .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))

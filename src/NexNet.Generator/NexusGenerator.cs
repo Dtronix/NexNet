@@ -78,7 +78,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
             return;
         }
         
-        var memoryPackReference = new ReferenceSymbols(compilation);
+        var memoryPackReference = new MemoryPackReferences(compilation);
 
         var nexusMeta = new NexusMeta(typeSymbol, memoryPackReference);
 

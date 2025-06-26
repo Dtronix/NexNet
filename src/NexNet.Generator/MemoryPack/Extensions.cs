@@ -99,7 +99,7 @@ internal static class Extensions
         }
     }
 
-    public static bool TryGetMemoryPackableType(this ITypeSymbol symbol, ReferenceSymbols references, out GenerateType generateType, out SerializeLayout serializeLayout)
+    public static bool TryGetMemoryPackableType(this ITypeSymbol symbol, MemoryPackReferences references, out GenerateType generateType, out SerializeLayout serializeLayout)
     {
         var memPackAttr = symbol.GetAttribute(references.MemoryPackableAttribute);
         var packableCtorArgs = memPackAttr?.ConstructorArguments;
@@ -160,7 +160,7 @@ internal static class Extensions
         return true;
     }
 
-    public static bool IsMemoryPackableNoGenerate(this ITypeSymbol symbol, ReferenceSymbols references)
+    public static bool IsMemoryPackableNoGenerate(this ITypeSymbol symbol, MemoryPackReferences references)
     {
         var memPackAttr = symbol.GetAttribute(references.MemoryPackableAttribute);
         var packableCtorArgs = memPackAttr?.ConstructorArguments;
@@ -204,7 +204,7 @@ internal static class Extensions
         return false;
     }
 
-    public static bool IsWillImplementMemoryPackUnion(this ITypeSymbol symbol, ReferenceSymbols references)
+    public static bool IsWillImplementMemoryPackUnion(this ITypeSymbol symbol, MemoryPackReferences references)
     {
         return symbol.IsAbstract && symbol.ContainsAttribute(references.MemoryPackUnionAttribute);
     }

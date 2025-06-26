@@ -9,7 +9,7 @@ internal partial class MethodMeta
     private int? _nexusHash;
     private static readonly XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }
-    public ReferenceSymbols MemoryPackReferences { get; }
+    public MemoryPackReferences MemoryPackReferences { get; }
     public string Name { get; }
     public bool IsStatic { get; }
 
@@ -32,7 +32,7 @@ internal partial class MethodMeta
     public ushort Id { get; set; }
     public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
-    public MethodMeta(IMethodSymbol symbol, ReferenceSymbols memoryPackReferences)
+    public MethodMeta(IMethodSymbol symbol, MemoryPackReferences memoryPackReferences)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
         this.Symbol = symbol;

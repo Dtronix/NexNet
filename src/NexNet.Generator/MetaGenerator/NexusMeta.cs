@@ -7,7 +7,7 @@ namespace NexNet.Generator.MetaGenerator;
 internal partial class NexusMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
-    public ReferenceSymbols MemoryPackReference { get; }
+    public MemoryPackReferences MemoryPackReference { get; }
 
     public string TypeName { get; }
     //public string ClassName { get; }
@@ -23,7 +23,7 @@ internal partial class NexusMeta
     public InvocationInterfaceMeta ProxyInterface { get; }
     public MethodMeta[] Methods { get; }
 
-    public NexusMeta(INamedTypeSymbol symbol, ReferenceSymbols memoryPackReference)
+    public NexusMeta(INamedTypeSymbol symbol, MemoryPackReferences memoryPackReference)
     {
         
         this.Symbol = symbol;

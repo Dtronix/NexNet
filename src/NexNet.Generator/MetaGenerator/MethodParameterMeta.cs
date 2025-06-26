@@ -9,7 +9,7 @@ internal class MethodParameterMeta
     public string Name { get; }
 
     public int Index { get; }
-    public ReferenceSymbols MemoryPackReferences { get; }
+    public MemoryPackReferences MemoryPackReferences { get; }
 
     public string ParamType { get; }
     public string? SerializedType { get; }
@@ -39,7 +39,7 @@ internal class MethodParameterMeta
 
     public MemoryPackTypeMeta? MemoryPackType { get; }
 
-    public MethodParameterMeta(IParameterSymbol symbol, int index, ReferenceSymbols memoryPackReferences)
+    public MethodParameterMeta(IParameterSymbol symbol, int index, MemoryPackReferences memoryPackReferences)
     {
         this.Index = index;
         this.MemoryPackReferences = memoryPackReferences;
