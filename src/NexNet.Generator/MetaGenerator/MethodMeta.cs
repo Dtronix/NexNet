@@ -12,13 +12,11 @@ internal partial class MethodMeta
     public MemoryPackReferences MemoryPackReferences { get; }
     public string Name { get; }
     public bool IsStatic { get; }
-
     public bool IsReturnVoid { get; }
     public string? ReturnType { get; }
     public string? ReturnTypeSource { get; }
     public bool IsAsync { get; }
     public int ReturnArity { get; }
-
     public MethodParameterMeta? CancellationTokenParameter { get; }
     public MethodParameterMeta? DuplexPipeParameter { get; }
     public bool UtilizesPipes { get; }
