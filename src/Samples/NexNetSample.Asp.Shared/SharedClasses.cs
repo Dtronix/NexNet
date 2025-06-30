@@ -1,8 +1,15 @@
-﻿using NexNet.Collections;
+﻿using NexNet;
+using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Pipes;
 
 namespace NexNetSample.Asp.Shared;
+
+[NexusVersion(Version = "v3")]
+public partial interface IServerNexusV3 : IServerNexusV2
+{
+
+}
 
 public partial interface IClientNexus
 {
@@ -19,12 +26,16 @@ public partial interface IClientNexus
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
-
-
-public partial interface IServerNexus
+[NexusVersion(Version = "v2", HashLock = -1549245336)]
+public partial interface IServerNexusV2 : IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDrirectional)]
     INexusList<int> IntegerList { get; }
+}
+
+[NexusVersion(Version = "v1", HashLock = 10059206)]
+public partial interface IServerNexus
+{
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

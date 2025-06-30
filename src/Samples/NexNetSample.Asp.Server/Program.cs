@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Security.Claims;
+using MemoryPack;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.HttpOverrides;
 using NexNet;
@@ -9,8 +10,13 @@ using NexNet.Logging;
 namespace NexNetSample.Asp.Server;
 public class Program
 {
+    internal partial class Message2 {
+        [MemoryPackOrder(0)] public int VersionDiff { get; set; }
+        [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
+    }
     public static async Task Main(string[] args)
     {
+        var s = MemoryPackSerializer.Serialize(new Message2());
         var builder = WebApplication.CreateBuilder(args);
         builder.WebHost.ConfigureKestrel((context, serverOptions) =>
         {
