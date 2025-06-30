@@ -563,6 +563,45 @@ partial class ServerNexus : IServerNexus {
 """, minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
     }
+    
+        [Test]
+    public void MemoryPackable_NestedCreation()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using MemoryPack;
+namespace NexNetDemo;
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class Message {
+    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class VersionMessage {
+    [MemoryPackOrder(0)] public int Version { get; set; }
+    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValuesMessage {
+    [MemoryPackOrder(0)] public byte[] Values { get; set; }
+    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValueObjects {
+    [MemoryPackOrder(0)] public string[] Values { get; set; }
+}
+partial interface IClientNexus { }
+[NexusVersion(Version = "v1")]
+partial interface IServerNexus { void Update(ValueTuple<Message> data); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { 
+    public void Update(ValueTuple<Message> data) { }
+}
+""", minDiagnostic:DiagnosticSeverity.Warning);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+    }
 
 }
 

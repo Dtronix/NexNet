@@ -1,4 +1,5 @@
-﻿using NexNet;
+﻿using MemoryPack;
+using NexNet;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Pipes;
@@ -49,3 +50,34 @@ public partial interface IServerNexus
     ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
     ValueTask ServerData(byte[] data);
 }
+
+
+public class GenerateStructureHashAttribute : Attribute
+{
+
+}
+
+
+[GenerateStructureHash]
+internal partial class Message {
+    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class VersionMessage {
+    [MemoryPackOrder(0)] public int Version { get; set; }
+    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValuesMessage {
+    [MemoryPackOrder(0)] public byte[] Values { get; set; }
+    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValueObjects {
+    [MemoryPackOrder(0)] public string[] Values { get; set; }
+}
+
+

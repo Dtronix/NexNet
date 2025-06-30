@@ -38,6 +38,7 @@ internal class MethodParameterMeta
     public bool IsSerializable { get; }
 
     public MemoryPackTypeMeta[] MemoryPackTypes { get; } = [];
+    public ITypeSymbol[] Types { get; } = [];
 
     public MethodParameterMeta(IParameterSymbol symbol, int index, MemoryPackReferences memoryPackReferences)
     {
@@ -83,22 +84,20 @@ internal class MethodParameterMeta
         }
         else
         {
-            // Check to see if it is a list.
+            // Check to see if it is a list with a memorypack inside.
             if (symbol.Type is not INamedTypeSymbol namedSymbol)
                 return;
             
-            IsSerializable = CheckIsSerializable(namedSymbol, notSerializable, serializable);
+            //IsSerializable = CheckIsSerializable(namedSymbol);
             // Normal serialized type.
             
-            if(IsSerializable == false)
             SerializedType = ParamType;
             SerializedValue = Name;
             
-            
-            IsSerializable
+            var tc = new TypeCollector(memoryPackReferences);
         }
-
     }
+    /*
 
     private bool CheckIsSerializable(INamedTypeSymbol symbol)
     {
@@ -113,7 +112,7 @@ internal class MethodParameterMeta
                 if (arg is not INamedTypeSymbol namedArg)
                     return false;
 
-                if (!CheckIsSerializable(namedArg, notSerializable, serializable))
+                if (!CheckIsSerializable(namedArg))
                     foundInvalid = true;
             }
 
@@ -123,6 +122,6 @@ internal class MethodParameterMeta
         notSerializable.Add(symbol);
 
         return false;
-    }
+    }*/
 
 }

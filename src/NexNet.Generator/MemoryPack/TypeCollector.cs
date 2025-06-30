@@ -4,18 +4,16 @@ namespace NexNet.Generator.MemoryPack;
 
 internal class TypeCollector
 {
+    private readonly MemoryPackReferences _references;
     HashSet<ITypeSymbol> types = new(SymbolEqualityComparer.Default);
+    
 
-    public void Visit(MemoryPackTypeMeta typeMeta, bool visitInterface)
+    public TypeCollector(MemoryPackReferences references)
     {
-        Visit(typeMeta.Symbol, visitInterface);
-        foreach (var item in typeMeta.Members.Where(x => x.Symbol != null))
-        {
-            Visit(item.MemberType, visitInterface);
-        }
+        _references = references;
     }
 
-    public void Visit(ISymbol symbol, bool visitInterface)
+    public void Visit(ISymbol symbol)
     {
         if (symbol is ITypeSymbol typeSymbol)
         {
@@ -32,28 +30,15 @@ internal class TypeCollector
 
             if (typeSymbol is IArrayTypeSymbol array)
             {
-                Visit(array.ElementType, visitInterface);
+                Visit(array.ElementType);
             }
             else if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
-            {
-                if (visitInterface)
-                {
-                    foreach (var item in namedTypeSymbol.AllInterfaces)
-                    {
-                        Visit(item, visitInterface);
-                    }
-
-                    foreach (var item in namedTypeSymbol.GetAllBaseTypes())
-                    {
-                        Visit(item, visitInterface);
-                    }
-                }
-
+            { 
                 if (namedTypeSymbol.IsGenericType)
                 {
                     foreach (var item in namedTypeSymbol.TypeArguments)
                     {
-                        Visit(item, visitInterface);
+                        Visit(item);
                     }
                 }
             }

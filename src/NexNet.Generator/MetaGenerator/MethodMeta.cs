@@ -109,8 +109,9 @@ internal partial class MethodMeta
         foreach (var param in Parameters)
         {
             // If we have a memorypack type we need to hash the members ov the object.
-            hash.Add(param.MemoryPackType?.GetNexusHash() 
-                     ?? (int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
+            //TODO: Undo this 
+            //hash.Add(param.MemoryPackType?.GetNexusHash() 
+            //         ?? (int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
             
         }
 

@@ -79,3 +79,24 @@ public class Program
     }
 }
 
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class Message {
+    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class VersionMessage {
+    [MemoryPackOrder(0)] public int Version { get; set; }
+    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValuesMessage {
+    [MemoryPackOrder(0)] public byte[] Values { get; set; }
+    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValueObjects {
+    [MemoryPackOrder(0)] public string[] Values { get; set; }
+}
