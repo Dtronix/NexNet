@@ -37,7 +37,7 @@ internal class MethodParameterMeta
 
     public bool IsSerializable { get; }
 
-    public MemoryPackTypeMeta? MemoryPackType { get; }
+    public MemoryPackTypeMeta[] MemoryPackTypes { get; } = [];
 
     public MethodParameterMeta(IParameterSymbol symbol, int index, MemoryPackReferences memoryPackReferences)
     {
@@ -57,7 +57,7 @@ internal class MethodParameterMeta
         this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
         if (IsMemoryPackObject)
         {
-            MemoryPackType = memoryPackReferences.GetOrCreateType((INamedTypeSymbol)symbol.Type);
+            MemoryPackTypes = [memoryPackReferences.GetOrCreateType((INamedTypeSymbol)symbol.Type)];
             SerializedType = ParamType;
             SerializedValue = Name;
         }
@@ -83,11 +83,10 @@ internal class MethodParameterMeta
         }
         else
         {
+            // Check to see if it is a list.
             if (symbol.Type is not INamedTypeSymbol namedSymbol)
                 return;
-
-            List<INamedTypeSymbol> notSerializable = new();
-            List<MemoryPackTypeMeta> serializable = new();
+            
             IsSerializable = CheckIsSerializable(namedSymbol, notSerializable, serializable);
             // Normal serialized type.
             
@@ -95,24 +94,16 @@ internal class MethodParameterMeta
             SerializedType = ParamType;
             SerializedValue = Name;
             
+            
             IsSerializable
         }
 
     }
 
-    private bool CheckIsSerializable(INamedTypeSymbol symbol, List<INamedTypeSymbol> notSerializable, List<MemoryPackTypeMeta> serializable)
+    private bool CheckIsSerializable(INamedTypeSymbol symbol)
     {
-        if (symbol.ContainsAttribute(MemoryPackReferences.MemoryPackableAttribute))
-        {
-            serializable.Add(MemoryPackReferences.GetOrCreateType(symbol));
-            return true;
-        }
-
-        if (!MemoryPackReferences!.KnownTypes.Contains(symbol, out var isGeneric))
-        {
-            notSerializable.Add(symbol);
+        if (MemoryPackReferences!.KnownTypes.Contains(symbol, out var isGeneric))
             return false;
-        }
         
         if (isGeneric)
         {

@@ -17,6 +17,7 @@ internal class MemoryPackMemberMeta
     public int Order { get; }
     //public bool HasExplicitOrder { get; }
     public MemberKind Kind { get; }
+    public MemoryPackTypeMeta? PackableType { get; }
     //public bool SuppressDefaultInitialization { get; }
 
     MemoryPackMemberMeta(int order)
@@ -66,37 +67,13 @@ internal class MemoryPackMemberMeta
         {
             throw new Exception("member is not field or property.");
         }
-        /*
-        if (references.MemoryPackCustomFormatterAttribute != null)
+
+        // If we have another MemoryPackable type, parse it as well.
+        if (MemberType.ContainsAttribute(references.MemoryPackableAttribute) && symbol is INamedTypeSymbol typeSymbol)
         {
-            var genericFormatter = false;
-            var customFormatterAttr = symbol.GetImplAttribute(references.MemoryPackCustomFormatterAttribute);
-            if (customFormatterAttr == null && references.MemoryPackCustomFormatter2Attribute != null)
-            {
-                customFormatterAttr = symbol.GetImplAttribute(references.MemoryPackCustomFormatter2Attribute);
-                genericFormatter = true;
-            }
-
-            if (customFormatterAttr != null)
-            {
-                CustomFormatter = customFormatterAttr.AttributeClass!;
-                //Kind = MemberKind.CustomFormatter;
-
-                string formatterName;
-                if (genericFormatter)
-                {
-                    formatterName = CustomFormatter.GetAllBaseTypes().First(x => x.EqualsUnconstructedGenericType(references.MemoryPackCustomFormatter2Attribute!))
-                        .TypeArguments[0].FullyQualifiedToString();
-                }
-                else
-                {
-                    formatterName = $"IMemoryPackFormatter<{MemberType.FullyQualifiedToString()}>";
-                }
-                //CustomFormatterName = formatterName;
-                return;
-            }
+            PackableType = references.GetOrCreateType(typeSymbol);
         }
-        */
+
         Kind = ParseMemberKind(symbol, MemberType, references);
     }
 

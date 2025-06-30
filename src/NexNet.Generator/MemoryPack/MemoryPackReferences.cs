@@ -62,7 +62,6 @@ internal class MemoryPackReferences
         return symbol;
     }
     
-    public (int )
     
     
     public MemoryPackTypeMeta GetOrCreateType(INamedTypeSymbol type)
