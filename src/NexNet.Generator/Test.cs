@@ -55,56 +55,115 @@ namespace PropertyStructureGenerators
                 }
             });
         }
-
+        
         private static void WalkType(
             ITypeSymbol type,
             HashSet<ITypeSymbol> visited,
             List<string> props,
             string prefix)
         {
-            if (type == null || visited.Contains(type))
-                return;
-            visited.Add(type);
-
-            // Handle tuple types
-            if (type is INamedTypeSymbol named && named.IsTupleType)
-            {
-                foreach (var element in named.TupleElements)
-                {
-                    var name = element.Name;
-                    var elementType = element.Type;
-                    var path = string.IsNullOrEmpty(prefix) ? name : prefix + "." + name;
-                    props.Add(path);
-                    WalkType(elementType, visited, props, path);
-                }
-                return;
-            }
-
-            // Handle List<T>
-            if (type is INamedTypeSymbol listType &&
-                listType.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>")
-            {
-                var itemType = listType.TypeArguments[0];
-                // Use [] to denote collection
-                var path = (string.IsNullOrEmpty(prefix) ? string.Empty : prefix) + "[]";
-                WalkType(itemType, visited, props, path);
-                return;
-            }
-
-            // Walk public instance properties
-            foreach (var member in type.GetMembers().OfType<IPropertySymbol>())
-            {
-                if (member.DeclaredAccessibility != Accessibility.Public || member.IsStatic)
-                    continue;
-
-                var name = member.Name;
-                var path = string.IsNullOrEmpty(prefix) ? name : prefix + "." + name;
-                props.Add(path);
-                WalkType(member.Type, visited, props, path);
-            }
+            // Use SymbolEqualityComparer to ensure proper symbol comparison
+            var ancestors = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+            WalkTypeInternal(type, visited, props, ancestors);
         }
 
-        private static string ComputeHash(List<string> props)
+        private static void WalkTypeInternal(
+            ITypeSymbol type,
+            HashSet<ITypeSymbol> visited,
+            List<string> props,
+            HashSet<ITypeSymbol> ancestors,
+            bool isSubType = false)
+        {
+            // If this is a special type, it can't change so walking is not needed.
+            if (type.SpecialType != SpecialType.None)
+            {
+                //props.Add(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                return;
+            }
+
+            if (type.ContainingNamespace != null)
+            {
+                if (type.ContainingNamespace.Name.StartsWith("System", StringComparison.Ordinal))
+                    return;
+            }
+            
+            if (type == null)
+                return;
+
+            if (ancestors.Contains(type))
+                return;
+
+            if (!visited.Contains(type))
+                visited.Add(type);
+
+            ancestors.Add(type);
+
+            if (type is INamedTypeSymbol named && named.Arity > 0)
+            {
+                foreach (var element in named.TypeArguments)
+                {
+                    if(!isSubType)
+                        props.Add(element.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                    WalkTypeInternal(element, visited, props, ancestors, true);
+                }
+
+                // Pop and return
+                ancestors.Remove(type);
+                return;
+            }
+
+            var properties = type.GetMembers()
+                .OfType<IPropertySymbol>()
+                .Where(m => m.DeclaredAccessibility == Accessibility.Public
+                            && !m.IsStatic
+                            && !m.GetAttributes().Any(attr =>
+                                attr.AttributeClass?.Name == "MemoryPackIgnoreAttribute"))
+                .ToList();
+
+            bool hasOrderAttr = properties.Any(prop =>
+                prop.GetAttributes().Any(attr =>
+                    attr.AttributeClass?.Name == "MemoryPackOrderAttribute"));
+
+            var membersToProcess = hasOrderAttr
+                ? properties.OrderBy(prop =>
+                {
+                    var attr = prop.GetAttributes()
+                        .FirstOrDefault(a => a.AttributeClass?.Name == "MemoryPackOrderAttribute");
+                    if (attr != null
+                        && attr.ConstructorArguments.Length > 0
+                        && attr.ConstructorArguments[0].Value is int order)
+                    {
+                        return order;
+                    }
+
+                    return int.MaxValue;
+                })
+                : properties.AsEnumerable();
+
+            foreach (var prop in membersToProcess)
+            {
+                // Check if this property's type is marked [MemoryPackable]
+                var propType = prop.Type;
+                if (propType.GetAttributes()
+                    .Any(a => a.AttributeClass?.Name == "MemoryPackableAttribute"))
+                {
+                    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                    WalkTypeInternal(propType, visited, props, ancestors);
+                    // TODO: Insert custom handling for MemoryPackable types here
+                }
+                else
+                {
+                    // Skip if it is not packable
+                    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                    WalkTypeInternal(propType, visited, props, ancestors, true);
+                }
+            }
+
+            // Pop from the current path
+            ancestors.Remove(type);
+        }
+
+private static string ComputeHash(List<string> props)
         {
             using var sha = SHA256.Create();
             var input = string.Join(";", props);

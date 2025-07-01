@@ -599,6 +599,56 @@ partial interface IServerNexus { void Update(ValueTuple<Message> data); }
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
+
+public class GenerateStructureHashAttribute : Attribute
+{
+
+}
+
+""", minDiagnostic:DiagnosticSeverity.Warning);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+    }
+    
+            [Test]
+    public void TypeWalker()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator2("""
+using NexNet;
+using MemoryPack;
+using System;
+namespace NexNetDemo;
+[GenerateStructureHash]
+internal partial class Message {
+    [MemoryPackOrder(2)] public Tuple<ValueTuple<VersionMessage>> Values { get; set; }
+    [MemoryPackOrder(2)] public Tuple<ValueTuple<Uri>> Values { get; set; }
+    [MemoryPackOrder(2)] public Tuple<ValueTuple<Rune>> Values { get; set; }
+    [MemoryPackOrder(1)] public ValueTuple<VersionMessage> Messages { get; set; }
+    [MemoryPackOrder(2)] public List<ValueObjects> Messages { get; set; }
+    [MemoryPackOrder(3)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Messages { get; set; }
+    [MemoryPackOrder(4)] public VersionMessage[] Messages22 { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class VersionMessage {
+    [MemoryPackOrder(0)] public int Version { get; set; }
+    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+    [MemoryPackOrder(2)] public DateTime Values { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValuesMessage {
+    [MemoryPackOrder(0)] public byte[] Values { get; set; }
+    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValueObjects {
+    [MemoryPackOrder(0)] public string[]? Values { get; set; }
+}
+
+public class GenerateStructureHashAttribute : Attribute
+{
+
+}
+
 """, minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
     }
