@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System.Collections.Immutable;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -45,7 +46,7 @@ namespace PropertyStructureGenerators
                 {
                     var props = new List<string>();
                     var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
-                    WalkType(typeSymbol, visited, props, string.Empty);
+                    WalkType(typeSymbol, visited, props);
 
                     var hash = ComputeHash(props);
                     var hintName = $"{typeSymbol.Name}_StructureHash.g.cs";
@@ -55,12 +56,95 @@ namespace PropertyStructureGenerators
                 }
             });
         }
-        
+
         private static void WalkType(
+            ITypeSymbol rootType,
+            HashSet<ITypeSymbol> visited,
+            List<string> props)
+        {
+            var stack = new Stack<ITypeSymbol>();
+            var attrsCache = new Dictionary<IPropertySymbol, int>(SymbolEqualityComparer.Default);
+            stack.Push(rootType);
+
+            while (stack.Count > 0)
+            {
+                attrsCache.Clear();
+                var type = stack.Pop();
+                if (type is null
+                    || type.SpecialType != SpecialType.None
+                    || !visited.Add(type))
+                    continue;
+
+                if (type is IArrayTypeSymbol arr)
+                {
+                    EnqueueType(arr.ElementType, stack, props, false, false);
+                    continue;
+                }
+
+                if (type is INamedTypeSymbol named && named.Arity > 0)
+                {
+                    // Do a special promotion here to make the wrapped type null.
+                    var isNullable = type.Name is "Nullable";
+                    foreach (var ta in named.TypeArguments)
+                        EnqueueType(ta, stack, props, true, isNullable);
+                    continue;
+                }
+
+                var symbolName = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                if (type.ContainingNamespace?.Name.StartsWith("System", StringComparison.Ordinal) == true)
+                    continue;
+
+                // One pass over members, no LINQ:
+
+                bool foundOrder = false;
+                int counter = 0;
+                foreach (var member in type.GetMembers())
+                {
+                    if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsStatic: false } prop)
+                    {
+                        var attr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "MemoryPackOrderAttribute");
+                        
+                        if (attr is { ConstructorArguments.Length: > 0 }
+                            && attr.ConstructorArguments[0].Value is int order)
+                        {
+                            attrsCache[prop] = order;
+                            foundOrder = true;
+                        }
+                        else
+                        {
+                            attrsCache[prop] = counter;
+                        }
+                    }
+
+                    counter++;
+                }
+
+                // If any Order attrs, sort small list in place; else just iterate
+                var propsToProcess = attrsCache.Keys.ToList();
+                if (foundOrder)
+                    propsToProcess.Sort((a, b) =>  attrsCache[a] - attrsCache[b]);
+
+                foreach (var prop in propsToProcess)
+                    EnqueueType(prop.Type, stack, props, true, false);
+            }
+        }
+
+        private static void EnqueueType(ITypeSymbol type,
+            Stack<ITypeSymbol> stack,
+            List<string> props,
+            bool addType,
+            bool forceNullable)
+        {
+            if(addType && type.Name is not "Nullable")
+                props.Add(GetSimpleType(type, forceNullable));
+            
+            stack.Push(type);
+        }
+
+        /*private static void WalkType(
             ITypeSymbol type,
             HashSet<ITypeSymbol> visited,
-            List<string> props,
-            string prefix)
+            List<string> props)
         {
             // Use SymbolEqualityComparer to ensure proper symbol comparison
             var ancestors = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
@@ -71,8 +155,7 @@ namespace PropertyStructureGenerators
             ITypeSymbol type,
             HashSet<ITypeSymbol> visited,
             List<string> props,
-            HashSet<ITypeSymbol> ancestors,
-            bool isSubType = false)
+            HashSet<ITypeSymbol> ancestors)
         {
             // If this is a special type, it can't change so walking is not needed.
             if (type.SpecialType != SpecialType.None)
@@ -80,16 +163,11 @@ namespace PropertyStructureGenerators
                 //props.Add(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
                 return;
             }
-            
-            if (type == null)
-                return;
 
             if (ancestors.Contains(type))
                 return;
 
-            if (!visited.Contains(type))
-                visited.Add(type);
-
+            visited.Add(type);
             ancestors.Add(type);
 
             if (type is INamedTypeSymbol named && named.Arity > 0)
@@ -97,24 +175,24 @@ namespace PropertyStructureGenerators
                 foreach (var element in named.TypeArguments)
                 {
                     props.Add(GetSimpleType(element));
-                    
-                    WalkTypeInternal(element, visited, props, ancestors, true);
+
+                    WalkTypeInternal(element, visited, props, ancestors);
                 }
 
                 // Pop and return
                 ancestors.Remove(type);
                 return;
             }
-            
+
             if (type is IArrayTypeSymbol array)
             {
-                WalkTypeInternal(array.ElementType, visited, props, ancestors, true);
+                WalkTypeInternal(array.ElementType, visited, props, ancestors);
 
                 // Pop and return
                 ancestors.Remove(type);
                 return;
             }
-            
+
             if (type.ContainingNamespace != null)
             {
                 if (type.ContainingNamespace.Name.StartsWith("System", StringComparison.Ordinal))
@@ -155,48 +233,33 @@ namespace PropertyStructureGenerators
             foreach (var prop in membersToProcess)
             {
                 // Check if this property's type is marked [MemoryPackable]
-                var propType = prop.Type;
-                props.Add(GetSimpleType(propType));
-                WalkTypeInternal(propType, visited, props, ancestors);
-                //if (propType.GetAttributes()
-                //    .Any(a => a.AttributeClass?.Name == "MemoryPackableAttribute"))
-                //{
-                //    
-                //    // TODO: Insert custom handling for MemoryPackable types here
-                //}
-                //else
-                //{
-                //    // Skip if it is not packable
-                //    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                //    WalkTypeInternal(propType, visited, props, ancestors, true);
-                //}
+                props.Add(GetSimpleType(prop.Type));
+                WalkTypeInternal(prop.Type, visited, props, ancestors);
             }
 
             // Pop from the current path
             ancestors.Remove(type);
         }
+        */
 
-        public static string GetSimpleType(ITypeSymbol type)
+        public static string GetSimpleType(ITypeSymbol type, bool forceNullable)
         {
             if (type is IArrayTypeSymbol arrayType)
             {
-                if(arrayType.NullableAnnotation == NullableAnnotation.Annotated)
-                    return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated 
-                        ? $"{arrayType.ElementType.Name}?[]?" 
+                if(arrayType.NullableAnnotation == NullableAnnotation.Annotated || forceNullable)
+                    return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated
+                        ? $"{arrayType.ElementType.Name}?[]?"
                         : $"{arrayType.ElementType.Name}[]?";
-                
-                return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated 
-                    ? $"{arrayType.ElementType.Name}?[]" 
+
+                return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated || forceNullable
+                    ? $"{arrayType.ElementType.Name}?[]"
                     : $"{arrayType.ElementType.Name}[]";
             }
-            else
-            {
-                return type.NullableAnnotation == NullableAnnotation.Annotated 
-                    ? $"{type.Name}?" 
-                    : $"{type.Name}";
-            }
-        }
 
+            return type.NullableAnnotation == NullableAnnotation.Annotated || forceNullable
+                ? $"{type.Name}?"
+                : $"{type.Name}";
+        }
         private static string ComputeHash(List<string> props)
         {
             using var sha = SHA256.Create();

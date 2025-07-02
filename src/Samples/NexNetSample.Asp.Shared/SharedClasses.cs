@@ -61,6 +61,10 @@ public class GenerateStructureHashAttribute : Attribute
 [GenerateStructureHash]
 internal partial class Message {
     [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+    
+    [MemoryPackOrder(1)] public Nullable<int> Messages224 { get; set; }
+    [MemoryPackOrder(3)] public Nullable<int>[] Messages224w { get; set; }
+    [MemoryPackOrder(4)] public int[] Messages2256 { get; set; }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
