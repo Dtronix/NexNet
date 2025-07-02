@@ -45,66 +45,78 @@ namespace PropertyStructureGenerators
                 foreach (var typeSymbol in types)
                 {
                     var props = new List<string>();
-                    var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
-                    WalkType(typeSymbol, visited, props);
+                    var visited = new HashSet<ITypeSymbol>();
+                    WalkType(typeSymbol, props);
 
-                    var hash = ComputeHash(props);
-                    var hintName = $"{typeSymbol.Name}_StructureHash.g.cs";
-                    var generated = GenerateCode(typeSymbol, props, hash);
-
-                    spc.AddSource(hintName, SourceText.From(generated, Encoding.UTF8));
+                    //var hash = ComputeHash(props);
+                    //var hintName = $"{typeSymbol.Name}_StructureHash.g.cs";
+                    //var generated = GenerateCode(typeSymbol, props, hash);
+//
+                    //spc.AddSource(hintName, SourceText.From(generated, Encoding.UTF8));
                 }
             });
         }
 
-        private static void WalkType(
-            ITypeSymbol rootType,
-            HashSet<ITypeSymbol> visited,
-            List<string> props)
+        private static void WalkType(ITypeSymbol rootType, List<string> props)
         {
-            var stack = new Stack<ITypeSymbol>();
+            // stack holds (node, setOfAncestors)
+            var stack = new Stack<(ITypeSymbol Type, HashSet<ITypeSymbol> Ancestors)>();
+            stack.Push((rootType, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)));
+
             var attrsCache = new Dictionary<IPropertySymbol, int>(SymbolEqualityComparer.Default);
-            stack.Push(rootType);
 
             while (stack.Count > 0)
             {
                 attrsCache.Clear();
-                var type = stack.Pop();
-                if (type is null
-                    || type.SpecialType != SpecialType.None
-                    || !visited.Add(type))
+                var (type, ancestors) = stack.Pop();
+
+                // skip nulls or true cycles only
+                if (type is null || ancestors.Contains(type))
                     continue;
 
+                // build the ancestor set for children
+                var newAncestors = new HashSet<ITypeSymbol>(ancestors, SymbolEqualityComparer.Default) { type };
+
+                // simple types
+                if (type.SpecialType != SpecialType.None)
+                {
+                    props.Add(GetSimpleType(type, false, false, false));
+                    continue;
+                }
+
+                // arrays
                 if (type is IArrayTypeSymbol arr)
                 {
-                    EnqueueType(arr.ElementType, stack, props, false, false);
+                    EnqueueType(arr.ElementType, stack, props, newAncestors, addType: false, forceNullable: false);
                     continue;
                 }
 
+                // generics (Nullable<T> or others)
                 if (type is INamedTypeSymbol named && named.Arity > 0)
                 {
-                    // Do a special promotion here to make the wrapped type null.
-                    var isNullable = type.Name is "Nullable";
+                    var isNullable = type.Name == "Nullable";
                     foreach (var ta in named.TypeArguments)
-                        EnqueueType(ta, stack, props, true, isNullable);
+                    {
+                        EnqueueType(ta, stack, props, newAncestors, addType: true, forceNullable: isNullable);
+                    }
+
                     continue;
                 }
 
-                var symbolName = type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                // skip System.* reference types
                 if (type.ContainingNamespace?.Name.StartsWith("System", StringComparison.Ordinal) == true)
                     continue;
 
-                // One pass over members, no LINQ:
-
+                // collect [MemoryPackOrder] or declaration order
                 bool foundOrder = false;
                 int counter = 0;
                 foreach (var member in type.GetMembers())
                 {
                     if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsStatic: false } prop)
                     {
-                        var attr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "MemoryPackOrderAttribute");
-                        
-                        if (attr is { ConstructorArguments.Length: > 0 }
+                        var attr = prop.GetAttributes()
+                            .FirstOrDefault(a => a.AttributeClass?.Name == "MemoryPackOrderAttribute");
+                        if (attr?.ConstructorArguments.Length > 0
                             && attr.ConstructorArguments[0].Value is int order)
                         {
                             attrsCache[prop] = order;
@@ -119,26 +131,46 @@ namespace PropertyStructureGenerators
                     counter++;
                 }
 
-                // If any Order attrs, sort small list in place; else just iterate
+                // sort if needed
                 var propsToProcess = attrsCache.Keys.ToList();
                 if (foundOrder)
-                    propsToProcess.Sort((a, b) =>  attrsCache[a] - attrsCache[b]);
+                    propsToProcess.Sort((a, b) => attrsCache[a] - attrsCache[b]);
 
+                // enqueue each property’s type
                 foreach (var prop in propsToProcess)
-                    EnqueueType(prop.Type, stack, props, true, false);
-            }
-        }
+                {
+                    EnqueueType(prop.Type, stack, props, newAncestors, true, false);
+                }
 
-        private static void EnqueueType(ITypeSymbol type,
-            Stack<ITypeSymbol> stack,
-            List<string> props,
-            bool addType,
-            bool forceNullable)
-        {
-            if(addType && type.Name is not "Nullable")
-                props.Add(GetSimpleType(type, forceNullable));
-            
-            stack.Push(type);
+                static void EnqueueType(
+                    ITypeSymbol type,
+                    Stack<(ITypeSymbol Type, HashSet<ITypeSymbol> Ancestors)> stack,
+                    List<string> props,
+                    HashSet<ITypeSymbol> ancestors,
+                    bool addType,
+                    bool forceNullable)
+                {
+                    var forceArray = false;
+                    if (type is IArrayTypeSymbol { ElementType.Name: "Nullable" } array 
+                        && array.ElementType is INamedTypeSymbol namedType)
+                    {
+                        type = namedType.TypeArguments[0];
+                        props.Add(GetSimpleType(
+                            type, 
+                            array.ElementNullableAnnotation == NullableAnnotation.Annotated,
+                            true,
+                            array.NullableAnnotation == NullableAnnotation.Annotated));
+                    }
+                    else if (addType && type.Name != "Nullable")
+                    {
+                        props.Add(GetSimpleType(type, forceNullable, forceArray, false));
+                    }
+                    
+                    
+                    if (type.SpecialType == SpecialType.None)
+                        stack.Push((type, ancestors));
+                }
+            }
         }
 
         /*private static void WalkType(
@@ -242,8 +274,11 @@ namespace PropertyStructureGenerators
         }
         */
 
-        public static string GetSimpleType(ITypeSymbol type, bool forceNullable)
+        public static string GetSimpleType(ITypeSymbol type, bool forceNullable, bool forceArray, bool forceArrayNullable)
         {
+            if (forceArray && forceNullable)
+                return forceArrayNullable ? $"{type.Name}?[]?" : $"{type.Name}?[]";
+
             if (type is IArrayTypeSymbol arrayType)
             {
                 if(arrayType.NullableAnnotation == NullableAnnotation.Annotated || forceNullable)

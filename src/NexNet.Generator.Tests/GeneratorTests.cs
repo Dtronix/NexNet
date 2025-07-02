@@ -628,10 +628,14 @@ internal partial class Message {
     //[MemoryPackOrder(6)] public ValueTuple<VersionMessage> Messages { get; set; }
     //[MemoryPackOrder(7)] public List<ValueObjects> Messages { get; set; }
     //[MemoryPackOrder(8)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Messages { get; set; }
-    [MemoryPackOrder(1)] public Nullable<int> Messages22 { get; set; }
-    [MemoryPackOrder(2)] public Nullable<int>[] Messages22 { get; set; }
-    //[MemoryPackOrder(3)] public int[] Messages22 { get; set; }
-    //[MemoryPackOrder(4)] public int?[] Messages22 { get; set; }
+    [MemoryPackOrder(0)] public int Messages1 { get; set; }
+    [MemoryPackOrder(1)] public Nullable<int> Messages2 { get; set; }
+    [MemoryPackOrder(2)] public Nullable<int>[] Messages3 { get; set; }
+    [MemoryPackOrder(3)] public Nullable<int>[]? Messages4 { get; set; }
+    [MemoryPackOrder(4)] public int Messages5 { get; set; }
+    [MemoryPackOrder(5)] public int? Messages6 { get; set; }
+    [MemoryPackOrder(6)] public int?[] Messages7 { get; set; }
+    [MemoryPackOrder(7)] public int?[]? Messages8 { get; set; }
 }
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class VersionMessage {
