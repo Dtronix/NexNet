@@ -80,12 +80,6 @@ namespace PropertyStructureGenerators
                 //props.Add(type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
                 return;
             }
-
-            if (type.ContainingNamespace != null)
-            {
-                if (type.ContainingNamespace.Name.StartsWith("System", StringComparison.Ordinal))
-                    return;
-            }
             
             if (type == null)
                 return;
@@ -102,14 +96,32 @@ namespace PropertyStructureGenerators
             {
                 foreach (var element in named.TypeArguments)
                 {
-                    if(!isSubType)
-                        props.Add(element.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                    props.Add(GetSimpleType(element));
+                    
                     WalkTypeInternal(element, visited, props, ancestors, true);
                 }
 
                 // Pop and return
                 ancestors.Remove(type);
                 return;
+            }
+            
+            if (type is IArrayTypeSymbol array)
+            {
+                WalkTypeInternal(array.ElementType, visited, props, ancestors, true);
+
+                // Pop and return
+                ancestors.Remove(type);
+                return;
+            }
+            
+            if (type.ContainingNamespace != null)
+            {
+                if (type.ContainingNamespace.Name.StartsWith("System", StringComparison.Ordinal))
+                {
+                    ancestors.Remove(type);
+                    return;
+                }
             }
 
             var properties = type.GetMembers()
@@ -144,26 +156,48 @@ namespace PropertyStructureGenerators
             {
                 // Check if this property's type is marked [MemoryPackable]
                 var propType = prop.Type;
-                if (propType.GetAttributes()
-                    .Any(a => a.AttributeClass?.Name == "MemoryPackableAttribute"))
-                {
-                    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    WalkTypeInternal(propType, visited, props, ancestors);
-                    // TODO: Insert custom handling for MemoryPackable types here
-                }
-                else
-                {
-                    // Skip if it is not packable
-                    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
-                    WalkTypeInternal(propType, visited, props, ancestors, true);
-                }
+                props.Add(GetSimpleType(propType));
+                WalkTypeInternal(propType, visited, props, ancestors);
+                //if (propType.GetAttributes()
+                //    .Any(a => a.AttributeClass?.Name == "MemoryPackableAttribute"))
+                //{
+                //    
+                //    // TODO: Insert custom handling for MemoryPackable types here
+                //}
+                //else
+                //{
+                //    // Skip if it is not packable
+                //    props.Add(propType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+                //    WalkTypeInternal(propType, visited, props, ancestors, true);
+                //}
             }
 
             // Pop from the current path
             ancestors.Remove(type);
         }
 
-private static string ComputeHash(List<string> props)
+        public static string GetSimpleType(ITypeSymbol type)
+        {
+            if (type is IArrayTypeSymbol arrayType)
+            {
+                if(arrayType.NullableAnnotation == NullableAnnotation.Annotated)
+                    return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated 
+                        ? $"{arrayType.ElementType.Name}?[]?" 
+                        : $"{arrayType.ElementType.Name}[]?";
+                
+                return arrayType.ElementNullableAnnotation == NullableAnnotation.Annotated 
+                    ? $"{arrayType.ElementType.Name}?[]" 
+                    : $"{arrayType.ElementType.Name}[]";
+            }
+            else
+            {
+                return type.NullableAnnotation == NullableAnnotation.Annotated 
+                    ? $"{type.Name}?" 
+                    : $"{type.Name}";
+            }
+        }
+
+        private static string ComputeHash(List<string> props)
         {
             using var sha = SHA256.Create();
             var input = string.Join(";", props);

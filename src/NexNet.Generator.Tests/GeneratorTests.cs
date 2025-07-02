@@ -619,13 +619,16 @@ using System;
 namespace NexNetDemo;
 [GenerateStructureHash]
 internal partial class Message {
-    [MemoryPackOrder(2)] public Tuple<ValueTuple<VersionMessage>> Values { get; set; }
-    [MemoryPackOrder(2)] public Tuple<ValueTuple<Uri>> Values { get; set; }
-    [MemoryPackOrder(2)] public Tuple<ValueTuple<Rune>> Values { get; set; }
-    [MemoryPackOrder(1)] public ValueTuple<VersionMessage> Messages { get; set; }
-    [MemoryPackOrder(2)] public List<ValueObjects> Messages { get; set; }
-    [MemoryPackOrder(3)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Messages { get; set; }
-    [MemoryPackOrder(4)] public VersionMessage[] Messages22 { get; set; }
+    [MemoryPackOrder(0)] public Tuple<ValueTuple<VersionMessage>>[] Values { get; set; }
+    [MemoryPackOrder(1)] public Tuple<ValueTuple<VersionMessage>>?[] Values { get; set; }
+    [MemoryPackOrder(2)] public Tuple<ValueTuple<VersionMessage>>?[]? Values { get; set; }
+    [MemoryPackOrder(3)] public Tuple<ValueTuple<VersionMessage>>[]? Values { get; set; }
+    [MemoryPackOrder(4)] public Tuple<ValueTuple<Uri>> Values { get; set; }
+    [MemoryPackOrder(5)] public Tuple<ValueTuple<Rune>> Values { get; set; }
+    [MemoryPackOrder(6)] public ValueTuple<VersionMessage> Messages { get; set; }
+    [MemoryPackOrder(7)] public List<ValueObjects> Messages { get; set; }
+    [MemoryPackOrder(8)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Messages { get; set; }
+    [MemoryPackOrder(9)] public VersionMessage[] Messages22 { get; set; }
 }
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class VersionMessage {
