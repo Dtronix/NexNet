@@ -633,9 +633,9 @@ internal partial class Message {
     //[MemoryPackOrder(2)] public Nullable<int>[] Messages3 { get; set; }
     //[MemoryPackOrder(3)] public Nullable<int>[]? Messages4 { get; set; }
     //[MemoryPackOrder(4)] public int Messages5 { get; set; }
-    [MemoryPackOrder(1)] public int? Messages6 { get; set; }
+    [MemoryPackOrder(1)] public short? Messages6 { get; set; }
     [MemoryPackOrder(2)] public int?[] Messages7 { get; set; }
-    [MemoryPackOrder(3)] public Nullable<int> Messages2 { get; set; }
+    [MemoryPackOrder(3)] public Nullable<long> Messages2 { get; set; }
     //[MemoryPackOrder(7)] public int?[]? Messages8 { get; set; }
 }
 [MemoryPackable(SerializeLayout.Explicit)]

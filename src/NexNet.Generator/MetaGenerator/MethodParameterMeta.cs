@@ -94,7 +94,7 @@ internal class MethodParameterMeta
             SerializedType = ParamType;
             SerializedValue = Name;
             
-            var tc = new TypeCollector(memoryPackReferences);
+            //var tc = new TypeCollector(memoryPackReferences);
         }
     }
     /*
