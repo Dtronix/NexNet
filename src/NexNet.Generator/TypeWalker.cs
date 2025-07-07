@@ -155,27 +155,58 @@ namespace PropertyStructureGenerators
             category: "GENERATOR_TESTS",
             defaultSeverity: DiagnosticSeverity.Info,
             isEnabledByDefault: true);
-
+        
+        
+    /// <summary>
+    /// Traverses the graph of <see cref="ITypeSymbol"/> instances starting from a root type,
+    /// collects a flat, ordered list of simple type representations for each encountered element,
+    /// and returns them as strings.
+    /// </summary>
+    /// <param name="rootType">
+    /// The initial <see cref="ITypeSymbol"/> to inspect. Traversal explores its public instance
+    /// properties and fields (recursively), array element types, generic type arguments, and handles
+    /// nullable and array annotations appropriately.
+    /// </param>
+    /// <returns>
+    /// A <see cref="List{String}"/> containing the simple names of each visited type in the order
+    /// they were encountered. Built-in special types are rendered immediately; complex types are
+    /// queued for further inspection. Nullable and array markers (“?” and “[]”) are included as needed.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Uses a depth-first search implemented with an explicit <see cref="Stack{ITypeSymbol}"/> and
+    /// a <see cref="HashSet{ITypeSymbol}"/> to avoid revisiting symbols (preventing infinite loops
+    /// on cyclic type graphs).  
+    /// </para>
+    /// <para>
+    /// For user-defined types (non-System namespace), the method examines all public,
+    /// non-static properties and fields.  
+    /// It looks for an optional <c>[MemoryPackOrderAttribute(int)]</c> on each member to
+    /// determine explicit ordering. If any member has the attribute, members are sorted
+    /// by that order value; otherwise, they follow declaration order.  
+    /// Each member’s type is then enqueued for further traversal.
+    /// </para>
+    /// "Compacts" any types that have been seen in the walking since if the type that has been seen previously or the member that is currently being walked is different, it would change the output.
+    /// </remarks>
         public static List<string> WalkType(ITypeSymbol rootType)
         {
             var props = new List<string>();
             // stack holds (node, setOfAncestors)
-            var stack = new Stack<(ITypeSymbol Type, HashSet<ITypeSymbol> Ancestors)>();
-            stack.Push((rootType, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default)));
+            var stack = new Stack<ITypeSymbol>();
+            var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+            stack.Push(rootType);
 
             var attrsCache = new Dictionary<ISymbol, int>(SymbolEqualityComparer.Default);
 
             while (stack.Count > 0)
             {
                 attrsCache.Clear();
-                var (type, ancestors) = stack.Pop();
+                var type = stack.Pop();
 
                 // skip nulls or true cycles only
-                if (type is null || ancestors.Contains(type))
+                if (type is null || !seen.Add(type))
                     continue;
-                
-                var newAncestors = new HashSet<ITypeSymbol>(ancestors, SymbolEqualityComparer.Default) { type };
-                
+
                 if (type.SpecialType != SpecialType.None)
                 {
                     props.Add(GetSimpleType(type, false, false, false));
@@ -184,7 +215,7 @@ namespace PropertyStructureGenerators
                 
                 if (type is IArrayTypeSymbol arr)
                 {
-                    EnqueueType(arr.ElementType, stack, props, newAncestors, false, false);
+                    EnqueueType(arr.ElementType, stack, props, false, false);
                     continue;
                 }
                 
@@ -193,7 +224,7 @@ namespace PropertyStructureGenerators
                     var isNullable = type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
                     foreach (var ta in named.TypeArguments)
                     {
-                        EnqueueType(ta, stack, props, newAncestors, true, isNullable);
+                        EnqueueType(ta, stack, props, true, isNullable);
                     }
 
                     continue;
@@ -255,7 +286,7 @@ namespace PropertyStructureGenerators
                     else if(member is IFieldSymbol fieldSymbol)
                         type = fieldSymbol.Type;
                     
-                    EnqueueType(type, stack, props, newAncestors, true, false);
+                    EnqueueType(type, stack, props, true, false);
                 }
             }
 
@@ -263,9 +294,8 @@ namespace PropertyStructureGenerators
             
             static void EnqueueType(
                 ITypeSymbol type,
-                Stack<(ITypeSymbol Type, HashSet<ITypeSymbol> Ancestors)> stack,
+                Stack<ITypeSymbol> stack,
                 List<string> props,
-                HashSet<ITypeSymbol> ancestors,
                 bool addType,
                 bool forceNullable)
             {
@@ -292,14 +322,13 @@ namespace PropertyStructureGenerators
                     
                     
                 if (type.SpecialType == SpecialType.None)
-                    stack.Push((type, ancestors));
+                    stack.Push(type);
             }
 
             static bool IsNullable(ITypeSymbol type, out ITypeSymbol? nullableType)
             {
                 if (type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T
-                    && type is INamedTypeSymbol namedType
-                    && namedType.Arity == 1)
+                    && type is INamedTypeSymbol { Arity: 1 } namedType)
                 {
                     nullableType = namedType.TypeArguments[0];
                     return true;

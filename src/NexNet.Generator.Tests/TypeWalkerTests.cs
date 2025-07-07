@@ -191,7 +191,7 @@ public class TypeWalkerTests
     {
         Run("""
             using System;
-            [GenerateStructureHash(Hash = -2032222759, Properties = ["ValueTuple", "ValueTuple", "Tuple", "Tuple", "ValueTuple", "Int32", "Int32", "Tuple", "Int32", "Int32"])]
+            [GenerateStructureHash(Hash = 1365541633, Properties = ["ValueTuple", "ValueTuple", "Tuple", "Tuple", "ValueTuple", "Int32", "Int32", "Tuple"])]
             class ComplicatedMessage {
                 public ValueTuple<int> Value1;
                 public ValueTuple<Tuple<int>> Value2;
@@ -206,26 +206,23 @@ public class TypeWalkerTests
     {
         Run("""
             using System;
-            [GenerateStructureHash(Hash = -2032222759, Properties = ["ValueTuple", "ValueTuple", "Tuple", "Tuple", "ValueTuple", "Int32", "Int32", "Tuple", "Int32", "Int32"])]
+            [GenerateStructureHash(Hash = -1711761833, Properties = ["VersionMessage", "Int32", "Int32", "ValuesMessage", "DateTime", "Byte[]", "ValueObjects", "ValuesMessage", "String[]?"])]
             class ComplicatedMessage {
-                public VersionMessage 
+                public VersionMessage Value1;
             }
-            [MemoryPackable(SerializeLayout.Explicit)]
             class VersionMessage {
-                [MemoryPackOrder(0)] public int Value1;
-                [MemoryPackOrder(1)] public int Value2;
-                [MemoryPackOrder(2)] public ValuesMessage Value3;
-                [MemoryPackOrder(3)] public DateTime Value4;
+                public int Value1;
+                public int Value2;
+                public ValuesMessage Value3;
+                public DateTime Value4;
             }
-            [MemoryPackable(SerializeLayout.Explicit)]
             class ValuesMessage {
-                [MemoryPackOrder(0)] public byte[] Value1;
-                [MemoryPackOrder(1)] public ValueObjects Value2;
-                [MemoryPackOrder(2)] public ValuesMessage Value3;
+                public byte[] Value1;
+                public ValueObjects Value2;
+                public ValuesMessage Value3;
             }
-            [MemoryPackable(SerializeLayout.Explicit)]
             class ValueObjects {
-                [MemoryPackOrder(0)] public string[]? Values;
+                public string[]? Values;
             }
             """);
     }
@@ -249,6 +246,33 @@ public class TypeWalkerTests
             }
             """);
     }
+    
+    [Test]
+    public void MemoryPackObjectHandlesSelfReferencesMultipleTimes()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = 844793965, 
+            Properties = ["Message", "ComplicatedMessage", "ValuesMessage", "Message", "Int32", "Int32", "Int32", "ValuesMessage", "Byte[]", "Message"])]
+            class ComplicatedMessage {
+                public Message Value1;
+                public ComplicatedMessage Value2;
+                public ValuesMessage Value3;
+                public Message Value3;
+            }
+            class Message {
+                public int Value1;
+                public int Value2;
+                public int Value3;
+                public ValuesMessage Value4;
+            }
+            class ValuesMessage {
+                public byte[] Value1;
+                public Message Value3;
+            }
+            """);
+    }
+
     
     [Test]
     public void ChangeInPropertyObjectChangesHash()
