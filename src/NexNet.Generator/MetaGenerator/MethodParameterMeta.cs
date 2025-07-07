@@ -39,6 +39,8 @@ internal class MethodParameterMeta
 
     public MemoryPackTypeMeta[] MemoryPackTypes { get; } = [];
     public ITypeSymbol[] Types { get; } = [];
+    
+    public int NexusHashCode { get; }
 
     public MethodParameterMeta(IParameterSymbol symbol, int index, MemoryPackReferences memoryPackReferences)
     {
@@ -56,13 +58,8 @@ internal class MethodParameterMeta
         this.IsDuplexUnmanagedChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
         this.IsDuplexChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
         this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
-        if (IsMemoryPackObject)
-        {
-            MemoryPackTypes = [memoryPackReferences.GetOrCreateType((INamedTypeSymbol)symbol.Type)];
-            SerializedType = ParamType;
-            SerializedValue = Name;
-        }
-        else if (IsDuplexPipe)
+        NexusHashCode = TypeWalker.GenerateHash(symbol.Type);
+        if (IsDuplexPipe)
         {
             // Duplex Pipe is serialized as a byte.
             SerializedType = "global::System.Byte";
@@ -84,17 +81,8 @@ internal class MethodParameterMeta
         }
         else
         {
-            // Check to see if it is a list with a memorypack inside.
-            if (symbol.Type is not INamedTypeSymbol namedSymbol)
-                return;
-            
-            //IsSerializable = CheckIsSerializable(namedSymbol);
-            // Normal serialized type.
-            
             SerializedType = ParamType;
             SerializedValue = Name;
-            
-            //var tc = new TypeCollector(memoryPackReferences);
         }
     }
     /*

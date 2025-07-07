@@ -6,60 +6,6 @@ namespace NexNet.Generator.Tests;
 public class TypeWalkerTests
 {
     [Test]
-    public void TypeWalker()
-    {
-        Run("""
-            using System;
-            [GenerateStructureHash]
-            class ComplicatedMessage {
-                [MemoryPackOrder(0)] public Nullable<int>[] Value1 { get; set; }
-                [MemoryPackOrder(1)] public int?[] Value2 { get; set; }
-                [MemoryPackOrder(2)] public Nullable<int>[]? Value3 { get; set; }
-                [MemoryPackOrder(3)] public int?[]? Value4 { get; set; }
-                [MemoryPackOrder(4)] public int Value5 { get; set; }
-                [MemoryPackOrder(5)] public short? Value6 { get; set; }
-                [MemoryPackOrder(6)] public int?[] Value7 { get; set; }
-                [MemoryPackOrder(7)] public Nullable<long> Value8 { get; set; }
-                [MemoryPackOrder(8)] public int?[]? Value9 { get; set; }
-                [MemoryPackOrder(9)] public Nullable<int> Value10;
-                [MemoryPackOrder(10)] public int? Value11;
-                [MemoryPackOrder(11)] public int Value12 { get; set; }
-                [MemoryPackOrder(12)] public ValuesMessage Value13 { get; set; }
-                [MemoryPackOrder(13)] public Tuple<ValueTuple<VersionMessage>>?[]? Value14 { get; set; }
-                [MemoryPackOrder(14)] public Tuple<ValueTuple<VersionMessage>>[]? Value15 { get; set; }
-                [MemoryPackOrder(15)] public Tuple<ValueTuple<Uri>> Value16 { get; set; }
-                [MemoryPackOrder(16)] public Tuple<ValueTuple<Rune>> Value17 { get; set; }
-                [MemoryPackOrder(17)] public ValueTuple<VersionMessage> Value18 { get; set; }
-                [MemoryPackOrder(18)] public List<ValueObjects> Value19 { get; set; }
-                [MemoryPackOrder(19)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Value20 { get; set; }
-                [MemoryPackOrder(20)] public int Value21 { get; set; }
-            }
-            [MemoryPackable(SerializeLayout.Explicit)]
-            class VersionMessage {
-                [MemoryPackOrder(0)] public int Value1 { get; set; }
-                [MemoryPackOrder(1)] public int Value2 { get; set; }
-                [MemoryPackOrder(2)] public ValuesMessage Value3 { get; set; }
-                [MemoryPackOrder(3)] public DateTime Value4 { get; set; }
-            }
-            [MemoryPackable(SerializeLayout.Explicit)]
-            class ValuesMessage {
-                [MemoryPackOrder(0)] public byte[] Value1 { get; set; }
-                [MemoryPackOrder(1)] public ValueObjects Value2 { get; set; }
-                [MemoryPackOrder(2)] public ValuesMessage Value3 { get; set; }
-            }
-            [MemoryPackable(SerializeLayout.Explicit)]
-            class ValueObjects {
-                [MemoryPackOrder(0)] public string[]? Values { get; set; }
-            }
-            public class GenerateStructureHashAttribute : Attribute
-            {
-                public int Hash { get; set; }
-                public string[] Properties { get; set; }
-            }
-            """);
-    }
-
-    [Test]
     public void NullableEquality()
     {
         Run("""
@@ -301,6 +247,172 @@ public class TypeWalkerTests
             }
             """);
     }
+    
+    [Test]
+    public void Structs()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = -982755459, Properties = ["Message", "Int32"])]
+            class ComplicatedMessage { public Message Value1; }
+            struct Message { public int Value1; }
+
+            [GenerateStructureHash(Hash = 1046696349, Properties = ["Message2", "Int64"])]
+            struct ComplicatedMessage2 { public Message2 Value1; }
+            struct Message2 { public long Value1; }
+            """);
+    }    
+    
+    [Test]
+    public void HandlesAllMemoryPackableTypes()
+    {
+        Run("""
+            using System;
+            using System.Buffers;
+            using System.Collections;
+            using System.Collections.Concurrent;
+            using System.Collections.Immutable;
+            using System.Collections.ObjectModel;
+            using System.Globalization;
+            using System.Numerics;
+            using System.Text;
+            [GenerateStructureHash(Hash = 1893215763, Properties = [
+                "String", "Decimal", "Half", "Int128", "UInt128", "Guid", "Rune", "BigInteger", 
+                "TimeSpan", "DateTime", "DateTimeOffset", "TimeOnly", "DateOnly", "TimeZoneInfo", 
+                "Complex", "Plane", "Quaternion", "Matrix3x2", "Matrix4x4", "Vector2", "Vector3",
+                "Vector4", "Uri", "Version", "StringBuilder", "Type", "BitArray", "CultureInfo", 
+                "Int32[]", "Int32[,]", "Int32[,,]", "Int32[,,,]"])]
+            class ComplicatedMessage {
+                public string Value1;
+                public decimal Value2;
+                public Half Value3;
+                public Int128 Value4;
+                public UInt128 Value5;
+                public Guid Value6;
+                public Rune Value7;
+                public BigInteger Value8;
+                public TimeSpan Value9;
+                public DateTime Value10;
+                public DateTimeOffset Value11;
+                public TimeOnly Value12;
+                public DateOnly Value13;
+                public TimeZoneInfo Value14;
+                public Complex Value15;
+                public Plane Value16;
+                public Quaternion Value17;
+                public Matrix3x2 Value18;
+                public Matrix4x4 Value19;
+                public Vector2 Value20;
+                public Vector3 Value21;
+                public Vector4 Value22;
+                public Uri Value23;
+                public Version Value24;
+                public StringBuilder Value25;
+                public Type Value26;
+                public BitArray Value27;
+                public CultureInfo Value28;
+                public int[] Value29;
+                public int[,] Value30;
+                public int[,,] Value31;
+                public int[,,,] Value32;
+            }
+            """);
+    }    
+    
+[Test]
+    public void HandlesAllMemoryPackableTypes_Generics()
+    {
+        Run("""
+            using System;
+            using System.Buffers;
+            using System.Collections;
+            using System.Collections.Concurrent;
+            using System.Collections.Immutable;
+            using System.Collections.ObjectModel;
+            using System.Globalization;
+            using System.Numerics;
+            using System.Text;
+            [GenerateStructureHash(Hash = 2046228362, Properties = [
+                "Memory", "ReadOnlyMemory", "ArraySegment", "ReadOnlySequence", "Byte?", "Lazy",
+                "KeyValuePair", "Tuple", "Tuple", "Tuple", "Tuple", "ValueTuple", "ValueTuple",
+                "ValueTuple", "ValueTuple", "List", "LinkedList", "Queue", "Stack", "HashSet",
+                "SortedSet", "PriorityQueue", "Dictionary", "SortedList", "SortedDictionary", 
+                "ReadOnlyDictionary", "Collection", "ReadOnlyCollection", "ObservableCollection",
+                "ReadOnlyObservableCollection", "IEnumerable", "ICollection", "IList", "IReadOnlyCollection", 
+                "IReadOnlyList", "ISet", "IDictionary", "IReadOnlyDictionary", "ILookup", "IGrouping", "ConcurrentBag",
+                "ConcurrentQueue", "ConcurrentStack", "ConcurrentDictionary", "BlockingCollection", "ImmutableList",
+                "IImmutableList", "Int32", "Int32", "Int32", "Int32", "Int64", "Int32", "Int32", "Int32", "Int32", 
+                "Int64", "Int32", "Int64", "Int32", "Int64", "Int32", "Int64", "Int32", "Int32", "Int32", "Int32",
+                "Int32", "Int32", "Int32", "Int32", "Int32", "Int32", "Int64", "Int32", "Int64", "Int32", "Int64",
+                "Int32", "Int64", "Int32", "Int64", "Int32", "Int32", "Int32", "Int32", "Int32", "Int32", "Int32",
+                "Byte", "Int16", "Int32", "Int64", "Byte", "Int16", "Int32", "Byte", "Int16", "Byte", "Byte", 
+                "Int16", "Int32", "Int64", "Byte", "Int16", "Int32", "Byte", "Int16", "Byte", "Byte", "Int32", 
+                "Byte", "Byte", "Byte", "Byte", "Byte"])]
+            class ComplicatedMessage {
+                public Memory<byte> Value33;
+                public ReadOnlyMemory<byte> Value34;
+                public ArraySegment<byte> Value35;
+                public ReadOnlySequence<byte> Value36;
+                public Nullable<byte> Value37;
+                public Lazy<byte> Value38;
+                public KeyValuePair<byte, int> Value39;
+                public Tuple<byte> Value40;
+                public Tuple<byte, short> Value41;
+                public Tuple<byte, short, int> Value42;
+                public Tuple<byte, short, int, long> Value43;
+                public ValueTuple<byte> Value44;
+                public ValueTuple<byte, short> Value45;
+                public ValueTuple<byte, short, int> Value46;
+                public ValueTuple<byte, short, int, long> Value47;
+                public List<int> Value48;
+                public LinkedList<int> Value49;
+                public Queue<int> Value50;
+                public Stack<int> Value51;
+                public HashSet<int> Value52;
+                public SortedSet<int> Value53;
+                public PriorityQueue<long, int> Value55;
+                public Dictionary<long, int> Value56;
+                public SortedList<long, int> Value57;
+                public SortedDictionary<long, int> Value58;
+                public ReadOnlyDictionary<long, int> Value59;
+                public Collection<int> Value60;
+                public ReadOnlyCollection<int> Value61;
+                public ObservableCollection<int> Value62;
+                public ReadOnlyObservableCollection<int> Value63;
+                public IEnumerable<int> Value64;
+                public ICollection<int> Value65;
+                public IList<int> Value66;
+                public IReadOnlyCollection<int> Value67;
+                public IReadOnlyList<int> Value68;
+                public ISet<int> Value69;
+                public IDictionary<int, long> Value70;
+                public IReadOnlyDictionary<int, long> Value71;
+                public ILookup<int, long> Value72;
+                public IGrouping<int, long> Value73;
+                public ConcurrentBag<int> Value74;
+                public ConcurrentQueue<int> Value75;
+                public ConcurrentStack<int> Value76;
+                public ConcurrentDictionary<int, long> Value77;
+                public BlockingCollection<int> Value78;
+                public ImmutableList<int> Value79;
+                public IImmutableList<int> Value80;
+            }
+            """);
+    }    
+    
+    [Test]
+    public void WillNotWalkArrayType()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = 1543671865, 
+            Properties = ["Byte[]"])]
+            class ComplicatedMessage {
+                public byte[] Value1;
+            }
+            """);
+    }
+
 
     private void Run(string code)
     {

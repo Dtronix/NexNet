@@ -90,7 +90,7 @@ internal partial class VersionMessage {
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class ValuesMessage {
     [MemoryPackOrder(0)] public byte[] Value1 { get; set; }
-    [MemoryPackOrder(1)] public ValueObjects Value2 { get; set; }
+    [MemoryPackOrder(1)] public Stream Value2 { get; set; }
     [MemoryPackOrder(2)] public ValuesMessage Value3 { get; set; }
 }
 [MemoryPackable(SerializeLayout.Explicit)]

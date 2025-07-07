@@ -3,7 +3,6 @@ using MemoryPack;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
-using PropertyStructureGenerators;
 
 namespace NexNet.Generator.Tests;
 
@@ -61,13 +60,14 @@ public static class CSharpGeneratorRunner
         return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
     }
 
-    private const string GenerateStructureHashAttribute = """
-                                                    public class GenerateStructureHashAttribute : Attribute
-                                                    {
-                                                        public int Hash { get; set; }
-                                                        public string[] Properties { get; set; }
-                                                    }
-                                                    """;
+    private const string GenerateStructureHashAttribute
+        = """
+          public class GenerateStructureHashAttribute : Attribute
+          {
+              public int Hash { get; set; }
+              public string[] Properties { get; set; }
+          }
+          """;
     
     public static Diagnostic[] RunTypeWalkerGenerator(
         string source, 
@@ -77,7 +77,7 @@ public static class CSharpGeneratorRunner
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13, preprocessorSymbols: preprocessorSymbols);
         
-        var driver = CSharpGeneratorDriver.Create(new PropertyStructureHashGenerator()).WithUpdatedParseOptions(parseOptions);
+        var driver = CSharpGeneratorDriver.Create(new TypeWalkerHashGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
             driver = (CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);

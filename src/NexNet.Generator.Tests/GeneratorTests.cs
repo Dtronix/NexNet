@@ -474,6 +474,7 @@ partial class ServerNexus
     public void MemoryPackableObjects()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using System;
 using NexNet;
 using MemoryPack;
 namespace NexNetDemo;
@@ -484,10 +485,10 @@ partial class DataObject {
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v2", HashLock=-1549245336)]
-partial interface IServerNexus {  void Update(DataObject data); }
+partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
-    void Update(DataObject data) { }
+    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
 """);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
