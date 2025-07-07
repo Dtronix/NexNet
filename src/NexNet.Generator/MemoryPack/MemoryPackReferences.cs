@@ -168,6 +168,7 @@ internal class MemoryPackReferences
                 //System_Buffers_ReadOnlySequence_T,
                 //System_Collections_Generic_PriorityQueue_T
             }, SymbolEqualityComparer.Default);
+            
         }
 
         public bool Contains(ITypeSymbol symbol, out bool isGeneric)

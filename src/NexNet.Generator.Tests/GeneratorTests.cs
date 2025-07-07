@@ -609,61 +609,6 @@ public class GenerateStructureHashAttribute : Attribute
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
     }
     
-            [Test]
-    public void TypeWalker()
-    {
-        var diagnostic = CSharpGeneratorRunner.RunGenerator2("""
-using NexNet;
-using MemoryPack;
-using System;
-namespace NexNetDemo;
-[GenerateStructureHash]
-internal partial class Message {
-    //[MemoryPackOrder(0)] public int Values { get; set; }
-    //[MemoryPackOrder(10)] public Tuple<ValueTuple<VersionMessage>>?[] Values { get; set; }
-    //[MemoryPackOrder(2)] public Tuple<ValueTuple<VersionMessage>>?[]? Values { get; set; }
-    //[MemoryPackOrder(8)] public Tuple<ValueTuple<VersionMessage>>[]? Values { get; set; }
-    //[MemoryPackOrder(4)] public Tuple<ValueTuple<Uri>> Values { get; set; }
-    //[MemoryPackOrder(5)] public Tuple<ValueTuple<Rune>> Values { get; set; }
-    //[MemoryPackOrder(6)] public ValueTuple<VersionMessage> Messages { get; set; }
-    //[MemoryPackOrder(7)] public List<ValueObjects> Messages { get; set; }
-    //[MemoryPackOrder(8)] public List<ValueTuple<List<Dictionary<byte, VersionMessage>, string?, string>,int>> Messages { get; set; }
-    //[MemoryPackOrder(0)] public int Messages1 { get; set; }
-    
-    //[MemoryPackOrder(2)] public Nullable<int>[] Messages3 { get; set; }
-    //[MemoryPackOrder(3)] public Nullable<int>[]? Messages4 { get; set; }
-    //[MemoryPackOrder(4)] public int Messages5 { get; set; }
-    [MemoryPackOrder(1)] public short? Messages6 { get; set; }
-    [MemoryPackOrder(2)] public int?[] Messages7 { get; set; }
-    [MemoryPackOrder(3)] public Nullable<long> Messages2 { get; set; }
-    //[MemoryPackOrder(7)] public int?[]? Messages8 { get; set; }
-}
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class VersionMessage {
-    [MemoryPackOrder(0)] public int Version { get; set; }
-    [MemoryPackOrder(1)] public int TotalValues { get; set; }
-    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
-    [MemoryPackOrder(2)] public DateTime Values { get; set; }
-}
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class ValuesMessage {
-    [MemoryPackOrder(0)] public byte[] Values { get; set; }
-    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
-    [MemoryPackOrder(2)] public VersionMessage Message { get; set; }
-}
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class ValueObjects {
-    [MemoryPackOrder(0)] public string[]? Values { get; set; }
-}
-
-public class GenerateStructureHashAttribute : Attribute
-{
-
-}
-
-""", minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
-    }
 
 }
 
