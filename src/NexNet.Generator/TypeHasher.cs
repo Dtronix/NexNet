@@ -27,7 +27,6 @@ internal class TypeHasher
     ///     properties and fields (recursively), array element types, generic type arguments, and handles
     ///     nullable and array annotations appropriately.
     /// </param>
-    /// <param name="b1"></param>
     /// <param name="includeRootType">True to add the root type into the list as the first item.</param>
     /// <returns>
     /// A <see cref="List{String}"/> containing the simple names of each visited type in the order
