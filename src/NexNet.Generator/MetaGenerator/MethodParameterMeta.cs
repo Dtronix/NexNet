@@ -1,5 +1,4 @@
 ﻿using Microsoft.CodeAnalysis;
-using NexNet.Generator.MemoryPack;
 
 namespace NexNet.Generator.MetaGenerator;
 
@@ -9,7 +8,6 @@ internal class MethodParameterMeta
     public string Name { get; }
 
     public int Index { get; }
-    public MemoryPackReferences MemoryPackReferences { get; }
 
     public string ParamType { get; }
     public string? SerializedType { get; }
@@ -18,7 +16,7 @@ internal class MethodParameterMeta
     //public string? DeserializedParameterValue { get; }
 
     public bool IsParamsArray { get; }
-    public bool IsMemoryPackObject { get; }
+    //public bool IsMemoryPackObject { get; }
     public bool IsArrayType { get; }
     public bool IsDuplexPipe { get; }
     public bool IsDuplexUnmanagedChannel { get; }
@@ -36,19 +34,15 @@ internal class MethodParameterMeta
     public int SerializedId { get; set; }
 
     public bool IsSerializable { get; }
-
-    public MemoryPackTypeMeta[] MemoryPackTypes { get; } = [];
-    public ITypeSymbol[] Types { get; } = [];
     
     public int NexusHashCode { get; }
 
-    public MethodParameterMeta(IParameterSymbol symbol, int index, MemoryPackReferences memoryPackReferences)
+    public MethodParameterMeta(IParameterSymbol symbol, int index, TypeHasher typeHasher)
     {
         this.Index = index;
-        this.MemoryPackReferences = memoryPackReferences;
         this.Symbol = symbol;
         this.Name = symbol.Name;
-        this.IsMemoryPackObject = symbol.Type.ContainsAttribute(memoryPackReferences.MemoryPackableAttribute);
+        //this.IsMemoryPackObject = symbol.Type.ContainsAttribute(memoryPackReferences.MemoryPackableAttribute);
         this.IsArrayType = symbol.Type.TypeKind == TypeKind.Array;
         this.ParamTypeSource = symbol.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.ParamType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
@@ -58,7 +52,7 @@ internal class MethodParameterMeta
         this.IsDuplexUnmanagedChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
         this.IsDuplexChannel = ParamType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
         this.UtilizesDuplexPipe = IsDuplexPipe | IsDuplexUnmanagedChannel | IsDuplexChannel;
-        NexusHashCode = TypeWalker.GenerateHash(symbol.Type);
+        NexusHashCode = typeHasher.GetHash(symbol.Type);
         if (IsDuplexPipe)
         {
             // Duplex Pipe is serialized as a byte.
@@ -85,31 +79,4 @@ internal class MethodParameterMeta
             SerializedValue = Name;
         }
     }
-    /*
-
-    private bool CheckIsSerializable(INamedTypeSymbol symbol)
-    {
-        if (MemoryPackReferences!.KnownTypes.Contains(symbol, out var isGeneric))
-            return false;
-        
-        if (isGeneric)
-        {
-            bool foundInvalid = false;
-            foreach (var arg in symbol.TypeArguments)
-            {
-                if (arg is not INamedTypeSymbol namedArg)
-                    return false;
-
-                if (!CheckIsSerializable(namedArg))
-                    foundInvalid = true;
-            }
-
-            return foundInvalid;
-        }
-        
-        notSerializable.Add(symbol);
-
-        return false;
-    }*/
-
 }

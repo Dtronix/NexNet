@@ -470,11 +470,12 @@ partial class ServerNexus
         Assert.That(diagnostic, Is.Empty);
     }
     
-        [Test]
+    [Test]
     public void MemoryPackableObjects()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using System;
+using System.Collections.Generic;
 using NexNet;
 using MemoryPack;
 namespace NexNetDemo;
@@ -484,14 +485,14 @@ partial class DataObject {
     public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=-1549245336)]
+[NexusVersion(Version = "v2", HashLock=-1605840564)]
 partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
-    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
+    public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+        Assert.That(diagnostic, Is.Empty);
     }
     
     [Test]
@@ -500,6 +501,7 @@ partial class ServerNexus : IServerNexus {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
 using MemoryPack;
+using System;
 namespace NexNetDemo;
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class Message {
@@ -511,11 +513,11 @@ internal partial class Message2 {
     [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = 1809729348)]
+[NexusVersion(Version = "v1", HashLock = 1080457006)]
 partial interface IServerNexus { 
     void Update(Message data);
 }
-[NexusVersion(Version = "v1", HashLock = 1809729348)]
+[NexusVersion(Version = "v1", HashLock = -1485727146)]
 partial interface IServerNexus2 {
     void Update(System.Tuple<Message2> data);
 }
@@ -528,7 +530,7 @@ partial class ServerNexus2 {
     public void Update(System.Tuple<Message2> data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.False);
+        Assert.That(diagnostic, Is.Empty);
     }
 
 
@@ -541,8 +543,8 @@ using NexNet;
 using MemoryPack;
 namespace NexNetDemo;
 [MemoryPackable]
-[MemoryPackUnion(0, typeof(VersionMessage))]         
-[MemoryPackUnion(1, typeof(ValuesMessage))]        
+[MemoryPackUnion(1, typeof(VersionMessage))]         
+[MemoryPackUnion(0, typeof(ValuesMessage))]        
 internal partial interface IMessageV1 { 
 }
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -561,16 +563,17 @@ partial interface IServerNexus { void Update(IMessageV1 data); }
 partial class ServerNexus : IServerNexus { 
     public void Update(IMessageV1 data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+""", minDiagnostic:DiagnosticSeverity.Error);
+        Assert.That(diagnostic, Is.Empty);
     }
     
-        [Test]
+    [Test]
     public void MemoryPackable_NestedCreation()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
 using MemoryPack;
+using System;
 namespace NexNetDemo;
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class Message {
@@ -594,7 +597,7 @@ internal partial class ValueObjects {
     [MemoryPackOrder(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1")]
+[NexusVersion(Version = "v1", HashLock = -764721642)]
 partial interface IServerNexus { void Update(ValueTuple<Message> data); }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
@@ -607,7 +610,103 @@ public class GenerateStructureHashAttribute : Attribute
 }
 
 """, minDiagnostic:DiagnosticSeverity.Warning);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CancellationTokenOnVoid.Id), Is.True);
+        Assert.That(diagnostic, Is.Empty);
+    }
+    
+    [Test]
+    public void HashLockFailsOnMemberChange()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using System;
+using System.Collections.Generic;
+using NexNet;
+using MemoryPack;
+namespace NexNetDemo;
+[MemoryPackable]
+partial class DataObject { 
+    public string Value1 { get; set; } 
+    public short Value2 { get; set; } 
+}
+partial interface IClientNexus { }
+[NexusVersion(Version = "v2", HashLock=-1605840564)]
+partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { 
+    public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
+}
+""", minDiagnostic: DiagnosticSeverity.Error);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+    }
+    
+    [Test]
+    public void HashLockFailsOnNextedMemberChange()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using MemoryPack;
+using System;
+namespace NexNetDemo;
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class Message {
+    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class VersionMessage {
+    [MemoryPackOrder(0)] public int Version { get; set; }
+    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+}
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValuesMessage {
+    [MemoryPackOrder(0)] public int[] Values { get; set; }
+    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+}
+
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class ValueObjects {
+    [MemoryPackOrder(0)] public string[] Values { get; set; }
+}
+partial interface IClientNexus { }
+[NexusVersion(Version = "v1", HashLock = -764721642)]
+partial interface IServerNexus { void Update(ValueTuple<Message> data); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { 
+    public void Update(ValueTuple<Message> data) { }
+}
+
+public class GenerateStructureHashAttribute : Attribute
+{
+
+}
+
+""", minDiagnostic:DiagnosticSeverity.Error);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+    }
+    
+    [Test]
+    public void WarnsOnNoLockSet()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using System;
+using System.Collections.Generic;
+using NexNet;
+using MemoryPack;
+namespace NexNetDemo;
+[MemoryPackable]
+partial class DataObject { 
+    public string Value1 { get; set; } 
+    public int Value2 { get; set; } 
+}
+partial interface IClientNexus { }
+[NexusVersion(Version = "v2")]
+partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus { 
+    public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
+}
+""", minDiagnostic: DiagnosticSeverity.Warning);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockNotSet.Id), Is.True);
     }
     
 

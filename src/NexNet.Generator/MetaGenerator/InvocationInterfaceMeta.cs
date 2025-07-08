@@ -1,6 +1,5 @@
 ﻿using System.Collections.Frozen;
 using Microsoft.CodeAnalysis;
-using NexNet.Generator.MemoryPack;
 
 namespace NexNet.Generator.MetaGenerator;
 
@@ -10,7 +9,7 @@ internal partial class InvocationInterfaceMeta
     private int? _hashCode;
     public INamedTypeSymbol Symbol { get; }
     public NexusAttributeMeta NexusAttribute { get; }
-    public MemoryPackReferences MemoryPackReference { get; }
+    public TypeHasher Hasher { get; }
     public InvocationInterfaceMeta RootInterface { get; }
     
     /// <summary>
@@ -65,14 +64,14 @@ internal partial class InvocationInterfaceMeta
     public InvocationInterfaceMeta(INamedTypeSymbol? symbol,
         NexusAttributeMeta attribute,
         InvocationInterfaceMeta? rootInterface,
-        MemoryPackReferences memoryPackReference)
+        TypeHasher hasher)
     {
         if (symbol == null)
             throw new ArgumentNullException(nameof(symbol));
 
         this.Symbol = symbol;
         this.NexusAttribute = attribute;
-        this.MemoryPackReference = memoryPackReference;
+        this.Hasher = hasher;
         this.RootInterface = rootInterface ?? this;
         this.Namespace = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NamespaceName = symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
@@ -84,10 +83,10 @@ internal partial class InvocationInterfaceMeta
 
         // If the root interface is null, then this is the root interface.
 
-        var methods = EnumMethods(Symbol.GetMembers(), rootInterface, memoryPackReference).ToList();
+        var methods = EnumMethods(Symbol.GetMembers(), rootInterface, hasher).ToList();
 
         foreach (var interf in this.Symbol.AllInterfaces)
-            methods.AddRange(EnumMethods(interf.GetMembers(), rootInterface, memoryPackReference));
+            methods.AddRange(EnumMethods(interf.GetMembers(), rootInterface, hasher));
 
         this.AllMethods = methods.ToArray();
 
@@ -113,11 +112,11 @@ internal partial class InvocationInterfaceMeta
         static IEnumerable<MethodMeta> EnumMethods(
             IEnumerable<ISymbol> symbols,
             InvocationInterfaceMeta? rootInterface,
-            MemoryPackReferences memoryPackReference)
+            TypeHasher typeHasher)
         {
             return symbols.OfType<IMethodSymbol>()
                 .Where(x => x.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-                .Select(x => rootInterface == null ? new MethodMeta(x, memoryPackReference) : rootInterface.MethodTable![x])
+                .Select(x => rootInterface == null ? new MethodMeta(x, typeHasher) : rootInterface.MethodTable![x])
                 .Where(x => x.NexusMethodAttribute is { Ignore: false }); // Bypass ignored items.
         }
 
@@ -138,7 +137,7 @@ internal partial class InvocationInterfaceMeta
         
         foreach (var interfaceSymbol in Symbol.AllInterfaces)
         {
-            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface, MemoryPackReference));
+            interfaceMap.Add(interfaceSymbol, new InvocationInterfaceMeta(interfaceSymbol, NexusAttribute, RootInterface, Hasher));
         }
 
         foreach (var interfaceMeta in interfaceMap)

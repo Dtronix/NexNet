@@ -1,4 +1,9 @@
-﻿using MemoryPack;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using MemoryPack;
 using NexNet;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
@@ -27,14 +32,14 @@ public partial interface IClientNexus
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 }
 
-[NexusVersion(Version = "v2", HashLock = -1549245336)]
+[NexusVersion(Version = "v2", HashLock = -1783005372)]
 public partial interface IServerNexusV2 : IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDrirectional)]
     INexusList<int> IntegerList { get; }
 }
 
-[NexusVersion(Version = "v1", HashLock = 10059206)]
+[NexusVersion(Version = "v1", HashLock = -832076567)]
 public partial interface IServerNexus
 {
     void ServerVoid();
@@ -90,7 +95,7 @@ internal partial class VersionMessage {
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class ValuesMessage {
     [MemoryPackOrder(0)] public byte[] Value1 { get; set; }
-    [MemoryPackOrder(1)] public Stream Value2 { get; set; }
+    [MemoryPackOrder(1)] public int Value2 { get; set; }
     [MemoryPackOrder(2)] public ValuesMessage Value3 { get; set; }
 }
 [MemoryPackable(SerializeLayout.Explicit)]

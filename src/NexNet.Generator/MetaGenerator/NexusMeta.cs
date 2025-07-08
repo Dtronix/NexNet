@@ -1,14 +1,11 @@
 ﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using NexNet.Generator.MemoryPack;
 
 namespace NexNet.Generator.MetaGenerator;
 
 internal partial class NexusMeta
 {
     public INamedTypeSymbol Symbol { get; set; }
-    public MemoryPackReferences MemoryPackReference { get; }
-
     public string TypeName { get; }
     //public string ClassName { get; }
     public bool IsValueType { get; set; }
@@ -23,20 +20,19 @@ internal partial class NexusMeta
     public InvocationInterfaceMeta ProxyInterface { get; }
     public MethodMeta[] Methods { get; }
 
-    public NexusMeta(INamedTypeSymbol symbol, MemoryPackReferences memoryPackReference)
+    public NexusMeta(INamedTypeSymbol symbol, TypeHasher typeHasher)
     {
         
         this.Symbol = symbol;
-        this.MemoryPackReference = memoryPackReference;
         this.TypeName = symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         this.Namespace = Symbol.ContainingNamespace.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
         this.NexusAttribute = new NexusAttributeMeta(symbol);
 
         var nexusAttributeData = symbol.GetAttributes().First(att => att.AttributeClass!.Name == "NexusAttribute");
         NexusInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute, null, MemoryPackReference);
+            nexusAttributeData.AttributeClass!.TypeArguments[0] as INamedTypeSymbol, NexusAttribute, null, typeHasher);
         ProxyInterface = new InvocationInterfaceMeta(
-            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute, null, MemoryPackReference);
+            nexusAttributeData.AttributeClass!.TypeArguments[1] as INamedTypeSymbol, NexusAttribute, null, typeHasher);
         
         // Build the versioning trees and method ids.
         NexusInterface.BuildVersions();
@@ -50,7 +46,7 @@ internal partial class NexusMeta
         this.IsRecord = symbol.IsRecord;
         this.Methods = Symbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Select(x => new MethodMeta(x, memoryPackReference))
+            .Select(x => new MethodMeta(x, typeHasher))
             .ToArray();
     }
 

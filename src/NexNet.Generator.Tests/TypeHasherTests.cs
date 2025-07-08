@@ -3,7 +3,7 @@ using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
-public class TypeWalkerTests
+public class TypeHasherTests
 {
     [Test]
     public void NullableEquality()
@@ -412,13 +412,108 @@ public class TypeWalkerTests
             }
             """);
     }
-
+    
+    [Test]
+    public void WalksMemoryPackUnion()
+    {
+        Run("""
+            using System;
+            using MemoryPack;
+            [GenerateStructureHash(Hash = 1541405161, 
+            Properties = ["MPUID0", "VersionMessage", "MPUID1", "ValuesMessage", "Byte[]", "Int32", "Int32"])]
+            [MemoryPackable]
+            [MemoryPackUnion(0, typeof(VersionMessage))]         
+            [MemoryPackUnion(1, typeof(ValuesMessage))]        
+            internal partial interface IMessageV1 { 
+            }
+            [MemoryPackable(SerializeLayout.Explicit)]
+            internal partial class VersionMessage : IMessageV1 {
+                [MemoryPackOrder(0)] public int Version { get; set; }
+                [MemoryPackOrder(1)] public int TotalValues { get; set; }
+            }
+            [MemoryPackable(SerializeLayout.Explicit)]
+            internal partial class ValuesMessage : IMessageV1 {
+                [MemoryPackOrder(0)] public byte[] Values { get; set; }
+            }
+            """);
+    }
+    
+    [Test]
+    public void WalksMemoryPackUnion_SortsByOrder()
+    {
+        Run("""
+            using System;
+            using MemoryPack;
+            [GenerateStructureHash(Hash = 1541405161, 
+            Properties = ["MPUID0", "VersionMessage", "MPUID1", "ValuesMessage", "Byte[]", "Int32", "Int32"])]
+            [MemoryPackable]
+            [MemoryPackUnion(1, typeof(ValuesMessage))]   
+            [MemoryPackUnion(0, typeof(VersionMessage))]         
+            internal partial interface IMessageV1 { 
+            }
+            [MemoryPackable(SerializeLayout.Explicit)]
+            internal partial class VersionMessage : IMessageV1 {
+                [MemoryPackOrder(0)] public int Version { get; set; }
+                [MemoryPackOrder(1)] public int TotalValues { get; set; }
+            }
+            [MemoryPackable(SerializeLayout.Explicit)]
+            internal partial class ValuesMessage : IMessageV1 {
+                [MemoryPackOrder(0)] public byte[] Values { get; set; }
+            }
+            """);
+    }
+    
+    [Test]
+    public void WalksEnumTypesWithDefaultValues()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = 2125023830, 
+            Properties = ["Status", "Unset0", "Running1", "Stopped2", "Error3", "Failed4", "Critical5", "Success6", "EOF7"])]
+            class ComplicatedMessage { public Status Value1; }
+            enum Status { Unset, Running, Stopped, Error, Failed, Critical, Success, EOF }
+            """);
+    }
+    
+    [Test]
+    public void WalksEnumTypesWithSpecifiedValues()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = -1593517866, 
+            Properties = ["Status", "Unset0", "EOF1", "Running10", "Stopped20", "Error100", "Failed200", "Critical500", "Success1000"])]
+            class ComplicatedMessage { public Status Value1; }
+            enum Status { Unset = 0, Running = 10, Stopped = 20, Error = 100, Failed = 200, Critical = 500, Success = 1000, EOF = 1 }
+            """);
+    }
+    
+    [Test]
+    public void WalksEnumTypesWithFlags()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(Hash = -1665177544, 
+            Properties = ["Status", "Unset0", "Running1", "Stopped4", "Error8", "EOF12", "Failed16", "Critical17", "Success24"])]
+            class ComplicatedMessage { public Status Value1; }
+            [Flags]
+            enum Status { Unset = 0, Running = 1 << 0, Stopped = 1 << 2, Error = 1 << 3, Failed = 1<<4, Critical = Running | Failed, Success = Error | Failed, EOF = Stopped | Error}
+            """);
+    }
 
     private void Run(string code)
     {
-        var diagnostic = CSharpGeneratorRunner.RunTypeWalkerGenerator(code, minDiagnostic: DiagnosticSeverity.Info);
+        var diagnostic = CSharpGeneratorRunner.RunTypeWalkerGenerator(code + GenerateStructureHashAttribute, minDiagnostic: DiagnosticSeverity.Info);
 
         var first = diagnostic.Where(d => d.Id.StartsWith("TEST_FAIL")).ToArray();
         Assert.That(first, Is.Empty, string.Join('\n', first));
     }
+    
+    private const string GenerateStructureHashAttribute
+        = """
+          public class GenerateStructureHashAttribute : Attribute
+          {
+              public int Hash { get; set; }
+              public string[] Properties { get; set; }
+          }
+          """;
 }

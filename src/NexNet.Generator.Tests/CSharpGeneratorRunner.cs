@@ -59,15 +59,6 @@ public static class CSharpGeneratorRunner
         var compilationDiagnostics = newCompilation.GetDiagnostics();
         return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
     }
-
-    private const string GenerateStructureHashAttribute
-        = """
-          public class GenerateStructureHashAttribute : Attribute
-          {
-              public int Hash { get; set; }
-              public string[] Properties { get; set; }
-          }
-          """;
     
     public static Diagnostic[] RunTypeWalkerGenerator(
         string source, 
@@ -77,13 +68,13 @@ public static class CSharpGeneratorRunner
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13, preprocessorSymbols: preprocessorSymbols);
         
-        var driver = CSharpGeneratorDriver.Create(new TypeWalkerHashGenerator()).WithUpdatedParseOptions(parseOptions);
+        var driver = CSharpGeneratorDriver.Create(new TypeHasherTestGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
             driver = (CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);
         }
 
-        var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source + GenerateStructureHashAttribute, parseOptions));
+        var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
         

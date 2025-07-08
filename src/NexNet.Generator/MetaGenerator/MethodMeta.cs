@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using Microsoft.CodeAnalysis;
-using NexNet.Generator.MemoryPack;
 
 namespace NexNet.Generator.MetaGenerator;
 
@@ -9,7 +8,7 @@ internal partial class MethodMeta
     private int? _nexusHash;
     private static readonly XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }
-    public MemoryPackReferences MemoryPackReferences { get; }
+    public TypeHasher Hasher { get; }
     public string Name { get; }
     public bool IsStatic { get; }
     public bool IsReturnVoid { get; }
@@ -30,11 +29,11 @@ internal partial class MethodMeta
     public ushort Id { get; set; }
     public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
-    public MethodMeta(IMethodSymbol symbol, MemoryPackReferences memoryPackReferences)
+    public MethodMeta(IMethodSymbol symbol, TypeHasher hasher)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
         this.Symbol = symbol;
-        this.MemoryPackReferences = memoryPackReferences;
+        this.Hasher = hasher;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
         this.IsAsync = returnSymbol!.OriginalDefinition.Name == "ValueTask";
@@ -47,7 +46,7 @@ internal partial class MethodMeta
         var pipeCount = 0;
         for (var i = 0; i < symbol.Parameters.Length; i++)
         {
-            var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i, MemoryPackReferences);
+            var param = Parameters[i] = new MethodParameterMeta(symbol.Parameters[i], i, hasher);
 
             if (param.SerializedType != null)
                 param.SerializedId = seralizedParamId++;
@@ -108,11 +107,7 @@ internal partial class MethodMeta
 
         foreach (var param in Parameters)
         {
-            // If we have a memorypack type we need to hash the members ov the object.
-            //TODO: Undo this 
-            //hash.Add(param.MemoryPackType?.GetNexusHash() 
-            //         ?? (int)_hash.ComputeHash(Encoding.UTF8.GetBytes(param.ParamType)));
-            
+            hash.Add(param.NexusHashCode);
         }
 
         _nexusHash = hash.ToHashCode();
