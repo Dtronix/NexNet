@@ -5,7 +5,6 @@ namespace NexNet.Generator.MetaGenerator;
 
 internal partial class MethodMeta
 {
-    private int? _nexusHash;
     private static readonly XxHash32 _hash = new XxHash32();
     public IMethodSymbol Symbol { get; }
     public TypeHasher Hasher { get; }
@@ -26,6 +25,8 @@ internal partial class MethodMeta
     public int SerializedParameters { get; }
 
     public MethodParameterMeta[] Parameters { get; }
+    
+    public int NexusHash { get; }
     public ushort Id { get; set; }
     public NexusMethodAttributeMeta NexusMethodAttribute { get; }
 
@@ -82,15 +83,8 @@ internal partial class MethodMeta
             this.ReturnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
             this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         }
-    }
-
-
-
-    public int GetNexusHash()
-    {
-        if (_nexusHash != null)
-            return _nexusHash.Value;
         
+        // Hash calculation.
         var hash = new HashCode();
 
         //ReturnType + Name + Params + cancellationToken
@@ -110,9 +104,9 @@ internal partial class MethodMeta
             hash.Add(param.NexusHashCode);
         }
 
-        _nexusHash = hash.ToHashCode();
-        return _nexusHash.Value;
+        NexusHash = hash.ToHashCode();
     }
+    
 
     public Location GetLocation(Location fallback)
     {

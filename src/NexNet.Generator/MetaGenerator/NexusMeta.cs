@@ -37,9 +37,9 @@ internal partial class NexusMeta
         // Build the versioning trees and method ids.
         NexusInterface.BuildVersions();
         NexusInterface.BuildMethodIds();
+        
         ProxyInterface.BuildVersions();
         ProxyInterface.BuildMethodIds();
-        
 
         this.IsValueType = symbol.IsValueType;
         this.IsInterfaceOrAbstract = symbol.IsAbstract;

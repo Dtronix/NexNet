@@ -603,12 +603,6 @@ partial interface IServerNexus { void Update(ValueTuple<Message> data); }
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
-
-public class GenerateStructureHashAttribute : Attribute
-{
-
-}
-
 """, minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic, Is.Empty);
     }
@@ -674,12 +668,6 @@ partial interface IServerNexus { void Update(ValueTuple<Message> data); }
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
-
-public class GenerateStructureHashAttribute : Attribute
-{
-
-}
-
 """, minDiagnostic:DiagnosticSeverity.Error);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
     }

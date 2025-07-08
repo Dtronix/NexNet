@@ -258,7 +258,7 @@ internal partial class InvocationInterfaceMeta
         var hashCode = new HashCode();
         foreach (var meta in AllMethods!)
         {
-            hashCode.Add(meta.GetNexusHash());
+            hashCode.Add(meta.NexusHash);
         }
 
         foreach (var meta in AllCollections!)

@@ -83,9 +83,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
 
         // ReportDiagnostic when validate failed.
         if (!nexusMeta.Validate(syntax, context))
-        {
             return;
-        }
 
         var fullType = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
             .Replace("global::", "")

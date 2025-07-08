@@ -5,8 +5,8 @@ namespace NexNet.Generator;
 
 internal class TypeHasher
 {
-
-    private Dictionary<ITypeSymbol, int> _hashCache = new(SymbolEqualityComparer.Default);
+    private static readonly XxHash32 _hash = new XxHash32();
+    private readonly Dictionary<ITypeSymbol, int> _hashCache = new(SymbolEqualityComparer.Default);
     
     public int GetHash(ITypeSymbol type)
     {
@@ -287,11 +287,10 @@ internal class TypeHasher
     public static int GenerateHash(ITypeSymbol rootType)
     {
         var members = Walk(rootType, true);
-        var stringHash = new XxHash32();
         var hash = new HashCode();
         foreach (var member in members)
         {
-            hash.Add((int)stringHash.ComputeHash(Encoding.UTF8.GetBytes(member)));
+            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(member)));
         }
 
         return hash.ToHashCode();
