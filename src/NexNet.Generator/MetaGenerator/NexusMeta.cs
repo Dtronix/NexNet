@@ -226,11 +226,12 @@ internal partial class NexusMeta
                 }
                 else
                 {
-                    context.ReportDiagnostic(Diagnostic.Create(
-                        DiagnosticDescriptors.VersionHashLockNotSet,
-                        nexusInterface.VersionAttribute.GetLocation(nexusLocation),
-                        nexusInterface.TypeName,
-                        hash));
+                    // TODO: Move this into an analyzer.
+                    //context.ReportDiagnostic(Diagnostic.Create(
+                    //    DiagnosticDescriptors.VersionHashLockNotSet,
+                    //    nexusInterface.VersionAttribute.GetLocation(nexusLocation),
+                    //    nexusInterface.TypeName,
+                    //    hash));
                 }
             }
         }
