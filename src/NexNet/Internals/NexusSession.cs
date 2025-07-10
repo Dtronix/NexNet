@@ -62,7 +62,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     /// State of the connection that 
     /// </summary>
     [Flags]
-    private enum InternalState : int
+    private enum InternalState
     {
         Unset = 0,
         InitialClientGreetingReceived = 1 << 0,
@@ -394,7 +394,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _state = ConnectionState.Disconnected;
 
-        _disconnectionCts.Cancel();
+        await _disconnectionCts.CancelAsync().ConfigureAwait(false);
         OnStateChanged?.Invoke(State);
 
         // Cancel all pipe manager pipes and return to the cache.
