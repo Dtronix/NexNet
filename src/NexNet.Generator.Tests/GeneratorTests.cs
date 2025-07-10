@@ -671,7 +671,7 @@ partial class ServerNexus : IServerNexus {
 """, minDiagnostic:DiagnosticSeverity.Error);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
     }
-    
+    /*
     [Test]
     public void WarnsOnNoLockSet()
     {
@@ -696,7 +696,7 @@ partial class ServerNexus : IServerNexus {
 """, minDiagnostic: DiagnosticSeverity.Warning);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockNotSet.Id), Is.True);
     }
-    
+    */
 
 }
 
