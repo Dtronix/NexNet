@@ -84,12 +84,17 @@ public enum MessageType : byte
     /// <summary>
     /// Header for <see cref="ClientGreetingMessage"/>.
     /// </summary>
-    ClientGreeting = 100,
+    ProtocolVersion = 100,
     
     /// <summary>
     /// Header for <see cref="ClientGreetingMessage"/>.
     /// </summary>
-    ClientGreetingReconnection = 101,
+    ClientGreeting = 101,
+    
+    /// <summary>
+    /// Header for <see cref="ClientGreetingMessage"/>.
+    /// </summary>
+    ClientGreetingReconnection = 102,
     
     /// <summary>
     /// Header for <see cref="ServerGreetingMessage"/>.

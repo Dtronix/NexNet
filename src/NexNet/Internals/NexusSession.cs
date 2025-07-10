@@ -30,6 +30,17 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
 
+    // NNPNexNetProtocol(Device Control Four)
+    // NNP(DC4)
+    private const uint MagicInt = 0x4E4E5014;
+    private const ulong VersionConnectionValue = ((ulong)1 << 32) | ((ulong)MagicInt & 0xFFFFFFFF);
+    private static ReadOnlyMemory<byte> _versionConnectionValueMemory = BitConverter.GetBytes(VersionConnectionValue);
+
+    /// <summary>
+    /// Set to true after tje 
+    /// </summary>
+    private bool _protocolConfirmed;
+    
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;
     private PipeWriter? _pipeOutput;
@@ -203,6 +214,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Notify that the connection has been reconnected.
         if (isReconnect)
             OnReconnectingStatusChange?.Invoke(true);
+        
+        // Send the connection header prior to the greeting
+        await SendHeader(MessageType.ProtocolVersion, _versionConnectionValueMemory).ConfigureAwait(false);
 
         if(isReconnect)
             await SendMessage(Unsafe.As<ClientGreetingReconnectionMessage>(greetingMessage)).ConfigureAwait(false);
@@ -301,7 +315,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             var delay = false;
             try
             {
-                await SendHeaderCore((MessageType)reason, true).ConfigureAwait(false);
+                await SendHeaderCore((MessageType)reason, null,true).ConfigureAwait(false);
                 delay = true;
             }
             catch (Exception e)

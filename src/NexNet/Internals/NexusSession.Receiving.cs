@@ -122,6 +122,10 @@ internal partial class NexusSession<TNexus, TProxy>
                             breakLoop = true;
                             break;
 
+                        case MessageType.ProtocolVersion:
+                            _recMessageHeader.SetTotalHeaderSize(sizeof(long), false);
+                            break;
+                        
                         // HEADER + BODY
                         case MessageType.ClientGreeting:
                         case MessageType.ClientGreetingReconnection:
@@ -156,6 +160,31 @@ internal partial class NexusSession<TNexus, TProxy>
                         $"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
                     break;
                 }
+                
+                // Read the post header.
+                if (!_protocolConfirmed)
+                {
+                    // We do not have enough data to read yet.
+                    if (_recMessageHeader.PostHeaderLength == 0)
+                        break;
+                    
+                    switch (_recMessageHeader.Type)
+                    { 
+                        case MessageType.ProtocolVersion:
+                            if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var initialData))
+                            {
+                                Logger?.LogTrace($"Could not read required connection data id for {_recMessageHeader.Type}.");
+                                disconnect = DisconnectReason.ProtocolError;
+                            }
+
+                            _protocolConfirmed = true;
+
+                            break;
+                    }
+                }
+
+                _recMessageHeader.IsHeaderComplete = true;
+            }
 
                 // If we have a body length of 0 here, it is needing to be read.
                 // -1 indicates that there is no body length to read.
@@ -186,6 +215,16 @@ internal partial class NexusSession<TNexus, TProxy>
                             }
 
                             Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
+                            break;
+                        
+                        case MessageType.ProtocolVersion:
+                            if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var initialData))
+                            {
+                                Logger?.LogTrace($"Could not read required connection data id for {_recMessageHeader.Type}.");
+                                disconnect = DisconnectReason.ProtocolError;
+                                break;
+                            }
+
                             break;
                         default:
                             Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");

@@ -225,24 +225,47 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
     public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
     {
-        return SendHeaderCore(type, false, cancellationToken);
+        return SendHeaderCore(type, null, false, cancellationToken);
     }
-
+    
     /// <summary>
-    /// Asynchronously sends a message header of a specified type over the transport.
+    /// Asynchronously sends a message header of a specified type over the transport with the passed data.
+    /// Does nothing if the session is not connected.
     /// </summary>
     /// <param name="type">The type of the message header to be sent.</param>
-    /// <param name="force">If set to true, the header will be sent even when the connection state is not set to Connected.</param>
+    /// <param name="data">Optional data to send immediately after the header type.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     /// <remarks>
     /// Sends with the following format:
     /// | Field           | Size (bytes) | Description                                                                 |
     /// |-----------------|--------------|--------------------------------|
-    /// | Type            | 1            | The type of the message.            
+    /// | Type            | 1            | The type of the message.
+    /// | byte[]          | Varies       | The data sent after the header      
     /// </remarks>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
-    private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
+    public ValueTask SendHeader(MessageType type, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        return SendHeaderCore(type, data, false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously sends a message header of a specified type over the transport.
+    /// </summary>
+    /// <param name="type">The type of the message header to be sent.</param>
+    /// <param name="postHeaderData">Optional data to send immediately after the header type.</param>
+    /// <param name="force">If set to true, the header will be sent even when the connection state is not set to Connected.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field             | Size (bytes) | Description                                                                 |
+    /// |-------------------|--------------|--------------------------------|
+    /// | Type              | 1            | The type of the message.
+    /// | byte[] (OPTIONAL) | Varies       | The optional data sent after the header       
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
+    private async ValueTask SendHeaderCore(MessageType type, ReadOnlyMemory<byte>? postHeaderData, bool force, CancellationToken cancellationToken = default)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -270,6 +293,15 @@ internal partial class NexusSession<TNexus, TProxy>
 
         _pipeOutput.GetSpan(1)[0] = (byte)type;
         _pipeOutput.Advance(1);
+
+        // Check the post header data.
+        if (postHeaderData != null)
+        {
+            var data = postHeaderData.Value;
+            var length = data.Length;
+            data.Span.CopyTo(_pipeOutput.GetSpan(length));
+            _pipeOutput.Advance(length);
+        }
 
         Logger?.LogTrace($"Sending {type} header.");
 
