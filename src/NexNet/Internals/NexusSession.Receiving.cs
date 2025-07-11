@@ -81,6 +81,42 @@ internal partial class NexusSession<TNexus, TProxy>
         var breakLoop = false;
         while (State == ConnectionState.Connected)
         {
+
+            if (!_protocolConfirmed)
+            {
+                // Try again until we have enough data.
+                if (sequence.Length < 8)
+                    break;
+                
+                if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var protocolHeader))
+                {
+                    Logger?.LogTrace("Could not read required transport header for NexNet.");
+                    disconnect = DisconnectReason.ProtocolError;
+                    break;
+                }
+
+                ExtractProtocolHeader(protocolHeader,
+                    out byte receivedProtocolVersion,
+                    out _,
+                    out _,
+                    out _,
+                    out var receivedProtocolTag);
+                    
+                if (receivedProtocolTag != ProtocolTag)
+                {
+                    Logger?.LogTrace("Transport data is not a NexNet stream.");
+                    disconnect = DisconnectReason.ProtocolError;
+                    break;
+                }
+                if (receivedProtocolVersion != ProtocolVersion)
+                {
+                    Logger?.LogTrace("Transport data is not a NexNet stream.");
+                    disconnect = DisconnectReason.ProtocolError;
+                    break;
+                }
+
+                _protocolConfirmed = true;
+            }
             if (_recMessageHeader.IsHeaderComplete == false)
             {
                 if (_recMessageHeader.Type == MessageType.Unset)
@@ -122,10 +158,6 @@ internal partial class NexusSession<TNexus, TProxy>
                             breakLoop = true;
                             break;
 
-                        case MessageType.ProtocolVersion:
-                            _recMessageHeader.SetTotalHeaderSize(sizeof(long), false);
-                            break;
-                        
                         // HEADER + BODY
                         case MessageType.ClientGreeting:
                         case MessageType.ClientGreetingReconnection:
@@ -160,31 +192,6 @@ internal partial class NexusSession<TNexus, TProxy>
                         $"Could not read the next {_recMessageHeader.PostHeaderLength} bytes for the {_recMessageHeader.Type} header. Not enough data.");
                     break;
                 }
-                
-                // Read the post header.
-                if (!_protocolConfirmed)
-                {
-                    // We do not have enough data to read yet.
-                    if (_recMessageHeader.PostHeaderLength == 0)
-                        break;
-                    
-                    switch (_recMessageHeader.Type)
-                    { 
-                        case MessageType.ProtocolVersion:
-                            if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var initialData))
-                            {
-                                Logger?.LogTrace($"Could not read required connection data id for {_recMessageHeader.Type}.");
-                                disconnect = DisconnectReason.ProtocolError;
-                            }
-
-                            _protocolConfirmed = true;
-
-                            break;
-                    }
-                }
-
-                _recMessageHeader.IsHeaderComplete = true;
-            }
 
                 // If we have a body length of 0 here, it is needing to be read.
                 // -1 indicates that there is no body length to read.
@@ -205,29 +212,22 @@ internal partial class NexusSession<TNexus, TProxy>
                 if (_recMessageHeader.PostHeaderLength > 0)
                 {
                     switch (_recMessageHeader.Type)
-                    { 
+                    {
                         case MessageType.DuplexPipeWrite:
-                            if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out _recMessageHeader.DuplexPipeId))
+                            if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position,
+                                    out _recMessageHeader.DuplexPipeId))
                             {
                                 Logger?.LogTrace($"Could not read invocation id for {_recMessageHeader.Type}.");
                                 disconnect = DisconnectReason.ProtocolError;
                                 break;
                             }
 
-                            Logger?.LogTrace($"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
-                            break;
-                        
-                        case MessageType.ProtocolVersion:
-                            if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var initialData))
-                            {
-                                Logger?.LogTrace($"Could not read required connection data id for {_recMessageHeader.Type}.");
-                                disconnect = DisconnectReason.ProtocolError;
-                                break;
-                            }
-
+                            Logger?.LogTrace(
+                                $"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
                             break;
                         default:
-                            Logger?.LogTrace($"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
+                            Logger?.LogTrace(
+                                $"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
                             // If we are outside the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
                             break;
@@ -252,11 +252,12 @@ internal partial class NexusSession<TNexus, TProxy>
             }
             catch (Exception e)
             {
-                Logger?.LogCritical(e, $"Attempted to read beyond the end of the available sequence. Length: {sequence.Length}; Position: {position}; BodyLength: {_recMessageHeader.BodyLength}");
+                Logger?.LogCritical(e,
+                    $"Attempted to read beyond the end of the available sequence. Length: {sequence.Length}; Position: {position}; BodyLength: {_recMessageHeader.BodyLength}");
                 disconnect = DisconnectReason.ProtocolError;
                 break;
             }
-     
+
             position += _recMessageHeader.BodyLength;
             IMessageBase? messageBody = null;
             bool disposeMessage = true;
@@ -268,7 +269,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     case MessageType.ClientGreeting:
                     case MessageType.ClientGreetingReconnection:
                     case MessageType.InvocationCancellation:
-                    case MessageType.DuplexPipeUpdateState: 
+                    case MessageType.DuplexPipeUpdateState:
                         // TODO: Review transitioning this to a simple message instead of a full message.
                         messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
@@ -286,7 +287,8 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice).ConfigureAwait(false);
+                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice)
+                            .ConfigureAwait(false);
                         break;
                     }
 
@@ -326,13 +328,11 @@ internal partial class NexusSession<TNexus, TProxy>
             }
             finally
             {
-                if(disposeMessage)
+                if (disposeMessage)
                     messageBody?.Dispose();
             }
 
             _recMessageHeader.Reset();
-
-
         }
 
         var seqPosition = sequence.GetPosition(position);

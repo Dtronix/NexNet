@@ -32,9 +32,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     // NNPNexNetProtocol(Device Control Four)
     // NNP(DC4)
-    private const uint MagicInt = 0x4E4E5014;
-    private const ulong VersionConnectionValue = ((ulong)1 << 32) | ((ulong)MagicInt & 0xFFFFFFFF);
-    private static ReadOnlyMemory<byte> _versionConnectionValueMemory = BitConverter.GetBytes(VersionConnectionValue);
+    private const uint ProtocolTag = 0x4E4E5014;
+    private const byte ProtocolVersion = 1;
+    private static readonly ulong _protocolHeaderValue = CreateProtocolHeader(1, 0, 0, 0, ProtocolTag);
+    private static ReadOnlyMemory<byte> _versionConnectionValueMemory = BitConverter.GetBytes(_protocolHeaderValue);
 
     /// <summary>
     /// Set to true after tje 
@@ -431,6 +432,35 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
+    
+     
+    private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
+    {
+        int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
+        var combined = ((ulong)high << 32) | ((ulong)protocolTag & 0xFFFFFFFF);
+        return combined;
+    }
+    
+    private static void ExtractProtocolHeader(
+        ulong source,
+        out byte protocolVersion,
+        out byte reserved1,
+        out byte reserved2,
+        out byte reserved3,
+        out uint protocolTag)
+    {
+        // Extract the high 32 bits as an int
+        int high = (int)(source >> 32);
+
+        // Break the high int into 4 bytes
+        protocolVersion = (byte)((high >> 24) & 0xFF);
+        reserved1 = (byte)((high >> 16) & 0xFF);
+        reserved2 = (byte)((high >> 8) & 0xFF);
+        reserved3 = (byte)(high & 0xFF);
+
+        // Extract the low 32 bits
+        protocolTag = (uint)(source & 0xFFFFFFFF);
+    }
 
     private class InvocationTaskArguments
     {
