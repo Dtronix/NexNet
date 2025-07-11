@@ -169,8 +169,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         // Register the session if there is a manager.
         _sessionManager?.RegisterSession(this);
-
+#if TESTING_BUILD
         _config.InternalOnSessionSetup?.Invoke(this);
+#endif
 
         Logger?.LogInfo($"Created session {Id}");
     }
@@ -217,7 +218,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             OnReconnectingStatusChange?.Invoke(true);
         
         // Send the connection header prior to the greeting
-        await SendHeader(MessageType.ProtocolVersion, _versionConnectionValueMemory).ConfigureAwait(false);
+        await SendHeader(MessageType.Unset, _versionConnectionValueMemory).ConfigureAwait(false);
 
         if(isReconnect)
             await SendMessage(Unsafe.As<ClientGreetingReconnectionMessage>(greetingMessage)).ConfigureAwait(false);
@@ -310,8 +311,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _registeredDisconnectReason = reason;
 
         Logger?.LogInfo($"Session disconnected with reason: {reason}");
-
+#if TESTING_BUILD
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
+#else
+        if (sendDisconnect)
+#endif
         {
             var delay = false;
             try
@@ -349,6 +353,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _pipeInput!.Complete();
         _pipeInput = null;
 
+#if TESTING_BUILD
         if (_config.InternalNoLingerOnShutdown)
         {
             try
@@ -362,37 +367,35 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             
             return;
         }
-        else
+#endif
+
+        // Cancel all current invocations.
+        SessionInvocationStateManager.CancelAll();
+
+        // ReSharper disable once MethodHasAsyncOverload
+        try
         {
-            // Cancel all current invocations.
-            SessionInvocationStateManager.CancelAll();
-
-            // ReSharper disable once MethodHasAsyncOverload
-            try
-            {
-                _pipeOutput!.Complete();
-            }
-            catch (ObjectDisposedException)
-            {
-                //noop
-            }
-            catch (Exception e)
-            {
-                Logger?.LogError(e, "Error while completing output pipe.");
-            }
-
-            _pipeOutput = null;
-            try
-            {
-                await _transportConnection.CloseAsync(true).ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                Logger?.LogError(e, "Error while closing transport connection.");
-            }
-
+            _pipeOutput!.Complete();
+        }
+        catch (ObjectDisposedException)
+        {
+            //noop
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Error while completing output pipe.");
         }
 
+        _pipeOutput = null;
+        try
+        {
+            await _transportConnection.CloseAsync(true).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Error while closing transport connection.");
+        }
+        
         // If we match a limited type of disconnects, attempt to reconnect if we are the client
         if (IsServer == false
             && reason == DisconnectReason.SocketError
@@ -431,9 +434,19 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _readyTaskCompletionSource?.TrySetResult();
     }
 
+    
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
     
      
+    /// <summary>
+    /// Constructs a 64-bit protocol header by combining the provided byte fields and protocol tag.
+    /// </summary>
+    /// <param name="protocolVersion">The protocol version byte (high-order byte of the high 32 bits).</param>
+    /// <param name="reserved1">The first reserved byte (middle-order byte of the high 32 bits).</param>
+    /// <param name="reserved2">The second reserved byte (low-order byte of the high 32 bits).</param>
+    /// <param name="reserved3">The third reserved byte (lowest-order byte of the high 32 bits).</param>
+    /// <param name="protocolTag">The 32-bit protocol tag value representing the low 32 bits of the header.</param>
+    /// <returns>A 64-bit ulong value containing the assembled protocol header information.</returns>
     private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
     {
         int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
@@ -441,6 +454,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         return combined;
     }
     
+    /// <summary>
+    /// Extracts protocol header information from a 64-bit source value.
+    /// </summary>
+    /// <param name="source">The 64-bit source value containing the protocol header information.</param>
+    /// <param name="protocolVersion">The protocol version extracted from the high-order byte of the high 32 bits.</param>
+    /// <param name="reserved1">The first reserved byte extracted from the high 32 bits.</param>
+    /// <param name="reserved2">The second reserved byte extracted from the high 32 bits.</param>
+    /// <param name="reserved3">The third reserved byte extracted from the high 32 bits.</param>
+    /// <param name="protocolTag">The low 32 bits of the source value, representing the protocol tag.</param>
     private static void ExtractProtocolHeader(
         ulong source,
         out byte protocolVersion,
