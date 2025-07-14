@@ -14,8 +14,9 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
+        _ = Task.Delay(Config.HandshakeTimeout, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
+        
         Logger?.LogTrace("Reading");
-        _state = ConnectionState.Connected;
         try
         {
             while (true)
@@ -81,42 +82,10 @@ internal partial class NexusSession<TNexus, TProxy>
         var breakLoop = false;
         while (State == ConnectionState.Connected)
         {
+            // Confirm that this is a NexNet transport.
+            if (!_protocolConfirmed && !ConfirmProtocol(sequence, ref position, ref disconnect))
+                break;
 
-            if (!_protocolConfirmed)
-            {
-                // Try again until we have enough data.
-                if (sequence.Length < 8)
-                    break;
-                
-                if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var protocolHeader))
-                {
-                    Logger?.LogTrace("Could not read required transport header for NexNet.");
-                    disconnect = DisconnectReason.ProtocolError;
-                    break;
-                }
-
-                ExtractProtocolHeader(protocolHeader,
-                    out byte receivedProtocolVersion,
-                    out _,
-                    out _,
-                    out _,
-                    out var receivedProtocolTag);
-                    
-                if (receivedProtocolTag != ProtocolTag)
-                {
-                    Logger?.LogTrace("Transport data is not a NexNet stream.");
-                    disconnect = DisconnectReason.ProtocolError;
-                    break;
-                }
-                if (receivedProtocolVersion != ProtocolVersion)
-                {
-                    Logger?.LogTrace("Transport data is not a NexNet stream.");
-                    disconnect = DisconnectReason.ProtocolError;
-                    break;
-                }
-
-                _protocolConfirmed = true;
-            }
             if (_recMessageHeader.IsHeaderComplete == false)
             {
                 if (_recMessageHeader.Type == MessageType.Unset)
@@ -339,6 +308,36 @@ internal partial class NexusSession<TNexus, TProxy>
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
     }
 
+    private bool ConfirmProtocol(ReadOnlySequence<byte> sequence, ref int position, ref DisconnectReason disconnect)
+    {
+        // Try again until we have enough data.
+        if (sequence.Length < 8)
+            return false;
+
+        if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var protocolHeader))
+        {
+            Logger?.LogTrace("Could not read required transport header for NexNet.");
+            disconnect = DisconnectReason.ProtocolError;
+            return false;
+        }
+
+        ExtractProtocolHeader(protocolHeader,
+            out byte receivedProtocolVersion,
+            out _,
+            out _,
+            out _,
+            out var receivedProtocolTag);
+
+        if (receivedProtocolTag != ProtocolTag || receivedProtocolVersion != ProtocolVersion)
+        {
+            Logger?.LogTrace("Transport data is not a NexNet stream.");
+            disconnect = DisconnectReason.ProtocolError;
+            return false;
+        }
+
+        _protocolConfirmed = true;
+        return true;
+    }
 
 
     private async ValueTask<DisconnectReason> MessageHandler(IMessageBase message, MessageType messageType)
@@ -349,7 +348,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
             try
             {
-                
                 await session._nexus.Connected((session._internalState & InternalState.ReconnectingInProgress) != 0).ConfigureAwait(false);
             }
             catch (TaskCanceledException e)

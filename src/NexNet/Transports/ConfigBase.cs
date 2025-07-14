@@ -34,6 +34,11 @@ public abstract class ConfigBase
     /// including a ping, the client will be disconnected.
     /// </summary>
     public int Timeout { get; set; } = 30_000;
+    
+    /// <summary>
+    /// If a full "HelloMessage" hasn't been received within this time the connection will be terminated.
+    /// </summary>
+    public int HandshakeTimeout { get; set; } = 15_000;
 
     /*
     internal EndPoint SocketEndPoint { get; init; }
@@ -83,6 +88,7 @@ public abstract class ConfigBase
 
 
     internal Action<INexusSession, byte[]>? InternalOnSend;
+    internal bool InternalOnSendSkipProtocolHeader;
     internal Func<INexusSession, ReadOnlySequence<byte>, ValueTask>? InternalOnReceive;
     internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Messages;
 using System.Threading;
@@ -7,6 +8,7 @@ using NexNet.Cache;
 using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Pipes;
 
 namespace NexNet;
@@ -25,8 +27,9 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
     private readonly TClientNexus _nexus;
     private NexusSession<TClientNexus, TServerProxy>? _session;
-    private TaskCompletionSource? _disconnectedTaskCompletionSource;
+    private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
+    private bool _isReconnecting = false;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -91,15 +94,23 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <inheritdoc />
-    public async Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
+    public Task<ConnectionResult> TryConnectAsync(CancellationToken cancellationToken = default)
+    {
+        return TryConnectAsyncCore(false, cancellationToken);
+    }
+    
+    private async Task<ConnectionResult> TryConnectAsyncCore(bool isReconnecting, CancellationToken cancellationToken = default)
     {
         if (_session != null)
             return new ConnectionResult(ConnectionResult.StateValue.Success);
+        
+        _isReconnecting = isReconnecting;
 
         // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
         var readyTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var disconnectedTaskCompletionSource = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnectedTaskCompletionSource = new TaskCompletionSource<DisconnectReason>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ = disconnectedTaskCompletionSource.Task.ContinueWith(ConnectionClosed, cancellationToken);
         _disconnectedTaskCompletionSource = disconnectedTaskCompletionSource;
         ITransport transport;
 
@@ -122,6 +133,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
+            ConnectionState = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting, 
             Configs = _config,
             Transport = transport,
             Cache = _cacheManager,
@@ -137,13 +149,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
         {
             OnDisconnected = OnDisconnected,
-            OnReconnectingStatusChange = OnReconnectingStatusChange,
-            OnStateChanged = (state) => StateChanged?.Invoke(this, state)
+            OnStateChanged = state => StateChanged?.Invoke(this, state)
         };
 
         Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
-        await session.StartAsClient(false).ConfigureAwait(false);
+        await session.StartAsClient().ConfigureAwait(false);
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
 
@@ -161,6 +172,70 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _pingTimer.Change(_config.PingInterval, _config.PingInterval);
 
         return new ConnectionResult(ConnectionResult.StateValue.Success);
+    }
+
+    private async Task ConnectionClosed(Task<DisconnectReason> task)
+    {
+        if (_isReconnecting)
+            return;
+        
+        if (!task.IsCompletedSuccessfully)
+            return;
+        if (_config.ReconnectionPolicy == null)
+        {
+            _config.Logger?.LogTrace("No reconnection policy configured.");
+            return;
+        }
+        var reason = task.Result;
+        
+        // If we match a limited type of disconnects, attempt to reconnect if we are allowed
+        if (reason is not (DisconnectReason.SocketError or
+            DisconnectReason.Timeout or
+            DisconnectReason.ServerRestarting))
+        {
+            _config.Logger?.LogInfo($"Can't reconnect with {reason} disconnection reason.");
+            return;
+        }
+
+        _config.Logger?.LogInfo($"Connection Lost. Reconnecting. {reason}");
+        
+        var clientHub = Unsafe.As<ClientNexusBase<TServerProxy>>(_nexus);
+        
+        OnReconnectingStatusChange(false);
+
+        //await TryConnectAsyncCore(true).ConfigureAwait(false);
+
+        // Notify the hub.
+        await clientHub.Reconnecting().ConfigureAwait(false);
+        var count = 0;
+
+        while (true)
+        {
+            // Get the next delay or cancellation.
+            var delay = _config.ReconnectionPolicy.ReconnectDelay(count++);
+
+            if (delay == null)
+                return;
+
+            await Task.Delay(delay.Value).ConfigureAwait(false);
+            _config.ReconnectionPolicy.FireReconnection(this, count);
+
+            _config.Logger?.LogTrace($"Reconnection attempt {count}");
+
+            var result = await TryConnectAsyncCore(true).ConfigureAwait(false);
+
+            if (result.Success)
+            {
+                _isReconnecting = false;
+                _config.Logger?.LogInfo("Reconnected");
+                return;
+            }
+
+            if (result.Exception != null)
+            {
+                _config.Logger?.LogError(result.Exception, $"Reconnection failed with exception. State: {result.State}");
+            }
+        }
     }
 
     /// <inheritdoc />

@@ -228,6 +228,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         
         return RunClientAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
         {
+            ConnectionState = ConnectionState.Connecting,
             Transport = transport,
             Cache = _cacheManager,
             Configs = _config,
@@ -262,6 +263,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         {
             var session = new NexusSession<TServerNexus, TClientProxy>(arguments);
 
+            await session.InitializeConnection(cancellationToken).ConfigureAwait(false);
             await session.StartReadAsync(cancellationToken).ConfigureAwait(false);
 
             try
@@ -343,6 +345,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                     RunClientAsync,
                     new NexusSessionConfigurations<TServerNexus, TClientProxy>()
                     {
+                        ConnectionState = ConnectionState.Connecting,
                         Transport = clientTransport,
                         Cache = _cacheManager,
                         Configs = _config,
