@@ -68,9 +68,8 @@ internal partial class NexusSession<TNexus, TProxy>
         var length = (int)_bufferWriter.Length;
         var buffer = _bufferWriter.GetBuffer();
 
-#if TESTING_BUILD
+        // Only used for debugging
         _config.InternalOnSend?.Invoke(this, buffer.ToArray());
-#endif
 
         buffer.CopyTo(_pipeOutput.GetSpan(length));
         _bufferWriter.Reset();
@@ -170,7 +169,6 @@ internal partial class NexusSession<TNexus, TProxy>
         body.CopyTo(_pipeOutput.GetSpan((int)body.Length));
         _pipeOutput.Advance(length);
 
-#if TESTING_BUILD
         if (_config.InternalOnSend != null)
         {
             var debugCopy = new byte[body.Length + 3];
@@ -179,7 +177,6 @@ internal partial class NexusSession<TNexus, TProxy>
             body.CopyTo(new Span<byte>(debugCopy).Slice(3));
             _config.InternalOnSend?.Invoke(this, debugCopy);
         }
-#endif
 
         Logger?.LogTrace($"Sending {type} header and {length} total bytes.");
         FlushResult result = default;
@@ -268,7 +265,7 @@ internal partial class NexusSession<TNexus, TProxy>
     /// | byte[] (OPTIONAL) | Varies       | The optional data sent after the header       
     /// </remarks>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
-    private async ValueTask SendHeaderCore(MessageType type, ReadOnlyMemory<byte>? headerData, bool force, CancellationToken cancellationToken = default)
+    private async ValueTask SendHeaderCore(MessageType type, ReadOnlyMemory<byte>? postHeaderData, bool force, CancellationToken cancellationToken = default)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -292,25 +289,16 @@ internal partial class NexusSession<TNexus, TProxy>
             }, _pipeOutput, false);
         }
 
-        if (type != MessageType.Unset)
-        {
-#if TESTING_BUILD
-            _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
-#endif
-            _pipeOutput.GetSpan(1)[0] = (byte)type;
-            _pipeOutput.Advance(1);
-        }
+        _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+
+        _pipeOutput.GetSpan(1)[0] = (byte)type;
+        _pipeOutput.Advance(1);
 
         // Check the post header data.
-        if (headerData != null)
+        if (postHeaderData != null)
         {
-            var data = headerData.Value;
+            var data = postHeaderData.Value;
             var length = data.Length;
-            
-#if TESTING_BUILD
-            _config.InternalOnSend?.Invoke(this, data.ToArray());
-#endif
-            
             data.Span.CopyTo(_pipeOutput.GetSpan(length));
             _pipeOutput.Advance(length);
         }

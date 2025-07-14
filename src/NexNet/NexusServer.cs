@@ -173,13 +173,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 // If the listener is null, then the incoming connections are not handled by a listener,
                 // and we don't have any work to perform.
                 if (listener != null)
-                {
-#if TESTING_BUILD
                     await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
-#else
-                    await listener.CloseAsync(true).ConfigureAwait(false);
-#endif
-                }
             }
             catch
             {

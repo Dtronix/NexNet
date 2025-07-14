@@ -81,11 +81,10 @@ public abstract class ConfigBase
     public int NexusPipeHighWaterCutoff { get; set; } = 1024 * 256;
 
 
-#if TESTING_BUILD
+
     internal Action<INexusSession, byte[]>? InternalOnSend;
     internal Func<INexusSession, ReadOnlySequence<byte>, ValueTask>? InternalOnReceive;
     internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
-#endif
 }
