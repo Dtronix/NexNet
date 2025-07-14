@@ -223,7 +223,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StopAsync();
         
         // Wait for the client to process the disconnect.
-        await Task.Delay(200);
+        await Task.Delay(100);
         await server.StartAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
