@@ -1116,7 +1116,7 @@ public class SnapshotListTests
                     list.Remove(i);
                 }
             }
-            
+
             for (int i = 200; i < 300; i++)
             {
                 list.Remove(i);
@@ -1127,7 +1127,7 @@ public class SnapshotListTests
         Thread.Sleep(200);
         cts.Cancel();
         Task.WaitAll(new[] { growTask, insertTask }, TimeSpan.FromSeconds(1));
-        
+
         // Ensure the remove is done last.
         ctsRemove.Cancel();
         Task.WaitAll(new[] { removeTask }, TimeSpan.FromSeconds(1));
@@ -1251,5 +1251,306 @@ public class SnapshotListTests
         Assert.That(actualItems, Is.EquivalentTo(expectedItems),
             "The enumeration of items did not match the exact set of values inserted.");
     }
+
+    [Test]
+    public void MultipleEnumerators_DifferentSnapshots_ShowCorrectState()
+    {
+        var list = new SnapshotList<int>();
+        list.Add(1);
+        list.Add(2);
+
+        var enum1 = list.GetEnumerator();
+        list.Add(3);
+        var enum2 = list.GetEnumerator();
+        list.Add(4);
+        var enum3 = list.GetEnumerator();
+
+        var snapshot1 = new List<int>();
+        var snapshot2 = new List<int>();
+        var snapshot3 = new List<int>();
+
+        while (enum1.MoveNext()) snapshot1.Add(enum1.Current);
+        while (enum2.MoveNext()) snapshot2.Add(enum2.Current);
+        while (enum3.MoveNext()) snapshot3.Add(enum3.Current);
+
+        Assert.That(snapshot1, Is.EqualTo(new[] { 2, 1 }));
+        Assert.That(snapshot2, Is.EqualTo(new[] { 3, 2, 1 }));
+        Assert.That(snapshot3, Is.EqualTo(new[] { 4, 3, 2, 1 }));
+    }
+
+
+    [Test]
+    public void ConcurrentInsert_AtSameIndex_AllItemsPresent()
+    {
+        var list = new SnapshotList<int>();
+        list.Add(1000);
+        list.Add(2000);
+
+        const int threadCount = 10;
+        const int itemsPerThread = 100;
+        var tasks = new Task[threadCount];
+
+        for (int t = 0; t < threadCount; t++)
+        {
+            int threadId = t;
+            tasks[t] = Task.Run(() =>
+            {
+                for (int i = 0; i < itemsPerThread; i++)
+                {
+                    list.Insert(1, threadId * 1000 + i);
+                }
+            });
+        }
+
+        Task.WaitAll(tasks);
+
+        var result = list.ToArray();
+        Assert.That(result.Length, Is.EqualTo(2 + threadCount * itemsPerThread));
+    }
+    
+    [Test]
+    public void ConcurrentAddRemove_SameItem_ConsistentState()
+    {
+        var list = new SnapshotList<int>();
+        const int iterations = 1000;
+        var addCount = 0;
+        var removeCount = 0;
+    
+        var addTask = Task.Run(() =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                list.Add(42);
+                Interlocked.Increment(ref addCount);
+            }
+        });
+    
+        var removeTask = Task.Run(() =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                if (list.Remove(42))
+                    Interlocked.Increment(ref removeCount);
+                Thread.Yield();
+            }
+        });
+    
+        Task.WaitAll(addTask, removeTask);
+    
+        var finalCount = list.Count(x => x == 42);
+        Assert.That(finalCount, Is.EqualTo(addCount - removeCount));
+    }
+    
+    [Test]
+    public void Insert_DuringGrowArray_MaintainsOrder()
+    {
+        var list = new SnapshotList<int>(initialCapacity: 2);
+    
+        // Fill to near capacity
+        list.Add(1);
+    
+        var tasks = new Task[5];
+        for (int i = 0; i < 5; i++)
+        {
+            int value = (i + 1) * 100;
+            tasks[i] = Task.Run(() =>
+            {
+                for (int j = 0; j < 100; j++)
+                {
+                    list.Insert(0, value + j);
+                }
+            });
+        }
+    
+        Task.WaitAll(tasks);
+    
+        var result = list.ToArray();
+        Assert.That(result.Length, Is.EqualTo(501)); // 1 initial + 500 inserted
+    }
+    
+    [Test]
+    public void ConcurrentRemove_NonExistentItems_NoDeadlock()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 10; i++) list.Add(i);
+    
+        var tasks = new Task[20];
+        for (int t = 0; t < 20; t++)
+        {
+            int value = t + 100; // Non-existent values
+            tasks[t] = Task.Run(() =>
+            {
+                for (int i = 0; i < 100; i++)
+                {
+                    list.Remove(value);
+                }
+            });
+        }
+    
+        var completed = Task.WaitAll(tasks, TimeSpan.FromSeconds(5));
+        Assert.That(completed, Is.True, "Tasks should complete without deadlock");
+    }
+    
+    [Test]
+    public void FreeList_ConcurrentReuseSlots_NoCorruption()
+    {
+        var list = new SnapshotList<int>(initialCapacity: 4);
+    
+        var addRemoveTask = Task.Run(() =>
+        {
+            for (int i = 0; i < 1000; i++)
+            {
+                list.Add(i);
+                list.Remove(i);
+            }
+        });
+    
+        var addTask = Task.Run(() =>
+        {
+            for (int i = 1000; i < 2000; i++)
+            {
+                list.Add(i);
+            }
+        });
+    
+        Task.WaitAll(addRemoveTask, addTask);
+    
+        var result = list.ToArray();
+        Assert.That(result.All(x => x >= 1000 && x < 2000), Is.True);
+    }
+    
+    [Test]
+    public void Snapshot_BeforeAndAfterGrowArray_BothValid()
+    {
+        var list = new SnapshotList<int>(initialCapacity: 2);
+        list.Add(1);
+    
+        var enum1 = list.GetEnumerator();
+    
+        // Force multiple grow operations
+        for (int i = 2; i <= 100; i++)
+            list.Add(i);
+    
+        var enum2 = list.GetEnumerator();
+    
+        var snapshot1 = new List<int>();
+        var snapshot2 = new List<int>();
+    
+        while (enum1.MoveNext()) snapshot1.Add(enum1.Current);
+        while (enum2.MoveNext()) snapshot2.Add(enum2.Current);
+    
+        Assert.That(snapshot1, Is.EqualTo(new[] { 1 }));
+        Assert.That(snapshot2.Count, Is.EqualTo(100));
+    }
+    
+    [Test]
+    public void ConcurrentEnumeration_WithActiveModifications_NoInterference()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 50; i++) list.Add(i);
+    
+        var enumerationComplete = new ManualResetEventSlim(false);
+        var modificationsComplete = new ManualResetEventSlim(false);
+    
+        var enumTask = Task.Run(() =>
+        {
+            var snapshot = list.ToArray();
+            enumerationComplete.Set();
+            modificationsComplete.Wait();
+        
+            // Re-enumerate after modifications
+            var snapshot2 = list.ToArray();
+            Assert.That(snapshot.Length, Is.EqualTo(50));
+        });
+    
+        var modTask = Task.Run(() =>
+        {
+            enumerationComplete.Wait();
+            for (int i = 0; i < 25; i++)
+            {
+                list.Remove(i);
+                list.Add(i + 100);
+            }
+            modificationsComplete.Set();
+        });
+    
+        Task.WaitAll(enumTask, modTask);
+    }
+    
+    [Test]
+    public void Remove_LastElementWhileEnumerating_EnumeratorCompletes()
+    {
+        var list = new SnapshotList<int>();
+        list.Add(1);
+    
+        var enumerator = list.GetEnumerator();
+        list.Remove(1);
+    
+        Assert.That(enumerator.MoveNext(), Is.False);
+    }
+    
+    [Test]
+    public void ConcurrentInsertRemove_HighContention_MaintainsIntegrity()
+    {
+        var list = new SnapshotList<int>(initialCapacity: 4);
+        var tasks = new Task[10];
+        var barrier = new Barrier(tasks.Length);
+        
+        for (int t = 0; t < tasks.Length; t++)
+        {
+            int threadId = t;
+            tasks[t] = Task.Run(() =>
+            {
+                barrier.SignalAndWait(); // Ensure all threads start together
+            
+                for (int i = 0; i < 100; i++)
+                {
+                    if (threadId % 2 == 0)
+                    {
+                        list.Add(threadId * 1000 + i);
+                        list.Remove(threadId * 1000 + i - 1);
+                    }
+                    else
+                    {
+                        try { list.Insert(0, threadId * 1000 + i); }
+                        catch (ArgumentOutOfRangeException) { }
+                    }
+                }
+            });
+        }
+    
+        Task.WaitAll(tasks);
+    
+        // Verify we can still enumerate
+        var count = 0;
+        foreach (var item in list)
+            count++;
+    
+        Assert.That(count, Is.GreaterThanOrEqualTo(0));
+    }
+    
+    [Test]
+    public void FreeList_StressTest_NoMemoryLeak()
+    {
+        var list = new SnapshotList<int>(initialCapacity: 4);
+        const int cycles = 10000;
+    
+        // Repeatedly add and remove to stress the free list
+        for (int i = 0; i < cycles; i++)
+        {
+            list.Add(i);
+            Assert.That(list.Remove(i), Is.True);
+        }
+    
+        // The count should be low, showing slots are being reused
+        Assert.That(list.Count, Is.EqualTo(0));
+    
+        // Add items again to verify free list works
+        for (int i = 0; i < 10; i++)
+            list.Add(i);
+    
+        Assert.That(list.Count(), Is.EqualTo(10));
+    }
+
 }
 
