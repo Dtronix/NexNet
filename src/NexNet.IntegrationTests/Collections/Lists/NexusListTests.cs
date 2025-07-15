@@ -194,9 +194,10 @@ internal class NexusListTests : NexusCollectionBaseTests
     public async Task ServerCanRemove(Type type)
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
-        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
-        
+
         await client.Proxy.IntListBi.ConnectAsync();
+        using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
+
         await serverNexus.IntListBi.AddAsync(0);
         await serverNexus.IntListBi.AddAsync(111);
         await serverNexus.IntListBi.AddAsync(2);
