@@ -446,9 +446,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     
                     // Don't return these messages to the cache as they are created on reading.
                     //operation.ReturnToCache();
-                    if(message is INexusCollectionValueMessage valueMessage)
+                    if (message is INexusCollectionValueMessage valueMessage)
                         valueMessage.ReturnValueToPool();
-       
+
                     // If the result is false, close the whole pipe
                     if (!success)
                     {
