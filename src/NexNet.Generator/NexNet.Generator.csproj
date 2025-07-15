@@ -13,7 +13,7 @@
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackBuildOutputs</TargetsForTfmSpecificContentInPackage>
     <IsRoslynComponent>true</IsRoslynComponent>
     <Description>Source Generator to create hubs and proxies for NexNet clients and servers.</Description>
-    <Version>0.10.0</Version>
+    <Version>0.11.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
