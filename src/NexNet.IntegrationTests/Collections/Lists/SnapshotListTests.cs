@@ -1116,6 +1116,11 @@ public class SnapshotListTests
                     list.Remove(i);
                 }
             }
+            
+            for (int i = 200; i < 300; i++)
+            {
+                list.Remove(i);
+            }
         }, cts.Token);
 
         // Run for a short period (half a second)
