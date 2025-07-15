@@ -21,7 +21,7 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace NexNet.IntegrationTests;
 
-internal class BaseTests
+internal abstract class BaseTests
 {
     public enum Type
     {
