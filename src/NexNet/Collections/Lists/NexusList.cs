@@ -11,7 +11,7 @@ namespace NexNet.Collections.Lists;
 
 internal partial class NexusList<T> : NexusCollection, INexusList<T>
 {
-    private readonly VersionedList<T> _itemList = new();
+    private readonly VersionedList<T> _itemList = new(1024);
     private List<T>? _clientInitialization;
     private int _clientInitializationVersion = -1;
 
