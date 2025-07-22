@@ -24,8 +24,6 @@ public class WaitForActionHandler : IDisposable
         {
             if (e.ChangedAction == action && Interlocked.Increment(ref currentCount) == count)
                 _tcs.SetResult();
-            
-            Console.WriteLine(currentCount);
         });
     }
     
