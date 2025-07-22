@@ -338,12 +338,15 @@ internal class NexusListTests : NexusCollectionBaseTests
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        
+        var removeEventWait = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         // seed, then remove on server
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
         await serverNexus.IntListBi.RemoveAsync(1).Timeout(1);
-        await Task.Delay(30);
+        
+        await removeEventWait.Wait();
 
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2]));
     }
@@ -358,11 +361,13 @@ internal class NexusListTests : NexusCollectionBaseTests
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        
+        var resetEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset);
 
         await serverNexus.IntListBi.AddAsync(9).Timeout(1);
         await serverNexus.IntListBi.AddAsync(8).Timeout(1);
         await serverNexus.IntListBi.ClearAsync().Timeout(1);
-        await Task.Delay(50);
+        await resetEvent.Wait();
 
         Assert.That(client.Proxy.IntListBi, Is.Empty);
     }
@@ -377,6 +382,9 @@ internal class NexusListTests : NexusCollectionBaseTests
     {
         var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        
+        var resetEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 3);
+        var resetEvent2 = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 4);
 
         // client side
         await client.Proxy.IntListBi.AddAsync(1).Timeout(1);
@@ -384,11 +392,13 @@ internal class NexusListTests : NexusCollectionBaseTests
 
         // server side mutation
         await serverNexus.IntListBi.InsertAsync(1, 99).Timeout(1);
-        await Task.Delay(50);
+        await resetEvent.Wait();
 
         // client continues
         await client.Proxy.IntListBi.RemoveAsync(2).Timeout(1);
         await client.Proxy.IntListBi.InsertAsync(2, 3).Timeout(1);
+
+        await resetEvent2.Wait();
 
         var expected = new[] { 1, 99, 3 };
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(expected));
