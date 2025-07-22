@@ -38,6 +38,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     {
         var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync();
+        var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
 
         // Flood client with 20 rapid server operations to test 10-item client channel
         var tasks = new List<Task>();
@@ -49,7 +50,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         // Client should not disconnect due to channel saturation
         await Task.WhenAll(tasks).Timeout(5);
 
-        await Task.Delay(1000);
+        await completeTask.Wait();
 
 
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
