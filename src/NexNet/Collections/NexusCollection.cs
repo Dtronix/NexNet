@@ -623,11 +623,10 @@ internal abstract class NexusCollection : INexusCollectionConnector
             Reader = reader;
             Writer = writer;
             Session = session;
-            MessageSender = Channel.CreateBounded<INexusCollectionMessage>(new BoundedChannelOptions(10)
+            MessageSender = Channel.CreateUnbounded<INexusCollectionMessage>(new  UnboundedChannelOptions()
             {
                 SingleReader = true,
                 SingleWriter = true, 
-                FullMode = BoundedChannelFullMode.Wait
             });
         }
         
