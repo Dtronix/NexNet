@@ -14,6 +14,8 @@
     <None Include="..\server.pfx" Link="server.pfx">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Compile Remove="Security\AdvancedProtocolSecurityTests.cs" />
+    <None Include="Security\AdvancedProtocolSecurityTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

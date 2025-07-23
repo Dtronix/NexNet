@@ -18,7 +18,7 @@ public class SimpleService : BackgroundService
         while (!stoppingToken.IsCancellationRequested)
         {
             await Task.Delay(4000, stoppingToken);
-            await context.Proxy.All.ClientTaskWithParam(54321);
+            //await context.Proxy.All.ClientTaskWithParam(54321);
         }
         
         

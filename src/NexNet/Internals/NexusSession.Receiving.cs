@@ -83,7 +83,8 @@ internal partial class NexusSession<TNexus, TProxy>
         while (State == ConnectionState.Connected)
         {
             // Confirm that this is a NexNet transport.
-            if (!_protocolConfirmed && !ConfirmProtocol(sequence, ref position, ref disconnect))
+            if ((_internalState & InternalState.ProtocolConfirmed) == 0 
+                && !ConfirmProtocol(sequence, ref position, ref disconnect))
                 break;
 
             if (_recMessageHeader.IsHeaderComplete == false)
@@ -335,7 +336,8 @@ internal partial class NexusSession<TNexus, TProxy>
             return false;
         }
 
-        _protocolConfirmed = true;
+        EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ProtocolConfirmed);
+        
         return true;
     }
 

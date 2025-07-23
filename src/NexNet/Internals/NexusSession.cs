@@ -29,19 +29,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly ConfigBase _config;
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
-
-    // NNPNexNetProtocol(Device Control Four)
-    // NNP(DC4)
+    
+    // NNP(DC4) = NexNetProtocol(Device Control Four)
     private const uint ProtocolTag = 0x4E4E5014;
     private const byte ProtocolVersion = 1;
     // ReSharper disable twice StaticMemberInGenericType
-    private static readonly ulong _protocolHeaderValue = CreateProtocolHeader(1, 0, 0, 0, ProtocolTag);
+    private static readonly ulong _protocolHeaderValue = CreateProtocolHeader(ProtocolVersion, 0, 0, 0, ProtocolTag);
     private static readonly ReadOnlyMemory<byte> _protocolHeaderMemory = BitConverter.GetBytes(_protocolHeaderValue);
-
-    /// <summary>
-    /// Set to true after tje 
-    /// </summary>
-    private bool _protocolConfirmed;
     
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;
@@ -78,12 +72,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private enum InternalState
     {
         Unset = 0,
-        InitialClientGreetingReceived = 1 << 0,
-        InitialServerGreetingReceived = 1 << 1,
-        InitialServerReconnectReceived = 1 << 2,
-        ClientGreetingReconnectReceived = 1 << 3,
-        NexusCompletedConnection = 1 << 4,
-        ReconnectingInProgress = 1 << 5,
+        ProtocolConfirmed = 1 << 0,
+        //VersionConfirmed = 1 << 1,
+        InitialClientGreetingReceived = 1 << 2,
+        InitialServerGreetingReceived = 1 << 3,
+        InitialServerReconnectReceived = 1 << 4,
+        ClientGreetingReconnectReceived = 1 << 5,
+        NexusCompletedConnection = 1 << 6,
+        ReconnectingInProgress = 1 << 7,
     }
 
     public NexusPipeManager PipeManager { get; }
@@ -367,7 +363,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (_state != ConnectionState.Connected)
             return;
 
-        if (_protocolConfirmed)
+        if ((_internalState & InternalState.ProtocolConfirmed) != 0)
             return;
         
         Logger?.LogDebug("Connection closed due to handshake timeout.");
