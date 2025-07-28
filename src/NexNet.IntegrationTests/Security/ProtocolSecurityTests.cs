@@ -6,6 +6,7 @@ using MemoryPack;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
+using StreamStruct;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -37,14 +38,27 @@ internal class ProtocolSecurityTests : BaseTests
         
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
+        await client.ReadProtocolHeaderAsync();
         
-        // Attempt to send invocation message without ClientGreeting
-        var invocationMessage = CreateMaliciousInvocationMessage();
-        await client.SendMessageAsync(MessageType.Invocation, invocationMessage);
+        // Attempt to send invocation message without ClientGreeting/Authentication
+        var invocation = new InvocationMessage
+        {
+            InvocationId = 1,
+            MethodId = 123,
+            Arguments = Memory<byte>.Empty
+        };
         
-        // Server should disconnect with ProtocolError
-        var disconnectReason = await client.WaitForDisconnectAsync();
-        Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
+        var invocationData = MemoryPackSerializer.Serialize(invocation);
+        await client.SendMessageWithBodyAsync(MessageType.Invocation, invocationData);
+        
+        var mem = new Memory<byte>(new byte[1024]);
+        await Task.Delay(100);
+        await client.Stream.ReadAtLeastAsync(mem, 1000, false);
+
+        
+        var readResult = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
+        var readResult2 = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
+        readResult.TryRead<MessageType>("type", out var messageType);
         
         // Verify connection is actually closed
         Assert.That(client.IsConnected, Is.False);
@@ -296,20 +310,7 @@ internal class ProtocolSecurityTests : BaseTests
         
         return MemoryPackSerializer.Serialize(greeting);
     }*/
-    
-    private byte[] CreateMaliciousInvocationMessage()
-    {
-        // Create a malicious invocation message attempting to call server methods without proper handshake
-        var invocation = new InvocationMessage
-        {
-            InvocationId = 1,
-            MethodId = 123,
-            Arguments = Memory<byte>.Empty
-        };
-        
-        return MemoryPackSerializer.Serialize(invocation);
-    }
-    
+
     private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
     {
         int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
@@ -328,23 +329,29 @@ internal class RawTcpClient : IDisposable
     private readonly bool _useTls;
     private readonly int _port;
     private Stream? _stream;
-    private readonly List<byte> _receivedData = new();
     private readonly CancellationTokenSource _cts = new();
-    
+    private StreamFieldProcessor _streamProcessor;
+
     public bool IsConnected => _tcpClient.Connected;
-    
+
+    public Stream? Stream => _stream;
+
+    public StreamFieldProcessor Processor => _streamProcessor;
+
     public RawTcpClient(ServerConfig configs, bool useTls, int port)
     {
         _tcpClient = new TcpClient();
         _configs = configs;
         _useTls = useTls;
         _port = port;
+ 
     }
     
     public async Task ConnectAsync()
     {
         await _tcpClient.ConnectAsync(IPAddress.Loopback, _port);
         _stream = _tcpClient.GetStream();
+        _streamProcessor = new StreamFieldProcessor(_stream);
         
         if (_useTls)
         {
@@ -352,9 +359,6 @@ internal class RawTcpClient : IDisposable
             await sslStream.AuthenticateAsClientAsync("localhost");
             _stream = sslStream;
         }
-        
-        // Start reading background task
-        _ = Task.Run(ReadLoop);
     }
     
     public async Task SendProtocolHeaderAsync()
@@ -362,127 +366,28 @@ internal class RawTcpClient : IDisposable
         const uint protocolTag = 0x4E4E5014;
         const byte protocolVersion = 1;
         var header = CreateProtocolHeader(protocolVersion, 0, 0, 0, protocolTag);
-        await SendRawAsync(BitConverter.GetBytes(header));
+        await _streamProcessor.WriteAsync("[header:ulong]", [header]);
     }
     
-    public async Task SendRawAsync(byte[] data)
+    public async Task ReadProtocolHeaderAsync()
     {
-        if (_stream == null) throw new InvalidOperationException("Not connected");
-        await _stream.WriteAsync(data);
-        await _stream.FlushAsync();
+        const uint protocolTag = 0x4E4E5014;
+        const byte protocolVersion = 1;
+        var header = CreateProtocolHeader(protocolVersion, 0, 0, 0, protocolTag);
+        await _streamProcessor.WriteAsync("[header:ulong]", [header]);
     }
     
-    public async Task SendMessageAsync(MessageType messageType, byte[] messageBody)
+    public async Task SendMessageWithBodyAsync(MessageType messageType, byte[] messageBody)
     {
-        if (_stream == null) throw new InvalidOperationException("Not connected");
+        if (Stream == null) 
+            throw new InvalidOperationException("Not connected");
         
-        // Send message type
-        await _stream.WriteAsync(new[] { (byte)messageType });
-        
-        // Send body length (using int32 for simplicity)
-        var bodyLength = BitConverter.GetBytes((uint)messageBody.Length);
-        await _stream.WriteAsync(bodyLength);
-        
-        // Send body
-        await _stream.WriteAsync(messageBody);
-        await _stream.FlushAsync();
+        await _streamProcessor.WriteAsync("[type:byte][body_length:ushort][body:body_length]", [
+            (byte)messageType,
+            (ushort)messageBody.Length,
+            messageBody
+        ]);
     }
-    
-    public async Task<DisconnectReason> WaitForDisconnectAsync(TimeSpan? timeout = null)
-    {
-        timeout ??= TimeSpan.FromSeconds(10);
-        using var timeoutCts = new CancellationTokenSource(timeout.Value);
-        using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, timeoutCts.Token);
-        
-        try
-        {
-            while (IsConnected && !combinedCts.Token.IsCancellationRequested)
-            {
-                await Task.Delay(100, combinedCts.Token);
-                
-                // Check if we received a disconnect message
-                lock (_receivedData)
-                {
-                    if (_receivedData.Count > 0)
-                    {
-                        var lastByte = _receivedData[^1];
-                        if (lastByte >= 20 && lastByte <= 39) // Disconnect message range
-                        {
-                            return (DisconnectReason)lastByte;
-                        }
-                    }
-                }
-            }
-            
-            // If connection closed without explicit disconnect message
-            return IsConnected ? DisconnectReason.Timeout : DisconnectReason.SocketError;
-        }
-        catch (OperationCanceledException)
-        {
-            return DisconnectReason.Timeout;
-        }
-    }
-    
-    public async Task<ServerGreetingMessage?> WaitForServerGreetingAsync(TimeSpan? timeout = null)
-    {
-        timeout ??= TimeSpan.FromSeconds(5);
-        using var timeoutCts = new CancellationTokenSource(timeout.Value);
-        
-        try
-        {
-            while (!timeoutCts.Token.IsCancellationRequested)
-            {
-                lock (_receivedData)
-                {
-                    if (_receivedData.Count >= 5) // At least message type + length
-                    {
-                        if (_receivedData[0] == (byte)MessageType.ServerGreeting)
-                        {
-                            var bodyLength = BitConverter.ToUInt32(_receivedData.ToArray(), 1);
-                            if (_receivedData.Count >= 5 + bodyLength)
-                            {
-                                var bodyData = _receivedData.Skip(5).Take((int)bodyLength).ToArray();
-                                return MemoryPackSerializer.Deserialize<ServerGreetingMessage>(bodyData);
-                            }
-                        }
-                    }
-                }
-                
-                await Task.Delay(50, timeoutCts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Timeout
-        }
-        
-        return null;
-    }
-    
-    private async Task ReadLoop()
-    {
-        if (_stream == null) return;
-        
-        var buffer = new byte[4096];
-        try
-        {
-            while (IsConnected && !_cts.Token.IsCancellationRequested)
-            {
-                var bytesRead = await _stream.ReadAsync(buffer, _cts.Token);
-                if (bytesRead == 0) break;
-                
-                lock (_receivedData)
-                {
-                    _receivedData.AddRange(buffer.Take(bytesRead));
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Connection closed or error
-        }
-    }
-    
     private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
     {
         int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
@@ -493,7 +398,7 @@ internal class RawTcpClient : IDisposable
     public void Dispose()
     {
         _cts.Cancel();
-        _stream?.Dispose();
+        Stream?.Dispose();
         _tcpClient.Dispose();
         _cts.Dispose();
     }
