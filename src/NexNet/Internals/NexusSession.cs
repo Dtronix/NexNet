@@ -31,11 +31,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly SessionManager? _sessionManager;
     
     // NNP(DC4) = NexNetProtocol(Device Control Four)
-    private const uint ProtocolTag = 0x4E4E5014;
-    private const byte ProtocolVersion = 1;
+    // [N] [N] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
     // ReSharper disable twice StaticMemberInGenericType
-    private static readonly ulong _protocolHeaderValue = CreateProtocolHeader(ProtocolVersion, 0, 0, 0, ProtocolTag);
-    private static readonly ReadOnlyMemory<byte> _protocolHeaderMemory = BitConverter.GetBytes(_protocolHeaderValue);
+    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, 1 };
+    private static readonly uint ProtocolTag = BitConverter.ToUInt32(_protocolHeader.Slice(0, 4).Span);
+    private const byte ProtocolVersion = 1;
     
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;
@@ -46,7 +46,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly byte[] _readBuffer = new byte[8];
 
     // mutable struct.  Don't set to readonly.
-    private MessageHeader _recMessageHeader = new MessageHeader();
+    private MessageHeader _recMessageHeader = new();
     private long _id;
 
     private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
@@ -197,7 +197,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public async ValueTask InitializeConnection(CancellationToken cancellationToken = default)
     {
         // Send the connection header prior to the greeting
-        await SendRaw(_protocolHeaderMemory, cancellationToken).ConfigureAwait(false);
+        await SendRaw(_protocolHeader, cancellationToken).ConfigureAwait(false);
         
         _state = ConnectionState.Connected;
         OnStateChanged?.Invoke(State);
@@ -372,35 +372,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
-     
-    private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
-    {
-        int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
-        var combined = ((ulong)high << 32) | ((ulong)protocolTag & 0xFFFFFFFF);
-        return combined;
-    }
     
-    private static void ExtractProtocolHeader(
-        ulong source,
-        out byte protocolVersion,
-        out byte reserved1,
-        out byte reserved2,
-        out byte reserved3,
-        out uint protocolTag)
-    {
-        // Extract the high 32 bits as an int
-        int high = (int)(source >> 32);
-
-        // Break the high int into 4 bytes
-        protocolVersion = (byte)((high >> 24) & 0xFF);
-        reserved1 = (byte)((high >> 16) & 0xFF);
-        reserved2 = (byte)((high >> 8) & 0xFF);
-        reserved3 = (byte)(high & 0xFF);
-
-        // Extract the low 32 bits
-        protocolTag = (uint)(source & 0xFFFFFFFF);
-    }
-
     private class InvocationTaskArguments
     {
         public InvocationMessage Message { get; set; } = null!;

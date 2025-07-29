@@ -26,14 +26,45 @@ internal partial class NexusSession<TNexus, TProxy>
                     return;
 
                 var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
-
                 LastReceived = Environment.TickCount64;
-
+                
+                var buffer = result.Buffer;
                 // Terribly inefficient and only used for testing
                 if(Config.InternalOnReceive != null)
-                    await Config.InternalOnReceive.Invoke(this, result.Buffer).ConfigureAwait(false);
+                    await Config.InternalOnReceive.Invoke(this, buffer).ConfigureAwait(false);
+                
+                // Confirm that this is a NexNet transport.
+                if ((_internalState & InternalState.ProtocolConfirmed) == 0)
+                {
+                    Logger?.LogTrace("Reading protocol header...");
+                    if (ConfirmProtocol(buffer, out var disconnect))
+                    {
+                        // Push the buffer forward.
+                        buffer = buffer.Slice(8, buffer.End);
+                        
+                        // Don't process an empty buffer.
+                        if (buffer.Length == 0)
+                        {
+                            _pipeInput?.AdvanceTo(buffer.Start, buffer.Start);
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        // If the disconnect is none, that means there was not enough data to read for the header.
+                        // We will try again.  If there is a disconnection reason, disconnect.
+                        if (disconnect != DisconnectReason.None)
+                        {
+                            await DisconnectCore(disconnect, true).ConfigureAwait(false);
+                            return;
+                        }
+                        
+                        _pipeInput?.AdvanceTo(result.Buffer.Start, result.Buffer.End);
+                        continue;
+                    }
+                }
 
-                var processResult = await Process(result.Buffer).ConfigureAwait(false);
+                var processResult = await Process(buffer).ConfigureAwait(false);
 
                 //_config.Logger?.LogTrace($"Reading completed.");
 
@@ -82,11 +113,6 @@ internal partial class NexusSession<TNexus, TProxy>
         var breakLoop = false;
         while (State == ConnectionState.Connected)
         {
-            // Confirm that this is a NexNet transport.
-            if ((_internalState & InternalState.ProtocolConfirmed) == 0 
-                && !ConfirmProtocol(sequence, ref position, ref disconnect))
-                break;
-
             if (_recMessageHeader.IsHeaderComplete == false)
             {
                 if (_recMessageHeader.Type == MessageType.Unset)
@@ -309,35 +335,40 @@ internal partial class NexusSession<TNexus, TProxy>
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
     }
 
-    private bool ConfirmProtocol(ReadOnlySequence<byte> sequence, ref int position, ref DisconnectReason disconnect)
+    private bool ConfirmProtocol(ReadOnlySequence<byte> sequence, out DisconnectReason disconnect)
     {
         // Try again until we have enough data.
         if (sequence.Length < 8)
-            return false;
-
-        if (!ReadingHelpers.TryReadULong(sequence, _readBuffer, ref position, out var protocolHeader))
         {
-            Logger?.LogTrace("Could not read required transport header for NexNet.");
-            disconnect = DisconnectReason.ProtocolError;
+            disconnect = DisconnectReason.None;
             return false;
         }
 
-        ExtractProtocolHeader(protocolHeader,
-            out byte receivedProtocolVersion,
-            out _,
-            out _,
-            out _,
-            out var receivedProtocolTag);
-
-        if (receivedProtocolTag != ProtocolTag || receivedProtocolVersion != ProtocolVersion)
+        var headerSlice = sequence.Slice(0, 8);
+        Span<byte> header = stackalloc byte[8]; 
+        headerSlice.CopyTo(header);
+        var receivedProtocolTag = BitConverter.ToUInt32(header);
+        //var reserved1 = header[4]; // Reserved for future
+        //var reserved2 = header[5]; // Reserved for future
+        //var reserved3 = header[6]; // Reserved for future
+        var receivedProtocolVersion = header[7];
+        
+        if (receivedProtocolTag != ProtocolTag)
         {
             Logger?.LogTrace("Transport data is not a NexNet stream.");
             disconnect = DisconnectReason.ProtocolError;
             return false;
         }
 
+        if (receivedProtocolVersion != ProtocolVersion)
+        {
+            Logger?.LogTrace("Transport version is out of the range of valid versions.");
+            disconnect = DisconnectReason.ProtocolError;
+            return false;
+        }
+
         EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ProtocolConfirmed);
-        
+        disconnect = DisconnectReason.None;
         return true;
     }
 

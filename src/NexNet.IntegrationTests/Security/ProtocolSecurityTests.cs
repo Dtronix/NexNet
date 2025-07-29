@@ -3,10 +3,12 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using MemoryPack;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
 using StreamStruct;
+using LogLevel = StreamStruct.LogLevel;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -40,6 +42,9 @@ internal class ProtocolSecurityTests : BaseTests
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
         
+        await Task.Delay(1000);
+        Assert.Fail();
+        
         // Attempt to send invocation message without ClientGreeting/Authentication
         var invocation = new InvocationMessage
         {
@@ -52,8 +57,8 @@ internal class ProtocolSecurityTests : BaseTests
         await client.SendMessageWithBodyAsync(MessageType.Invocation, invocationData);
         
         var mem = new Memory<byte>(new byte[1024]);
-        await Task.Delay(100);
-        await client.Stream.ReadAtLeastAsync(mem, 1000, false);
+
+        //await client.Stream.ReadAtLeastAsync(mem, 1000, false);
 
         
         var readResult = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
@@ -62,6 +67,7 @@ internal class ProtocolSecurityTests : BaseTests
         
         // Verify connection is actually closed
         Assert.That(client.IsConnected, Is.False);
+        Assert.Fail();
     }
     /*
     /// <summary>
@@ -282,7 +288,7 @@ internal class ProtocolSecurityTests : BaseTests
     
     private RawTcpClient CreateRawTcpClient(ServerConfig configs, bool useTls)
     {
-        return new RawTcpClient(configs, useTls, base.CurrentTcpPort!.Value);
+        return new RawTcpClient(configs, useTls, base.CurrentTcpPort!.Value, Logger);
     }
     /*
     private byte[] CreateValidClientGreeting()
@@ -328,30 +334,34 @@ internal class RawTcpClient : IDisposable
     private readonly ServerConfig _configs;
     private readonly bool _useTls;
     private readonly int _port;
+    private readonly RollingLogger _logger;
     private Stream? _stream;
     private readonly CancellationTokenSource _cts = new();
-    private StreamFieldProcessor _streamProcessor;
+    private StreamFieldProcessor? _streamProcessor;
 
     public bool IsConnected => _tcpClient.Connected;
 
     public Stream? Stream => _stream;
 
-    public StreamFieldProcessor Processor => _streamProcessor;
+    public StreamFieldProcessor? Processor => _streamProcessor;
 
-    public RawTcpClient(ServerConfig configs, bool useTls, int port)
+    public RawTcpClient(ServerConfig configs, bool useTls, int port, RollingLogger logger)
     {
         _tcpClient = new TcpClient();
         _configs = configs;
         _useTls = useTls;
         _port = port;
- 
+        _logger = logger;
     }
     
     public async Task ConnectAsync()
     {
         await _tcpClient.ConnectAsync(IPAddress.Loopback, _port);
         _stream = _tcpClient.GetStream();
-        _streamProcessor = new StreamFieldProcessor(_stream);
+        _streamProcessor = new StreamFieldProcessor(_stream)
+        {
+            Logger = new RollingStreamLogger(_logger, false, LogLevel.Info)
+        };
         
         if (_useTls)
         {
@@ -363,18 +373,13 @@ internal class RawTcpClient : IDisposable
     
     public async Task SendProtocolHeaderAsync()
     {
-        const uint protocolTag = 0x4E4E5014;
-        const byte protocolVersion = 1;
-        var header = CreateProtocolHeader(protocolVersion, 0, 0, 0, protocolTag);
-        await _streamProcessor.WriteAsync("[header:ulong]", [header]);
+        byte protocolVersion = 1;
+        await _streamProcessor!.WriteAsync("[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]", [(byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, protocolVersion]);
     }
     
     public async Task ReadProtocolHeaderAsync()
     {
-        const uint protocolTag = 0x4E4E5014;
-        const byte protocolVersion = 1;
-        var header = CreateProtocolHeader(protocolVersion, 0, 0, 0, protocolTag);
-        await _streamProcessor.WriteAsync("[header:ulong]", [header]);
+        var result = await _streamProcessor!.ReadAsync("[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]");
     }
     
     public async Task SendMessageWithBodyAsync(MessageType messageType, byte[] messageBody)
@@ -390,9 +395,7 @@ internal class RawTcpClient : IDisposable
     }
     private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
     {
-        int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
-        var combined = ((ulong)high << 32) | ((ulong)protocolTag & 0xFFFFFFFF);
-        return combined;
+        return BitConverter.ToUInt64([(byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, 1]);
     }
     
     public void Dispose()

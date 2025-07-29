@@ -312,6 +312,11 @@ internal partial class NexusSession<TNexus, TProxy>
             _pipeOutput.GetSpan(1)[0] = (byte)type;
             _pipeOutput.Advance(1);
             _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+            Logger?.LogTrace($"Sending {type} header.");
+        }
+        else
+        {
+            Logger?.LogTrace("Sending raw data.");
         }
 
         // Check the post header data.
@@ -323,8 +328,6 @@ internal partial class NexusSession<TNexus, TProxy>
             _pipeOutput.Advance(length);
             _config.InternalOnSend?.Invoke(this, data.ToArray());
         }
-
-        Logger?.LogTrace($"Sending {type} header.");
 
         FlushResult result = default;
         try
