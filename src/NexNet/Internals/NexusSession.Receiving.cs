@@ -122,8 +122,19 @@ internal partial class NexusSession<TNexus, TProxy>
                         //_config.Logger?.LogTrace($"Could not read next header type. No more data.");
                         break;
                     }
-
                     _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
+                    
+                    // Ensure that the connection is completed.
+                    // If not, that the server/client/reconnection greeting  is the first message received.
+                    if ((_internalState & InternalState.NexusCompletedConnection) == 0 
+                        && (_recMessageHeader.Type != MessageType.ClientGreeting
+                            && _recMessageHeader.Type != MessageType.ServerGreeting
+                            && _recMessageHeader.Type != MessageType.ClientGreetingReconnection))
+                    {
+                        _config.Logger?.LogError($"Received {_recMessageHeader.Type} request prior to connection completion");
+                        return new ProcessResult(new SequencePosition(), DisconnectReason.ProtocolError, true);
+                    }
+                    
                     position++;
                     //Logger?.LogTrace($"Received {_recMessageHeader.Type} header.");
 
@@ -523,12 +534,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.Invocation:
             {
-                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
-                {
-                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
-                    return DisconnectReason.ProtocolError;
-                }
-
                 var invocationRequestMessage = message.As<InvocationMessage>();
                 // Throttle invocations.
 
@@ -574,12 +579,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.InvocationResult:
             {
-                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
-                {
-                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
-                    return DisconnectReason.ProtocolError;
-                }
-                
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
                 break;
@@ -587,11 +586,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.InvocationCancellation:
             {
-                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
-                {
-                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
-                    return DisconnectReason.ProtocolError;
-                }
                 var invocationCancellationRequestMessage = message.As<InvocationCancellationMessage>();
                 _nexus.CancelInvocation(invocationCancellationRequestMessage);
                 break;
@@ -599,11 +593,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
             case MessageType.DuplexPipeUpdateState:
             {
-                if ((_internalState & InternalState.NexusCompletedConnection) == 0)
-                {
-                    _config.Logger?.LogError($"Received {messageType} request prior to connection completion.");
-                    return DisconnectReason.ProtocolError;
-                }
                 var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
                 var updateStateResult = PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
                 if (updateStateResult != DisconnectReason.None)

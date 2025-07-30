@@ -3,6 +3,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using MemoryPack;
+using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -27,80 +29,65 @@ internal class ProtocolSecurityTests : BaseTests
     /// Tests that a raw TCP connection attempting to send invocation messages
     /// without proper ClientGreeting handshake is rejected with ProtocolError.
     /// </summary>
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    public async Task RawTcpConnection_SkipClientGreeting_SendInvocation_ShouldDisconnectWithProtocolError(Type type)
+    [Test]
+    public async Task SkipClientGreeting_SendInvocation_ShouldDisconnectWithProtocolError()
     {
-        var serverConfig = CreateServerConfig(type);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         
-        using var client = CreateRawTcpClient(serverConfig, type == Type.TcpTls);
+        using var client = CreateRawTcpClient(serverConfig, false);
         await client.ConnectAsync();
         
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
         
-        await Task.Delay(1000);
-        Assert.Fail();
-        
         // Attempt to send invocation message without ClientGreeting/Authentication
-        var invocation = new InvocationMessage
+        var invocationData = MemoryPackSerializer.Serialize(new InvocationMessage
         {
             InvocationId = 1,
             MethodId = 123,
             Arguments = Memory<byte>.Empty
-        };
+        });
         
-        var invocationData = MemoryPackSerializer.Serialize(invocation);
-        await client.SendMessageWithBodyAsync(MessageType.Invocation, invocationData);
-        
-        var mem = new Memory<byte>(new byte[1024]);
-
-        //await client.Stream.ReadAtLeastAsync(mem, 1000, false);
-
-        
-        var readResult = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
-        var readResult2 = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
-        readResult.TryRead<MessageType>("type", out var messageType);
-        
-        // Verify connection is actually closed
-        Assert.That(client.IsConnected, Is.False);
-        Assert.Fail();
+        await client.SendMessageWithBodyAsync(MessageType.Invocation, invocationData).Timeout(1);
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
-    /*
+    
     /// <summary>
     /// Tests that sending multiple ClientGreeting messages results in ProtocolError.
     /// </summary>
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    public async Task RawTcpConnection_MultipleClientGreetings_ShouldDisconnectWithProtocolError(Type type)
+    [Test]
+    public async Task MultipleClientGreetings_ShouldDisconnectWithProtocolError()
     {
-        var (server, _, _, _, configs) = await Setup(type);
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
         
-        using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
+        using var client = CreateRawTcpClient(serverConfig, false);
         await client.ConnectAsync();
         
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
+        await client.ReadProtocolHeaderAsync();
         
-        // Send first ClientGreeting (valid)
-        var greeting = CreateValidClientGreeting();
-        await client.SendMessageAsync(MessageType.ClientGreeting, greeting);
-        
-        // Wait for ServerGreeting response
-        var serverGreeting = await client.WaitForServerGreetingAsync();
-        Assert.That(serverGreeting, Is.Not.Null);
-        
-        // Send second ClientGreeting (should be rejected)
-        await client.SendMessageAsync(MessageType.ClientGreeting, greeting);
-        
-        // Server should disconnect with ProtocolError
-        var disconnectReason = await client.WaitForDisconnectAsync();
-        Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
+        var clientGreeting = MemoryPackSerializer.Serialize(new ClientGreetingMessage()
+        {
+            ServerNexusMethodHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
+            ClientNexusMethodHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            Version = 1
+        });
+
+        await client.SendMessageWithBodyAsync(MessageType.ClientGreeting, clientGreeting).Timeout(1);
+        await client.SendMessageWithBodyAsync(MessageType.ClientGreeting, clientGreeting).Timeout(1);
+
+        // Ignore the message
+        await client.Processor.ReadAsync(client.ProtocolMessageDefinition);
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
-    
+    /*
     /// <summary>
     /// Tests that sending invalid protocol header results in disconnection.
     /// </summary>
@@ -109,19 +96,19 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_InvalidProtocolHeader_ShouldDisconnectWithProtocolError(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send invalid protocol header (wrong tag)
         var invalidHeader = CreateProtocolHeader(ProtocolVersion, 0, 0, 0, 0xDEADBEEF);
         await client.SendRawAsync(BitConverter.GetBytes(invalidHeader));
-        
+
         // Server should disconnect with ProtocolError
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
     }
-    
+
     /// <summary>
     /// Tests that sending invalid protocol version results in disconnection.
     /// </summary>
@@ -130,19 +117,19 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_InvalidProtocolVersion_ShouldDisconnectWithProtocolError(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send invalid protocol header (wrong version)
         var invalidHeader = CreateProtocolHeader(99, 0, 0, 0, ProtocolTag);
         await client.SendRawAsync(BitConverter.GetBytes(invalidHeader));
-        
+
         // Server should disconnect with ProtocolError
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
     }
-    
+
     /// <summary>
     /// Tests that sending malformed message headers results in disconnection.
     /// </summary>
@@ -151,21 +138,21 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_MalformedMessageHeader_ShouldDisconnectWithProtocolError(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
-        
+
         // Send invalid message type
         await client.SendRawAsync(new byte[] { 255 }); // Invalid message type
-        
+
         // Server should disconnect with ProtocolError
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
     }
-    
+
     /// <summary>
     /// Tests that sending ClientGreetingReconnection without prior connection results in ProtocolError.
     /// </summary>
@@ -174,22 +161,22 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_ReconnectionWithoutPriorConnection_ShouldDisconnectWithProtocolError(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
-        
+
         // Send ClientGreetingReconnection without prior connection
         var greeting = CreateValidClientGreeting();
         await client.SendMessageAsync(MessageType.ClientGreetingReconnection, greeting);
-        
+
         // Server should disconnect with ProtocolError (reconnection logic disabled in current version)
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
     }
-    
+
     /// <summary>
     /// Tests that sending messages with incorrect hash values results in mismatch disconnection.
     /// </summary>
@@ -198,22 +185,22 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_InvalidMethodHashes_ShouldDisconnectWithMismatch(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
-        
+
         // Send ClientGreeting with invalid server hash
         var greeting = CreateClientGreetingWithInvalidHashes();
         await client.SendMessageAsync(MessageType.ClientGreeting, greeting);
-        
+
         // Server should disconnect with ServerMismatch or ClientMismatch
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch).Or.EqualTo(DisconnectReason.ClientMismatch));
     }
-    
+
     /// <summary>
     /// Tests that attempting to send server-only messages from client results in ProtocolError.
     /// </summary>
@@ -222,23 +209,23 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_ClientSendsServerGreeting_ShouldDisconnectWithProtocolError(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
-        
+
         // Send ServerGreeting from client (should be rejected)
         var serverGreeting = new ServerGreetingMessage { Version = 0, ClientId = 12345 };
         var serialized = MemoryPackSerializer.Serialize(serverGreeting);
         await client.SendMessageAsync(MessageType.ServerGreeting, serialized);
-        
+
         // Server should disconnect with ProtocolError
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError));
     }
-    
+
     /// <summary>
     /// Tests that the server properly times out connections that don't complete handshake.
     /// </summary>
@@ -247,18 +234,18 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_IncompleteHandshake_ShouldTimeoutAndDisconnect(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send protocol header but don't send ClientGreeting
         await client.SendProtocolHeaderAsync();
-        
+
         // Wait for handshake timeout (should be shorter than test timeout)
         var disconnectReason = await client.WaitForDisconnectAsync(TimeSpan.FromSeconds(30));
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.Timeout));
     }
-    
+
     /// <summary>
     /// Tests buffer overflow protection by sending oversized messages.
     /// </summary>
@@ -267,20 +254,20 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task RawTcpConnection_OversizedMessage_ShouldDisconnectGracefully(Type type)
     {
         var (server, _, _, _, configs) = await Setup(type);
-        
+
         using var client = CreateRawTcpClient(configs, type == Type.TcpTls);
         await client.ConnectAsync();
-        
+
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
-        
+
         // Send message with extremely large body length (1GB)
         var header = new byte[] { (byte)MessageType.ClientGreeting };
         var bodyLength = BitConverter.GetBytes((uint)(1024 * 1024 * 1024)); // 1GB
-        
+
         await client.SendRawAsync(header);
         await client.SendRawAsync(bodyLength);
-        
+
         // Server should handle this gracefully and disconnect
         var disconnectReason = await client.WaitForDisconnectAsync();
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.ProtocolError).Or.EqualTo(DisconnectReason.SocketError));
@@ -343,7 +330,7 @@ internal class RawTcpClient : IDisposable
 
     public Stream? Stream => _stream;
 
-    public StreamFieldProcessor? Processor => _streamProcessor;
+    public StreamFieldProcessor Processor => _streamProcessor;
 
     public RawTcpClient(ServerConfig configs, bool useTls, int port, RollingLogger logger)
     {
@@ -370,16 +357,46 @@ internal class RawTcpClient : IDisposable
             _stream = sslStream;
         }
     }
+
+    public async Task AssertVerify(string definition, object?[]? expectedValues)
+    {
+        var result = await _streamProcessor!.VerifyAsync(definition, expectedValues);
+        Assert.That(result.ValidationErrors, Is.Empty);
+    }
     
+    public async Task AssertDisconnectReason(DisconnectReason reason)
+    {
+        await AssertVerify("[type:byte]", [(byte)reason]);
+    }
+
+    public readonly string ProtocolMessageDefinition = "[type:byte][body_length:ushort][body:body_length]";
+    
+    private static readonly string _protocolHeader =
+        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
+
+    private static byte _protocolVersion = 1;
+    private static readonly object[] _protocolHeaderValues =
+        [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, _protocolVersion];
     public async Task SendProtocolHeaderAsync()
     {
-        byte protocolVersion = 1;
-        await _streamProcessor!.WriteAsync("[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]", [(byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, protocolVersion]);
+        var result = await _streamProcessor!.WriteAsync(_protocolHeader, _protocolHeaderValues).Timeout(1);
+        Assert.That(result, Is.True);
     }
     
     public async Task ReadProtocolHeaderAsync()
     {
-        var result = await _streamProcessor!.ReadAsync("[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]");
+        if (Stream == null) 
+            throw new InvalidOperationException("Not connected");
+        await AssertVerify(_protocolHeader, _protocolHeaderValues);
+    }
+    
+    public async Task AssertWrite(string definition, object?[] data)
+    {
+        if (Stream == null) 
+            throw new InvalidOperationException("Not connected");
+        
+        var result = await _streamProcessor!.WriteAsync(definition, data).Timeout(1);
+        Assert.That(result, Is.True);
     }
     
     public async Task SendMessageWithBodyAsync(MessageType messageType, byte[] messageBody)
@@ -387,17 +404,12 @@ internal class RawTcpClient : IDisposable
         if (Stream == null) 
             throw new InvalidOperationException("Not connected");
         
-        await _streamProcessor.WriteAsync("[type:byte][body_length:ushort][body:body_length]", [
+        await AssertWrite(ProtocolMessageDefinition, [
             (byte)messageType,
             (ushort)messageBody.Length,
             messageBody
-        ]);
+        ]).Timeout(1);
     }
-    private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
-    {
-        return BitConverter.ToUInt64([(byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, 1]);
-    }
-    
     public void Dispose()
     {
         _cts.Cancel();

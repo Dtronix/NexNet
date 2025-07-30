@@ -26,4 +26,15 @@ public interface IInvocationMethodHash
     /// Used to determine if certain invocations are allowed.
     /// </summary>
     public static abstract FrozenSet<long> VersionMethodHashSet { get; }
+
+    
+    /// <summary>
+    /// This is a hash based upon the interface's method names, arguments and return values.
+    /// Used to ensure the other connection is in sync with this connection's hub.
+    /// </summary>
+    public static int GetMethodHash<T>()
+        where T : IInvocationMethodHash
+    {
+        return T.MethodHash;
+    }
 }

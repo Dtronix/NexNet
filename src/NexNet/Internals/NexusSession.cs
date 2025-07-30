@@ -30,10 +30,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
     
-    // NNP(DC4) = NexNetProtocol(Device Control Four)
-    // [N] [N] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
+    // NnP(DC4) = NexNetProtocol(Device Control Four)
+    // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
     // ReSharper disable twice StaticMemberInGenericType
-    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'N', (byte)'P', (byte)'\u0014', 0, 0, 0, 1 };
+    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, 1 };
     private static readonly uint ProtocolTag = BitConverter.ToUInt32(_protocolHeader.Slice(0, 4).Span);
     private const byte ProtocolVersion = 1;
     
