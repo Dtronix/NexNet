@@ -122,7 +122,14 @@ internal partial class NexusSession<TNexus, TProxy>
                         //_config.Logger?.LogTrace($"Could not read next header type. No more data.");
                         break;
                     }
-                    _recMessageHeader.Type = (MessageType)sequence.Slice(position, 1).FirstSpan[0];
+
+                    var headerMessageTypeByte = sequence.Slice(position, 1).FirstSpan[0];
+                    
+                    // This is a disconnect message
+                    if (headerMessageTypeByte is >= 20 and < 39)
+                        return new ProcessResult(new SequencePosition(), (DisconnectReason)headerMessageTypeByte, false);
+                    
+                    _recMessageHeader.Type = (MessageType)headerMessageTypeByte;
                     
                     // Ensure that the connection is completed.
                     // If not, that the server/client/reconnection greeting  is the first message received.
@@ -149,22 +156,7 @@ internal partial class NexusSession<TNexus, TProxy>
                                 await SendHeader(MessageType.Ping).ConfigureAwait(false);
 
                             continue;
-
-                        case MessageType.DisconnectSocketError:
-                        case MessageType.DisconnectGraceful:
-                        case MessageType.DisconnectProtocolError:
-                        case MessageType.DisconnectTimeout:
-                        case MessageType.DisconnectClientMismatch:
-                        case MessageType.DisconnectServerMismatch:
-                        case MessageType.DisconnectServerShutdown:
-                        case MessageType.DisconnectAuthentication:
-                        case MessageType.DisconnectServerRestarting:
-                            // Translate the type over to the reason.
-                            disconnect = (DisconnectReason)_recMessageHeader.Type;
-                            issueDisconnectMessage = false;
-                            breakLoop = true;
-                            break;
-
+                        
                         // HEADER + BODY
                         case MessageType.ClientGreeting:
                         case MessageType.ClientGreetingReconnection:
