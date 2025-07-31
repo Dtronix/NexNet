@@ -95,8 +95,9 @@ partial class InvocationSampleServerNexus
         return new ValueTask<int>(1);
     }
 }
+
 ```
-#### Usage
+#### Client and Server Usage
 ```csharp
 var client = InvocationSampleClientNexus.CreateClient(ClientConfig, new InvocationSampleClientNexus());
 var server = InvocationSampleServerNexus.CreateServer(ServerConfig, () => new InvocationSampleServerNexus());
@@ -234,6 +235,17 @@ WebSockets enable real-time, bidirectional data exchange between client and serv
 HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
 
 Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
+
+## Transport Selection Guide
+
+| Scenario                 | Recommended Transport | Reason                                          |
+|--------------------------|-----------------------|-------------------------------------------------|
+| Same machine IPC         | Unix Domain Sockets   | Highest performance, no network overhead        |
+| Local network            | TCP                   | Simple, reliable, fast                          |
+| Internet/WAN             | TLS over TCP          | Secure, widely supported                        |
+| Mobile/unstable networks | QUIC                  | Connection migration, better congestion control |
+| Web applications         | WebSockets            | Browser compatibility, firewall-friendly        |
+| Reverse proxy setups     | HttpSockets           | Lower overhead than WebSockets                  |
 
 ## ASP.NET Server Integration
 
