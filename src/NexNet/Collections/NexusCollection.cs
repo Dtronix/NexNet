@@ -350,6 +350,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (!initResult)
             return;
 
+        // Ensure all initial data is fully flushed before marking client as ready
+        await writer.Writer.FlushAsync().ConfigureAwait(false);
+        
         client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
         if (reader != null)
