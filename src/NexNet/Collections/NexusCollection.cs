@@ -34,7 +34,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
     
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<ProcessRequest>? _processChannel;
-    private ConcurrentDictionary<int, TaskCompletionSource<bool>>? _ackTcs;
+    private TaskCompletionSource<bool>? _ackTcs;
     protected readonly INexusLogger? Logger;
     private TaskCompletionSource? _clientConnectTcs;
     private TaskCompletionSource? _disconnectTcs;
@@ -42,7 +42,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected bool IsClientResetting { get; private set; }
 
     public Task DisconnectedTask => _disconnectedTask;
-
+    
+    private SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
 
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent = new();
     
@@ -74,10 +75,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
             
             // This task is always compelted on the server.
             _disconnectedTask = Task.CompletedTask;
-        }
-        else
-        {
-            _ackTcs = new ConcurrentDictionary<int, TaskCompletionSource<bool>>();
         }
     }
 
@@ -155,8 +152,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     return clearResult;
 
                 case NexusCollectionAckMessage ackOperation:
-                    if(_ackTcs!.TryRemove(ackOperation.Id, out var tcs))
-                        tcs.TrySetResult(true);
+                    var ackTcs = _ackTcs;
+                    if(ackTcs is null)
+                        Logger?.LogError($"ACK was not setup for action with id: {ackOperation.Id}.");
+                    else
+                        ackTcs.TrySetResult(true);
                     return true;
             }
 
@@ -438,10 +438,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     
                     if (message is NexusCollectionAckMessage ack)
                     {
-                        if(collection._ackTcs!.TryRemove(ack.Id, out var ackTcs))
+                        var ackTcs = collection._ackTcs;
+                        if(ackTcs is null)
+                            collection.Logger?.LogError($"ACK was not setup for action with id: {ack.Id}.");
+                        else
                             ackTcs.TrySetResult(true);
-                        else 
-                            collection.Logger?.LogWarning($"Could not find AckTcs for id {ack.Id}.");
                     }
                     
                     collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
@@ -501,7 +502,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
             //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _ackTcs!.TryAdd(message.Id, tcs);
+            _ackTcs = tcs;
             var result = await _client!.Writer!.WriteAsync(message).ConfigureAwait(false);
 
             // Since the message is only used by one writer, return it directly to the cache.
@@ -584,10 +585,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
     protected void ClientDisconnected()
     {
-        foreach (var taskCompletionSource in _ackTcs!)
-            taskCompletionSource.Value.TrySetResult(false);
-        
-        _ackTcs.Clear();
+        _ackTcs?.TrySetResult(false);
 
         try
         {
@@ -605,6 +603,20 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected abstract void OnClientDisconnected();
 
     protected abstract int GetVersion();
+
+    protected async ValueTask<IDisposable> OperationLock()
+    {
+        await _operationSemaphore.WaitAsync().ConfigureAwait(false);
+        return new SemaphoreSlimDisposable(_operationSemaphore);
+    }
+    
+    private readonly struct SemaphoreSlimDisposable(SemaphoreSlim semaphore) : IDisposable
+    { 
+        public void Dispose()
+        {
+            semaphore.Release();
+        }
+    }
     
 
     private class Client

@@ -5,6 +5,7 @@ using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Text;
 using NexNet.Internals.Collections.Lists;
+using NexNet.Logging;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -17,6 +18,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
 {
     internal ListState State;
     private readonly IndexedCircularList<Operation<T>> _history;
+    private INexusLogger? _logger;
     
     public record ListState(ImmutableList<T> List, int Version);
 
@@ -45,13 +47,15 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     /// Initializes a new instance of the <see cref="VersionedList{T}"/> class with a specified initial capacity.
     /// </summary>
     /// <param name="maxVersions">The initial number of elements that the list can contain.</param>
-    public VersionedList(int maxVersions = 256)
+    /// <param name="logger"></param>
+    public VersionedList(int maxVersions = 256, INexusLogger? logger = null)
     {
         MaxVersions = maxVersions;
         State = new ListState(ImmutableList<T>.Empty, 0);
         _history = new IndexedCircularList<Operation<T>>(maxVersions);
-    }   
-
+        _logger = logger;
+    }
+    
     /// <summary>
     /// Process a client operation generated at clientVersion.
     /// Rebase, apply, record, and assign new version.
@@ -201,6 +205,12 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
 
 
     public int IndexOf(T item) => State.List.IndexOf(item);
+    public int IndexOf(T item, out int version)
+    {
+        var state = State;
+        version = state.Version;
+        return state.List.IndexOf(item);
+    }
 
     public bool Contains(T item) => State.List.Contains(item);
 
@@ -215,22 +225,30 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     {
         var itemCount = State.List.Count;
 
+        _logger?.LogDebug($"Validating operation: {op.GetType().Name}, List count: {itemCount}, Version: {State.Version}");
+
         switch (op)
         {
             case InsertOperation<T> insOp when insOp.Index < 0 || insOp.Index > itemCount:
+                _logger?.LogDebug($"Invalid InsertOperation: Index {insOp.Index} is out of bounds (0-{itemCount})");
+                return false;
             case RemoveOperation<T> rmOp when rmOp.Index < 0 || rmOp.Index >= itemCount:
+                _logger?.LogDebug($"Invalid RemoveOperation: Index {rmOp.Index} is out of bounds (0-{itemCount - 1})");
+                return false;
             case ModifyOperation<T> modOp when modOp.Index < 0 || modOp.Index >= itemCount:
+                _logger?.LogDebug($"Invalid ModifyOperation: Index {modOp.Index} is out of bounds (0-{itemCount - 1})");
+                return false;
             case MoveOperation<T> mvOp when
                 mvOp.FromIndex < 0 ||
                 mvOp.FromIndex >= itemCount ||
                 mvOp.ToIndex < 0 ||
                 mvOp.ToIndex >= itemCount ||
                 mvOp.FromIndex == mvOp.ToIndex:
-            {
+                _logger?.LogDebug($"Invalid MoveOperation: FromIndex {mvOp.FromIndex}, ToIndex {mvOp.ToIndex}, bounds (0-{itemCount - 1})");
                 return false;
-            }
         }
         
+        _logger?.LogDebug($"Operation validation successful: {op.GetType().Name}");
         return true;
     }
 

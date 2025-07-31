@@ -1,5 +1,4 @@
 ﻿using NexNet.Collections;
-using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -12,6 +11,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     {
         var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync();
+        
+        var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 40);
 
         // Create rapid sequence of operations that might cause event racing
         var tasks = new List<Task>();
@@ -21,7 +22,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
             tasks.Add(client.Proxy.IntListBi.AddAsync(i + 100));
         }
 
-        await Task.WhenAll(tasks).Timeout(10);
+        await completeTask.Wait();
 
         Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(40));
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));

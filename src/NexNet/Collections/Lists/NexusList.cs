@@ -11,7 +11,7 @@ namespace NexNet.Collections.Lists;
 
 internal partial class NexusList<T> : NexusCollection, INexusList<T>
 {
-    private readonly VersionedList<T> _itemList = new(1024);
+    private readonly VersionedList<T> _itemList;
     private List<T>? _clientInitialization;
     private int _clientInitializationVersion = -1;
 
@@ -23,7 +23,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public NexusList(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
         : base(id, mode, config, isServer)
     {
-
+        _itemList = new(1024, config.Logger);
     }
 
     protected override int GetVersion() => _itemList.Version;
@@ -129,64 +129,75 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
-
+    public int IndexOf(T item) => _itemList.IndexOf(item);
     public async Task<bool> RemoveAsync(T item)
     {
-        var index = _itemList.IndexOf(item);
-        
-        if (index == -1)
-            return false;
-        
         var message = NexusListRemoveMessage.Rent();
-        
-        message.Version = _itemList.Version;
-        message.Index = index;
-        await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        return true;
-    }
-    public int IndexOf(T item) => _itemList.IndexOf(item);
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            var index = _itemList.IndexOf(item, out var version);
 
-    public Task<bool> InsertAsync(int index, T item)
+            if (index == -1)
+                return false;
+
+            message.Version = version;
+            message.Index = index;
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
+    }
+    
+    public async Task<bool> InsertAsync(int index, T item)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListInsertMessage.Rent();
-        
-        message.Version = _itemList.Version;
-        message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(item);
-        return UpdateAndWaitAsync(message);
+
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            message.Version = _itemList.Version;
+            message.Index = index;
+            message.Value = MemoryPackSerializer.Serialize(item);
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
     }
-    
-    public Task<bool> MoveAsync(int fromIndex, int toIndex)
+
+    public async Task<bool> MoveAsync(int fromIndex, int toIndex)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
         var message = NexusListMoveMessage.Rent();
-        
-        message.Version = _itemList.Version;
-        message.FromIndex = fromIndex;
-        message.ToIndex = toIndex;
-        return UpdateAndWaitAsync(message);
+
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            message.Version = _itemList.Version;
+            message.FromIndex = fromIndex;
+            message.ToIndex = toIndex;
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
     }
 
-    public Task<bool> ReplaceAsync(int index, T value)
+    public async Task<bool> ReplaceAsync(int index, T value)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListReplaceMessage.Rent();
-        
-        message.Version = _itemList.Version;
-        message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(value);
-        return UpdateAndWaitAsync(message);
+
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            message.Version = _itemList.Version;
+            message.Index = index;
+            message.Value = MemoryPackSerializer.Serialize(value);
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
     }
 
-    public Task<bool> RemoveAtAsync(int index)
+    public async Task<bool> RemoveAtAsync(int index)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListRemoveMessage.Rent();
-        
-        message.Version = _itemList.Version;
-        message.Index = index;
-        return UpdateAndWaitAsync(message);
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            message.Version = _itemList.Version;
+            message.Index = index;
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
     }
     
     public Task<bool> AddAsync(T item)
