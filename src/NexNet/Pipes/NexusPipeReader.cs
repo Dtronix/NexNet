@@ -35,6 +35,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private readonly INexusLogger? _logger;
     private long _examinedPosition;
     private long _bufferTailPosition;
+    private int _bufferId;
 
     /// <summary>
     /// Length of data that has been buffered.
@@ -84,6 +85,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
     /// <returns>The length of the buffered data.</returns>
     public async ValueTask<NexusPipeBufferResult> BufferData(ReadOnlySequence<byte> data)
     {
+        
+        // TODO: Remove!
+        var bufferId = Interlocked.Increment(ref _bufferId);
+        _logger?.LogTrace($"Receiving[id:{bufferId}] {data.Length} bytes [{string.Join(",", data.ToArray())}]");
         //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
         var length = (int)data.Length;
         var bufferLength = _buffer.Length + length;

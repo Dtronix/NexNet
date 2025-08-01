@@ -330,7 +330,7 @@ internal class RawTcpClient : IDisposable
 
     public Stream? Stream => _stream;
 
-    public StreamFieldProcessor Processor => _streamProcessor;
+    public StreamFieldProcessor Processor => _streamProcessor!;
 
     public RawTcpClient(ServerConfig configs, bool useTls, int port, RollingLogger logger)
     {

@@ -27,8 +27,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
-
-    private static int _ackId = 0; 
     
     private readonly SnapshotList<Client>? _nexusPipeList;
     
@@ -86,7 +84,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
             case NexusCollectionResetStartMessage:
             case NexusCollectionResetValuesMessage:
             case NexusCollectionResetCompleteMessage:
-            case NexusCollectionAckMessage:
             {
                 Logger?.LogError($"Server received an invalid message from the client. {message.GetType()}");
                 return new ServerProcessMessageResult(null, true, false);
@@ -116,6 +113,18 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected abstract bool OnClientResetValues(ReadOnlySpan<byte> data);
     protected abstract bool OnClientResetStarted(int version, int totalValues);
     protected abstract bool OnClientResetCompleted();
+
+    protected void ProcessFlags(INexusCollectionMessage serverMessage)
+    {
+        if ((serverMessage.Flags & NexusCollectionMessageFlags.Ack) != 0)
+        {
+            var ackTcs = _ackTcs;
+            if(ackTcs is null)
+                Logger?.LogError("No operation is awaiting an ACK.");
+            else
+                ackTcs.TrySetResult(true);
+        }
+    }
     
     private bool ClientProcessMessage(INexusCollectionMessage serverMessage)
     {
@@ -150,14 +159,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     var clearResult = OnClientClear(message.Version);
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return clearResult;
-
-                case NexusCollectionAckMessage ackOperation:
-                    var ackTcs = _ackTcs;
-                    if(ackTcs is null)
-                        Logger?.LogError($"ACK was not setup for action with id: {ackOperation.Id}.");
-                    else
-                        ackTcs.TrySetResult(true);
-                    return true;
             }
 
             if (IsClientResetting)
@@ -235,21 +236,37 @@ internal abstract class NexusCollection : INexusCollectionConnector
                         if (result.Message != null)
                         {
                             // Set the total clients that should need to broadcast prior to returning.
-                            result.Message.Remaining = collection._nexusPipeList!.Count;
+                            // TODO: Review updating this return system now that acks are handled by message flags.
+                            result.Message.Remaining = collection._nexusPipeList!.Count - 1;
                             foreach (var client in collection._nexusPipeList)
                             {
                                 try
                                 {
-                                    // If the client is not accepting updates, then ignore the update and allow
-                                    // for future poling for updates.  This happens when a client is initializing
-                                    // all the items.
-                                    if (client.State == Client.StateType.AcceptingUpdates)
+                                    // If this is the originating client, notify that the process has been completed.
+                                    if (result.Ack && !collection.DoNotSendAck && req.Client == client)
                                     {
-                                        if (!client.MessageSender.Writer.TryWrite(result.Message))
+                                        var clientResponse = result.Message.Clone();
+                                        clientResponse.Flags |= NexusCollectionMessageFlags.Ack;
+                                        if (!client.MessageSender.Writer.TryWrite(clientResponse))
                                         {
                                             // Complete the pipe as it is full and not writing to the client at a decent
                                             // rate.
                                             await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        // If the client is not accepting updates, then ignore the update and allow
+                                        // for future poling for updates.  This happens when a client is initializing
+                                        // all the items.
+                                        if (client.State == Client.StateType.AcceptingUpdates)
+                                        {
+                                            if (!client.MessageSender.Writer.TryWrite(result.Message))
+                                            {
+                                                // Complete the pipe as it is full and not writing to the client at a decent
+                                                // rate.
+                                                await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                            }
                                         }
                                     }
                                 }
@@ -262,20 +279,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
                         }
 
                         req.Tcs?.TrySetResult(true);
-
-                        // Notify the sending client that the operation was complete.
-                        if (result.Ack && req.Client != null && !collection.DoNotSendAck)
-                        {
-                            var ackMessage = NexusCollectionAckMessage.Rent();
-                            ackMessage.Remaining = 1;
-                            ackMessage.Id = req.Message.Id;
-                            if (!req.Client.MessageSender.Writer.TryWrite(ackMessage))
-                            {
-                                ackMessage.ReturnToCache();
-                                req.Client.Session.Logger?.LogWarning("Could not write to client message processor.");
-                                await req.Client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
-                            }
-                        }
                     }
                 }
                 catch (Exception e)
@@ -435,18 +438,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
                 await foreach (var message in collection._client!.Reader!.ConfigureAwait(false))
                 {
-                    
-                    if (message is NexusCollectionAckMessage ack)
-                    {
-                        var ackTcs = collection._ackTcs;
-                        if(ackTcs is null)
-                            collection.Logger?.LogError($"ACK was not setup for action with id: {ack.Id}.");
-                        else
-                            ackTcs.TrySetResult(true);
-                    }
-                    
                     collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
                     var success = collection.ClientProcessMessage(message);
+                    
+                    if(success)
+                        collection.ProcessFlags(message);
                     
                     // Don't return these messages to the cache as they are created on reading.
                     //operation.ReturnToCache();
@@ -498,8 +494,6 @@ internal abstract class NexusCollection : INexusCollectionConnector
         }
         else
         {
-            message.Id = Interlocked.Increment(ref _ackId);
-
             //TODO: Review using PooledValueTask; https://mgravell.github.io/PooledAwait/
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _ackTcs = tcs;

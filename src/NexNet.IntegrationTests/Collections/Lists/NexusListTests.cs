@@ -1,4 +1,6 @@
-﻿using NexNet.Collections;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NUnit.Framework;
@@ -44,8 +46,10 @@ internal class NexusListTests : NexusCollectionBaseTests
         await client.Proxy.IntListBi.InsertAsync(0, 1);
         Assert.Multiple(() =>
         {
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
-            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 2, 3]));
+            var clist = client.Proxy.IntListBi.ToArray();
+            var slist = serverNexus.IntListBi.ToArray();
+            Assert.That(clist, Is.EquivalentTo(slist));
+            Assert.That(clist, Is.EquivalentTo([1, 2, 3]));
         });
     }
 
