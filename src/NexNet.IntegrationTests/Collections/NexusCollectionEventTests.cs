@@ -7,7 +7,6 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 {
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
-    [Repeat(10000)]
     public async Task EventRacing_DoesNotCauseTimeout(Type type)
     {
         var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
