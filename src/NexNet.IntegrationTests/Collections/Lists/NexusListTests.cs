@@ -373,7 +373,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         await serverNexus.IntListBi.ClearAsync().Timeout(1);
         await resetEvent.Wait();
 
-        Assert.That(client.Proxy.IntListBi, Is.Empty);
+        Assert.That(client.Proxy.IntListBi.ToArray(), Is.Empty);
     }
     
     [TestCase(Type.Quic)]
