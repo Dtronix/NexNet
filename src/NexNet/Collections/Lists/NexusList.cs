@@ -200,9 +200,18 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         }
     }
     
-    public Task<bool> AddAsync(T item)
+    public async Task<bool> AddAsync(T item)
     {
-        return InsertAsync(_itemList.Count, item);
+        var message = NexusListInsertMessage.Rent();
+
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            var state = _itemList.State;
+            message.Version = state.Version;
+            message.Index = state.List.Count;
+            message.Value = MemoryPackSerializer.Serialize(item);
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
     }
 
     public T this[int index] => _itemList[index];
