@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Collections.Specialized;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -208,12 +207,15 @@ internal abstract class NexusCollection : INexusCollectionConnector
             {
                 try
                 {
-                    collection.Logger?.LogDebug("Started broadcast reading loop.");
+                    collection.Logger?.LogTrace("Started broadcast reading loop.");
                     await foreach (var req in collection._processChannel!.Reader
                                        .ReadAllAsync(collection._broadcastCancellation!.Token)
                                        .ConfigureAwait(false))
                     {
+                        collection.Logger?.LogTrace($"Server received broadcast message request {req.Message}.");
                         var result = collection.ServerProcessMessage(req.Message);
+                        
+                        collection.Logger?.LogTrace($"Server received message type: {result.Message?.GetType()}");
                         
                         if(req.Message is INexusCollectionValueMessage valueMessage)
                             valueMessage.ReturnValueToPool();
@@ -249,9 +251,14 @@ internal abstract class NexusCollection : INexusCollectionConnector
                                         clientResponse.Flags |= NexusCollectionMessageFlags.Ack;
                                         if (!client.MessageSender.Writer.TryWrite(clientResponse))
                                         {
+                                            collection.Logger?.LogTrace("ACK Client Could not send to client collection");
                                             // Complete the pipe as it is full and not writing to the client at a decent
                                             // rate.
                                             await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                        }
+                                        else
+                                        {
+                                            collection.Logger?.LogTrace("ACK Client Sent to client collection");
                                         }
                                     }
                                     else
@@ -263,23 +270,39 @@ internal abstract class NexusCollection : INexusCollectionConnector
                                         {
                                             if (!client.MessageSender.Writer.TryWrite(result.Message))
                                             {
+                                                collection.Logger?.LogTrace("Could not send to client collection");
                                                 // Complete the pipe as it is full and not writing to the client at a decent
                                                 // rate.
                                                 await client.Pipe.CompleteAsync().ConfigureAwait(false);
                                             }
+                                            else
+                                            {
+                                                collection.Logger?.LogTrace("Sent to client collection");
+                                            }
+                                        }
+                                        else
+                                        {
+                                            collection.Logger?.LogTrace("Client is not accepting updates");
                                         }
                                     }
                                 }
-                                catch
+                                catch(Exception ex)
                                 {
+                                    collection.Logger?.LogTrace(ex, "Exception while sending to collection");
                                     // If we threw, the client is disconnected.  Remove the client.
                                     collection._nexusPipeList.Remove(client);
                                 }
                             }
                         }
+                        else
+                        {
+                            collection.Logger?.LogTrace("Translated into noop message");
+                        }
 
                         req.Tcs?.TrySetResult(true);
                     }
+                    
+                    collection.Logger?.LogDebug("Stopped broadcast reading loop.");
                 }
                 catch (Exception e)
                 {
@@ -348,15 +371,14 @@ internal abstract class NexusCollection : INexusCollectionConnector
         
         Logger?.LogTrace("Sending client init data");
         // Initialize the client's data.
-        var initResult = await SendClientInitData(writer).ConfigureAwait(false);
+        var initResult = await SendClientInitData(client).ConfigureAwait(false);
         
         if (!initResult)
             return;
-
-        // Ensure all initial data is fully flushed before marking client as ready
+        
+        // Ensure all initial data is fully flushed.
         await writer.Writer.FlushAsync().ConfigureAwait(false);
         
-        client.State = Client.StateType.AcceptingUpdates;
         // If the reader is not null, that means we have a bidirectional collection.
         if (reader != null)
         {
@@ -515,10 +537,11 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator(
         NexusCollectionResetValuesMessage message);
     
-    protected async ValueTask<bool> SendClientInitData(NexusChannelWriter<INexusCollectionMessage> writer)
+    private async ValueTask<bool> SendClientInitData(Client client)
     {
         try
         {
+            var writer = client.Writer!;
             var resetComplete = NexusCollectionResetCompleteMessage.Rent();
             var batchValue = NexusCollectionResetValuesMessage.Rent();
             bool sentData = false;
@@ -537,6 +560,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 Logger?.LogError("No reset start reset message was sent during reset.");
                 return false;
             }
+            
+            // Set the state to accepting since we have now received all the data needed.
+            client.State = Client.StateType.AcceptingUpdates;
             
             await writer.WriteAsync(resetComplete).ConfigureAwait(false);
             resetComplete.ReturnToCache();
