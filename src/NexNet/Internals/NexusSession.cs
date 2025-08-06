@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
 using NexNet.Logging;
@@ -212,9 +213,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? _cacheManager.Rent<ClientGreetingReconnectionMessage>()
             : _cacheManager.Rent<ClientGreetingMessage>();
 
-        greetingMessage.Version = 0;
-        greetingMessage.ServerNexusMethodHash = TProxy.MethodHash;
-        greetingMessage.ClientNexusMethodHash = TNexus.MethodHash;
+        // Get the latest version of the 
+        var latestVersion = TNexus.VersionHashTable.Keys.LastOrDefault();
+        
+        greetingMessage.Version = latestVersion;
+        
+        // If we are not versioning, use the default proxy hash. 
+        greetingMessage.ServerNexusHash = latestVersion == null ? TProxy.MethodHash : TNexus.VersionHashTable.GetValueOrDefault(latestVersion, 0);
+        greetingMessage.ClientNexusHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
         
         await InitializeConnection().ConfigureAwait(false);

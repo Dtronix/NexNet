@@ -74,9 +74,9 @@ internal class ProtocolSecurityTests : BaseTests
         
         var clientGreeting = MemoryPackSerializer.Serialize(new ClientGreetingMessage()
         {
-            ServerNexusMethodHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
-            ClientNexusMethodHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
-            Version = 1
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            Version = null
         });
 
         await client.SendMessageWithBodyAsync(MessageType.ClientGreeting, clientGreeting).Timeout(1);
@@ -362,6 +362,12 @@ internal class RawTcpClient : IDisposable
     {
         var result = await _streamProcessor!.VerifyAsync(definition, expectedValues);
         Assert.That(result.ValidationErrors, Is.Empty);
+    }
+    
+    public async Task AssertReadSuccess(string definition)
+    {
+        var result = await _streamProcessor!.ReadAsync(definition);
+        Assert.That(result.ErrorCode, Is.EqualTo(ParseError.Success));
     }
     
     public async Task AssertDisconnectReason(DisconnectReason reason)

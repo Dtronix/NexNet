@@ -12,9 +12,7 @@ partial class CollectionMeta
         sb.Append(@"
                         var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
                         duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);
-                        this.Context.Logger?.Log((this.Context.Logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 
-                                ? global::NexNet.Logging.NexusLogLevel.Information
-                                : global::NexNet.Logging.NexusLogLevel.Debug, this.Context.Logger.Category, null, $""Nexus ").Append(CollectionTypeShortString).Append(" Collection connection Invocation: ").Append(Name).Append(@" pipe = {arguments.Item1}"");
+                        this.Context.Logger?.NexusLog($""Nexus ").Append(CollectionTypeShortString).Append(" Collection connection Invocation: ").Append(Name).Append(@" pipe = {arguments.Item1}"");
     
                         await global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.ICollectionStore>(this).StartCollection(").Append(Id).AppendLine(", duplexPipe);");
     }

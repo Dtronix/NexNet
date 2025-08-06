@@ -7,8 +7,10 @@ using System.Security.Cryptography.X509Certificates;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
+using NexNet.Collections;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.Transports;
@@ -446,9 +448,21 @@ internal abstract class BaseTests
         Action<WebApplicationBuilder>? OnAspCreateServices = null,
         Action<WebApplication>? OnAspAppConfigure = null)
     {
-        var server = ServerNexus.CreateServer(sConfig, () =>
+        
+        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, OnAspCreateServices, OnAspAppConfigure);
+    }
+    
+    protected NexusServer<TServerNexus, TClientProxy> CreateServer<TServerNexus, TClientProxy>(
+        ServerConfig sConfig,
+        Action<TServerNexus>? nexusCreated,
+        Action<WebApplicationBuilder>? OnAspCreateServices = null,
+        Action<WebApplication>? OnAspAppConfigure = null) 
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        var server = new global::NexNet.NexusServer<TServerNexus, TClientProxy>(sConfig, () =>
         {
-            var nexus = new ServerNexus();
+            var nexus = new TServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
         });
@@ -463,7 +477,7 @@ internal abstract class BaseTests
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
                 serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value));
 
-            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+            builder.Services.AddNexusServer<TServerNexus, TClientProxy>();
 
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));

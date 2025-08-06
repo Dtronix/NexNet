@@ -414,8 +414,6 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 goto ClientGreetingHandler;
                 */
-            
-
             case MessageType.ClientGreeting:
             {
                 // Set the initial flag for the greeting and
@@ -434,17 +432,42 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Verify that this is the server
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
-
-                // Verify what the greeting method hashes matches this nexus and proxy hash.
-                if (cGreeting.ServerNexusMethodHash != TNexus.MethodHash)
-                {
-                    return DisconnectReason.ServerMismatch;
-                }
-
-                if (cGreeting.ClientNexusMethodHash != TProxy.MethodHash)
+                
+                if (cGreeting.ClientNexusHash != TProxy.MethodHash)
                 {
                     return DisconnectReason.ClientMismatch;
                 }
+                
+                var requestedVersion = cGreeting.Version;
+                
+                // If we have no versions, ensure that the requested version is null.
+                // Start with teh default Nexus hash.
+                int verificationHash = TNexus.MethodHash;
+                if (TNexus.VersionHashTable.Count == 0)
+                {
+                    // Verify that the requested version is null.  If not, the client is expecting 
+                    // a specific version that may or may not ve available.
+                    if(requestedVersion != null)
+                        return DisconnectReason.ServerMismatch;
+                    
+                    // Reaching here means the server is not versioning, and the client is not
+                    // expecting a specific version. We are good to continue.
+                }
+                else
+                {
+                    if(requestedVersion == null)
+                        return DisconnectReason.ServerMismatch;
+                        
+                    // Ensure the server has this version available.
+                    if(!TNexus.VersionHashTable.TryGetValue(requestedVersion, out verificationHash))
+                        return DisconnectReason.ServerMismatch;
+                    
+                    // Validation has succeeded.
+                }
+                
+                // Validate the hash matches
+                if(verificationHash != cGreeting.ServerNexusHash)
+                    return DisconnectReason.ServerMismatch;
 
                 var serverConfig = Unsafe.As<ServerConfig>(_config);
 
