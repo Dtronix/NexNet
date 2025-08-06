@@ -15,7 +15,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     internal NexusPipeWriter Writer;
     
     // Semaphore to ensure the underlying channel does not get used concurrently.
-    private readonly SemaphoreSlim _modificationSemaphore = new SemaphoreSlim(1, 1);
+    protected readonly SemaphoreSlim ModificationSemaphore = new SemaphoreSlim(1, 1);
 
     /// <summary>
     /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
@@ -45,7 +45,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
-        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
 
         Write(ref item, Writer);
 
@@ -72,7 +72,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
     {
-        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
         
         WriteEnumerable(items, Writer);
 
@@ -93,7 +93,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <inheritdoc />
     public async ValueTask CompleteAsync()
     {
-        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
         
         await Writer.CompleteAsync().ConfigureAwait(false);
     }
