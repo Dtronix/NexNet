@@ -221,8 +221,8 @@ internal partial class NexusSession<TNexus, TProxy>
                                 break;
                             }
 
-                            Logger?.LogTrace(
-                                $"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
+                            //Logger?.LogTrace(
+                            //    $"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
                             break;
                         default:
                             Logger?.LogTrace(

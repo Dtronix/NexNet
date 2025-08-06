@@ -200,9 +200,8 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
             try
             {
-                // TODO: Remove!
-                var flushId = Interlocked.Increment(ref _flushCounter);
-                _logger?.LogTrace($"Sending[id:{flushId}] {sendingBuffer.Length} bytes [{string.Join(",", sendingBuffer.ToArray())}]");
+                Interlocked.Increment(ref _flushCounter);
+                //_logger?.LogTrace($"Sending[id:{flushId}] {sendingBuffer.Length} bytes [{string.Join(",", sendingBuffer.ToArray())}]");
                 // We are passing the cancellation token from the method instead of the _flushCts due to
                 // the fact that the _flushCts can be canceled even after this method is completed due
                 // to some transport implementations such as QUIC.

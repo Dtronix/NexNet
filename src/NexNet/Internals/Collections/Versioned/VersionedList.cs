@@ -225,7 +225,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     {
         var itemCount = State.List.Count;
 
-        _logger?.LogDebug($"Validating operation: {op.GetType().Name}, List count: {itemCount}, Version: {State.Version}");
+        //_logger?.LogDebug($"Validating operation: {op.GetType().Name}, List count: {itemCount}, Version: {State.Version}");
 
         switch (op)
         {
@@ -248,7 +248,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
                 return false;
         }
         
-        _logger?.LogDebug($"Operation validation successful: {op.GetType().Name}");
+        //_logger?.LogDebug($"Operation validation successful: {op.GetType().Name}");
         return true;
     }
 

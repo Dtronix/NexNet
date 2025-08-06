@@ -35,7 +35,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private readonly INexusLogger? _logger;
     private long _examinedPosition;
     private long _bufferTailPosition;
-    private int _bufferId;
+    private int _receiveCounter;
 
     /// <summary>
     /// Length of data that has been buffered.
@@ -87,8 +87,8 @@ internal class NexusPipeReader : PipeReader, IDisposable
     {
         
         // TODO: Remove!
-        var bufferId = Interlocked.Increment(ref _bufferId);
-        _logger?.LogTrace($"Receiving[id:{bufferId}] {data.Length} bytes [{string.Join(",", data.ToArray())}]");
+        Interlocked.Increment(ref _receiveCounter);
+        //_logger?.LogTrace($"Receiving[id:{bufferId}] {data.Length} bytes [{string.Join(",", data.ToArray())}]");
         //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
         var length = (int)data.Length;
         var bufferLength = _buffer.Length + length;
@@ -106,22 +106,13 @@ internal class NexusPipeReader : PipeReader, IDisposable
             {
                 _logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low watermark completion. Loop {loopCount}");
                 // Do a short delay to allow the other side to process the data and progressively increase the delay.
-                if (loopCount < 2)
-                {
-                    await Task.Delay(1).ConfigureAwait(false);
-                }
-                else if (loopCount < 10)
-                {
-                    await Task.Delay(5).ConfigureAwait(false);
-                }
-                else if (loopCount < 50)
-                {
-                    await Task.Delay(10).ConfigureAwait(false);
-                }
-                else
-                {
-                    await Task.Delay(100).ConfigureAwait(false);
-                }
+                await Task.Delay(loopCount < 2
+                    ? 1
+                    : loopCount < 10
+                        ? 5
+                        : loopCount < 50
+                            ? 10
+                            : 100).ConfigureAwait(false);
 
                 loopCount++;
 

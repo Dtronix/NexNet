@@ -212,10 +212,10 @@ internal abstract class NexusCollection : INexusCollectionConnector
                                        .ReadAllAsync(collection._broadcastCancellation!.Token)
                                        .ConfigureAwait(false))
                     {
-                        collection.Logger?.LogTrace($"Server received broadcast message request {req.Message}.");
+                        //collection.Logger?.LogTrace($"Server received broadcast message request {req.Message}.");
                         var result = collection.ServerProcessMessage(req.Message);
                         
-                        collection.Logger?.LogTrace($"Server received message type: {result.Message?.GetType()}");
+                        //collection.Logger?.LogTrace($"Server received message type: {result.Message?.GetType()}");
                         
                         if(req.Message is INexusCollectionValueMessage valueMessage)
                             valueMessage.ReturnValueToPool();
@@ -258,7 +258,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                                         }
                                         else
                                         {
-                                            collection.Logger?.LogTrace("ACK Client Sent to client collection");
+                                            //collection.Logger?.LogTrace("ACK Client Sent to client collection");
                                         }
                                     }
                                     else
@@ -387,7 +387,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                 // Read through all the messages received until complete.
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
-                    Logger?.LogTrace($"Received message. {message.GetType()}");
+                    //Logger?.LogTrace($"Received message. {message.GetType()}");
                     await _processChannel!.Writer.WriteAsync(new ProcessRequest(client, message, null)).ConfigureAwait(false);
 
                 }
@@ -460,7 +460,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
                 await foreach (var message in collection._client!.Reader!.ConfigureAwait(false))
                 {
-                    collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
+                    //collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
                     var success = collection.ClientProcessMessage(message);
                     
                     if(success)
@@ -506,7 +506,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         if (IsReadOnly)
             throw new InvalidOperationException("Cannot perform operations when collection is read-only");
 
-        Logger?.LogTrace($"--> Sending {message.GetType()} message.");
+        //Logger?.LogTrace($"--> Sending {message.GetType()} message.");
         if (IsServer)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
