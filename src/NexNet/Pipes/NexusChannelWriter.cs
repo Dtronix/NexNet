@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Internals;
 
 namespace NexNet.Pipes;
 
@@ -11,8 +12,10 @@ namespace NexNet.Pipes;
 /// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
 internal class NexusChannelWriter<T> : INexusChannelWriter<T>
 {
-    // ReSharper disable once StaticMemberInGenericType
     internal NexusPipeWriter Writer;
+    
+    // Semaphore to ensure the underlying channel does not get used concurrently.
+    private readonly SemaphoreSlim _modificationSemaphore = new SemaphoreSlim(1, 1);
 
     /// <summary>
     /// Gets a value indicating whether the reading operation from the duplex pipe is complete.
@@ -42,7 +45,9 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
-        Write(ref item, ref Writer);
+        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+
+        Write(ref item, Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -56,6 +61,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
             return false;
 
         return true;
+
     }
 
     /// <summary>
@@ -66,7 +72,9 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
     {
-        WriteEnumerable(items, ref Writer);
+        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        
+        WriteEnumerable(items, Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -83,13 +91,15 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     }
 
     /// <inheritdoc />
-    public ValueTask CompleteAsync()
+    public async ValueTask CompleteAsync()
     {
-        return Writer.CompleteAsync();
+        using var sLock = await _modificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        
+        await Writer.CompleteAsync().ConfigureAwait(false);
     }
 
 
-    private static void Write(ref T item, ref NexusPipeWriter nexusPipeWriter)
+    private static void Write(ref T item, NexusPipeWriter nexusPipeWriter)
     {
         using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
@@ -97,7 +107,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
         memoryPackWriter.Flush();
     }
 
-    private static void WriteEnumerable(IEnumerable<T> items, ref NexusPipeWriter nexusPipeWriter)
+    private static void WriteEnumerable(IEnumerable<T> items, NexusPipeWriter nexusPipeWriter)
     {
         using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
