@@ -105,7 +105,7 @@ internal class NexusListTests : NexusCollectionBaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ClientCanMove(Type type)
     {
-        var (_, serverNexus, client, _) = await ConnectServerAndClient(type, BasePipeTests.LogMode.Always);
+        var (_, serverNexus, client, _) = await ConnectServerAndClient(type);
 
         await client.Proxy.IntListBi.ConnectAsync();
         await client.Proxy.IntListBi.AddAsync(0);

@@ -56,7 +56,7 @@ internal class ProtocolSecurityTests : BaseTests
     [Test]
     public async Task MultipleClientGreetings_ShouldDisconnectWithProtocolError()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         

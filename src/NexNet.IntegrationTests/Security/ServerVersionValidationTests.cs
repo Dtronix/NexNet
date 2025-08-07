@@ -15,7 +15,7 @@ internal class ServerVersionValidationTests : BaseTests
     [Test]
     public async Task NonVersionedServer_NullClientVersion_ShouldConnect()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         
@@ -45,7 +45,7 @@ internal class ServerVersionValidationTests : BaseTests
     [Test]
     public async Task NonVersionedServer_NonNullClientVersion_ShouldDisconnectWithServerMismatch()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         
@@ -373,7 +373,7 @@ internal class ServerVersionValidationTests : BaseTests
     [Test]
     public async Task NetworkTimeoutDuringVersionValidation_ShouldHandleGracefully()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         ServerNexus? nexus = null;
         var server = CreateServer(serverConfig, (nx) => nexus = nx);
         await server.StartAsync();
