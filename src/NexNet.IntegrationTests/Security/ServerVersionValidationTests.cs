@@ -15,7 +15,7 @@ internal class ServerVersionValidationTests : BaseTests
     [Test]
     public async Task NonVersionedServer_NullClientVersion_ShouldConnect()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         

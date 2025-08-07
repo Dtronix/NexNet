@@ -77,7 +77,7 @@ internal class ProtocolSecurityTests : BaseTests
     [Test]
     public async Task HandshakeTimeout_PostProtocolHeader_ShouldDisconnectWithTimeout()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         serverConfig.HandshakeTimeout = 50;
         var tcs =  new TaskCompletionSource();
         var server = CreateServer(serverConfig, nx =>
@@ -102,7 +102,7 @@ internal class ProtocolSecurityTests : BaseTests
     [Test]
     public async Task HandshakeTimeout_PreProtocolHeader_ShouldDisconnectWithTimeout()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(Type.Tcp);
         serverConfig.HandshakeTimeout = 50;
         var tcs =  new TaskCompletionSource();
         var server = CreateServer(serverConfig, nx =>
