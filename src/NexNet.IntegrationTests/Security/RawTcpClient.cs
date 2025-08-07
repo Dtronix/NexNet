@@ -55,6 +55,18 @@ internal class RawTcpClient : IDisposable
             _stream = sslStream;
         }
     }
+    
+    public void Write(byte data)
+    {
+        _logger.LogTrace($"Sending: {data}");
+        Assert.DoesNotThrow(() => _stream!.WriteByte(data));
+    }
+    
+    public void Write(byte[] data)
+    {
+        _logger.LogTrace($"Sending: [{string.Join(",", data)}]");
+        Assert.DoesNotThrowAsync(async () => await _stream!.WriteAsync(data));
+    }
 
     public async Task AssertVerify(string definition, object?[]? expectedValues)
     {
