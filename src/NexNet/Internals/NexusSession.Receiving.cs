@@ -158,9 +158,9 @@ internal partial class NexusSession<TNexus, TProxy>
                             continue;
                         
                         // HEADER + BODY
+                        case MessageType.ServerGreeting:
                         case MessageType.ClientGreeting:
                         case MessageType.ClientGreetingReconnection:
-                        case MessageType.ServerGreeting:
                         case MessageType.Invocation:
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
@@ -168,7 +168,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             //Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
                             break;
-
+   
                         case MessageType.DuplexPipeWrite:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
                             break;
@@ -182,6 +182,25 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     if (breakLoop)
                         break;
+                }
+                // Checks for where we can receive what type of message
+                if (IsServer)
+                {
+                    // Ensure we are not receiving messages intended for the client on the server.
+                    if (_recMessageHeader.Type is MessageType.ServerGreeting)
+                    {
+                        disconnect = DisconnectReason.ProtocolError;
+                        break;
+                    }
+                }
+                else
+                {
+                    // Ensure we are not receiving messages intended for the server on the client.
+                    if (_recMessageHeader.Type is MessageType.ClientGreeting or MessageType.ClientGreetingReconnection)
+                    {
+                        disconnect = DisconnectReason.ProtocolError;
+                        break;
+                    }
                 }
 
                 // If the whole header can't be read, loop back around.
@@ -351,14 +370,22 @@ internal partial class NexusSession<TNexus, TProxy>
         Span<byte> header = stackalloc byte[8]; 
         headerSlice.CopyTo(header);
         var receivedProtocolTag = BitConverter.ToUInt32(header);
-        //var reserved1 = header[4]; // Reserved for future
-        //var reserved2 = header[5]; // Reserved for future
-        //var reserved3 = header[6]; // Reserved for future
+        var reserved1 = header[4]; // Reserved for future
+        var reserved2 = header[5]; // Reserved for future
+        var reserved3 = header[6]; // Reserved for future
         var receivedProtocolVersion = header[7];
         
         if (receivedProtocolTag != ProtocolTag)
         {
             Logger?.LogTrace("Transport data is not a NexNet stream.");
+            disconnect = DisconnectReason.ProtocolError;
+            return false;
+        }
+        
+        // Ensure the reserved values are 0.
+        if (reserved1 != 0 || reserved2 != 0 || reserved3 != 0)
+        {
+            Logger?.LogTrace("Reserved data is not empty as required for NexNet stream.");
             disconnect = DisconnectReason.ProtocolError;
             return false;
         }

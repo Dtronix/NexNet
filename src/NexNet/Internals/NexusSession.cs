@@ -369,7 +369,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if (_state != ConnectionState.Connected)
             return;
 
-        if ((_internalState & InternalState.ProtocolConfirmed) != 0)
+        if ((_internalState & InternalState.ProtocolConfirmed) != 0 
+            && (_internalState & InternalState.NexusCompletedConnection) != 0)
             return;
         
         Logger?.LogDebug("Connection closed due to handshake timeout.");

@@ -15,7 +15,6 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <Compile Remove="Security\AdvancedProtocolSecurityTests.cs" />
-    <None Include="Security\AdvancedProtocolSecurityTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

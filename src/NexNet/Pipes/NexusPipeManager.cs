@@ -193,7 +193,7 @@ internal class NexusPipeManager
 
     public void CancelAll()
     {
-        _logger?.LogTrace($"CancelAll();");
+        //_logger?.LogTrace($"CancelAll();");
         _isCanceled = true;
 
         foreach (var pipe in _activePipes)

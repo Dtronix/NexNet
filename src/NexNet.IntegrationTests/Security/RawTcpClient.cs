@@ -75,15 +75,25 @@ internal class RawTcpClient : IDisposable
 
     public readonly string ProtocolMessageDefinition = "[type:byte][body_length:ushort][body:body_length]";
     
-    private static readonly string _protocolHeader =
+    public static readonly string ProtocolHeader =
         "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
 
-    private static byte _protocolVersion = 1;
+    public static byte ProtocolVersion = 1;
     private static readonly object[] _protocolHeaderValues =
-        [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, _protocolVersion];
-    public async Task SendProtocolHeaderAsync()
+        [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, ProtocolVersion];
+    public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false)
     {
-        var result = await _streamProcessor!.WriteAsync(_protocolHeader, _protocolHeaderValues).Timeout(1);
+        object[] values = [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, ProtocolVersion];
+
+        if (badHeader)
+            values[Random.Shared.NextInt64(0, 7)] = 255;
+        
+        if(badVersion)
+            values[7] = 255;
+        
+        var result = await _streamProcessor!.WriteAsync(ProtocolHeader, values).Timeout(1);
+        
+        
         Assert.That(result, Is.True);
     }
     
@@ -91,7 +101,7 @@ internal class RawTcpClient : IDisposable
     {
         if (Stream == null) 
             throw new InvalidOperationException("Not connected");
-        await AssertVerify(_protocolHeader, _protocolHeaderValues);
+        await AssertVerify(ProtocolHeader, _protocolHeaderValues);
     }
     
     public async Task AssertWrite(string definition, object?[] data)

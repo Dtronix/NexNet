@@ -15,7 +15,7 @@ internal class ServerVersionValidationTests : BaseTests
     [Test]
     public async Task NonVersionedServer_NullClientVersion_ShouldConnect()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp);
+        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         
@@ -374,8 +374,15 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task NetworkTimeoutDuringVersionValidation_ShouldHandleGracefully()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        ServerNexus? nexus = null;
-        var server = CreateServer(serverConfig, (nx) => nexus = nx);
+        var tcs =  new TaskCompletionSource();
+        var server = CreateServer(serverConfig, (nx) =>
+        {
+            nx.OnDisconnectedEvent = _ =>
+            {
+                tcs.TrySetResult();
+                return default;
+            };
+        });
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -384,14 +391,7 @@ internal class ServerVersionValidationTests : BaseTests
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
-        
-        var tcs =  new TaskCompletionSource();
-        nexus!.OnDisconnectedEvent = serverNexus =>
-        {
-            tcs.TrySetResult();
-            return default;
-        }; 
-        
+
         // Immediately disconnect to simulate network timeout
         client.ForceDisconnect();
         
