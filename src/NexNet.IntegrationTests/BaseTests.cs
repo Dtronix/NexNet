@@ -511,8 +511,16 @@ internal abstract class BaseTests
     protected (NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
         CreateClient(ClientConfig cConfig)
     {
-        var clientNexus = new ClientNexus();
-        var client = ClientNexus.CreateClient(cConfig, clientNexus);
+        return CreateClient<ClientNexus, ClientNexus.ServerProxy>(cConfig);
+    }
+    
+    protected (NexusClient<TClientNexus, TProxy> client, TClientNexus clientNexus)
+        CreateClient<TClientNexus, TProxy>(ClientConfig cConfig) 
+        where TClientNexus : ClientNexusBase<TProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
+        where TProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        var clientNexus = new TClientNexus();
+        var client = new NexusClient<TClientNexus, TProxy>(cConfig, clientNexus);
         Clients.Add(client);
 
         return (client, clientNexus);

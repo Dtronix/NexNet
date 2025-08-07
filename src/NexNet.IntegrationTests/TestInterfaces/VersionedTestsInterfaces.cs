@@ -15,30 +15,55 @@ public partial interface ISimpleClientNexus
 }
 
 
-[NexusVersion(Version = "v1.0", HashLock = -808086739)]
-public partial interface IVersionedServerNexus_V1
+[NexusVersion(Version = "v1.0", HashLock = 1634980073)]
+public partial interface IVersionedServerNexusV1
 {
-    ValueTask<bool> VerifyVersion(string version);
+    [NexusMethod(0)]
+    ValueTask<bool> VerifyVersionV1(string version);
 }
 
-[NexusVersion(Version = "v1.1", HashLock = -358538641)]
-public partial interface IVersionedServerNexus_V1_1 : IVersionedServerNexus_V1
+[NexusVersion(Version = "v1.1", HashLock = -1891564902)]
+public partial interface IVersionedServerNexusV1_1 : IVersionedServerNexusV1
 {
-    void RunTask();
+    [NexusMethod(1)]
+    void RunTaskV1_1();
     
-    ValueTask<ReturnState> RunTaskWithResult();
+    [NexusMethod(2)]
+    ValueTask<ReturnState> RunTaskWithResultV1_1();
     
     public enum ReturnState : ushort
     {
-        Unset,
-        Success,
-        Failure,
+        Unset = 0,
+        Success = 1,
+        Failure = 2,
     }
-
 }
 
-[Nexus<ISimpleClientNexus, IVersionedServerNexus_V1_1>(NexusType = NexusType.Client)]
-public partial class VersionedClientNexus
+[NexusVersion(Version = "v1.2", HashLock = -1022898744)]
+public partial interface IVersionedServerNexusV2 : IVersionedServerNexusV1_1
+{
+    [NexusMethod(3)]
+    ValueTask RunTaskNewV2();
+}
+
+public partial interface INonVersionedServerNexus
+{
+    ValueTask RunTaskNew();
+    void RunTask();
+    ValueTask<ReturnState> RunTaskWithResult();
+    ValueTask<bool> VerifyVersion(string version);
+    
+    public enum ReturnState : ushort
+    {
+        Unset = 0,
+        Success = 1,
+        Failure = 2,
+    }
+}
+
+
+[Nexus<ISimpleClientNexus, IVersionedServerNexusV1>(NexusType = NexusType.Client)]
+public partial class VersionedClientNexusV1
 {
     public ValueTask Run()
     {
@@ -46,21 +71,125 @@ public partial class VersionedClientNexus
     }
 }
 
-[Nexus<IVersionedServerNexus_V1_1, ISimpleClientNexus>(NexusType = NexusType.Server)]
-public partial class VersionedServerNexus
+
+[Nexus<ISimpleClientNexus, IVersionedServerNexusV1_1>(NexusType = NexusType.Client)]
+public partial class VersionedClientNexusV1_1
 {
+    public ValueTask Run()
+    {
+        return default;
+    }
+}
+
+[Nexus<ISimpleClientNexus, IVersionedServerNexusV2>(NexusType = NexusType.Client)]
+public partial class VersionedClientNexusV2
+{
+    public ValueTask Run()
+    {
+        return default;
+    }
+}
+
+[Nexus<ISimpleClientNexus, INonVersionedServerNexus>(NexusType = NexusType.Client)]
+public partial class NonVersionedClientNexus
+{
+    public ValueTask Run()
+    {
+        return default;
+    }
+}
+
+
+
+
+[Nexus<IVersionedServerNexusV2, ISimpleClientNexus>(NexusType = NexusType.Server)]
+public partial class VersionedServerNexusV2
+{
+    public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
+    public Action RunTaskV1_1Action { get; set; }
+    public Func<ValueTask<IVersionedServerNexusV1_1.ReturnState>> RunTaskWithResultV1_1Action { get; set; }
+    public Func<ValueTask> RunTaskNewV2Action { get; set; }
+
+    public ValueTask<bool> VerifyVersionV1(string version)
+    {
+        return VerifyVersionV1Action.Invoke(version);
+    }
+
+    public void RunTaskV1_1()
+    {
+        RunTaskV1_1Action.Invoke();
+    }
+
+    public ValueTask<IVersionedServerNexusV1_1.ReturnState> RunTaskWithResultV1_1()
+    {
+        return RunTaskWithResultV1_1Action.Invoke();
+    }
+
+    public ValueTask RunTaskNewV2()
+    {
+        return RunTaskNewV2Action.Invoke();
+    }
+}
+
+[Nexus<IVersionedServerNexusV1_1, ISimpleClientNexus>(NexusType = NexusType.Server)]
+public partial class VersionedServerNexusV1_1
+{
+    public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
+    public Action RunTaskV1_1Action { get; set; }
+    public Func<ValueTask<IVersionedServerNexusV1_1.ReturnState>> RunTaskWithResultV1_1Action { get; set; }
+
+    public ValueTask<bool> VerifyVersionV1(string version)
+    {
+        return VerifyVersionV1Action.Invoke(version);
+    }
+
+    public void RunTaskV1_1()
+    {
+        RunTaskV1_1Action.Invoke();
+    }
+
+    public ValueTask<IVersionedServerNexusV1_1.ReturnState> RunTaskWithResultV1_1()
+    {
+        return RunTaskWithResultV1_1Action.Invoke();
+    }
+}
+
+[Nexus<IVersionedServerNexusV1, ISimpleClientNexus>(NexusType = NexusType.Server)]
+public partial class VersionedServerNexusV1
+{
+    public Func<string, ValueTask<bool>> VerifyVersionV1Action { get; set; }
+
+    public ValueTask<bool> VerifyVersionV1(string version)
+    {
+        return VerifyVersionV1Action.Invoke(version);
+    }
+}
+
+[Nexus<INonVersionedServerNexus, ISimpleClientNexus>(NexusType = NexusType.Server)]
+public partial class NonVersionedServerNexus
+{
+    public Func<string, ValueTask<bool>> VerifyVersionAction { get; set; }
+    public Action RunTaskAction { get; set; }
+    public Func<ValueTask<INonVersionedServerNexus.ReturnState>> RunTaskWithResultAction { get; set; }
+    public Func<ValueTask> RunTaskNewAction { get; set; }
+
     public ValueTask<bool> VerifyVersion(string version)
     {
-        return new ValueTask<bool>(false);
+        return VerifyVersionAction.Invoke(version);
     }
 
     public void RunTask()
     {
-
+        RunTaskAction.Invoke();
     }
 
-    public ValueTask<IVersionedServerNexus_V1_1.ReturnState> RunTaskWithResult()
+    public ValueTask<INonVersionedServerNexus.ReturnState> RunTaskWithResult()
     {
-        return new ValueTask<IVersionedServerNexus_V1_1.ReturnState>(IVersionedServerNexus_V1_1.ReturnState.Success);
+        return RunTaskWithResultAction.Invoke();
+    }
+
+    public ValueTask RunTaskNew()
+    {
+        return RunTaskNewAction.Invoke();
     }
 }

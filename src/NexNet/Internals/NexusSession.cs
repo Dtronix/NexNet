@@ -214,12 +214,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             : _cacheManager.Rent<ClientGreetingMessage>();
 
         // Get the latest version of the 
-        var latestVersion = TNexus.VersionHashTable.Keys.LastOrDefault();
+        var latestVersion = TProxy.VersionHashTable.Keys.LastOrDefault();
         
         greetingMessage.Version = latestVersion;
         
         // If we are not versioning, use the default proxy hash. 
-        greetingMessage.ServerNexusHash = latestVersion == null ? TProxy.MethodHash : TNexus.VersionHashTable.GetValueOrDefault(latestVersion, 0);
+        greetingMessage.ServerNexusHash = latestVersion == null ? TProxy.MethodHash : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, 0);
         greetingMessage.ClientNexusHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
         

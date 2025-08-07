@@ -237,12 +237,80 @@ internal partial class ValueObjects {
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v1", HashLock = -764721642)]
-partial interface IServerNexus { void Update(ValueTuple<Message> data); }
+partial interface IServerNexus { 
+    void Update(ValueTuple<Message> data); 
+}
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Error);
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+    }
+    
+    [Test]
+    public void DuplicateNexusMethodsAcrossMultipleInterfacesFails()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V2", HashLock = -887198389)]
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(100)]
+    void Update2();
+    
+    [NexusMethod(201)]
+    void Update3();
+}
+[NexusVersion(Version = "V1", HashLock = 1449742389)]
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+    }
+    
+    [Test]
+    public void HashLockIsEffectedByNexusMethodId()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V2", HashLock = -887198389)]
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(10)]
+    void Update2();
+    
+    [NexusMethod(21)]
+    void Update3();
+}
+[NexusVersion(Version = "V1", HashLock = 1449742389)]
+partial interface IServerNexus { 
+    [NexusMethod(10)]
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
     }
     /*

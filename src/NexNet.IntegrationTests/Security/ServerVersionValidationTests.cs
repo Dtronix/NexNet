@@ -16,7 +16,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task NonVersionedServer_NullClientVersion_ShouldConnect()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer(serverConfig, null);
+        var server = CreateServer<NonVersionedServerNexus, NonVersionedServerNexus.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -29,8 +29,8 @@ internal class ServerVersionValidationTests : BaseTests
         // Send ClientGreeting with null version for non-versioned server
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedServerNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedClientNexus>(),
             Version = null // Null version for non-versioned server
         }).Timeout(1);
 
@@ -46,7 +46,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task NonVersionedServer_NonNullClientVersion_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer(serverConfig, null);
+        var server = CreateServer<NonVersionedServerNexus, NonVersionedServerNexus.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -59,8 +59,8 @@ internal class ServerVersionValidationTests : BaseTests
         // Send ClientGreeting with non-null version for non-versioned server
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedServerNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedClientNexus>(),
             Version = "v1.0" // Non-null version for non-versioned server
         }).Timeout(1);
         
@@ -77,7 +77,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task VersionedServer_NullClientVersion_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -90,8 +90,8 @@ internal class ServerVersionValidationTests : BaseTests
         // If the server had versions configured, sending null version would fail
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedServerNexusV2>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = null // Null version for versioned server
         }).Timeout(1);
 
@@ -108,7 +108,7 @@ internal class ServerVersionValidationTests : BaseTests
     {
         // Similar to above - demonstrates the pattern for when we have versioned servers
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -117,11 +117,11 @@ internal class ServerVersionValidationTests : BaseTests
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
-        var version = "v1.1";
+        var version = "v1.2";
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetVersionHashTable<VersionedServerNexus>()[version],
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetVersionHashTable<VersionedServerNexusV2>()[version],
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = version // Would be a valid version in versioned server
         }).Timeout(1);
         
@@ -138,7 +138,7 @@ internal class ServerVersionValidationTests : BaseTests
     {
         // Similar to above - demonstrates the pattern for when we have versioned servers
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -150,8 +150,8 @@ internal class ServerVersionValidationTests : BaseTests
         var version = "v1.0";
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetVersionHashTable<VersionedServerNexus>()[version],
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetVersionHashTable<VersionedServerNexusV2>()[version],
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = version // Would be a valid version in versioned server
         }).Timeout(1);
         
@@ -167,7 +167,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task VersionedServer_InvalidClientVersion_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -179,8 +179,8 @@ internal class ServerVersionValidationTests : BaseTests
 
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetLatestVersionHash<VersionedServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetLatestVersionHash<VersionedServerNexusV2>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = "999.999.999" // Invalid version
         }).Timeout(1);
         
@@ -197,7 +197,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task HashMismatch_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer(serverConfig, null);
+        var server = CreateServer<NonVersionedServerNexus, NonVersionedServerNexus.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -210,7 +210,7 @@ internal class ServerVersionValidationTests : BaseTests
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
             ServerNexusHash = 999999, // Wrong hash
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedClientNexus>(),
             Version = null
         }).Timeout(1);
         
@@ -227,7 +227,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task ClientHashMismatch_ShouldDisconnectWithClientMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer(serverConfig, null);
+        var server = CreateServer<NonVersionedServerNexus, NonVersionedServerNexus.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -240,7 +240,7 @@ internal class ServerVersionValidationTests : BaseTests
         // Send ClientGreeting with incorrect client hash
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedServerNexus>(),
             ClientNexusHash = 999999, // Wrong client hash
             Version = null
         }).Timeout(1);
@@ -257,7 +257,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task CorrectHashesNullVersion_ShouldConnectSuccessfully()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer(serverConfig, null);
+        var server = CreateServer<NonVersionedServerNexus, NonVersionedServerNexus.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -270,8 +270,8 @@ internal class ServerVersionValidationTests : BaseTests
         // Send ClientGreeting with correct hashes and null version
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedServerNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<NonVersionedClientNexus>(),
             Version = null
         }).Timeout(1);
 
@@ -287,7 +287,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task VersionedServer_EmptyStringClientVersion_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -299,8 +299,8 @@ internal class ServerVersionValidationTests : BaseTests
         
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
-            ServerNexusHash = Invocation.IInvocationMethodHash.GetLatestVersionHash<VersionedServerNexus>(),
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ServerNexusHash = Invocation.IInvocationMethodHash.GetLatestVersionHash<VersionedServerNexusV2>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = "" // Empty string version for versioned server
         }).Timeout(1);
         
@@ -316,7 +316,7 @@ internal class ServerVersionValidationTests : BaseTests
     public async Task VersionedServer_ValidVersionWithWrongHash_ShouldDisconnectWithServerMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
@@ -326,11 +326,11 @@ internal class ServerVersionValidationTests : BaseTests
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
         
-        var version = "v1.1";
+        var version = "v2";
         await client.SendMessageAsync(new ClientGreetingMessage()
         {
             ServerNexusHash = 999999, // Wrong hash for valid version
-            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexus>(),
+            ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<VersionedClientNexusV2>(),
             Version = version
         }).Timeout(1);
         

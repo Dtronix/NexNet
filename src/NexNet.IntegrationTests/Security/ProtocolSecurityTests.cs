@@ -231,7 +231,7 @@ internal class ProtocolSecurityTests : BaseTests
     public async Task ClientSendsServerGreeting_ShouldDisconnectWithProtocolError()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
-        var server = CreateServer<VersionedServerNexus, VersionedServerNexus.ClientProxy>(serverConfig, null);
+        var server = CreateServer<VersionedServerNexusV2, VersionedServerNexusV2.ClientProxy>(serverConfig, null);
         await server.StartAsync();
         
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);

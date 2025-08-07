@@ -77,6 +77,8 @@ internal partial class MethodMeta
         this.IsReturnVoid = returnSymbol.Name == "Void";
 
         this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
+        
+        Id = this.NexusMethodAttribute.MethodId ?? 0;
 
         if (ReturnArity > 0)
         {
