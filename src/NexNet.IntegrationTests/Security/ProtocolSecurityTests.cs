@@ -1,16 +1,12 @@
 using System.Buffers;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using MemoryPack;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
-using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
-using StreamStruct;
-using LogLevel = StreamStruct.LogLevel;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -44,14 +40,13 @@ internal class ProtocolSecurityTests : BaseTests
         await client.ReadProtocolHeaderAsync();
         
         // Attempt to send invocation message without ClientGreeting/Authentication
-        var invocationData = MemoryPackSerializer.Serialize(new InvocationMessage
+        await client.SendMessageAsync(new InvocationMessage
         {
             InvocationId = 1,
             MethodId = 123,
             Arguments = Memory<byte>.Empty
-        });
+        }).Timeout(1);
         
-        await client.SendMessageWithBodyAsync(MessageType.Invocation, invocationData).Timeout(1);
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
     
@@ -61,7 +56,7 @@ internal class ProtocolSecurityTests : BaseTests
     [Test]
     public async Task MultipleClientGreetings_ShouldDisconnectWithProtocolError()
     {
-        var serverConfig = CreateServerConfig(Type.Tcp);
+        var serverConfig = CreateServerConfig(Type.Tcp, BasePipeTests.LogMode.Always);
         var server = CreateServer(serverConfig, null);
         await server.StartAsync();
         
@@ -71,19 +66,19 @@ internal class ProtocolSecurityTests : BaseTests
         // Send valid protocol header
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
-        
-        var clientGreeting = MemoryPackSerializer.Serialize(new ClientGreetingMessage()
+
+        var clientGreeting = new ClientGreetingMessage()
         {
             ServerNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ServerNexus>(),
             ClientNexusHash = Invocation.IInvocationMethodHash.GetMethodHash<ClientNexus>(),
             Version = null
-        });
+        };
 
-        await client.SendMessageWithBodyAsync(MessageType.ClientGreeting, clientGreeting).Timeout(1);
-        await client.SendMessageWithBodyAsync(MessageType.ClientGreeting, clientGreeting).Timeout(1);
+        await client.SendMessageAsync(clientGreeting).Timeout(1);
+        await client.SendMessageAsync(clientGreeting).Timeout(1);
 
         // Ignore the message
-        await client.Processor.ReadAsync(client.ProtocolMessageDefinition);
+        await client.AssertReceiveMessageAsync<ServerGreetingMessage>();
 
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
@@ -276,151 +271,5 @@ internal class ProtocolSecurityTests : BaseTests
     private RawTcpClient CreateRawTcpClient(ServerConfig configs, bool useTls)
     {
         return new RawTcpClient(configs, useTls, base.CurrentTcpPort!.Value, Logger);
-    }
-    /*
-    private byte[] CreateValidClientGreeting()
-    {
-        var greeting = new ClientGreetingMessage
-        {
-            Version = 0,
-            ServerNexusMethodHash = typeof(BasicTestsServerNexus).GetHashCode(), // Use actual hash
-            ClientNexusMethodHash = typeof(BasicTestsClientNexus).GetHashCode(), // Use actual hash
-            AuthenticationToken = Memory<byte>.Empty
-        };
-        
-        return MemoryPackSerializer.Serialize(greeting);
-    }
-    
-    private byte[] CreateClientGreetingWithInvalidHashes()
-    {
-        var greeting = new ClientGreetingMessage
-        {
-            Version = 0,
-            ServerNexusMethodHash = 0xDEADBEEF, // Invalid hash
-            ClientNexusMethodHash = 0xCAFEBABE, // Invalid hash
-            AuthenticationToken = Memory<byte>.Empty
-        };
-        
-        return MemoryPackSerializer.Serialize(greeting);
-    }*/
-
-    private static ulong CreateProtocolHeader(byte protocolVersion, byte reserved1, byte reserved2, byte reserved3, uint protocolTag)
-    {
-        int high = (protocolVersion << 24) | (reserved1 << 16) | (reserved2 << 8) | reserved3;
-        var combined = ((ulong)high << 32) | ((ulong)protocolTag & 0xFFFFFFFF);
-        return combined;
-    }
-}
-
-/// <summary>
-/// Raw TCP client for testing protocol security without using NexNet client libraries.
-/// </summary>
-internal class RawTcpClient : IDisposable
-{
-    private readonly TcpClient _tcpClient;
-    private readonly ServerConfig _configs;
-    private readonly bool _useTls;
-    private readonly int _port;
-    private readonly RollingLogger _logger;
-    private Stream? _stream;
-    private readonly CancellationTokenSource _cts = new();
-    private StreamFieldProcessor? _streamProcessor;
-
-    public bool IsConnected => _tcpClient.Connected;
-
-    public Stream? Stream => _stream;
-
-    public StreamFieldProcessor Processor => _streamProcessor!;
-
-    public RawTcpClient(ServerConfig configs, bool useTls, int port, RollingLogger logger)
-    {
-        _tcpClient = new TcpClient();
-        _configs = configs;
-        _useTls = useTls;
-        _port = port;
-        _logger = logger;
-    }
-    
-    public async Task ConnectAsync()
-    {
-        await _tcpClient.ConnectAsync(IPAddress.Loopback, _port);
-        _stream = _tcpClient.GetStream();
-        _streamProcessor = new StreamFieldProcessor(_stream)
-        {
-            Logger = new RollingStreamLogger(_logger, false, LogLevel.Info)
-        };
-        
-        if (_useTls)
-        {
-            var sslStream = new System.Net.Security.SslStream(_stream, false, (sender, certificate, chain, errors) => true);
-            await sslStream.AuthenticateAsClientAsync("localhost");
-            _stream = sslStream;
-        }
-    }
-
-    public async Task AssertVerify(string definition, object?[]? expectedValues)
-    {
-        var result = await _streamProcessor!.VerifyAsync(definition, expectedValues);
-        Assert.That(result.ValidationErrors, Is.Empty);
-    }
-    
-    public async Task AssertReadSuccess(string definition)
-    {
-        var result = await _streamProcessor!.ReadAsync(definition);
-        Assert.That(result.ErrorCode, Is.EqualTo(ParseError.Success));
-    }
-    
-    public async Task AssertDisconnectReason(DisconnectReason reason)
-    {
-        await AssertVerify("[type:byte]", [(byte)reason]);
-    }
-
-    public readonly string ProtocolMessageDefinition = "[type:byte][body_length:ushort][body:body_length]";
-    
-    private static readonly string _protocolHeader =
-        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
-
-    private static byte _protocolVersion = 1;
-    private static readonly object[] _protocolHeaderValues =
-        [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, _protocolVersion];
-    public async Task SendProtocolHeaderAsync()
-    {
-        var result = await _streamProcessor!.WriteAsync(_protocolHeader, _protocolHeaderValues).Timeout(1);
-        Assert.That(result, Is.True);
-    }
-    
-    public async Task ReadProtocolHeaderAsync()
-    {
-        if (Stream == null) 
-            throw new InvalidOperationException("Not connected");
-        await AssertVerify(_protocolHeader, _protocolHeaderValues);
-    }
-    
-    public async Task AssertWrite(string definition, object?[] data)
-    {
-        if (Stream == null) 
-            throw new InvalidOperationException("Not connected");
-        
-        var result = await _streamProcessor!.WriteAsync(definition, data).Timeout(1);
-        Assert.That(result, Is.True);
-    }
-    
-    public async Task SendMessageWithBodyAsync(MessageType messageType, byte[] messageBody)
-    {
-        if (Stream == null) 
-            throw new InvalidOperationException("Not connected");
-        
-        await AssertWrite(ProtocolMessageDefinition, [
-            (byte)messageType,
-            (ushort)messageBody.Length,
-            messageBody
-        ]).Timeout(1);
-    }
-    public void Dispose()
-    {
-        _cts.Cancel();
-        Stream?.Dispose();
-        _tcpClient.Dispose();
-        _cts.Dispose();
     }
 }

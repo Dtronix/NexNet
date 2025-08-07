@@ -38,7 +38,7 @@ public partial interface IVersionedServerNexus_V1_1 : IVersionedServerNexus_V1
 }
 
 [Nexus<ISimpleClientNexus, IVersionedServerNexus_V1_1>(NexusType = NexusType.Client)]
-public partial class SimpleClientNexus
+public partial class VersionedClientNexus
 {
     public ValueTask Run()
     {
