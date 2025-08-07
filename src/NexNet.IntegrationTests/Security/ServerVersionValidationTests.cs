@@ -342,7 +342,7 @@ internal class ServerVersionValidationTests : BaseTests
     /// Expected: DisconnectReason.ServerMismatch
     /// </summary>
     [Test]
-    public async Task ZeroHashes_ShouldDisconnectWithServerMismatch()
+    public async Task ZeroHashes_ShouldDisconnectWithClientMismatch()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
         var server = CreateServer(serverConfig, null);
@@ -363,7 +363,7 @@ internal class ServerVersionValidationTests : BaseTests
         }).Timeout(1);
         
         // Should disconnect with ServerMismatch due to hash mismatch
-        await client.AssertDisconnectReason(DisconnectReason.ServerMismatch).Timeout(1);
+        await client.AssertDisconnectReason(DisconnectReason.ClientMismatch).Timeout(1);
     }
 
     /// <summary>
