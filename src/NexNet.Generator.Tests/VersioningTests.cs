@@ -15,16 +15,35 @@ using System.Threading.Tasks;
 namespace NexNetDemo;
 partial interface IClientNexus {  }
 [NexusVersion(Version = "V4")]
-partial interface IServerNexusV4 : IServerNexusV3 { void Update3(string[]? val); }
+partial interface IServerNexusV4 : IServerNexusV3 { 
+    [NexusMethod(400)]
+    void Update3(string[]? val); 
+}
 [NexusVersion(Version = "V3")]
-partial interface IServerNexusV3 : IServerNexusV2, IServerNexusV2_2 { void Update2(string[]? val); }
+partial interface IServerNexusV3 : IServerNexusV2, IServerNexusV2_2 { 
+    [NexusMethod(300)]
+    void Update2(string[]? val); 
+}
 [NexusVersion(Version = "V2")]
-partial interface IServerNexusV2 : IServerNexus { void Update1(string[]? val); }
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(200)]
+    void Update1(string[]? val); 
+}
 [NexusVersion(Version = "V2.1")]
-partial interface IServerNexusV2_1 : IServerNexusV2 { void Update1_1(string[]? val); }
+partial interface IServerNexusV2_1 : IServerNexusV2 {
+    [NexusMethod(110)]
+    void Update1_1(string[]? val); 
+}
 [NexusVersion(Version = "V2.2")]
-partial interface IServerNexusV2_2 : IServerNexusV2_1 { void Update1_2(string[]? val); }
-partial interface IServerNexus { void UpdateBase(string[]? val); }
+partial interface IServerNexusV2_2 : IServerNexusV2_1 { 
+    [NexusMethod(220)]
+    void Update1_2(string[]? val); 
+}
+[NexusVersion(Version = "V1")]
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void UpdateBase(string[]? val);
+}
 
 //[Nexus<IClientNexus, IServerNexusV2_2>(NexusType = NexusType.Client)]
 //partial class ClientNexus { }
@@ -59,8 +78,11 @@ partial class DataObject {
     public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=-1605840564)]
-partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
+[NexusVersion(Version = "v2", HashLock=743394637)]
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); 
+}
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
@@ -87,13 +109,15 @@ internal partial class Message2 {
     [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = 1080457006)]
+[NexusVersion(Version = "v1", HashLock = -1599061262)]
 partial interface IServerNexus { 
+    [NexusMethod(100)]
     void Update(Message data);
 }
-[NexusVersion(Version = "v1", HashLock = -1485727146)]
+[NexusVersion(Version = "v1", HashLock = -1740650374)]
 partial interface IServerNexus2 {
-    void Update(System.Tuple<Message2> data);
+    [NexusMethod(100)]
+    void Update(Message2 data);
 }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus { 
@@ -101,7 +125,7 @@ partial class ServerNexus {
 }
 [Nexus<IServerNexus2, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus2 { 
-    public void Update(System.Tuple<Message2> data) { }
+    public void Update(Message2 data) { }
 }
 """, minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic, Is.Empty);
@@ -132,7 +156,10 @@ internal partial class ValuesMessage : IMessageV1 {
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v1")]
-partial interface IServerNexus { void Update(IMessageV1 data); }
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update(IMessageV1 data);
+}
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
     public void Update(IMessageV1 data) { }
@@ -171,8 +198,11 @@ internal partial class ValueObjects {
     [MemoryPackOrder(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -764721642)]
-partial interface IServerNexus { void Update(ValueTuple<Message> data); }
+[NexusVersion(Version = "v1", HashLock = 1592512029)]
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update(ValueTuple<Message> data); 
+}
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
@@ -312,6 +342,137 @@ partial class ServerNexus
 }
 """);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
+    }
+    
+    [Test]
+    public void EnsureAllInterfacesAreVersioningIfOneIs()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(200)]
+    void Update2();
+    
+    [NexusMethod(201)]
+    void Update3();
+}
+[NexusVersion(Version = "V1", HashLock = -522215196)]
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id), Is.True);
+    }
+    
+    [Test]
+    public void EnsureAllInterfacesAreVersioningIfOneIs2()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V2", HashLock = 1938646687)]
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(200)]
+    void Update2();
+    
+    [NexusMethod(201)]
+    void Update3();
+}
+
+partial interface IServerNexus { 
+    [NexusMethod(100)]
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
+        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.AllInterfacesMustBeVersioning.Id), Is.True);
+    }
+    
+    [Test]
+    public void AllMethodsIdsShallBeSetForVersioningNexuses()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V2", HashLock = -2111766557)]
+partial interface IServerNexusV2 : IServerNexus { 
+    void Update2();
+    
+    [NexusMethod(100)]
+    void Update3();
+}
+
+[NexusVersion(Version = "V2", HashLock = -1814842152)]
+partial interface IServerNexus { 
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
+        Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallBeSetForVersioningNexuses.Id), Is.EqualTo(2));
+    }
+    
+    [Test]
+    public void AllMethodsIdsShallNotBe0ForVersioningNexuses()
+    {
+        var diagnostic = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus {  }
+[NexusVersion(Version = "V2", HashLock = -2111766557)]
+partial interface IServerNexusV2 : IServerNexus { 
+    [NexusMethod(0)]
+    void Update2();
+    
+    [NexusMethod()]
+    void Update3();
+}
+
+[NexusVersion(Version = "V2", HashLock = -1814842152)]
+partial interface IServerNexus { 
+    [NexusMethod(MethodId = 0)]
+    void Update1(); 
+}
+
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    public void Update1(){ }
+    public void Update2(){ }
+    public void Update3(){ }
+}
+""");
+        Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses.Id), Is.EqualTo(3));
     }
     /*
     [Test]

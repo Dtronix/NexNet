@@ -21,12 +21,14 @@ public partial interface IServerNexusV3 : IServerNexusV2
 public partial interface IServerNexusV2 : IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    [NexusMethod(200)]
     INexusList<int> IntegerList { get; }
 }
 
 [NexusVersion(Version = "v1")]
 public interface IServerNexus
 {
+    [NexusMethod(100)]
     ValueTask CalculateNumber(INexusDuplexPipe pipe);
 }
 

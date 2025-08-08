@@ -86,7 +86,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             if (result.Exception != null)
                 throw result.Exception;
             
-            if(result.State == ConnectionResult.StateValue.AuthenticationFailed)
+            if(result.State == ConnectionResult.StateValue.Disconnected 
+               && result.DisconnectReason == DisconnectReason.Authentication)
                 throw new TransportException(TransportError.AuthenticationError, "Authentication failed.", result.Exception);
         }
 
@@ -102,7 +103,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private async Task<ConnectionResult> TryConnectAsyncCore(bool isReconnecting, CancellationToken cancellationToken = default)
     {
         if (_session != null)
-            return new ConnectionResult(ConnectionResult.StateValue.Success);
+            return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
         
         _isReconnecting = isReconnecting;
 
@@ -120,13 +121,14 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         catch (TransportException e)
         {
-            return new ConnectionResult(e.Error == TransportError.AuthenticationError
-                ? ConnectionResult.StateValue.AuthenticationFailed
-                : ConnectionResult.StateValue.Exception, e);
+            return new ConnectionResult(ConnectionResult.StateValue.Disconnected,
+                e.Error == TransportError.AuthenticationError
+                    ? DisconnectReason.Authentication
+                    : DisconnectReason.SocketError, e);
         }
         catch (Exception e)
         {
-            return new ConnectionResult(ConnectionResult.StateValue.Exception, e);
+            return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.SocketError, e);
         }
 
         _config.InternalOnClientConnect?.Invoke();
@@ -161,17 +163,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         if (session.DisconnectReason != DisconnectReason.None)
         {
             session.OnStateChanged = null;
-            return new ConnectionResult(session.DisconnectReason switch
-            {
-                DisconnectReason.Timeout => ConnectionResult.StateValue.Timeout,
-                DisconnectReason.Authentication => ConnectionResult.StateValue.AuthenticationFailed,
-                _ => ConnectionResult.StateValue.UnknownException
-            });
+            return new ConnectionResult(ConnectionResult.StateValue.Disconnected, session.DisconnectReason);
         }
 
         _pingTimer.Change(_config.PingInterval, _config.PingInterval);
 
-        return new ConnectionResult(ConnectionResult.StateValue.Success);
+        return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
     }
 
     private async Task ConnectionClosed(Task<DisconnectReason> task)

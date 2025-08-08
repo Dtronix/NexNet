@@ -1,4 +1,5 @@
 ﻿using System;
+using NexNet.Messages;
 
 namespace NexNet;
 
@@ -11,7 +12,12 @@ public readonly struct ConnectionResult
     /// State of the connection.
     /// </summary>
     public StateValue State { get; }
-    
+
+    /// <summary>
+    /// Reason for the disconnection. None if there was no reason or the connection succeeded.
+    /// </summary>
+    public DisconnectReason DisconnectReason { get; }
+
     /// <summary>
     /// Exception that occurred while connecting.  Null if no exception occurred.
     /// </summary>
@@ -21,10 +27,14 @@ public readonly struct ConnectionResult
     /// Instances a ConnectionResult
     /// </summary>
     /// <param name="state">State of the connection.</param>
+    /// <param name="disconnectReason">
+    /// Reason for the disconnection. None if there was no reason or the connection succeeded.
+    /// </param>
     /// <param name="exception">Exception that occurred while connecting.  Null if no exception occurred.</param>
-    public ConnectionResult(StateValue state, Exception? exception = null)
+    public ConnectionResult(StateValue state, DisconnectReason disconnectReason, Exception? exception = null)
     {
         State = state;
+        DisconnectReason = disconnectReason;
         Exception = exception;
     }
 
@@ -35,11 +45,9 @@ public readonly struct ConnectionResult
     public bool Success => State switch
     {
         StateValue.Success => true,
-        StateValue.Timeout => false,
-        StateValue.AuthenticationFailed => false,
         StateValue.Exception => false,
         StateValue.Unset => false,
-        StateValue.UnknownException => false,
+        StateValue.Disconnected => false,
         StateValue.Canceled => false,
         _ => throw new ArgumentOutOfRangeException()
     };
@@ -59,25 +67,35 @@ public readonly struct ConnectionResult
         /// </summary>
         Success,
 
-        /// <summary>
-        /// Connection failed due to a timeout.
-        /// </summary>
-        Timeout,
+        // <summary>
+        // Connection failed due to a timeout.
+        // </summary>
+        //Timeout,
 
+        // <summary>
+        // Connection failed due to an authentication failure.
+        // </summary>
+        //AuthenticationFailed,
+        
+        // <summary>
+        // The negotiation of the server and client failed.
+        // </summary>
+        //VersionNegotiationFailed,
+        
         /// <summary>
-        /// Connection failed due to an authentication failure.
+        /// Connection was disconnected prior to completion.
         /// </summary>
-        AuthenticationFailed,
+        Disconnected,
 
         /// <summary>
         /// Connection failed due to a known exception.
         /// </summary>
         Exception,
         
-        /// <summary>
-        /// Connection failed due to an unknown exception.
-        /// </summary>
-        UnknownException,
+        // <summary>
+        // Connection failed due to an unknown exception.
+        // </summary>
+        //UnknownException,
         
         /// <summary>
         /// The connection attempt was canceled.

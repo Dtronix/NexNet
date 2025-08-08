@@ -17,6 +17,7 @@ internal partial class CollectionMeta
     public string CollectionTypeShortString { get; set; }
     public string CollectionTypeFullString { get; }
     public string CollectionModeFullTypeString { get; }
+    public NexusMethodAttributeMeta NexusMethodAttribute { get; }
     
     /// <summary>
     /// Assigned after parsing.
@@ -63,6 +64,8 @@ internal partial class CollectionMeta
             NexusCollectionMode.BiDrirectional => "global::NexNet.Collections.NexusCollectionMode.BiDrirectional",
             _ => "INVALID",
         };
+        
+        this.NexusMethodAttribute = new NexusMethodAttributeMeta(symbol);
 
         if (ReturnArity > 0)
         {
@@ -70,7 +73,6 @@ internal partial class CollectionMeta
             this.ReturnTypeSource = returnSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
         }
     }
-
 
     public int GetNexusHash()
     {

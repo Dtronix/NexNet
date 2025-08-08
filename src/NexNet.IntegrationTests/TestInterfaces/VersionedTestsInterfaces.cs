@@ -15,20 +15,20 @@ public partial interface ISimpleClientNexus
 }
 
 
-[NexusVersion(Version = "v1.0", HashLock = 1634980073)]
+[NexusVersion(Version = "v1.0", HashLock = -1412377337)]
 public partial interface IVersionedServerNexusV1
 {
-    [NexusMethod(0)]
+    [NexusMethod(1)]
     ValueTask<bool> VerifyVersionV1(string version);
 }
 
-[NexusVersion(Version = "v1.1", HashLock = -1891564902)]
+[NexusVersion(Version = "v1.1", HashLock = 420480879)]
 public partial interface IVersionedServerNexusV1_1 : IVersionedServerNexusV1
 {
-    [NexusMethod(1)]
+    [NexusMethod(2)]
     void RunTaskV1_1();
     
-    [NexusMethod(2)]
+    [NexusMethod(3)]
     ValueTask<ReturnState> RunTaskWithResultV1_1();
     
     public enum ReturnState : ushort
@@ -39,10 +39,10 @@ public partial interface IVersionedServerNexusV1_1 : IVersionedServerNexusV1
     }
 }
 
-[NexusVersion(Version = "v1.2", HashLock = -1022898744)]
+[NexusVersion(Version = "v1.2", HashLock = 986617530)]
 public partial interface IVersionedServerNexusV2 : IVersionedServerNexusV1_1
 {
-    [NexusMethod(3)]
+    [NexusMethod(4)]
     ValueTask RunTaskNewV2();
 }
 

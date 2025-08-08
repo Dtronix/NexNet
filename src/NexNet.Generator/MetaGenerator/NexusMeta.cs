@@ -73,6 +73,66 @@ internal partial class NexusMeta
             context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustNotBeAbstractOrInterface, nexusLocation, Symbol.Name));
             failed = true;
         }
+        
+        // Check to see if all interfaces are versioning or not.
+        var isVersioning = NexusInterface.Interfaces.Any(i => i.IsVersioning) || NexusInterface.IsVersioning;
+        foreach (var nexusInterface in NexusInterface.Interfaces)
+        {
+            if (nexusInterface.IsVersioning != isVersioning)
+            {
+                context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllInterfacesMustBeVersioning, nexusInterface.Symbol.Locations.FirstOrDefault() ?? nexusLocation, nexusInterface.Symbol.Name));
+                failed = true;
+            }
+        }
+        
+        if (NexusInterface.IsVersioning != isVersioning)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllInterfacesMustBeVersioning, NexusInterface.Symbol.Locations.FirstOrDefault() ?? nexusLocation, NexusInterface.Symbol.Name));
+            failed = true;
+        }
+
+        if (isVersioning)
+        {
+            if (NexusInterface.AllMethods != null)
+            {
+                foreach (var method in NexusInterface.AllMethods)
+                {
+                    if (!method.NexusMethodAttribute.AttributeExists)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllMethodsIdsShallBeSetForVersioningNexuses, method.GetLocation(nexusLocation), method.Name));
+                        failed = true;
+                    }
+                    else if (method.NexusMethodAttribute.MethodId is 0 or null)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses, 
+                            method.GetLocation(nexusLocation), method.Name, 
+                            method.NexusMethodAttribute.MethodId == null ? "NULL" : method.NexusMethodAttribute.MethodId));
+                        failed = true;
+                    }
+                }
+            }
+            
+            if (NexusInterface.AllCollections != null)
+            {
+                foreach (var collection in NexusInterface.AllCollections)
+                {
+                    if (!collection.NexusMethodAttribute.AttributeExists)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.AllMethodsIdsShallBeSetForVersioningNexuses, collection.GetLocation(nexusLocation), collection.Name));
+                        failed = true;
+                    }
+                    else if (collection.NexusMethodAttribute.MethodId is 0 or null)
+                    {
+                        context.ReportDiagnostic(Diagnostic.Create(
+                            DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses, 
+                            collection.GetLocation(nexusLocation), collection.Name, 
+                            collection.NexusMethodAttribute.MethodId == null ? "NULL" : collection.NexusMethodAttribute.MethodId));
+                        failed = true;
+                    }
+                }
+            }
+        }
 
         var nexusSet = new HashSet<ushort>();
         foreach (var method in this.NexusInterface.AllMethods!)

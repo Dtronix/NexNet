@@ -12,6 +12,8 @@ internal partial class InvocationInterfaceMeta
     public TypeHasher Hasher { get; }
     public InvocationInterfaceMeta RootInterface { get; }
     
+    public bool IsVersioning => VersionAttribute.AttributeExists;
+    
     /// <summary>
     /// Null on every interface except the root.
     /// </summary>
@@ -209,14 +211,23 @@ internal partial class InvocationInterfaceMeta
         // Automatic id assignment.
         foreach (var collectionMeta in AllCollections!)
         {
-            if (collectionMeta.Id == 0)
+            if (collectionMeta.NexusMethodAttribute is { AttributeExists: true, MethodId: not null })
             {
-                // Make sure we get an ID which is not used.
-                while (_usedIds.Contains(id))
-                    id++;
-
-                collectionMeta.Id = id++;
+                collectionMeta.Id = collectionMeta.NexusMethodAttribute.MethodId.Value;
             }
+            else
+            {
+                if (collectionMeta.Id == 0)
+                {
+                    // Make sure we get an ID which is not used.
+                    while (_usedIds.Contains(id))
+                        id++;
+
+                    collectionMeta.Id = id++;
+                }
+            }
+            
+            _usedIds.Add(collectionMeta.Id);
         }
     }
     /*
