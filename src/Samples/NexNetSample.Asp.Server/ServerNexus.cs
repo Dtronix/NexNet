@@ -9,7 +9,7 @@ using NexNetSample.Asp.Shared;
 
 namespace NexNetSample.Asp.Server;
 
-[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server, Versioning = NexusVersioning.Negotiation)]
+[Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus
 {
     public async ValueTask CalculateNumber(INexusDuplexPipe pipe)
