@@ -58,7 +58,7 @@ public interface IInvocationMethodHash
     public static string? GetLatestVersionString<T>()
         where T : IInvocationMethodHash
     {
-        return T.VersionHashTable.Count == 0 ? null : T.VersionHashTable.Keys.FirstOrDefault();
+        return T.VersionHashTable.Count == 0 ? null : T.VersionHashTable.Keys.LastOrDefault();
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ public interface IInvocationMethodHash
     public static int GetLatestVersionHash<T>()
         where T : IInvocationMethodHash
     {
-        return T.VersionHashTable.Count == 0 ? T.MethodHash : T.VersionHashTable.Values.FirstOrDefault();
+        return T.VersionHashTable.Count == 0 ? T.MethodHash : T.VersionHashTable.Values.LastOrDefault();
     }
 
     /// <summary>

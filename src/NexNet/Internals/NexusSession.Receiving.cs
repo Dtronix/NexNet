@@ -476,7 +476,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     // a specific version that may or may not ve available.
                     if(requestedVersion != null)
                         return DisconnectReason.ServerMismatch;
-                    
+
                     // Reaching here means the server is not versioning, and the client is not
                     // expecting a specific version. We are good to continue.
                 }
@@ -488,13 +488,14 @@ internal partial class NexusSession<TNexus, TProxy>
                     // Ensure the server has this version available.
                     if(!TNexus.VersionHashTable.TryGetValue(requestedVersion, out verificationHash))
                         return DisconnectReason.ServerMismatch;
-                    
-                    // Validation has succeeded.
                 }
                 
                 // Validate the hash matches
                 if(verificationHash != cGreeting.ServerNexusHash)
                     return DisconnectReason.ServerMismatch;
+                
+                // Validation has succeeded.
+                _versionHash = verificationHash;
 
                 var serverConfig = Unsafe.As<ServerConfig>(_config);
 
@@ -535,7 +536,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
 
                 using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
-                serverGreeting.Version = 0;
+                serverGreeting.Version = TProxy.MethodHash;
                 serverGreeting.ClientId = Id;
 
                 await SendMessage(serverGreeting).ConfigureAwait(false);
@@ -561,8 +562,16 @@ internal partial class NexusSession<TNexus, TProxy>
                     return DisconnectReason.ProtocolError;
                 }
 
+                var greetingMessage = message.As<ServerGreetingMessage>();
+
+                if (greetingMessage.Version != TNexus.MethodHash)
+                    return DisconnectReason.ClientMismatch;
+                
+                // There is no versioning on the client so we can just use the hash directly.
+                _versionHash = TNexus.MethodHash;
+
                 // Set the server assigned client id.
-                Id = message.As<ServerGreetingMessage>().ClientId;
+                Id = greetingMessage.ClientId;
 
                 EnumUtilities<InternalState>.SetFlag(
                     ref _internalState, InternalState.NexusCompletedConnection);
@@ -578,42 +587,25 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 var invocationRequestMessage = message.As<InvocationMessage>();
                 // Throttle invocations.
-
+                
+                var hash = ((long)_versionHash << 16) | invocationRequestMessage.MethodId;
+                if (!TNexus.VersionMethodHashSet.Contains(hash))
+                {
+                    Logger?.LogWarning($"Session attempted to invoke method {invocationRequestMessage.MethodId} but that method can't be invoked on API version {_versionHash}.");
+                    return DisconnectReason.ProtocolError;
+                }
                 Logger?.LogTrace($"Started Invoking method {invocationRequestMessage.MethodId}.");
                 
                 await _invocationSemaphore.WaitAsync(_disconnectionCts.Token).ConfigureAwait(false);
+
+                if (State != ConnectionState.Connected)
+                    return DisconnectReason.ProtocolError;
 
                 if (!_invocationTaskArgumentsPool.TryTake(out var args))
                     args = new InvocationTaskArguments();
 
                 args.Message = invocationRequestMessage;
                 args.Session = this;
-
-                static async void InvocationTask(object? argumentsObj)
-                {
-                    var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
-
-                    var session = arguments.Session;
-                    var message = arguments.Message;
-                    try
-                    {
-                        arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
-                        await session._nexus.InvokeMethod(message).ConfigureAwait(false);
-                    }
-                    catch (Exception e)
-                    {
-                        session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
-                    }
-                    finally
-                    {
-                        session._invocationSemaphore.Release();
-
-                        // Clear out the references before returning to the pool.
-                        arguments.Session = null!;
-                        arguments.Message = null!;
-                        session._invocationTaskArgumentsPool.Add(arguments);
-                    }
-                }
 
                 _ = Task.Factory.StartNew(InvocationTask, args);
                 break;
@@ -648,5 +640,39 @@ internal partial class NexusSession<TNexus, TProxy>
                 return DisconnectReason.ProtocolError;
         }
         return DisconnectReason.None;
+        
+        static async void InvocationTask(object? argumentsObj)
+        {
+            var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
+
+            var session = arguments.Session;
+            var message = arguments.Message;
+            try
+            {
+                arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
+                await session._nexus.InvokeMethod(message).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
+            }
+            finally
+            {
+                try
+                {
+                    session._invocationSemaphore.Release();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The semaphore was disposed and the client is disconnected.
+                }
+
+
+                // Clear out the references before returning to the pool.
+                arguments.Session = null!;
+                arguments.Message = null!;
+                session._invocationTaskArgumentsPool.Add(arguments);
+            }
+        }
     }
 }

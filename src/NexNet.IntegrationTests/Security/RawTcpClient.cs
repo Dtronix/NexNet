@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 using MemoryPack;
+using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -107,6 +108,34 @@ internal class RawTcpClient : IDisposable
         
         
         Assert.That(result, Is.True);
+    }
+
+    public Task SendClientGreetingMessage<TServer, TClient, TClientProxy>(string? version = null) 
+        where TServer : IInvocationMethodHash 
+        where TClient : IInvocationMethodHash
+        where TClientProxy : IInvocationMethodHash
+    {
+        var clientHash = IInvocationMethodHash.GetMethodHash<TClient>();
+        
+        // If no version specified, determine from the client's type name what version it represents
+        version ??= IInvocationMethodHash.GetLatestVersionString<TClientProxy>();
+
+        var serverHash = version != null
+            ? IInvocationMethodHash.GetVersionHashTable<TServer>()[version]
+            : IInvocationMethodHash.GetMethodHash<TServer>();
+
+        return SendClientGreetingMessage(version, clientHash, serverHash);
+    }
+    
+    public async Task SendClientGreetingMessage(string? version, int clientHash, int serverHash) 
+    {
+        var message = new ClientGreetingMessage()
+        {
+            ServerNexusHash = serverHash,
+            ClientNexusHash = clientHash,
+            Version = version // Would be a valid version in versioned server
+        };
+        await SendMessageAsync(message).Timeout(1);
     }
     
     public async Task ReadProtocolHeaderAsync()

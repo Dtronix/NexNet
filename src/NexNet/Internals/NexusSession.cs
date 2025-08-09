@@ -65,6 +65,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public Action<ConnectionState>? OnStateChanged;
     private readonly INexusClient? _client;
+    
+    private int _versionHash = 0;
 
     /// <summary>
     /// State of the connection that 
@@ -131,6 +133,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public bool IsServer { get; }
 
     public DisconnectReason DisconnectReason { get; private set; } = DisconnectReason.None;
+
 
     public NexusSession(in NexusSessionConfigurations<TNexus, TProxy> configurations)
     {
@@ -219,7 +222,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         greetingMessage.Version = latestVersion;
         
         // If we are not versioning, use the default proxy hash. 
-        greetingMessage.ServerNexusHash = latestVersion == null ? TProxy.MethodHash : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, 0);
+        greetingMessage.ServerNexusHash = latestVersion == null 
+            ? TProxy.MethodHash 
+            : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, TProxy.MethodHash);
         greetingMessage.ClientNexusHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
         
@@ -293,6 +298,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // ReSharper disable once MethodHasAsyncOverload
         _pipeInput!.Complete();
         _pipeInput = null;
+        
+        _invocationSemaphore.Dispose();
 
         if (_config.InternalNoLingerOnShutdown)
         {

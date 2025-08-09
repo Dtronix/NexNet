@@ -90,8 +90,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
                && result.DisconnectReason == DisconnectReason.Authentication)
                 throw new TransportException(TransportError.AuthenticationError, "Authentication failed.", result.Exception);
         }
-
-
     }
 
     /// <inheritdoc />
