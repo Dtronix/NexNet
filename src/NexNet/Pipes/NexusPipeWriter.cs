@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
+using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -26,6 +27,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly ISessionMessenger? _messenger;
     private readonly NexusDuplexPipe.State _completedFlag;
     private bool _hasPipeId;
+    private int _flushCounter;
 
     /// <summary>
     /// Set to true to pause writing to the pipe.
@@ -198,6 +200,8 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
             try
             {
+                Interlocked.Increment(ref _flushCounter);
+                //_logger?.LogTrace($"Sending[id:{flushId}] {sendingBuffer.Length} bytes [{string.Join(",", sendingBuffer.ToArray())}]");
                 // We are passing the cancellation token from the method instead of the _flushCts due to
                 // the fact that the _flushCts can be canceled even after this method is completed due
                 // to some transport implementations such as QUIC.

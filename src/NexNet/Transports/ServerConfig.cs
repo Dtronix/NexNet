@@ -24,11 +24,6 @@ public abstract class ServerConfig : ConfigBase
     public int AcceptorBacklog { get; init; } = 20;
 
     /// <summary>
-    /// If a client hasn't sent a full "HelloMessage" within this time the client will be disconnected.
-    /// </summary>
-    public int HandshakeTimeout { get; init; } = 15_000;
-
-    /// <summary>
     /// Set to true to authenticate teh client connection.
     /// </summary>
     public bool Authenticate { get; set; } = false;

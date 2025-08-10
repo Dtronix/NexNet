@@ -149,4 +149,46 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor VersionHashLockMismatch = new(
+        id: "NEXNET019",
+        title: "NexusVersion invalid hash lock",
+        messageFormat: "The NexusVersion on '{0}' does not match the calculated HashLock of '{1}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor VersionHashLockNotSet = new(
+        id: "NEXNET020",
+        title: "NexusVersion HashLock not set",
+        messageFormat: "The NexusVersion on '{0}' does not specify the calculated HashLock of '{1}'. Set this value prior to shipping your API to ensure API changes to no accidentally occur.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor AllInterfacesMustBeVersioning = new(
+        id: "NEXNET021",
+        title: "NexusVersion is enabled but not present on all interfaces",
+        messageFormat: "The interface '{0}' does not have a NexusVersionAttribute set while other chained interface(s) do. Set NexusVersionAttribute for the '{0}' interface.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor AllMethodsIdsShallBeSetForVersioningNexuses = new(
+        id: "NEXNET022",
+        title: "NexusMethodAttribute is not set on all methods & collections while versioning",
+        messageFormat: "The method '{0}' does not have a NexusMethodAttribute as required while versioning. Set NexusMethodAttribute for the '{0}' method.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+    
+    public static readonly DiagnosticDescriptor AllMethodsIdsShallNotBe0ForVersioningNexuses = new(
+        id: "NEXNET023",
+        title: "NexusMethodAttribute is not set on all methods and or collections while versioning",
+        messageFormat: "The member '{0}' NexusMethodAttribute.MethodId value is set to '{1}' which is invalid while versioning. Set NexusMethodAttribute.MethodId for the '{0}' method to a non-zero value.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }
+
+

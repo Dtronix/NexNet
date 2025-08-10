@@ -107,14 +107,21 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             }
             catch
             {
+                // Incomplete message data - mark position and wait for more data
                 examinedLength = reader.Consumed;
                 break;
             }
         }
 
-        if (consumedLength > 0 || examinedLength > 0)
+        if (consumedLength > 0)
         {
             pipeReader.AdvanceTo(consumedLength, examinedLength);
+        }
+        else if (examinedLength > 0)
+        {
+            // When deserialization fails, we need to examine the data but not consume it
+            // This tells the pipe reader we looked at the data but need more bytes
+            pipeReader.AdvanceTo(0, examinedLength);
         }
 
         return consumedLength;

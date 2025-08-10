@@ -5,7 +5,7 @@ namespace NexNet;
 /// <summary>
 /// Attribute to configure the creation of the nexus method implementations.
 /// </summary>
-[AttributeUsage(AttributeTargets.Method,  AllowMultiple = false, Inherited = true)]
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Property,  AllowMultiple = false, Inherited = true)]
 public class NexusMethodAttribute : Attribute
 {
     /// <summary>

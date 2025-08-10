@@ -1,4 +1,6 @@
-﻿using NexNet.IntegrationTests.TestInterfaces;
+﻿using System.Net;
+using System.Net.Sockets;
+using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -359,6 +361,59 @@ internal partial class NexusServerTests : BaseTests
         // Second cycle: should still accept and connect cleanly
         await client.ConnectAsync().Timeout(1);
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+    
+    // Skip the UDS & UDP protocols
+    //[TestCase(Type.Quic)]
+    //[TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    //[TestCase(Type.TcpTls)]
+    //[TestCase(Type.WebSocket)]
+    //[TestCase(Type.HttpSocket)]
+    public async Task ServerDisconnectsNonNexNetClient(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        var server = CreateServer(serverConfig, n => { });
+        await server.StartAsync();
+        
+        if (serverConfig is TcpServerConfig { EndPoint: IPEndPoint tcpEndPoint } tcpConfig)
+        {
+            var client = new TcpClient();
+            client.LingerState = new LingerOption(false, 0);
+            await client.ConnectAsync(IPAddress.Loopback, tcpEndPoint.Port);
+            var stream = client.GetStream();
+            // Bunk data for the protocol header.
+            stream.Write([1, 2, 3, 4, 5, 6, 7, 8]);
+
+            await Utilities.WaitForConnectionClosureAsync(client).Timeout(1);
+        }
+    }
+    
+    // Skip the UDS & UDP protocols
+    //[TestCase(Type.Quic)]
+    //[TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    //[TestCase(Type.TcpTls)]
+    //[TestCase(Type.WebSocket)]
+    //[TestCase(Type.HttpSocket)]
+    public async Task ServerDisconnectsOnNoData(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.HandshakeTimeout = 100;
+        var server = CreateServer(serverConfig, n => { });
+        await server.StartAsync();
+        
+        if (serverConfig is TcpServerConfig { EndPoint: IPEndPoint tcpEndPoint } tcpConfig)
+        {
+            var client = new TcpClient();
+            client.LingerState = new LingerOption(false, 0);
+            await client.ConnectAsync(IPAddress.Loopback, tcpEndPoint.Port);
+            var stream = client.GetStream();
+            // Don't send anything and wait for disconnect.
+            //stream.Write([1, 2, 3, 4, 5, 6, 7, 8]);
+
+            await Utilities.WaitForConnectionClosureAsync(client).Timeout(1);
+        }
     }
     
 }

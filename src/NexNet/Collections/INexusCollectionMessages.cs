@@ -4,33 +4,45 @@ using NexNet.Collections.Lists;
 
 namespace NexNet.Collections;
 
+/// <summary>
+/// Flags that control behavior of nexus collection messages.
+/// </summary>
+[Flags]
+public enum NexusCollectionMessageFlags : byte
+{
+    /// <summary>
+    /// No flags set.
+    /// </summary>
+    Unset = 0,
+    
+    /// <summary>
+    /// Indicates that the message contains acknowledgment from the server that the operation has been completed.
+    /// </summary>
+    Ack = 1 << 0
+} 
+
 [MemoryPackable]
-[MemoryPackUnion(0, typeof(NexusCollectionAckMessage))]         
-[MemoryPackUnion(1, typeof(NexusCollectionResetStartMessage))]        
-[MemoryPackUnion(2, typeof(NexusCollectionResetValuesMessage))]      
-[MemoryPackUnion(3, typeof(NexusCollectionResetCompleteMessage))]                
-[MemoryPackUnion(4, typeof(NexusCollectionClearMessage))]                
-[MemoryPackUnion(5, typeof(NexusListInsertMessage))]
-[MemoryPackUnion(6, typeof(NexusListReplaceMessage))]
-[MemoryPackUnion(7, typeof(NexusListMoveMessage))]
-[MemoryPackUnion(8, typeof(NexusListRemoveMessage))]
+[MemoryPackUnion(0, typeof(NexusCollectionResetStartMessage))]        
+[MemoryPackUnion(1, typeof(NexusCollectionResetValuesMessage))]      
+[MemoryPackUnion(2, typeof(NexusCollectionResetCompleteMessage))]                
+[MemoryPackUnion(3, typeof(NexusCollectionClearMessage))]                
+[MemoryPackUnion(4, typeof(NexusListInsertMessage))]
+[MemoryPackUnion(5, typeof(NexusListReplaceMessage))]
+[MemoryPackUnion(6, typeof(NexusListMoveMessage))]
+[MemoryPackUnion(7, typeof(NexusListRemoveMessage))]
 internal partial interface INexusCollectionMessage
 {
-    int Id { get; set; }
+    public NexusCollectionMessageFlags Flags { get; set; }
+    
+    [MemoryPackIgnore]
+    int Remaining { get; set; }
+    
     void ReturnToCache();
 
     void CompleteBroadcast();
 
-    [MemoryPackIgnore]
-    int Remaining { get; set; }
+    public INexusCollectionMessage Clone();
 }
-
-[MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusCollectionAckMessage :
-    NexusCollectionMessage<NexusCollectionAckMessage> 
-{
-}
-
 
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -42,6 +54,15 @@ internal partial class NexusCollectionResetStartMessage
     
     [MemoryPackOrder(2)]
     public int TotalValues { get; set; }
+
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.TotalValues = TotalValues;
+        return clone;
+        
+    }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -49,6 +70,11 @@ internal partial class NexusCollectionResetCompleteMessage :
     NexusCollectionMessage<NexusCollectionResetCompleteMessage>
 {
     
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        return clone;
+    }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -61,6 +87,15 @@ internal partial class NexusCollectionResetValuesMessage
     {
         get => base.ValueCore;
         set => base.ValueCore = value;
+    }
+    
+    
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Values = Values;
+        return clone;
+        
     }
 
     [MemoryPackOnDeserialized]
@@ -89,11 +124,18 @@ internal partial class NexusListInsertMessage : NexusCollectionValueMessage<Nexu
         get => base.ValueCore;
         set => base.ValueCore = value;
     }
+    
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        clone.Value = Value;
+        return clone;
+    }
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
-
-
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -112,6 +154,15 @@ internal partial class NexusListReplaceMessage : NexusCollectionValueMessage<Nex
         get => base.ValueCore;
         set => base.ValueCore = value;
     }
+    
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        clone.Value = Value;
+        return clone;
+    }
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
@@ -128,6 +179,16 @@ internal partial class NexusListMoveMessage : NexusCollectionMessage<NexusListMo
     
     [MemoryPackOrder(3)]
     public int ToIndex { get; set; }
+    
+    public override INexusCollectionMessage Clone() 
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.FromIndex = FromIndex;
+        clone.ToIndex = ToIndex;
+        return clone;
+    }
 }
 
 
@@ -137,6 +198,14 @@ internal partial class NexusCollectionClearMessage :
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
+    
+    public override INexusCollectionMessage Clone()
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        return clone;
+    }
 }
 
 
@@ -150,5 +219,14 @@ internal partial class NexusListRemoveMessage :
     
     [MemoryPackOrder(2)]
     public int Index { get; set; }
+    
+    public override INexusCollectionMessage Clone()  
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        return clone;
+    }
 }
 

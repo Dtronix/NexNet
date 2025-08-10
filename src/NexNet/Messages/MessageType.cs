@@ -73,6 +73,8 @@ public enum MessageType : byte
     /// The socket was closed while attempting to write. No body.
     /// </summary>
     DisconnectSocketClosedWhenWriting = 32,
+    
+    // Reserved through -39
 
     /// <summary>
     /// Header for data sent to a pipe.

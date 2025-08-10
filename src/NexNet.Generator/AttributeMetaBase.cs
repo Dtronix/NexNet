@@ -6,6 +6,7 @@ namespace NexNet.Generator;
 internal abstract class AttributeMetaBase
 {
     private readonly string _attributeClassName;
+    private readonly ISymbol _symbol;
 
     /// <summary>
     /// True if the attribute was found on the passed symbol.
@@ -15,6 +16,7 @@ internal abstract class AttributeMetaBase
     protected AttributeMetaBase(string attributeClassName, ISymbol symbol)
     {
         _attributeClassName = attributeClassName;
+        _symbol = symbol;
         Parse(symbol);
     }
 
@@ -62,7 +64,7 @@ internal abstract class AttributeMetaBase
         
     }
 
-    protected static object GetItem(TypedConstant arg)
+    protected static object? GetItem(TypedConstant arg)
     {
         if (arg.Kind == TypedConstantKind.Array)
         {
@@ -70,7 +72,18 @@ internal abstract class AttributeMetaBase
         }
         else
         {
-            return arg.Value ?? new object();
+            return arg.Value;
         }
+    }
+    
+    public Location GetLocation(Location fallback)
+    {
+        var location = _symbol.Locations.FirstOrDefault();
+        if (location is null || location.IsInMetadata)
+        {
+            location = fallback;
+        }
+
+        return location;
     }
 }

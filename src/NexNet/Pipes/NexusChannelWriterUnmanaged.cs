@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
+using NexNet.Internals;
 
 namespace NexNet.Pipes;
 
@@ -38,7 +39,8 @@ internal class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public override async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
-        
+        using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+
         Write(ref item, ref Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -63,6 +65,8 @@ internal class NexusChannelWriterUnmanaged<T> : NexusChannelWriter<T>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public override async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
     {
+        using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+
         WriteEnumerable(items, ref Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);

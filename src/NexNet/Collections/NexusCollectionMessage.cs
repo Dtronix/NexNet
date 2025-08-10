@@ -10,9 +10,9 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
 {
     public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
     private int _remaining;
-        
+    
     [MemoryPackOrder(0)]
-    public int Id { get; set; }
+    public NexusCollectionMessageFlags Flags { get; set; }
 
     public static T Rent()
     {
@@ -41,4 +41,6 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
         get => _remaining;
         set => _remaining = value;
     }
+
+    public abstract INexusCollectionMessage Clone();
 }

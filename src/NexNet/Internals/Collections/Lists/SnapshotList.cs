@@ -65,7 +65,7 @@ internal class SnapshotList<T> : IEnumerable<T>
     
     private int _liveCount;
     
-    private long _globalVersion = 0;
+    private long _globalVersion;
 
     private readonly Lock _lock = new();
     
@@ -111,7 +111,7 @@ internal class SnapshotList<T> : IEnumerable<T>
                 InitializeNode(newIdx, item);
 
             // 2) insert at head
-            var nodes = _nodes;
+            var nodes = GetNodes();
             int oldNext = nodes[0].Next;
             nodes[newIdx].Next = oldNext;
             nodes[0].Next = newIdx;
@@ -133,15 +133,16 @@ internal class SnapshotList<T> : IEnumerable<T>
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         lock (_lock)
         {
-            int prevIdx = 0; // start at the sentinel
-            int currIdx = _nodes[0].Next;
+            var nodes = GetNodes();
+            int prevIdx; // start at the sentinel
+            int currIdx = nodes[0].Next;
             int i = 0;
 
             // walk until we've skipped `index` live nodes, or hit the tail
             while (i < index && currIdx != NullIndex)
             {
                 prevIdx = currIdx;
-                currIdx = _nodes[currIdx].Next;
+                currIdx = nodes[currIdx].Next;
                 i++;
             }
 
@@ -154,11 +155,25 @@ internal class SnapshotList<T> : IEnumerable<T>
                 newIdx = AllocateNewSlot(item);
             else
                 InitializeNode(newIdx, item);
+            
+            // CRITICAL: Re-read the array reference after potential resize
+            // and re-validate our indices
+            var currentNodes = GetNodes();
 
-            // 3) splice it in between prevIdx → currIdx
-            var freshNodes = _nodes; // re‑read in case of a resize
-            freshNodes[newIdx].Next = currIdx; // link forward
-            freshNodes[prevIdx].Next = newIdx;
+            // Re-walk to find the correct position again since array might have changed
+            prevIdx = 0;
+            currIdx = currentNodes[0].Next;
+            i = 0;
+            while (i < index && currIdx != NullIndex)
+            {
+                prevIdx = currIdx;
+                currIdx = currentNodes[currIdx].Next;
+                i++;
+            }
+
+            // Now splice with the current array
+            currentNodes[newIdx].Next = currIdx;
+            currentNodes[prevIdx].Next = newIdx;
             _liveCount++;
         }
     }
@@ -174,26 +189,27 @@ internal class SnapshotList<T> : IEnumerable<T>
     {
         lock (_lock)
         {
+            var nodes = GetNodes();
             int prevIdx = 0;
-            int currIdx = _nodes[0].Next;
+            int currIdx = nodes[0].Next;
 
             // 1) find target
             while (currIdx != NullIndex &&
-                   !EqualityComparer<T>.Default.Equals(_nodes[currIdx].Value, item))
+                   !EqualityComparer<T>.Default.Equals(nodes[currIdx].Value, item))
             {
                 prevIdx = currIdx;
-                currIdx = _nodes[currIdx].Next;
+                currIdx = nodes[currIdx].Next;
             }
 
             if (currIdx == NullIndex)
                 return false;
             
             // 2) stamp delete-version before we unlink
-            _nodes[currIdx].DeleteVersion = ++_globalVersion;
+            nodes[currIdx].DeleteVersion = ++_globalVersion;
 
             // 3) physical unlink
-            int nextIdx = _nodes[currIdx].Next;
-            _nodes[prevIdx].Next = nextIdx;
+            int nextIdx = nodes[currIdx].Next;
+            nodes[prevIdx].Next = nextIdx;
             _liveCount--;
             PushFreeIndex(currIdx);
             return true;
@@ -206,8 +222,16 @@ internal class SnapshotList<T> : IEnumerable<T>
     /// </summary>
     /// <returns>An enumerator for the list.</returns>
     public IEnumerator<T> GetEnumerator()
-    {   
-        return new SnapshotEnumerator(Volatile.Read(ref _globalVersion), _nodes);
+    {
+        long globalVersion;
+        Node[] nodes;
+
+        lock (_lock)
+        {
+            globalVersion = _globalVersion;
+            nodes = GetNodes();
+        }
+        return new SnapshotEnumerator(Volatile.Read(ref globalVersion), nodes);
     }
     
     IEnumerator IEnumerable.GetEnumerator()
@@ -223,13 +247,15 @@ internal class SnapshotList<T> : IEnumerable<T>
     /// </returns>
     private int PopFreeIndex()
     {
+        var nodes = GetNodes();
         while (true)
         {
             int head = _freeListHead;
             if (head == NullIndex)
                 return NullIndex;
-
-            int next = _nodes[head].FreeNext;
+            
+            
+            int next = nodes[head].FreeNext;
             if (Interlocked.CompareExchange(ref _freeListHead, next, head) == head)
                 return head;
         }
@@ -241,10 +267,11 @@ internal class SnapshotList<T> : IEnumerable<T>
     /// <param name="idx">The node index to recycle.</param>
     private void PushFreeIndex(int idx)
     {
+        var nodes = GetNodes();
         while (true)
         {
             int oldHead = _freeListHead;
-            _nodes[idx].FreeNext = oldHead;
+            nodes[idx].FreeNext = oldHead;
             if (Interlocked.CompareExchange(ref _freeListHead, idx, oldHead) == oldHead)
                 return;
         }
@@ -259,7 +286,8 @@ internal class SnapshotList<T> : IEnumerable<T>
     private int AllocateNewSlot(T item)
     {
         // need bigger array
-        if (_count == _nodes.Length)
+        var nodes = GetNodes();
+        if (_count == nodes.Length)
             GrowArray(_count + 1);
         
         int idx = ++_count - 1;
@@ -276,7 +304,7 @@ internal class SnapshotList<T> : IEnumerable<T>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void InitializeNode(int idx, T item)
     {
-        var nodes = _nodes;
+        var nodes = GetNodes();
         nodes[idx].Value = item;
         nodes[idx].Next = NullIndex;
         nodes[idx].InsertVersion = ++_globalVersion;
@@ -291,12 +319,21 @@ internal class SnapshotList<T> : IEnumerable<T>
     /// <param name="minSize">The minimum required capacity.</param>
     private void GrowArray(int minSize)
     {
-        if (_nodes.Length >= minSize)
+        var nodes = GetNodes();
+        
+        if (nodes.Length >= minSize)
             return;
-            
-        Array.Resize(ref _nodes, Math.Max(_nodes.Length * 2, minSize));
+    
+        var newSize = Math.Max(nodes.Length * 2, minSize);
+        var newArray = new Node[newSize];
+        Array.Copy(nodes, newArray, nodes.Length);
+    
+        // Use Volatile.Write to ensure visibility
+        Volatile.Write(ref _nodes, newArray);
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private Node[] GetNodes() => Volatile.Read(ref _nodes);
     
     private struct SnapshotEnumerator : IEnumerator<T>
     {
@@ -356,7 +393,6 @@ internal class SnapshotList<T> : IEnumerable<T>
         {
             _index = 0;
         }
-
 
         public void Dispose()
         {

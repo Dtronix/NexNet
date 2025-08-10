@@ -226,8 +226,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         
         _config!.InternalOnConnect?.Invoke();
         
-        return RunClientAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
+        return RunSessionAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
         {
+            ConnectionState = ConnectionState.Connecting,
             Transport = transport,
             Cache = _cacheManager,
             Configs = _config,
@@ -239,12 +240,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         }, cancellationToken);
     }
 
-    private static async void RunClientAsync(object? boxed)
+    private static async void RunSessionAsync(object? boxed)
     {
         try
         {
             var arguments = (NexusSessionConfigurations<TServerNexus, TClientProxy>)boxed!;
-            await RunClientAsync(arguments).ConfigureAwait(false);
+            await RunSessionAsync(arguments).ConfigureAwait(false);
         }
         catch (Exception e)
         {
@@ -254,14 +255,14 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         
     }
 
-    private static async ValueTask RunClientAsync(
+    private static async ValueTask RunSessionAsync(
         NexusSessionConfigurations<TServerNexus, TClientProxy> arguments,
         CancellationToken cancellationToken = default)
     {
+        var session = new NexusSession<TServerNexus, TClientProxy>(arguments);
         try
         {
-            var session = new NexusSession<TServerNexus, TClientProxy>(arguments);
-
+            await session.InitializeConnection(cancellationToken).ConfigureAwait(false);
             await session.StartReadAsync(cancellationToken).ConfigureAwait(false);
 
             try
@@ -286,6 +287,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         }
         catch (Exception ex)
         {
+            session.Logger?.LogError(ex, "Exception while running session");
             try
             {
                 // ReSharper disable once MethodHasAsyncOverload
@@ -340,9 +342,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 // boxed, but only once per client
                 StartOnScheduler(
                     _config.ReceiveSessionPipeOptions.ReaderScheduler,
-                    RunClientAsync,
+                    RunSessionAsync,
                     new NexusSessionConfigurations<TServerNexus, TClientProxy>()
                     {
+                        ConnectionState = ConnectionState.Connecting,
                         Transport = clientTransport,
                         Cache = _cacheManager,
                         Configs = _config,

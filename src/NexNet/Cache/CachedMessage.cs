@@ -22,8 +22,12 @@ internal class CachedCachedMessage<T> : ICachedMessage
     public T Rent()
     {
         InitStack();
-        if (!_cache!.TryPop(out var cachedItem))
-            cachedItem = new T();
+        T? cachedItem = null;
+        while (cachedItem == null)
+        {
+            if (!_cache!.TryPop(out cachedItem))
+                cachedItem = new T();
+        }
 
         cachedItem.MessageCache = this;
 
@@ -34,8 +38,12 @@ internal class CachedCachedMessage<T> : ICachedMessage
     public T? Deserialize(in ReadOnlySequence<byte> bodySequence)
     {
         InitStack();
-        if (!_cache!.TryPop(out var cachedItem))
-            cachedItem = new T();
+        T? cachedItem = null;
+        while (cachedItem == null)
+        {
+            if (!_cache!.TryPop(out cachedItem))
+                cachedItem = new T();
+        }
 
         cachedItem.MessageCache = this;
 
@@ -48,8 +56,13 @@ internal class CachedCachedMessage<T> : ICachedMessage
     public IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence)
     {
         InitStack();
-        if (!_cache!.TryPop(out var cachedItem))
-            cachedItem = new T();
+        
+        T? cachedItem = null;
+        while (cachedItem == null)
+        {
+            if (!_cache!.TryPop(out cachedItem))
+                cachedItem = new T();
+        }
 
         cachedItem.MessageCache = this;
 
@@ -59,8 +72,11 @@ internal class CachedCachedMessage<T> : ICachedMessage
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Return(IMessageBase item)
+    public void Return(IMessageBase? item)
     {
+        if (item == null)
+            return;
+        
         InitStack();
         _cache!.Push(Unsafe.As<T>(item));
     }

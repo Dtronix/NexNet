@@ -1,4 +1,5 @@
 ﻿using NexNet.Internals.Collections.Versioned;
+using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
@@ -29,6 +30,7 @@ internal partial class NexusList<T>
         if (opResult is NoopOperation<T>)
         {
             op.Operation.Return();
+            base.Logger?.LogTrace("Nooped");
             return new ServerProcessMessageResult(null, true, true);
         }
 

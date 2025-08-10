@@ -19,7 +19,7 @@ internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<
     {
         return MemoryPackSerializer.Deserialize<TValue>(ValueCore.Span);
     }
-    
+
     protected void OnDeserializedCore()
     {
         _isArgumentPoolArray = true;

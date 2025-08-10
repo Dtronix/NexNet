@@ -1,4 +1,5 @@
-﻿using NUnit.Framework;
+﻿using Microsoft.CodeAnalysis;
+using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
@@ -430,6 +431,5 @@ namespace HubNameSpaces2.Seven.Eight
 """);
         Assert.That(diagnostic, Is.Empty);
     }
-
 }
 

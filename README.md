@@ -95,8 +95,9 @@ partial class InvocationSampleServerNexus
         return new ValueTask<int>(1);
     }
 }
+
 ```
-#### Usage
+#### Client and Server Usage
 ```csharp
 var client = InvocationSampleClientNexus.CreateClient(ClientConfig, new InvocationSampleClientNexus());
 var server = InvocationSampleServerNexus.CreateServer(ServerConfig, () => new InvocationSampleServerNexus());
@@ -171,7 +172,9 @@ await client.Proxy.IntList.AddAsync(12345);
 ```
 
 ## Duplex Pipe Usage
-NexNet has a limitation where the total arguments passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
+NexNet has a limitation where the total serialized argument's bytes passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
+
+As with System.IO.Pipelines, the `INexusDuplexPipe` is not thread safe.  You are responsible for ensuring member calls to not overlap.
 
 ## Channels
 Building upon the Duplex Pipes infrastructure, NexNet provides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
@@ -183,6 +186,8 @@ Several extension methods have been provided to allow for ease of reading and wr
 #### INexusDuplexChannel<T>
 The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be serialized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine-tuned for performance of those simple types
 
+Unlike the `INexusDuplexPipe`, the `INexusDuplexChannel<T>` is thread safe for writing.  Reading should be done on a single thread.
+
 Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
 
 #### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
@@ -193,9 +198,8 @@ Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `
 #### IAsyncEnumerable Usage
 
 The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
-```cs
+```csharp
 var writer = await pipe.GetUnmanagedChannelWriter<int>();
-int counter = 0;
 await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
 {
     // Do something with the message.
@@ -206,6 +210,150 @@ await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
 
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
+
+## Versioning
+
+Nexus servers can optionally have versioning built into their interface definitions.  To enable versioning, use the `NexusVersionAttribute` to decorate the interfaces that compose the base NexusServer interface.  Inheriting from a lower version interface to a higher interface allows NexNet to build a hierarchy of version interfaces.  Any of the versioned interfaces can be built into a dedicated server, but normally you will inheit the latest interface version.  This allows a client which has a lower server interface version to connect to a server with running with a newer version.
+
+Clients can't be versioned and is a server only feature.  The versioning system now prevents unauthorized method invocations by validating method IDs against the client's declared version capabilities.
+
+All invoked methods are validated against the connected client's server interface.  If a client tries to invoke a method that is not part of the client's specified server interface, the client will be disconnected.
+
+When versioning, NexNet comes with some caveats:
+1. All interfaces must have a version string which must be used during connection.
+2. All Methods and NexusCollections must have `NexusMethodAttribute` set with a unique method ID (e.g., `[NexusMethod(1)]`).
+3. Method and NexusCollections must not be changed in the interface after setting a version.
+
+While not required, it is highly suggested that you utilize the `HashLock` argument of the `NexusVersionAttribute`.  The purpose of it is to ensure that once your interface API is ready for shipping, it can not be changed without notice.  Once a `HashLock` is set, if any of the arguments, MemoryPack members (including union changes), return values, or method types are changed, then the analyzer will set a compile error.
+
+It is suggested that during development, that the `HashLock` property not be set  This will ensure that you can modify the interface without having to keep the HashLock in sync.
+
+### Versioning Security Features
+- Runtime validation of method invocations against client version capabilities
+- Servers maintain `VersionMethodHashSet` for valid method+version combinations
+- Unauthorized method access results in immediate disconnection with `ProtocolError`
+- Connection establishment includes invocation hash verification for compatibility
+- Method IDs combined with version hashes create unique identifiers for each version+method combination
+- Source generator creates optimized lookup tables for minimal performance overhead
+
+### Versioning Sample
+
+See below for a sample with two server interface versions, and two clients which implement V1.0 and V2.0 of the server interfaces.  This configuration allows the V1 and V2 clients to connect to the same server while only restricting which methods can be invoked due to the interface they implement.
+
+```csharp
+// V1 Server Interface - Initial version with one method
+[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+public interface IVersioningNexusServerV1
+{
+    [NexusMethod(1)]
+    ValueTask<bool> GetStatus();
+}
+
+// V1 Server Implementation
+[Nexus<IVersioningNexusServerV1, IVersioningNexusClient>(NexusType = NexusType.Server)]
+public partial class NexusServerV1
+{
+    public ValueTask<bool> GetStatus()
+    {
+        return ValueTask.FromResult(true);
+    }
+}
+
+// V2 Server Interface - Inherits from V1 and adds new method
+[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+public interface IVersioningNexusServerV2 : IVersioningNexusServerV1
+{
+    [NexusMethod(2)]
+    ValueTask<string> GetServerInfo();
+}
+
+// V2 Server Implementation
+[Nexus<IVersioningNexusServerV2, IVersioningNexusClient>(NexusType = NexusType.Server)]
+public partial class VersioningNexusServerV2
+{
+    // Implements V1 method
+    public ValueTask<bool> GetStatus()
+    {
+        return ValueTask.FromResult(true);
+    }
+
+    // New V2 method
+    public ValueTask<string> GetServerInfo()
+    {
+        return ValueTask.FromResult("Server v2.0");
+    }
+}
+
+// Client interface (same for both versions)
+public interface IVersioningNexusClient
+{
+    ValueTask OnServerMessage(string message);
+}
+
+// V1 Client (can only connect to servers supporting V1)
+[Nexus<IVersioningNexusClient, IVersioningNexusServerV1>(NexusType = NexusType.Client)]
+public partial class VersioningNexusClientV1
+{
+    public ValueTask OnServerMessage(string message)
+    {
+        Console.WriteLine($"Received: {message}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+// V2 Client (can connect to servers supporting V2)
+[Nexus<IVersioningNexusClient, IVersioningNexusServerV2>(NexusType = NexusType.Client)]
+public partial class VersioningNexusClientV2
+{
+    public ValueTask OnServerMessage(string message)
+    {
+        Console.WriteLine($"Received: {message}");
+        return ValueTask.CompletedTask;
+    }
+}
+
+public class VersioningSample : INexusSample
+{
+    public async Task Run()
+    {
+        var serverConfig = new TcpServerConfig
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1234)
+        };
+        
+        // Server supporting both V1 and V2 clients
+        var server = VersioningNexusServerV2.CreateServer(serverConfig, () => new VersioningNexusServerV2());
+        await server.StartAsync();
+
+        // V1 Client connecting to server
+        var clientConfig = new TcpClientConfig()
+        {
+            EndPoint = new IPEndPoint(IPAddress.Loopback, 1234)
+        };
+        
+        var clientV1 = VersioningNexusClientV1.CreateClient(clientConfig, new VersioningNexusClientV1());
+        var result = await clientV1.TryConnectAsync();
+
+        if (result.Success)
+        {
+            // Can call V1 methods
+            Console.WriteLine(await clientV1.Proxy.GetStatus());
+            // Cannot call V2 methods
+        }
+
+        // V2 Client connecting to server
+        var clientV2 = VersioningNexusClientV2.CreateClient(clientConfig, new VersioningNexusClientV2());
+        var result2 = await clientV2.TryConnectAsync();
+
+        if (result2.Success)
+        {
+            // Can call both V1 and V2 methods
+            Console.WriteLine(await clientV2.Proxy.GetStatus());
+            Console.WriteLine(await clientV2.Proxy.GetServerInfo());
+        }
+    }
+}
+```
 
 ## Transports Supported
 - Unix Domain Sockets (UDS)
@@ -234,6 +382,19 @@ WebSockets enable real-time, bidirectional data exchange between client and serv
 HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
 
 Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
+
+## Transport Selection Guide
+
+| Scenario                 | Recommended Transport | Reason                                          |
+|--------------------------|-----------------------|-------------------------------------------------|
+| Same machine IPC         | Unix Domain Sockets   | Highest performance, no network overhead        |
+| Local network            | TCP                   | Simple, reliable, fast                          |
+| Internet/WAN             | TLS over TCP          | Secure, widely supported                        |
+| Mobile/unstable networks | QUIC                  | Connection migration, better congestion control |
+| Web applications         | WebSockets            | Browser compatibility, firewall-friendly        |
+| Reverse proxy setups     | HttpSockets           | Lower overhead than WebSockets                  |
+
+Additional information about the wire protocol can be found in the [Transport-Headers](docs/Transport-Headers.md) documentation.
 
 ## ASP.NET Server Integration
 

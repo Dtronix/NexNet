@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using MemoryPack;
 using NexNet.Logging;
@@ -32,8 +33,6 @@ internal partial class NexusSession<TNexus, TProxy>
     public async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
         where TMessage : IMessageBase
     {
-        
-
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
 
@@ -71,6 +70,7 @@ internal partial class NexusSession<TNexus, TProxy>
         // Only used for debugging
         _config.InternalOnSend?.Invoke(this, buffer.ToArray());
 
+        Debug.Assert(_pipeOutput != null);
         buffer.CopyTo(_pipeOutput.GetSpan(length));
         _bufferWriter.Reset();
         _pipeOutput.Advance(length);
@@ -208,6 +208,24 @@ internal partial class NexusSession<TNexus, TProxy>
         if (result.IsCompleted)
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
+    
+    /// <summary>
+    /// Asynchronously sends raw data over the transport. Does nothing if the session is not connected.
+    /// </summary>
+    /// <param name="data">The data to send..</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field           | Size (bytes) | Description                                                                 |
+    /// |-----------------|--------------|--------------------------------|
+    /// | Data            | Varies       | The message data.            
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
+    public ValueTask SendRaw(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        return SendHeaderCore(MessageType.Unset, data, true, cancellationToken);
+    }
 
     /// <summary>
     /// Asynchronously sends a message header of a specified type over the transport.
@@ -225,24 +243,47 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
     public ValueTask SendHeader(MessageType type, CancellationToken cancellationToken = default)
     {
-        return SendHeaderCore(type, false, cancellationToken);
+        return SendHeaderCore(type, null, false, cancellationToken);
     }
-
+    
     /// <summary>
-    /// Asynchronously sends a message header of a specified type over the transport.
+    /// Asynchronously sends a message header of a specified type over the transport with the passed data.
+    /// Does nothing if the session is not connected.
     /// </summary>
     /// <param name="type">The type of the message header to be sent.</param>
-    /// <param name="force">If set to true, the header will be sent even when the connection state is not set to Connected.</param>
+    /// <param name="data">Optional data to send immediately after the header type.</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     /// <remarks>
     /// Sends with the following format:
     /// | Field           | Size (bytes) | Description                                                                 |
     /// |-----------------|--------------|--------------------------------|
-    /// | Type            | 1            | The type of the message.            
+    /// | Type            | 1            | The type of the message.
+    /// | byte[]          | Varies       | The data sent after the header      
     /// </remarks>
     /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
-    private async ValueTask SendHeaderCore(MessageType type, bool force, CancellationToken cancellationToken = default)
+    public ValueTask SendHeader(MessageType type, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        return SendHeaderCore(type, data, false, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asynchronously sends a message header of a specified type over the transport.
+    /// </summary>
+    /// <param name="type">The type of the message header to be sent.</param>
+    /// <param name="postHeaderData">Optional data to send immediately after the header type.</param>
+    /// <param name="force">If set to true, the header will be sent even when the connection state is not set to Connected.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
+    /// <returns>A ValueTask representing the asynchronous operation.</returns>
+    /// <remarks>
+    /// Sends with the following format:
+    /// | Field             | Size (bytes) | Description                                                                 |
+    /// |-------------------|--------------|--------------------------------|
+    /// | Type              | 1            | The type of the message.
+    /// | byte[] (OPTIONAL) | Varies       | The optional data sent after the header       
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Thrown when the write lock cannot be acquired.</exception>
+    private async ValueTask SendHeaderCore(MessageType type, ReadOnlyMemory<byte>? postHeaderData, bool force, CancellationToken cancellationToken = default)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -266,12 +307,27 @@ internal partial class NexusSession<TNexus, TProxy>
             }, _pipeOutput, false);
         }
 
-        _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+        if (type != MessageType.Unset)
+        {
+            _pipeOutput.GetSpan(1)[0] = (byte)type;
+            _pipeOutput.Advance(1);
+            _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+            Logger?.LogTrace($"Sending {type} header.");
+        }
+        else
+        {
+            Logger?.LogTrace("Sending raw data.");
+        }
 
-        _pipeOutput.GetSpan(1)[0] = (byte)type;
-        _pipeOutput.Advance(1);
-
-        Logger?.LogTrace($"Sending {type} header.");
+        // Check the post header data.
+        if (postHeaderData != null)
+        {
+            var data = postHeaderData.Value;
+            var length = data.Length;
+            data.Span.CopyTo(_pipeOutput.GetSpan(length));
+            _pipeOutput.Advance(length);
+            _config.InternalOnSend?.Invoke(this, data.ToArray());
+        }
 
         FlushResult result = default;
         try
