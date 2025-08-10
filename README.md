@@ -198,9 +198,8 @@ Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `
 #### IAsyncEnumerable Usage
 
 The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
-```cs
+```csharp
 var writer = await pipe.GetUnmanagedChannelWriter<int>();
-int counter = 0;
 await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
 {
     // Do something with the message.
