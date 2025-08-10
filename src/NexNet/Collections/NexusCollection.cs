@@ -238,59 +238,73 @@ internal abstract class NexusCollection : INexusCollectionConnector
                         if (result.Message != null)
                         {
                             // Set the total clients that should need to broadcast prior to returning.
-                            // TODO: Review updating this return system now that acks are handled by message flags.
                             result.Message.Remaining = collection._nexusPipeList!.Count - 1;
-                            foreach (var client in collection._nexusPipeList)
+                            
+                            // If there is 0 remaining and the client is set, then we are only responding to the client that
+                            // sent the change to begin with.
+                            var respondingToClientOnly = result.Message.Remaining == 0 && req.Client != null;
+                            
+                            // For testing only
+                            if (!collection.DoNotSendAck)
                             {
-                                try
+                                foreach (var client in collection._nexusPipeList)
                                 {
-                                    // If this is the originating client, notify that the process has been completed.
-                                    if (result.Ack && !collection.DoNotSendAck && req.Client == client)
+                                    try
                                     {
-                                        var clientResponse = result.Message.Clone();
-                                        clientResponse.Flags |= NexusCollectionMessageFlags.Ack;
-                                        if (!client.MessageSender.Writer.TryWrite(clientResponse))
+                                        // If this is the originating client, notify that the process has been completed.
+                                        if (result.Ack && req.Client == client)
                                         {
-                                            collection.Logger?.LogTrace("ACK Client Could not send to client collection");
-                                            // Complete the pipe as it is full and not writing to the client at a decent
-                                            // rate.
-                                            await client.Pipe.CompleteAsync().ConfigureAwait(false);
-                                        }
-                                        else
-                                        {
-                                            //collection.Logger?.LogTrace("ACK Client Sent to client collection");
-                                        }
-                                    }
-                                    else
-                                    {
-                                        // If the client is not accepting updates, then ignore the update and allow
-                                        // for future poling for updates.  This happens when a client is initializing
-                                        // all the items.
-                                        if (client.State == Client.StateType.AcceptingUpdates)
-                                        {
-                                            if (!client.MessageSender.Writer.TryWrite(result.Message))
+                                            // Make a clone of the response to send the ACK flag back to the sending client
+                                            // unless the sending client is the only client being notified.
+                                            var clientResponse = respondingToClientOnly
+                                                ? result.Message
+                                                : result.Message.Clone();
+                                            clientResponse.Remaining = 1;
+                                            clientResponse.Flags |= NexusCollectionMessageFlags.Ack;
+                                            if (!client.MessageSender.Writer.TryWrite(clientResponse))
                                             {
-                                                collection.Logger?.LogTrace("Could not send to client collection");
+                                                collection.Logger?.LogTrace(
+                                                    "ACK Client Could not send to client collection");
                                                 // Complete the pipe as it is full and not writing to the client at a decent
                                                 // rate.
                                                 await client.Pipe.CompleteAsync().ConfigureAwait(false);
                                             }
                                             else
                                             {
-                                                collection.Logger?.LogTrace("Sent to client collection");
+                                                //collection.Logger?.LogTrace("ACK Client Sent to client collection");
                                             }
                                         }
                                         else
                                         {
-                                            collection.Logger?.LogTrace("Client is not accepting updates");
+                                            // If the client is not accepting updates, then ignore the update and allow
+                                            // for future poling for updates.  This happens when a client is initializing
+                                            // all the items.
+                                            if (client.State == Client.StateType.AcceptingUpdates)
+                                            {
+                                                if (!client.MessageSender.Writer.TryWrite(result.Message))
+                                                {
+                                                    collection.Logger?.LogTrace("Could not send to client collection");
+                                                    // Complete the pipe as it is full and not writing to the client at a decent
+                                                    // rate.
+                                                    await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                                }
+                                                else
+                                                {
+                                                    collection.Logger?.LogTrace("Sent to client collection");
+                                                }
+                                            }
+                                            else
+                                            {
+                                                collection.Logger?.LogTrace("Client is not accepting updates");
+                                            }
                                         }
                                     }
-                                }
-                                catch(Exception ex)
-                                {
-                                    collection.Logger?.LogTrace(ex, "Exception while sending to collection");
-                                    // If we threw, the client is disconnected.  Remove the client.
-                                    collection._nexusPipeList.Remove(client);
+                                    catch (Exception ex)
+                                    {
+                                        collection.Logger?.LogTrace(ex, "Exception while sending to collection");
+                                        // If we threw, the client is disconnected.  Remove the client.
+                                        collection._nexusPipeList.Remove(client);
+                                    }
                                 }
                             }
                         }

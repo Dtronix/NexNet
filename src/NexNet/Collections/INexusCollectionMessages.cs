@@ -34,12 +34,12 @@ internal partial interface INexusCollectionMessage
 {
     public NexusCollectionMessageFlags Flags { get; set; }
     
+    [MemoryPackIgnore]
+    int Remaining { get; set; }
+    
     void ReturnToCache();
 
     void CompleteBroadcast();
-
-    [MemoryPackIgnore]
-    int Remaining { get; set; }
 
     public INexusCollectionMessage Clone();
 }
@@ -55,15 +55,26 @@ internal partial class NexusCollectionResetStartMessage
     [MemoryPackOrder(2)]
     public int TotalValues { get; set; }
 
-    public override INexusCollectionMessage Clone() => 
-        new NexusCollectionResetStartMessage { Flags = Flags, Version = Version, TotalValues = TotalValues };
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.TotalValues = TotalValues;
+        return clone;
+        
+    }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionResetCompleteMessage :
     NexusCollectionMessage<NexusCollectionResetCompleteMessage>
 {
-    public override INexusCollectionMessage Clone() => new NexusCollectionResetCompleteMessage { Flags = Flags };
+    
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        return clone;
+    }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -78,8 +89,14 @@ internal partial class NexusCollectionResetValuesMessage
         set => base.ValueCore = value;
     }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusCollectionResetValuesMessage { Flags = Flags, Values = Values };
+    
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Values = Values;
+        return clone;
+        
+    }
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
@@ -108,13 +125,17 @@ internal partial class NexusListInsertMessage : NexusCollectionValueMessage<Nexu
         set => base.ValueCore = value;
     }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusListInsertMessage { Flags = Flags, Version = Version, Index = Index, Value = Value };
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        clone.Value = Value;
+        return clone;
+    }
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
-
-
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
@@ -134,8 +155,14 @@ internal partial class NexusListReplaceMessage : NexusCollectionValueMessage<Nex
         set => base.ValueCore = value;
     }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusListReplaceMessage { Flags = Flags, Version = Version, Index = Index, Value = Value };
+    public override INexusCollectionMessage Clone()    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        clone.Value = Value;
+        return clone;
+    }
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
@@ -153,8 +180,15 @@ internal partial class NexusListMoveMessage : NexusCollectionMessage<NexusListMo
     [MemoryPackOrder(3)]
     public int ToIndex { get; set; }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusListMoveMessage { Flags = Flags, Version = Version, FromIndex = FromIndex, ToIndex = ToIndex };
+    public override INexusCollectionMessage Clone() 
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.FromIndex = FromIndex;
+        clone.ToIndex = ToIndex;
+        return clone;
+    }
 }
 
 
@@ -165,8 +199,13 @@ internal partial class NexusCollectionClearMessage :
     [MemoryPackOrder(1)]
     public int Version { get; set; }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusCollectionClearMessage { Flags = Flags, Version = Version };
+    public override INexusCollectionMessage Clone()
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        return clone;
+    }
 }
 
 
@@ -181,7 +220,13 @@ internal partial class NexusListRemoveMessage :
     [MemoryPackOrder(2)]
     public int Index { get; set; }
     
-    public override INexusCollectionMessage Clone() => 
-        new NexusListRemoveMessage { Flags = Flags, Version = Version, Index = Index };
+    public override INexusCollectionMessage Clone()  
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.Index = Index;
+        return clone;
+    }
 }
 

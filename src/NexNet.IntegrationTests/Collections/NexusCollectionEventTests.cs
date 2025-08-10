@@ -43,6 +43,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber1Events));
         client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber2Events));
         client.Proxy.IntListBi.Changed.Subscribe(args => Interlocked.Increment(ref subscriber3Events));
+        
+        var waitEvent = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 10);
 
         // Perform operations
         for (int i = 0; i < 10; i++)
@@ -50,7 +52,9 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
             await serverNexus.IntListBi.AddAsync(i);
         }
 
-        await Task.Delay(1000); // Allow events to propagate
+        await waitEvent.Wait();
+
+        await Task.Delay(100); // Allow events to propagate
 
         Assert.That(subscriber1Events, Is.EqualTo(10));
         Assert.That(subscriber2Events, Is.EqualTo(10));
