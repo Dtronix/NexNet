@@ -3,27 +3,28 @@
 namespace NexNet.Messages;
 
 /// <summary>
-/// Base for client greeting messages.  Used for interium where the reconnection and initial connection processes
+/// Base for client greeting messages.  Used for reconnection and initial connection processes
 /// are the same.
 /// </summary>
 internal interface IClientGreetingMessageBase : IMessageBase
 {
     /// <summary>
-    /// Version of the connecting client.
+    /// Targeted API version that the client is expecting.
     /// </summary>
-    int Version { get; set; }
+    string? Version { get; set; }
 
     /// <summary>
-    /// This is the hash of the server's methods.  If this does not match the server's hash,
-    /// then the server and client method invocations are out of sync.
+    /// This is the hash of the server's implementation which matches the tarted API version.
+    /// If this does not match the server's hash, then the server and client method invocations are out of sync
+    /// and the client will not be allowed to connect to the server.
     /// </summary>
-    int ServerNexusMethodHash { get; set; }
+    int ServerNexusHash { get; set; }
 
     /// <summary>
-    /// This is the hash of the client's methods.  If this does not match the server's hash,
-    /// then the server and client method invocations are out of sync.
+    /// This is the hash of the client's nexus implementation.  If this does not match the server's allowed client
+    /// hash, then the server and client method invocations are out of sync.
     /// </summary>
-    int ClientNexusMethodHash { get; set; }
+    int ClientNexusHash { get; set; }
 
     /// <summary>
     /// (Optional) Token to be passed to the server upon connection for validation.

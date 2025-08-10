@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 
 namespace NexNet.IntegrationTests;
@@ -187,5 +188,49 @@ internal class Utilities
         await Task.Yield();
         onAwait();
         return await task;
+    }
+    
+    public static async Task WaitForConnectionClosureAsync(TcpClient tcpClient)
+    {
+        if (tcpClient == null)
+            throw new ArgumentNullException(nameof(tcpClient));
+
+        if (!tcpClient.Connected)
+            return; // Already disconnected
+
+        var stream = tcpClient.GetStream();
+        var buffer = new byte[1];
+
+        try
+        {
+            while (tcpClient.Connected)
+            {
+                // Try to read from the stream - this will return 0 when the connection is closed
+                var bytesRead = await stream.ReadAsync(buffer, 0, 1);
+                
+                if (bytesRead == 0)
+                {
+                    // Connection closed by server
+                    break;
+                }
+                
+                // If we actually read data, we need to handle it appropriately
+                // This implementation assumes you want to detect closure, not consume data
+                // In a real scenario, you might want to buffer this data or handle it differently
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Connection was disposed
+        }
+        catch (InvalidOperationException)
+        {
+            // Connection was closed
+        }
+        catch (OperationCanceledException)
+        {
+            // Operation was cancelled
+            throw;
+        }
     }
 }

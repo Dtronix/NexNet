@@ -20,25 +20,14 @@ internal partial class ClientGreetingReconnectionMessage : IClientGreetingMessag
     }
 
     [MemoryPackOrder(0)]
-    public int Version { get; set; }
-
-    /// <summary>
-    /// This is the hash of the server's methods.  If this does not match the server's hash,
-    /// then the server and client method invocations are out of sync.
-    /// </summary>
+    public string? Version { get; set; }
+    
     [MemoryPackOrder(1)]
-    public int ServerNexusMethodHash { get; set; }
-
-    /// <summary>
-    /// This is the hash of the client's methods.  If this does not match the server's hash,
-    /// then the server and client method invocations are out of sync.
-    /// </summary>
+    public int ServerNexusHash { get; set; }
+    
     [MemoryPackOrder(2)]
-    public int ClientNexusMethodHash { get; set; }
+    public int ClientNexusHash { get; set; }
 
-    /// <summary>
-    /// (Optional) Token to be passed to the server upon connection for validation.
-    /// </summary>
     [MemoryPackOrder(3)]
     [MemoryPoolFormatter<byte>]
     public Memory<byte> AuthenticationToken { get; set; }

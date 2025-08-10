@@ -1,5 +1,6 @@
 ﻿using NexNetDemo.Samples;
 using NexNetDemo.Samples.Channel;
+using NexNetDemo.Samples.Versioning;
 
 namespace NexNetDemo;
 
@@ -16,7 +17,7 @@ internal class Program
         //await new ChannelSample(SampleBase.TransportMode.Uds).ClassChannelBatchSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).UnmanagedChannelSample();
         //await new ChannelSample(SampleBase.TransportMode.Uds).ChannelStructConvertSample();
-        await new ChannelSample(SampleBase.TransportMode.Uds).DifferentTypesChannelSample();
+        //await new ChannelSample(SampleBase.TransportMode.Uds).DifferentTypesChannelSample();
         //await new DuplexPipeStreamingSample().DuplexStreamingSample();
         //await new InvocationSample().UpdateInfo();
 
@@ -37,6 +38,9 @@ internal class Program
             await messengerSample.RunClient();
         }
         */
+
+        await new VersioningSample().Run();
+            
 
 
         Console.ReadLine();

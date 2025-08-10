@@ -1,4 +1,5 @@
 ﻿using MemoryPack;
+using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -148,7 +149,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         clientConfig.Authenticate = () => new byte[] { 123 };
-        clientConfig.InternalOnSend= (_, bytes) =>
+        FireOnSend(clientConfig, (_, bytes) =>
         {
             var message = MemoryPackSerializer.Deserialize<ClientGreetingMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
 
@@ -158,11 +159,12 @@ internal partial class NexusClientTests : BaseTests
                 return;
             }
             tcs.SetException(new Exception("Client didn't send token"));
-        };
+        });
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
     }
+
 
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
@@ -182,11 +184,11 @@ internal partial class NexusClientTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        clientConfig.InternalOnSend = (_, bytes) =>
+        FireOnSend(clientConfig, (_, bytes) =>
         {
             if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping)
                 tcs.SetResult();
-        };
+        });
 
         await client.ConnectAsync().Timeout(1);
 
@@ -219,13 +221,12 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         await server.StopAsync();
-
+        
         // Wait for the client to process the disconnect.
-        await Task.Delay(50);
-
+        await Task.Delay(100);
         await server.StartAsync().Timeout(1);
 
-        await tcs.Task.Timeout(5);
+        await tcs.Task.Timeout(1);
     }
     
     /*
@@ -855,6 +856,19 @@ internal partial class NexusClientTests : BaseTests
         // Second concurrent start should throw InvalidOperationException
         Assert.ThrowsAsync<InvalidOperationException>(
             () => server.StartAsync().Timeout(1));
+    }
+    
+    
+    private void FireOnSend(ConfigBase config, Action<INexusSession, byte[]> action, bool skipProtocolHeader = true)
+    {
+        var receiveCount = 0;
+        config.InternalOnSend = (session, bytes) =>
+        {
+            if (receiveCount++ == 0)
+                return;
+
+            action(session, bytes);
+        };
     }
 
 }

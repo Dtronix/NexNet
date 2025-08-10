@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Headers;
 using NexNet.Logging;
+using NexNet.Pipes;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
@@ -25,36 +26,38 @@ internal class Program
             ReconnectionPolicy = new DefaultReconnectionPolicy(),
             AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue")
         };
-
-        var nexus = new ClientNexus {
-            ClientTaskWithParamEvent = (clientNexus, i) =>
-            {
-                Console.WriteLine($"Received param event with value {i}");
-                return ValueTask.CompletedTask;
-            }
-        };
-
-        var client = ClientNexus.CreateClient(clientHttpSocketConfig, nexus);
         
+        var client = ClientNexus.CreateClient(clientHttpSocketConfig, new ClientNexus());
         await client.ConnectAsync();
 
-        await client.Proxy.IntegerList.ConnectAsync();
-        int counter = 10;
-        /*for (int i = 0; i < 100; i++)
-        {
-            await client.Proxy.IntegerList.AddAsync(counter++);
-            await Task.Delay(1);
-        }
-        */
+        var pipe = client.CreatePipe();
+        await client.Proxy.CalculateNumber(pipe);
 
-        while (true)
+        var unmanagedReader = await pipe.GetUnmanagedChannelReader<int>();
+        var unmanagedWriter = await pipe.GetUnmanagedChannelWriter<int>();
+
+        await unmanagedWriter.WriteAsync(10);
+        await unmanagedWriter.WriteAsync(100);
+        await unmanagedWriter.WriteAsync(1000);
+
+        var count = 0;
+        await foreach (var readInt in unmanagedReader)
         {
-            Console.ReadLine();
-            
-            for (int i = 0; i < 10; i++)
-            {
-                await client.Proxy.IntegerList.AddAsync(counter++);
-            }
+            Console.WriteLine(readInt);
+            if(++count == 3)
+                break;
         }
+
+        await pipe.CompleteAsync();
+
+        // INexusList
+        await client.Proxy.IntegerList.ConnectAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await client.Proxy.IntegerList.AddAsync(i);
+        }
+        
+        
     }
 }

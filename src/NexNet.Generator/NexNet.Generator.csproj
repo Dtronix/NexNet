@@ -2,7 +2,6 @@
   <Import Project="../NexNet.props" />
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <LangVersion>11</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <AnalyzerLanguage>cs</AnalyzerLanguage>
     <Nullable>enable</Nullable>
@@ -14,7 +13,7 @@
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackBuildOutputs</TargetsForTfmSpecificContentInPackage>
     <IsRoslynComponent>true</IsRoslynComponent>
     <Description>Source Generator to create hubs and proxies for NexNet clients and servers.</Description>
-    <Version>0.10.0</Version>
+    <Version>0.11.0</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,10 +24,21 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
+    <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="4.14.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="MemoryPack\CollectionKind.cs" />
+    <Compile Remove="MemoryPack\CoreEnums.cs" />
+    <Compile Remove="MemoryPack\Extensions.cs" />
+    <Compile Remove="MemoryPack\MemberKind.cs" />
+    <Compile Remove="MemoryPack\MemoryPackMemberMeta.cs" />
+    <Compile Remove="MemoryPack\MemoryPackReferences.cs" />
+    <Compile Remove="MemoryPack\MemoryPackTypeMeta.cs" />
+    <Compile Remove="MemoryPack\TypeCollector.cs" />
   </ItemGroup>
   <!-- for nuget publish -->
   <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">

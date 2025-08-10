@@ -18,6 +18,19 @@ internal static class ReadingHelpers
         value = BitConverter.ToUInt16(spanValue);
         return true;
     }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryReadULong(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ulong value)
+    {
+        if (!TryRead(sequence, buffer, ref position, 8, out var spanValue))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BitConverter.ToUInt64(spanValue);
+        return true;
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryReadInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out int value)
@@ -29,6 +42,19 @@ internal static class ReadingHelpers
         }
 
         value = BitConverter.ToInt32(spanValue);
+        return true;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool TryReadUInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out uint value)
+    {
+        if (!TryRead(sequence, buffer, ref position, 4, out var spanValue))
+        {
+            value = 0;
+            return false;
+        }
+
+        value = BitConverter.ToUInt32(spanValue);
         return true;
     }
 

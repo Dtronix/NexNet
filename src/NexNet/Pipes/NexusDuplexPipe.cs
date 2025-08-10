@@ -65,7 +65,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     private readonly TaskCompletionSource _readyTcs;
     private readonly TaskCompletionSource _completeTcs;
     private readonly INexusSession? _session;
-    private State _currentState = State.Unset;
+    private volatile State _currentState = State.Unset;
 
     // <summary>
     // Id which changes based upon completion of the pipe. Used to make sure the
@@ -86,8 +86,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         get => _id;
         set
         {
-            if(Logger != null)
-                Logger.SessionDetails = $"{_session!.Id}:P{value:00000}";
+            var session = _session;
+            if(Logger != null && session != null)
+                Logger.SessionDetails = $"{session.Id}:P{value:00000}";
 
             _id = value;
         }
@@ -194,17 +195,18 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask NotifyState()
     {
-        if(_session == null)
+        var session = _session;
+        if(session == null)
             return;
 
         //_logger?.LogInfo($"Notifying state: {_currentState}");
         var currentState = _currentState;
-        using var message = _session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
+        using var message = session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
         message.PipeId = Id;
         message.State = currentState;
         try
         {
-            await _session.SendMessage(message).ConfigureAwait(false);
+            await session.SendMessage(message).ConfigureAwait(false);
         }
         catch (Exception e)
         {
