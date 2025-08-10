@@ -22,11 +22,11 @@ namespace NexNetBenchmarks
                 // Jobs
                 .AddJob(Job.Default
                     .WithRuntime(CoreRuntime.Core90)
-                    .WithPlatform(Platform.X64)
-                    .WithMinWarmupCount(1)
-                    .WithMaxWarmupCount(3)
-                    .WithMinIterationCount(3)
-                    .WithMaxIterationCount(5))
+                    .WithPlatform(Platform.X64))
+                    //.WithMinWarmupCount(1)
+                    //.WithMaxWarmupCount(3)
+                    //.WithMinIterationCount(3)
+                    //.WithMaxIterationCount(5))
                 .AddDiagnoser(MemoryDiagnoser.Default)
                 .AddColumnProvider(DefaultColumnProviders.Instance)
                 .AddColumn(StatisticColumn.OperationsPerSecond)
