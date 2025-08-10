@@ -89,7 +89,7 @@ All NexNet messages, regardless of transport, follow this fundamental structure:
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 |     100       |        Greeting Length        |               |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+               +
-|                    Serialized ClientGreetingMessage          |
+|                    Serialized ClientGreetingMessage           |
 +                                                               +
 |                              ...                              |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
