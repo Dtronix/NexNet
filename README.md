@@ -109,23 +109,23 @@ await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 ```
 ## Benchmarks
 ```
-BenchmarkDotNet v0.14.0, Windows 11 (10.0.26100.3476)
-Intel Core i7-10700 CPU 2.90GHz, 1 CPU, 16 logical and 8 physical cores
+BenchmarkDotNet v0.15.2, Windows 11 (10.0.26100.4770/24H2/2024Update/HudsonValley)
+AMD Ryzen 9 3900X 3.80GHz, 1 CPU, 24 logical and 12 physical cores
 .NET SDK 9.0.201
-[Host]     : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
-Job-FWSUJI : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+  [Host]     : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
+  Job-FJSVHN : .NET 9.0.3 (9.0.325.11113), X64 RyuJIT AVX2
 
-Platform=X64  Runtime=.NET 9.0  MaxIterationCount=5
-MaxWarmupIterationCount=3  MinIterationCount=3  MinWarmupIterationCount=1
+Platform=X64  Runtime=.NET 9.0
 ```
 
 | Method                               |    Mean |   Error |  StdDev |     Op/s | Allocated |
 |--------------------------------------|--------:|--------:|--------:|---------:|----------:|
-| InvocationNoArgument                 | 24.4 us | 0.68 us | 0.10 us | 40,973.3 |     569 B |
-| InvocationUnmanagedArgument          | 24.7 us | 0.67 us | 0.10 us | 40,394.6 |     624 B |
-| InvocationUnmanagedMultipleArguments | 24.7 us | 0.22 us | 0.03 us | 40,393.9 |     673 B |
-| InvocationNoArgumentWithResult       | 24.4 us | 0.26 us | 0.04 us | 40,959.4 |     609 B |
-| InvocationWithDuplexPipe_Upload      | 39.5 us | 1.93 us | 0.30 us | 25,278.3 |   13967 B |
+| InvocationNoArgument                 | 44.9 us | 0.86 us | 0.84 us | 22,253.1 |     569 B |
+| InvocationUnmanagedArgument          | 48.9 us | 0.96 us | 1.52 us | 20,458.6 |     625 B |
+| InvocationUnmanagedMultipleArguments | 47.2 us | 0.92 us | 1.16 us | 21,168.6 |     676 B |
+| InvocationNoArgumentWithResult       | 43.9 us | 0.63 us | 0.56 us | 22,774.8 |     609 B |
+| InvocationWithDuplexPipe_Upload      | 65.9 us | 1.31 us | 1.22 us | 15,179.3 |   16262 B |
+
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
 
