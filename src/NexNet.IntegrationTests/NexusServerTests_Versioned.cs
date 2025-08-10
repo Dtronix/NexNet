@@ -89,9 +89,9 @@ internal class NexusServerTests_Versioned : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task CurrentServerProxy_ConnectToOlderServerFails(Type type)
     {
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type);
         var server = CreateServer<VersionedServerNexusV1_1, VersionedServerNexusV1_1.ClientProxy>(serverConfig, null);
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
         var client = CreateClient<VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(clientConfig);
         
         await server.StartAsync();
@@ -173,9 +173,9 @@ internal class NexusServerTests_Versioned : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task OlderServerProxy_ConnectToOlderServerSucceeds(Type type)
     {
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type);
         var server = CreateServer<VersionedServerNexusV1_1, VersionedServerNexusV1_1.ClientProxy>(serverConfig, null);
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
         var client = CreateClient<VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
@@ -191,9 +191,9 @@ internal class NexusServerTests_Versioned : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task OlderServerProxy_ConnectToOldestServerFails(Type type)
     {
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type);
         var server = CreateServer<VersionedServerNexusV1, VersionedServerNexusV1.ClientProxy>(serverConfig, null);
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
         var client = CreateClient<VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
@@ -263,9 +263,9 @@ internal class NexusServerTests_Versioned : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task CurrentServerProxy_ConnectToOldestServerFails(Type type)
     {
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type);
         var server = CreateServer<VersionedServerNexusV1, VersionedServerNexusV1.ClientProxy>(serverConfig, null);
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
         var client = CreateClient<VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(clientConfig);
         
         await server.StartAsync();
@@ -281,9 +281,9 @@ internal class NexusServerTests_Versioned : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task OldestServerProxy_ConnectToOldestServerFails(Type type)
     {
-        var serverConfig = CreateServerConfig(type, BasePipeTests.LogMode.Always);
+        var serverConfig = CreateServerConfig(type);
         var server = CreateServer<VersionedServerNexusV1, VersionedServerNexusV1.ClientProxy>(serverConfig, null);
-        var clientConfig = CreateClientConfig(type, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(type);
         var client = CreateClient<VersionedClientNexusV1, VersionedClientNexusV1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
