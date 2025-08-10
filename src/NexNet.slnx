@@ -2,6 +2,7 @@
   <Folder Name="/github/">
     <File Path="..\.github\workflows\dotnet.yml" />
     <File Path="..\README.md" />
+    <File Path="..\docs\Transport-Headers.md" />
   </Folder>
   <Folder Name="/Samples/">
     <Project Path="Samples\NexNetDemo\NexNetDemo.csproj" Type="Classic C#" />
