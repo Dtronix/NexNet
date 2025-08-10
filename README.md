@@ -395,6 +395,8 @@ Additional transports can be added wit relative ease as long as the new transpor
 | Web applications         | WebSockets            | Browser compatibility, firewall-friendly        |
 | Reverse proxy setups     | HttpSockets           | Lower overhead than WebSockets                  |
 
+Additional information about the wire protocol can be found in the [Transport-Headers](docs/Transport-Headers.md) documentation.
+
 ## ASP.NET Server Integration
 
 The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
