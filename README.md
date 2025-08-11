@@ -118,13 +118,13 @@ AMD Ryzen 9 3900X 3.80GHz, 1 CPU, 24 logical and 12 physical cores
 Platform=X64  Runtime=.NET 9.0
 ```
 
-| Method                               |    Mean |   Error |  StdDev |     Op/s | Allocated |
-|--------------------------------------|--------:|--------:|--------:|---------:|----------:|
-| InvocationNoArgument                 | 44.9 us | 0.86 us | 0.84 us | 22,253.1 |     569 B |
-| InvocationUnmanagedArgument          | 48.9 us | 0.96 us | 1.52 us | 20,458.6 |     625 B |
-| InvocationUnmanagedMultipleArguments | 47.2 us | 0.92 us | 1.16 us | 21,168.6 |     676 B |
-| InvocationNoArgumentWithResult       | 43.9 us | 0.63 us | 0.56 us | 22,774.8 |     609 B |
-| InvocationWithDuplexPipe_Upload      | 65.9 us | 1.31 us | 1.22 us | 15,179.3 |   16262 B |
+| Method                               |     Mean |    Error |   StdDev |     Op/s |   Gen0 |   Gen1 | Allocated |
+|--------------------------------------|---------:|---------:|---------:|---------:|-------:|-------:|----------:|
+| InvocationNoArgument                 | 47.45 us | 0.921 us | 1.131 us | 21,074.6 |      - |      - |     578 B |
+| InvocationUnmanagedArgument          | 51.31 us | 1.009 us | 1.657 us | 19,488.0 |      - |      - |     635 B |
+| InvocationUnmanagedMultipleArguments | 50.34 us | 0.994 us | 2.118 us | 19,864.8 |      - |      - |     682 B |
+| InvocationNoArgumentWithResult       | 50.66 us | 1.013 us | 1.952 us | 19,739.3 |      - |      - |     684 B |
+| InvocationWithDuplexPipe_Upload      | 71.05 us | 1.419 us | 1.743 us | 14,074.7 | 2.4414 | 0.4883 |   16352 B |
 
 ## Method Invocation Table
 Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.

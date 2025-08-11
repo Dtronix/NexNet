@@ -4,27 +4,27 @@ namespace NexNetDemo.Samples.Messenger;
 
 interface IMessengerSampleClientNexus
 {
-    ValueTask SendMessage(string message);
+    Task SendMessage(string message);
 }
 
 interface IMessengerSampleServerNexus
 {
-    ValueTask BroadcastMessage(string message);
+    Task BroadcastMessage(string message);
 
-    ValueTask DirectMessage(long userId, string message);
+    Task DirectMessage(long userId, string message);
 }
 
 
 [Nexus<IMessengerSampleClientNexus, IMessengerSampleServerNexus>(NexusType = NexusType.Client)]
 partial class MessengerSampleClientNexus
 {
-    public ValueTask SendMessage(string message)
+    public Task SendMessage(string message)
     {
         Console.WriteLine(message);
         return default;
     }
 
-    protected override ValueTask OnConnected(bool isReconnected)
+    protected override Task OnConnected(bool isReconnected)
     {
         _ = Task.Run(async () =>
         {
@@ -45,14 +45,14 @@ partial class MessengerSampleClientNexus
 [Nexus<IMessengerSampleServerNexus, IMessengerSampleClientNexus>(NexusType = NexusType.Server)]
 partial class MessengerSampleServerNexus
 {
-    public async ValueTask BroadcastMessage(string message)
+    public async Task BroadcastMessage(string message)
     {
         message = $"Message from {Context.Id}:" + message;
         Console.WriteLine("Broadcast " + message);
         await Context.Clients.All.SendMessage(message);
     }
 
-    public async ValueTask DirectMessage(long userId, string message)
+    public async Task DirectMessage(long userId, string message)
     {
         message = $"Message from {Context.Id} to {userId}:" + message;
         Console.WriteLine("Direct "+ message);

@@ -10,9 +10,9 @@ interface IInvocationSampleClientNexus
 interface IInvocationSampleServerNexus
 {
     void UpdateInfo(int userId, UserStatus status, string? customStatus);
-    ValueTask UpdateInfoAndWait(int userId, UserStatus status, string? customStatus);
+    Task UpdateInfoAndWait(int userId, UserStatus status, string? customStatus);
 
-    ValueTask<UserStatus> GetStatus(int userId);
+    Task<UserStatus> GetStatus(int userId);
 }
 
 public enum UserStatus
@@ -41,7 +41,7 @@ partial class InvocationSampleServerNexus
         // Do something with the data.
     }
 
-    public ValueTask UpdateInfoAndWait(int userId, UserStatus status, string? customStatus)
+    public Task UpdateInfoAndWait(int userId, UserStatus status, string? customStatus)
     {
         // Do something with the data.
         if(_counter++ % 10000 == 0)
@@ -50,8 +50,8 @@ partial class InvocationSampleServerNexus
         return default;
     }
 
-    public ValueTask<UserStatus> GetStatus(int userId)
+    public Task<UserStatus> GetStatus(int userId)
     {
-        return new ValueTask<UserStatus>(UserStatus.Online);
+        return Task.FromResult(UserStatus.Online);
     }
 }

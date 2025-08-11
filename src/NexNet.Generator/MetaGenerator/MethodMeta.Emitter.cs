@@ -196,11 +196,11 @@ partial class MethodMeta
         {
             if (this.ReturnType != null)
             {
-                sb.Append("global::System.Threading.Tasks.ValueTask<").Append(this.ReturnType).Append("> ");
+                sb.Append("global::System.Threading.Tasks.Task<").Append(this.ReturnType).Append("> ");
             }
             else
             {
-                sb.Append("global::System.Threading.Tasks.ValueTask ");
+                sb.Append("global::System.Threading.Tasks.Task ");
             }
         }
 
@@ -310,7 +310,7 @@ partial class MethodMeta
         }
         else if (IsAsync)
         {
-            sb.Append("ValueTask");
+            sb.Append("Task");
 
             if (this.ReturnArity > 0)
             {
