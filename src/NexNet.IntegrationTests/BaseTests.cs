@@ -46,8 +46,12 @@ internal abstract class BaseTests
     private BasePipeTests.LogMode _loggerMode;
     private readonly List<WebApplication> AspServers = new List<WebApplication>();
     public RollingLogger Logger => _logger;
-    
-    public int? CurrentTcpPort => _currentTcpPort;
+
+    public int? CurrentTcpPort
+    {
+        get => _currentTcpPort;
+        set => _currentTcpPort = value;
+    }
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -460,7 +464,7 @@ internal abstract class BaseTests
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
-        var server = new global::NexNet.NexusServer<TServerNexus, TClientProxy>(sConfig, () =>
+        var server = new NexusServer<TServerNexus, TClientProxy>(sConfig, () =>
         {
             var nexus = new TServerNexus();
             nexusCreated?.Invoke(nexus);
@@ -526,7 +530,7 @@ internal abstract class BaseTests
         return (client, clientNexus);
     }
 
-    private int FreeTcpPort()
+    protected int FreeTcpPort()
     {
         TcpListener l = new TcpListener(IPAddress.Loopback, 0);
         l.Start();
@@ -535,7 +539,7 @@ internal abstract class BaseTests
         return port;
     }
 
-    private int FreeUdpPort()
+    protected int FreeUdpPort()
     {
         IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Loopback, 0);
         using var udpServer = new UdpClient();

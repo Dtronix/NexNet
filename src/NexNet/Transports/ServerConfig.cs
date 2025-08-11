@@ -27,6 +27,8 @@ public abstract class ServerConfig : ConfigBase
     /// Set to true to authenticate teh client connection.
     /// </summary>
     public bool Authenticate { get; set; } = false;
+    
+    public Func<ValueTask>? ConfigureCollections { get; set; }
 
     /// <summary>
     /// Creates the listener and starts.
