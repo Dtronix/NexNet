@@ -11,8 +11,8 @@ interface IDuplexPipeStreamingClientNexus
 
 interface IDuplexPipeStreamingServerNexus
 {
-    ValueTask StreamToAndFrom(INexusDuplexPipe pipe);
-    ValueTask StreamTo(INexusDuplexPipe pipe);
+    Task StreamToAndFrom(INexusDuplexPipe pipe);
+    Task StreamTo(INexusDuplexPipe pipe);
 }
 
 [Nexus<IDuplexPipeStreamingClientNexus, IDuplexPipeStreamingServerNexus>(NexusType = NexusType.Client)]
@@ -25,7 +25,7 @@ partial class DuplexPipeStreamingClientNexus
 partial class DuplexPipeStreamingServerNexus
 {
     public static double AverageRate { get; private set; }
-    public async ValueTask StreamToAndFrom(INexusDuplexPipe pipe)
+    public async Task StreamToAndFrom(INexusDuplexPipe pipe)
     {
         long sentBytes = 0;
         int loopNumber = 0;
@@ -75,7 +75,7 @@ partial class DuplexPipeStreamingServerNexus
         }
     }
 
-    public async ValueTask StreamTo(INexusDuplexPipe pipe)
+    public async Task StreamTo(INexusDuplexPipe pipe)
     {
         int loopNumber = 0;
         AverageRate = 0;

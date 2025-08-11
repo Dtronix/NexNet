@@ -9,11 +9,11 @@ interface IChannelSampleClientNexus
 
 interface IChannelSampleServerNexus
 {
-    ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel);
-    ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
-    ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
-    ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
-    ValueTask DifferentTypesChannel(INexusDuplexPipe pipe);
+    Task IntegerChannel(INexusDuplexUnmanagedChannel<int> channel);
+    Task StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
+    Task ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
+    Task ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
+    Task DifferentTypesChannel(INexusDuplexPipe pipe);
 }
 
 
@@ -26,7 +26,7 @@ partial class ChannelSampleClientNexus
 [Nexus<IChannelSampleServerNexus, IChannelSampleClientNexus>(NexusType = NexusType.Server)]
 partial class ChannelSampleServerNexus
 {
-    public async ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel)
+    public async Task IntegerChannel(INexusDuplexUnmanagedChannel<int> channel)
     {
         var writer = await channel.GetWriterAsync();
         var count = 0;
@@ -37,7 +37,7 @@ partial class ChannelSampleServerNexus
         }
     }
 
-    public async ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel)
+    public async Task StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel)
     {
         var writer = await channel.GetWriterAsync();
         var count = 0;
@@ -53,7 +53,7 @@ partial class ChannelSampleServerNexus
         }
     }
 
-    public async ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel)
+    public async Task ClassChannel(INexusDuplexChannel<ComplexMessage> channel)
     {
         var writer = await channel.GetWriterAsync();
         var count = 0;
@@ -67,12 +67,12 @@ partial class ChannelSampleServerNexus
         }
     }
 
-    public async ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel)
+    public async Task ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel)
     {
         await channel.WriteAndComplete(GetComplexMessages());
     }
 
-    public async ValueTask DifferentTypesChannel(INexusDuplexPipe pipe)
+    public async Task DifferentTypesChannel(INexusDuplexPipe pipe)
     {
         var reader = await pipe.GetChannelReader<long>();
 

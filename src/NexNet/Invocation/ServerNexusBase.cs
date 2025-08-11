@@ -16,7 +16,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// </summary>
     public ServerSessionContext<TProxy> Context => Unsafe.As<ServerSessionContext<TProxy>>(SessionContext)!;
 
-    internal ValueTask<IIdentity?> Authenticate(ReadOnlyMemory<byte>? authenticationToken)
+    internal Task<IIdentity?> Authenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
         return OnAuthenticate(authenticationToken);
     }
@@ -24,12 +24,12 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// <summary>
     /// Called on server sessions and called with the client's Authentication token.
     /// </summary>
-    protected virtual ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
+    protected virtual Task<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
-        return ValueTask.FromResult((IIdentity?)null);
+        return Task.FromResult((IIdentity?)null);
     }
     
-    internal ValueTask NexusInitialize()
+    internal Task NexusInitialize()
     {
         return OnNexusInitialize();
     }
@@ -39,8 +39,8 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// Good for registration of groups.  If an exception occurs on this method, the session will be disconnected.  Invoked on the same task as <see cref="OnAuthenticate"/>.
     /// </summary>
     /// <returns>Task returns upon completion of the initialization.</returns>
-    protected virtual ValueTask OnNexusInitialize()
+    protected virtual Task OnNexusInitialize()
     {
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 }

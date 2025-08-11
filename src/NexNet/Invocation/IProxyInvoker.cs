@@ -42,7 +42,7 @@ public interface IProxyInvoker
     /// <param name="flags">Special flags for the invocation of this method.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    ValueTask ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags);
+    Task ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags);
 
     /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
@@ -51,10 +51,10 @@ public interface IProxyInvoker
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
-    /// <returns>ValueTask which completes upon remote invocation completion.</returns>
+    /// <returns>Task which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
+    Task ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
 
     /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token,
@@ -64,10 +64,10 @@ public interface IProxyInvoker
     /// <param name="methodId">Method ID to invoke.</param>
     /// <param name="arguments">Optional arguments to pass to the method invocation</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
-    /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
+    /// <returns>Task with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    ValueTask<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
+    Task<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
 
     /// <summary>
     /// Gets the Initial Id of the duplex pipe.

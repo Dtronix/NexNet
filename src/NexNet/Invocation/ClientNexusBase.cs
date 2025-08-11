@@ -19,7 +19,7 @@ public abstract class ClientNexusBase<TProxy> : NexusBase<TProxy>
     /// Invoke when the connection to the server has been lost and it in the process of reconnecting.
     /// </summary>
     /// <returns></returns>
-    internal ValueTask Reconnecting()
+    internal Task Reconnecting()
     {
         return OnReconnecting();
     }
@@ -28,8 +28,8 @@ public abstract class ClientNexusBase<TProxy> : NexusBase<TProxy>
     /// Invoked when the connection to the server has been lost and it in the process of reconnecting.
     /// </summary>
     /// <returns></returns>
-    protected virtual ValueTask OnReconnecting()
+    protected virtual Task OnReconnecting()
     {
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 }

@@ -79,7 +79,7 @@ partial class NexusMeta
 
         sb.AppendLine($$"""
 
-                                protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
+                                protected override async global::System.Threading.Tasks.Task InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
                                 {
                                     global::System.Threading.CancellationTokenSource? cts = null;
                                     global::NexNet.Pipes.INexusDuplexPipe? duplexPipe = null;

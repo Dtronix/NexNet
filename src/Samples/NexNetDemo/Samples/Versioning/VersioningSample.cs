@@ -10,16 +10,16 @@ namespace NexNetDemo.Samples.Versioning;
 public interface IVersioningNexusServerV1
 {
     [NexusMethod(1)]
-    ValueTask<bool> GetStatus();
+    Task<bool> GetStatus();
 }
 
 // V1 Server Implementation
 [Nexus<IVersioningNexusServerV1, IVersioningNexusClient>(NexusType = NexusType.Server)]
 public partial class NexusServerV1
 {
-    public ValueTask<bool> GetStatus()
+    public Task<bool> GetStatus()
     {
-        return ValueTask.FromResult(true);
+        return Task.FromResult(true);
     }
 }
 
@@ -28,7 +28,7 @@ public partial class NexusServerV1
 public interface IVersioningNexusServerV2 : IVersioningNexusServerV1
 {
     [NexusMethod(2)]
-    ValueTask<string> GetServerInfo();
+    Task<string> GetServerInfo();
 }
 
 // V2 Server Implementation
@@ -36,32 +36,32 @@ public interface IVersioningNexusServerV2 : IVersioningNexusServerV1
 public partial class VersioningNexusServerV2
 {
     // Implements V1 method
-    public ValueTask<bool> GetStatus()
+    public Task<bool> GetStatus()
     {
-        return ValueTask.FromResult(true);
+        return Task.FromResult(true);
     }
 
     // New V2 method
-    public ValueTask<string> GetServerInfo()
+    public Task<string> GetServerInfo()
     {
-        return ValueTask.FromResult("Server v2.0");
+        return Task.FromResult("Server v2.0");
     }
 }
 
 // Client interface (same for both versions)
 public interface IVersioningNexusClient
 {
-    ValueTask OnServerMessage(string message);
+    Task OnServerMessage(string message);
 }
 
 // V1 Client (can only connect to servers supporting V1)
 [Nexus<IVersioningNexusClient, IVersioningNexusServerV1>(NexusType = NexusType.Client)]
 public partial class VersioningNexusClientV1
 {
-    public ValueTask OnServerMessage(string message)
+    public Task OnServerMessage(string message)
     {
         Console.WriteLine($"Received: {message}");
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 }
 
@@ -69,10 +69,10 @@ public partial class VersioningNexusClientV1
 [Nexus<IVersioningNexusClient, IVersioningNexusServerV2>(NexusType = NexusType.Client)]
 public partial class VersioningNexusClientV2
 {
-    public ValueTask OnServerMessage(string message)
+    public Task OnServerMessage(string message)
     {
         Console.WriteLine($"Received: {message}");
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 }
 

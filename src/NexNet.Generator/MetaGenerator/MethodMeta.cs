@@ -37,7 +37,7 @@ internal partial class MethodMeta
         this.Hasher = hasher;
         this.Name = symbol.Name;
         this.IsStatic = symbol.IsStatic;
-        this.IsAsync = returnSymbol!.OriginalDefinition.Name == "ValueTask";
+        this.IsAsync = returnSymbol!.OriginalDefinition.Name == "Task";
 
         var serializedParameters = 0;
         var paramsLength = symbol.Parameters.Length;

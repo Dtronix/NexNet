@@ -24,8 +24,8 @@ internal static class DiagnosticDescriptors
 
     public static readonly DiagnosticDescriptor MustReturnVoidOrValueTask = new(
         id: "NEXNET003",
-        title: "Nexus method must return either void, ValueTask or ValueTask<T>",
-        messageFormat: "The Nexus object '{0}' must return either void, ValueTask or ValueTask<T>",
+        title: "Nexus method must return either void, Task or Task<T>",
+        messageFormat: "The Nexus object '{0}' must return either void, Task or Task<T>",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -65,7 +65,7 @@ internal static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor InvalidReturnValue = new(
         id: "NEXNET008",
         title: "Nexus method with invalid return type",
-        messageFormat: "The Nexus method '{0}' have a return type of ValueTask, ValueTask<T> or void",
+        messageFormat: "The Nexus method '{0}' have a return type of Task, Task<T> or void",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -89,7 +89,7 @@ internal static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor CancellationTokenOnVoid = new(
         id: "NEXNET011",
         title: "Nexus method can't be void and support cancellation tokens",
-        messageFormat: "The Nexus method '{0}' can't be void and use a cancellation token. Must return ValueTask or ValueTask<T> to use a cancellation token.",
+        messageFormat: "The Nexus method '{0}' can't be void and use a cancellation token. Must return Task or Task<T> to use a cancellation token.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
@@ -104,8 +104,8 @@ internal static class DiagnosticDescriptors
 
     public static readonly DiagnosticDescriptor PipeOnVoidOrReturnTask = new(
         id: "NEXNET013",
-        title: "Nexus method can't be void nor ValueTask<T> and support INexusDuplexPipe transportation",
-        messageFormat: "The Nexus method '{0}' can't be void nor ValueTask<T> and have a INexusDuplexPipe parameter.  Must return ValueTask to use INexusDuplexPipe.",
+        title: "Nexus method can't be void nor Task<T> and support INexusDuplexPipe transportation",
+        messageFormat: "The Nexus method '{0}' can't be void nor Task<T> and have a INexusDuplexPipe parameter.  Must return Task to use INexusDuplexPipe.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

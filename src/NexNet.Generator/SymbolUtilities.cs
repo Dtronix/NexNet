@@ -29,17 +29,17 @@ internal class SymbolUtilities
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers
                               | SymbolDisplayMiscellaneousOptions.UseErrorTypeSymbolName);
 
-    public static string GetFullSymbolType(ITypeSymbol? typeSymbol, bool extractValueTask)
+    public static string GetFullSymbolType(ITypeSymbol? typeSymbol, bool extractTask)
     {
         if(typeSymbol == null)
             return "UNKNOWN TYPE";
 
-        if (extractValueTask)
+        if (extractTask)
         {
             if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
             {
                 if (namedTypeSymbol.Arity == 1
-                    && namedTypeSymbol.ConstructedFrom.MetadataName == "ValueTask`1")
+                    && namedTypeSymbol.ConstructedFrom.MetadataName == "Task`1")
                 {
                     typeSymbol = namedTypeSymbol.TypeArguments[0];
                 }

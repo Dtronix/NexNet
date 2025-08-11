@@ -29,7 +29,7 @@ public partial interface IServerNexusV2 : IServerNexus
 public interface IServerNexus
 {
     [NexusMethod(100)]
-    ValueTask CalculateNumber(INexusDuplexPipe pipe);
+    Task CalculateNumber(INexusDuplexPipe pipe);
 }
 
 

@@ -12,7 +12,7 @@ namespace NexNetSample.Asp.Server;
 [Nexus<IServerNexusV2, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus
 {
-    public async ValueTask CalculateNumber(INexusDuplexPipe pipe)
+    public async Task CalculateNumber(INexusDuplexPipe pipe)
     {
         var reader = await pipe.GetUnmanagedChannelReader<int>();
         var writer = await pipe.GetUnmanagedChannelWriter<int>();

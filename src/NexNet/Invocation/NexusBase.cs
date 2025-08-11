@@ -20,7 +20,7 @@ namespace NexNet.Invocation;
 public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
+    private delegate Task InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
 
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
 
@@ -86,16 +86,16 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     /// <param name="message"></param>
     /// <param name="returnBuffer"></param>
     /// <returns></returns>
-    protected abstract ValueTask InvokeMethodCore(IInvocationMessage message, IBufferWriter<byte>? returnBuffer);
+    protected abstract Task InvokeMethodCore(IInvocationMessage message, IBufferWriter<byte>? returnBuffer);
 
     /// <summary>
     /// Invoked when a hub has it's connection established and ready for usage.
     /// </summary>
     /// <param name="isReconnected">True if the connection has been re-established after it has been lost.</param>
     /// <returns></returns>
-    protected virtual ValueTask OnConnected(bool isReconnected)
+    protected virtual Task OnConnected(bool isReconnected)
     {
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -103,12 +103,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     /// </summary>
     /// <param name="reason">Reason for the disconnection.</param>
     /// <returns></returns>
-    protected virtual ValueTask OnDisconnected(DisconnectReason reason)
+    protected virtual Task OnDisconnected(DisconnectReason reason)
     {
-        return ValueTask.CompletedTask;
+        return Task.CompletedTask;
     }
 
-    internal ValueTask Connected(bool isReconnected)
+    internal Task Connected(bool isReconnected)
     {
         return OnConnected(isReconnected);
     }

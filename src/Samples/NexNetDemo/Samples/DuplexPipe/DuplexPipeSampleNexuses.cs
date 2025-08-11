@@ -11,9 +11,9 @@ interface IDuplexPipeSampleClientNexus
 
 interface IDuplexPipeSampleServerNexus
 {
-    ValueTask Upload(INexusDuplexPipe pipe);
-    ValueTask Download(INexusDuplexPipe pipe);
-    ValueTask UploadDownload(INexusDuplexPipe pipe);
+    Task Upload(INexusDuplexPipe pipe);
+    Task Download(INexusDuplexPipe pipe);
+    Task UploadDownload(INexusDuplexPipe pipe);
 }
 
 [Nexus<IDuplexPipeSampleClientNexus, IDuplexPipeSampleServerNexus>(NexusType = NexusType.Client)]
@@ -25,7 +25,7 @@ partial class DuplexPipeSampleClientNexus
 [Nexus<IDuplexPipeSampleServerNexus, IDuplexPipeSampleClientNexus>(NexusType = NexusType.Server)]
 partial class DuplexPipeSampleServerNexus
 {
-    public async ValueTask Upload(INexusDuplexPipe pipe)
+    public async Task Upload(INexusDuplexPipe pipe)
     {
         // Substitute with your own file/stream.
         var stream = new MemoryStream();
@@ -51,14 +51,14 @@ partial class DuplexPipeSampleServerNexus
         // Process the data in the stream.
     }
 
-    public async ValueTask Download(INexusDuplexPipe pipe)
+    public async Task Download(INexusDuplexPipe pipe)
     {
         // 25 Mb of data.  Substitute with a file or your own stream.
         var stream = new MemoryStream(new byte[1024 * 1024 * 25]);
         await stream.CopyToAsync(pipe.Output);
     }
 
-    public async ValueTask UploadDownload(INexusDuplexPipe pipe)
+    public async Task UploadDownload(INexusDuplexPipe pipe)
     {
         // Substitute with your own file/stream.
         var stream = new MemoryStream(new byte[1024 * 1024 * 25]);
