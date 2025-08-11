@@ -9,6 +9,7 @@
     <Project Path="Samples\NexNetSample.Asp.Client\NexNetSample.Asp.Client.csproj" Type="Classic C#" />
     <Project Path="Samples\NexNetSample.Asp.Server\NexNetSample.Asp.Server.csproj" Type="Classic C#" />
     <Project Path="Samples\NexNetSample.Asp.Shared\NexNetSample.Asp.Shared.csproj" Type="Classic C#" />
+    <Project Path="Samples\NexNetStressTest\NexNetStressTest.csproj" Type="Classic C#" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
