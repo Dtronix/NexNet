@@ -218,6 +218,11 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     
     INexusList<T> ICollectionStore.GetList<T>(ushort id)
     {
+        // The hot path should be to 
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+        if (SessionContext.Session == null && SessionContext is ConfigurerSessionContext<TProxy> configurer)
+            return configurer.CollectionManager.GetList<T>(id);
+        
         return SessionContext.Session.CollectionManager.GetList<T>(id);
     }
 

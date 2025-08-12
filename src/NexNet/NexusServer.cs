@@ -36,6 +36,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
     private NexusCollectionManager _collectionManager = null!;
+    private Func<TServerNexus, ValueTask>? _configureCollections;
 
     /// <inheritdoc />
     public NexusServerState State => _state;
@@ -57,13 +58,17 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
-    public NexusServer(ServerConfig config, Func<TServerNexus> nexusFactory)
+    /// <param name="configureCollections">Function to configure collections.</param>
+    public NexusServer(
+        ServerConfig config, 
+        Func<TServerNexus> nexusFactory, 
+        Func<TServerNexus, ValueTask>? configureCollections = null)
         : this()
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
 
-        Configure(config, nexusFactory);
+        Configure(config, nexusFactory, configureCollections);
     }
     
     /// <summary>
@@ -85,10 +90,13 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    /// <param name="configureCollections"></param>
     /// <remarks>
     /// Do not use this method.  Instead, use the parameterized constructor.
     /// </remarks>
-    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
+    public void Configure(ServerConfig config,
+        Func<TServerNexus> nexusFactory,
+        Func<TServerNexus, ValueTask>? configureCollections)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
@@ -98,6 +106,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
+        _configureCollections = configureCollections;
         
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(config);
@@ -145,6 +154,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
 
             StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
                 _ => FireAndForget(ListenForConnectionsAsync()), null);
+        }
+
+        if (_configureCollections != null)
+        {
+            var configNexus = _nexusFactory!.Invoke();
+            // Add a special context used for only configuring collections.  Any other usage of methods throws.
+            configNexus.SessionContext = new ConfigurerSessionContext<TClientProxy>(_collectionManager);
+            
+            await _configureCollections.Invoke(configNexus).ConfigureAwait(false);
         }
 
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
