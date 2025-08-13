@@ -41,12 +41,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         
 
         await server1.StartAsync();
-        server1.Config
+        //server1.Config
         
-        await server2.StartAsync();
+        //await server2.StartAsync();
         
         
-        server2.
+        //server2.
 
         return;
         try

@@ -55,9 +55,12 @@ partial class NexusMeta
                                     /// <param name="config">Configurations for this instance.</param>
                                     /// <param name="nexusFactory">Factory used to instance nexuses for the server on each client connection. Useful to pass parameters to the nexus.</param>
                                     /// <returns>NexusServer for handling incoming connections.</returns>
-                                    public static global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateServer(global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> nexusFactory)
+                                    public static global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateServer(
+                                        global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> nexusFactory,
+                                        global::System.Func<{{this.Namespace}}.{{TypeName}}, 
+                                        global::System.Threading.Tasks.ValueTask>? collectionConfigurer = null)
                                     {
-                                        return new global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>(config, nexusFactory);
+                                        return new global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>(config, nexusFactory, collectionConfigurer);
                                     }
                             """);
         }
@@ -69,6 +72,7 @@ partial class NexusMeta
                                     /// </summary>
                                     /// <param name="config">Configurations for this instance.</param>
                                     /// <param name="nexus">Nexus used for this client while communicating with the server. Useful to pass parameters to the nexus.</param>
+                                    /// <param name="collectionConfigurer">Configures any collections upon starting the server.</param>
                                     /// <returns>NexusClient for connecting to the matched NexusServer.</returns>
                                     public static global::NexNet.NexusClient<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateClient(global::NexNet.Transports.ClientConfig config, {{TypeName}} nexus)
                                     {

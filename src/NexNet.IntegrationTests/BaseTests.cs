@@ -367,6 +367,8 @@ internal abstract class BaseTests
                 app.UseHttpSockets();
                 app.MapHttpSocketNexus(sHttpSocketConfig, server);
             }
+            
+            
 
             _ = app.RunAsync();
             AspServers.Add(app);

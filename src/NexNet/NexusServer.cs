@@ -161,8 +161,14 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             var configNexus = _nexusFactory!.Invoke();
             // Add a special context used for only configuring collections.  Any other usage of methods throws.
             configNexus.SessionContext = new ConfigurerSessionContext<TClientProxy>(_collectionManager);
-            
-            await _configureCollections.Invoke(configNexus).ConfigureAwait(false);
+            try
+            {
+                await _configureCollections.Invoke(configNexus).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _config.Logger?.LogError(e, "Exception while configuring collections.");
+            }
         }
 
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
