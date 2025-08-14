@@ -1,4 +1,6 @@
-﻿namespace NexNetDemo.Samples.Collections;
+﻿using NexNet;
+
+namespace NexNetDemo.Samples.Collections;
 
 public class CollectionSample : SampleBase
 {
@@ -9,18 +11,23 @@ public class CollectionSample : SampleBase
 
     public async Task RunServer()
     {
-        var server = CollectionSampleServerNexus.CreateServer(ServerConfig, () => new CollectionSampleServerNexus());
-        await server.StartAsync();
-        
-        var server2 = CollectionSampleServerNexus.CreateServer(ServerConfig, () => new CollectionSampleServerNexus(),
-            nexus =>
-            {
-                var client = CollectionSampleClientNexus.CreateClient(ClientConfig, new CollectionSampleClientNexus());
-                await nexus.MainList.ConnectAsync()
-            });
+        var masterServer = CollectionSampleServerNexus.CreateServer(ServerConfig, () => new CollectionSampleServerNexus());
+        await masterServer.StartAsync();
 
-        if(server.StoppedTask != null)
-            await server.StoppedTask;
+        // Connect the client to the master server
+        var client = CollectionSampleClientNexus.CreateClient(ClientConfig, new CollectionSampleClientNexus());
+        await client.ConnectAsync();
+        
+        //ServerConfig.
+        
+        //var secondaryServer = CollectionSampleServerNexus.CreateServer(ServerConfig, () => new CollectionSampleServerNexus(),
+        //    nexus =>
+        //    {
+        //        await nexus.MainList.ConnectAsync()
+        //    });
+//
+        //if(masterServer.StoppedTask != null)
+        //    await masterServer.StoppedTask;
     }
 
     public async Task RunClient()
