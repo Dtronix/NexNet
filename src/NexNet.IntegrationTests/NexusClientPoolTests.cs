@@ -128,7 +128,7 @@ internal partial class NexusClientPoolTests : BaseTests
 
         try
         {
-            await client.ConnectAsync();
+            //await client.ConnectAsync();
             // Act - Rent maximum connections
             var client1 = await pool.RentClientAsync().Timeout(1);
             var client2 = await pool.RentClientAsync().Timeout(1);
