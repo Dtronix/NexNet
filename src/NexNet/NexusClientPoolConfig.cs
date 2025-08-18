@@ -22,7 +22,7 @@ public sealed class NexusClientPoolConfig
     /// Maximum amount of time a client can remain idle in the pool before being disposed.
     /// Clients that exceed this time will be removed, but a minimum number specified by MinIdleConnections will always be maintained.
     /// </summary>
-    public TimeSpan MaxIdleTime { get; set; } = TimeSpan.FromMinutes(5);
+    public TimeSpan MaxIdleTime { get; set; } = TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// Minimum number of idle connections to maintain in the pool before cleaning them up with MaxIdleTime.

@@ -58,6 +58,12 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
         _healthCheckTimer = new Timer(PerformHealthAndIdleCheck, null, healthCheckInterval, healthCheckInterval);
     }
 
+    public INexusCollectionConnector<TClientNexus, TServerProxy> GetCollectionConnector(
+        Func<TServerProxy, INexusCollection> collectionSelector)
+    {
+        return new NexusCollectionConnector(this, collectionSelector);
+    }
+
 
     /// <summary>
     /// Rents a connected client from the pool. The client must be returned via disposal of the returned wrapper.
@@ -244,6 +250,36 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
 
             _disposed = true;
             await _client.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private sealed class NexusCollectionConnector : INexusCollectionConnector<TClientNexus, TServerProxy>
+    {
+        private readonly NexusClientPool<TClientNexus, TServerProxy> _pool;
+        private readonly Func<TServerProxy, INexusCollection> _collectionSelector;
+        private bool _isActive;
+        
+        public NexusCollectionConnector(
+            NexusClientPool<TClientNexus, TServerProxy> pool,
+            Func<TServerProxy, INexusCollection> collectionSelector)
+        {
+            _pool = pool;
+            _collectionSelector = collectionSelector;
+        }
+
+        public NexusClientPool<TClientNexus, TServerProxy> RentedClient => _pool;
+        public async ValueTask<INexusCollection> GetCollection()
+        {
+            //if(_isActive)
+            //    throw  new InvalidOperationException("Can't get collection multiple times.");
+
+            var client = await _pool.RentClientAsync().ConfigureAwait(false);
+            return _collectionSelector.Invoke(client.Proxy);
+        }
+        
+        public ValueTask DisposeAsync()
+        {
+            throw new NotImplementedException();
         }
     }
 

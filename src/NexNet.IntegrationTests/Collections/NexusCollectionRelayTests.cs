@@ -20,6 +20,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var config1 = CreateServerConfig(Type.Tcp);
         var clientConfig1 = CreateClientConfig(Type.Tcp);
         var server1Port = CurrentTcpPort;
+
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
         
         // Reset the port to get a new port.
         CurrentTcpPort = null;
@@ -33,10 +36,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             masterNexus = nexus;
         });
         
-        var server2 = CreateServer(config2, nexus =>
+        var server2 = CreateServer(config2, nexus => { }, configureCollections: async nexus =>
         {
-            var client = ClientNexus.CreateClient(clientConfig1, new ClientNexus());
-            nexus.IntListSvToCl.ConnectAsync(client.Proxy.IntListSvToCl);
+            ;
+            var client = await clientPool.RentClientAsync();
+            client.GetCollection()
+            nexus.IntListSvToCl.ConnectAsync(clientPool.GetCollectionConnector(n => n.IntListBi));
         });
         
 

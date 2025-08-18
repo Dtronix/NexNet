@@ -572,14 +572,16 @@ internal abstract class NexusCollection : INexusCollectionConnector
         
         return Task.FromResult(true);
     }
-    
+
 
     /// <summary>
     /// Client side connect.  Execution on the server is a noop.
     /// </summary>
+    /// <param name="collectionConnector"></param>
     /// <param name="token"></param>
     /// <exception cref="Exception"></exception>
-    public async Task<bool> ConnectAsync(CancellationToken token = default)
+    public async Task<bool> ConnectAsync(INexusCollectionConnector collectionConnector,
+        CancellationToken token = default)
     {
         // Connect on the server is a noop.
         if (IsServer)

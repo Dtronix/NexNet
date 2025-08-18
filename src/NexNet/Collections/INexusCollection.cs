@@ -17,18 +17,19 @@ public interface INexusCollection : IEnumerable
     /// A <see cref="NexusCollectionState"/> enum indicating the state.
     /// </value>
     public NexusCollectionState State { get; }
-    
+
     /// <summary>
     /// Establishes a connection to the server backing this collection.
     /// </summary>
+    /// <param name="collectionConnector"></param>
     /// <param name="token">
-    /// A <see cref="CancellationToken"/> that can be used to cancel the connection attempt.
+    ///     A <see cref="CancellationToken"/> that can be used to cancel the connection attempt.
     /// </param>
     /// <returns>
     /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the connection
     /// was successfully established and accepted by the server; otherwise <c>false</c>.
     /// </returns>
-    public Task<bool> ConnectAsync(CancellationToken token = default);
+    public Task<bool> ConnectAsync(INexusCollectionConnector collectionConnector, CancellationToken token = default);
     
     /// <summary>
     /// Establishes a connection to a parent collection, making this collection a relay

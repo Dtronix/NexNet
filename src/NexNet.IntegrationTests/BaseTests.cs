@@ -461,17 +461,20 @@ internal abstract class BaseTests
         ServerConfig sConfig,
         Action<ServerNexus>? nexusCreated,
         Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null)
+        Action<WebApplication>? OnAspAppConfigure = null,
+        Func<ServerNexus, ValueTask>? configureCollections = null)
     {
         
-        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, OnAspCreateServices, OnAspAppConfigure);
+        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, OnAspCreateServices, OnAspAppConfigure, configureCollections);
     }
     
     protected NexusServer<TServerNexus, TClientProxy> CreateServer<TServerNexus, TClientProxy>(
         ServerConfig sConfig,
         Action<TServerNexus>? nexusCreated,
         Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null) 
+        Action<WebApplication>? OnAspAppConfigure = null,
+        Func<TServerNexus, ValueTask>? configureCollections = null
+        ) 
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
@@ -480,7 +483,7 @@ internal abstract class BaseTests
             var nexus = new TServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        });
+        }, configureCollections);
 
         Servers.Add(server);
 

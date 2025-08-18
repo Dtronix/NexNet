@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Transports;
 
@@ -34,4 +35,14 @@ public interface IRentedNexusClient<out TServerProxy> : IAsyncDisposable, IDispo
     /// Task which completes upon the disconnection of the client.
     /// </summary>
     Task DisconnectedTask { get; }
+}
+
+/// <sum
+public interface INexusCollectionConnector<TClientNexus, TServerProxy> : IAsyncDisposable
+    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer, new()
+    where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+{
+    public NexusClientPool<TClientNexus, TServerProxy> RentedClient { get; }
+    public ValueTask<INexusCollection> GetCollection();
+    
 }
