@@ -49,7 +49,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         //server2.
 
         return;
-        try
+        /*try
         {
             //// Connect parent collection
             //await client1.Proxy.IntListBi.ConnectAsync().Timeout(1);
@@ -64,7 +64,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         {
             await server1.DisposeAsync();
             await server2.DisposeAsync();
-        }
+        }*/
     }
     
     /*

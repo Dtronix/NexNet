@@ -113,7 +113,7 @@ internal class NexusClientPoolTests : BaseTests
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
         
         var invocationCount = 0;
-        server.OnNexusCreated = nexus => nexus.ServerTaskEvent = async _ =>
+        server.OnNexusCreated = nexus => nexus.ServerTaskEvent = _ =>
         {
             Interlocked.Increment(ref invocationCount);
             //await Task.Delay(100); // Hold connection briefly
