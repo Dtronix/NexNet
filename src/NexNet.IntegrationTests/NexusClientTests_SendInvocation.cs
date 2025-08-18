@@ -192,7 +192,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 

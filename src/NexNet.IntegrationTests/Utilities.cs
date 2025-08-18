@@ -1,11 +1,19 @@
 ﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 
 namespace NexNet.IntegrationTests;
 
-internal class Utilities
+internal static class Utilities
 {
+    public static T Dequeue<T>(this ConcurrentQueue<T> queue)
+    {
+        if (queue.TryDequeue(out var item))
+            return item;
+
+        throw new Exception("Queue is empty.");
+    }
     public static ReadOnlySequence<byte> GetBytes<T>(T data)
         where T : unmanaged
     {

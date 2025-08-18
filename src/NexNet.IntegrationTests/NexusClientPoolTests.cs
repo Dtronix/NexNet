@@ -22,7 +22,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task RentClientAsync_CreatesAndConnectsNewClient(Type type)
     {
         // Arrange
-        var (server, _, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -58,7 +58,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task RentClientAsync_ReusesReturnedClients(Type type)
     {
         // Arrange
-        var (server, serverNexus, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -69,7 +69,9 @@ internal partial class NexusClientPoolTests : BaseTests
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
 
         var invocationCount = 0;
-        serverNexus.ServerVoidEvent = _ => invocationCount++;
+        
+        server.OnNexusCreated = nexus => nexus.ServerVoidEvent = _ => 
+            Interlocked.Increment(ref invocationCount);
 
         try
         {
@@ -108,7 +110,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task RentClientAsync_HandlesMaxConnectionsLimit()
     {
         // Arrange
-        var (server, serverNexus, client, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
@@ -120,12 +122,12 @@ internal partial class NexusClientPoolTests : BaseTests
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
         
         var invocationCount = 0;
-        serverNexus.ServerTaskEvent = async _ =>
+        server.OnNexusCreated = nexus => nexus.ServerTaskEvent = async _ =>
         {
             Interlocked.Increment(ref invocationCount);
             //await Task.Delay(100); // Hold connection briefly
         };
-
+        
         try
         {
             //await client.ConnectAsync();
@@ -165,7 +167,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task EnsureConnectedAsync_ReconnectsWhenNeeded(Type type)
     {
         // Arrange
-        var (server, serverNexus, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -215,7 +217,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task Dispose_DisposesAllClients()
     {
         // Arrange
-        var (server, _, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(Type.Tcp),
             CreateClientConfig(Type.Tcp));
 
@@ -266,7 +268,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task Pool_HandlesMultipleConcurrentRentals()
     {
         // Arrange
-        var (server, serverNexus, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(Type.Uds, BasePipeTests.LogMode.Always),
             CreateClientConfig(Type.Uds, BasePipeTests.LogMode.Always));
 
@@ -277,7 +279,7 @@ internal partial class NexusClientPoolTests : BaseTests
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
 
         var invocationCount = 0;
-        serverNexus.ServerVoidEvent = _ => Interlocked.Increment(ref invocationCount);
+        server.OnNexusCreated = nexus => nexus.ServerVoidEvent = _ => Interlocked.Increment(ref invocationCount);
 
         try
         {
@@ -310,7 +312,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task Pool_CustomNexusFactory()
     {
         // Arrange
-        var (server, serverNexus, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(Type.Tcp),
             CreateClientConfig(Type.Tcp));
 
@@ -347,7 +349,7 @@ internal partial class NexusClientPoolTests : BaseTests
     public async Task Pool_PropertiesReflectCurrentState()
     {
         // Arrange
-        var (server, _, _, _) = CreateServerClient(
+        var (server, _, _) = CreateServerClient(
             CreateServerConfig(Type.Tcp),
             CreateClientConfig(Type.Tcp));
 

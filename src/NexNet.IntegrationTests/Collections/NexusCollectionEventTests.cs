@@ -9,7 +9,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task EventRacing_DoesNotCauseTimeout(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
         
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 40);
@@ -32,7 +33,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task MultipleEventSubscribers_HandleConcurrency(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         var subscriber1Events = 0;
@@ -65,7 +67,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task EventException_DoesNotBreakSystem(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         var goodEventCount = 0;

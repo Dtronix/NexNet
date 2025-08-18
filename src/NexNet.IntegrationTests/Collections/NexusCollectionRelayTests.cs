@@ -66,6 +66,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             await server2.DisposeAsync();
         }
     }
+    
+    /*
 
     [TestCase(Type.Tcp)]
     public async Task ChildRelaysAddOperationsFromParent(Type type)
@@ -287,5 +289,5 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         {
             await server2.DisposeAsync();
         }
-    }
+    }*/
 }

@@ -155,16 +155,19 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
 
 
-    private async Task<Task> ClientSendsMessage<T>(Type type, Action<ServerNexus> setup, Action<T, TaskCompletionSource> onMessage, Func<NexusClient<ClientNexus, ClientNexus.ServerProxy>, ValueTask> action)
+    private async Task<Task> ClientSendsMessage<T>(
+        Type type, Action<ServerNexus> setup,
+        Action<T, TaskCompletionSource> onMessage,
+        Func<NexusClient<ClientNexus, ClientNexus.ServerProxy>, ValueTask> action)
         where T : IMessageBase
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
-        setup.Invoke(serverNexus);
+        server.OnNexusCreated = setup.Invoke;
 
         await server.StartAsync().Timeout(1);
 

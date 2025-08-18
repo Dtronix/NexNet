@@ -161,7 +161,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         setup.Invoke(clientNexus);
 
@@ -185,9 +185,9 @@ internal partial class NexusServerTests_Cancellation : BaseTests
         };
 
 
-        serverNexus.OnConnectedEvent = nexus =>
+        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus2 =>
         {
-            _ = action.Invoke(serverNexus);
+            _ = action.Invoke(nexus2);
             return ValueTask.CompletedTask;
         };
 
