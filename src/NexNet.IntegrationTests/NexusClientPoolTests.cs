@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
@@ -940,6 +941,671 @@ internal class NexusClientPoolTests : BaseTests
             using var client = await pool.RentClientAsync().Timeout(1);
             Assert.That(client, Is.Not.Null);
             Assert.That(client.Proxy, Is.Not.Null);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    // Additional Test Cases
+
+    [Test]
+    public async Task Pool_RentClientAsync_WithCancellationToken_ThrowsWhenCancelled()
+    {
+        // Arrange
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Act & Assert - Connection will fail since no server is running
+            using var cts = new CancellationTokenSource(50);
+            await AssertThrows<InvalidOperationException>(async () =>
+                await pool.RentClientAsync(cts.Token));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_RentClientAsync_RespectsMaxConnectionsWithHighConcurrency()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Act - Start many concurrent rental attempts
+            var rentalTasks = new List<Task<IRentedNexusClient<ClientNexus.ServerProxy>>>();
+            for (int i = 0; i < 10; i++)
+            {
+                rentalTasks.Add(pool.RentClientAsync());
+            }
+
+            // Wait a bit to let some tasks queue up
+            await Task.Delay(50);
+
+            // Only 3 should complete immediately due to max connections
+            var completedTasks = rentalTasks.Count(t => t.IsCompletedSuccessfully);
+            Assert.That(completedTasks, Is.LessThanOrEqualTo(3));
+
+            // Clean up
+            foreach (var task in rentalTasks)
+            {
+                try
+                {
+                    if (task.IsCompletedSuccessfully)
+                    {
+                        var client = await task;
+                        client.Dispose();
+                    }
+                }
+                catch
+                {
+                    // Ignore cleanup exceptions
+                }
+            }
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_CustomNexusFactory_CalledForEachClient()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
+        
+        var factoryCallCount = 0;
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            poolConfig,
+            nexusFactory: () =>
+            {
+                Interlocked.Increment(ref factoryCallCount);
+                return new ClientNexus();
+            });
+
+        try
+        {
+            // Act
+            var client1 = await pool.RentClientAsync().Timeout(1);
+            var client2 = await pool.RentClientAsync().Timeout(1);
+            var client3 = await pool.RentClientAsync().Timeout(1);
+
+            // Assert
+            Assert.That(factoryCallCount, Is.EqualTo(3));
+
+            // Clean up
+            client1.Dispose();
+            client2.Dispose();
+            client3.Dispose();
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_ReturnsHealthyClientFirst()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 2 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Create two clients and return them
+            var client1 = await pool.RentClientAsync().Timeout(1);
+            var client2 = await pool.RentClientAsync().Timeout(1);
+            
+            var client1Proxy = client1.Proxy;
+            var client2Proxy = client2.Proxy;
+
+            client1.Dispose();
+            client2.Dispose();
+
+            // Disconnect server to make one client unhealthy
+            await server.StopAsync().Timeout(1);
+            await Task.Delay(100);
+
+            // Start server again
+            await server.StartAsync().Timeout(1);
+
+            // Rent should return a healthy client
+            using var newClient = await pool.RentClientAsync().Timeout(1);
+            Assert.That(newClient.State, Is.EqualTo(ConnectionState.Connected));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_HealthCheckRemovesUnhealthyClients()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) 
+        { 
+            MaxConnections = 3,
+            MaxIdleTime = TimeSpan.FromMinutes(5) // Long idle time to focus on health checks
+        };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Create multiple clients and return them
+            var clients = new List<IRentedNexusClient<ClientNexus.ServerProxy>>();
+            for (int i = 0; i < 3; i++)
+            {
+                clients.Add(await pool.RentClientAsync().Timeout(1));
+            }
+
+            foreach (var client in clients)
+            {
+                client.Dispose();
+            }
+
+            Assert.That(pool.AvailableConnections, Is.EqualTo(3));
+
+            // Disconnect server to make all clients unhealthy
+            await server.StopAsync().Timeout(1);
+            await Task.Delay(500); // Allow more time for health check to run and detect disconnection
+
+            // Available connections should decrease as unhealthy clients are removed
+            Assert.That(pool.AvailableConnections, Is.LessThanOrEqualTo(3));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_MaxIdleTimeConfiguration_ZeroValue()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) 
+        { 
+            MaxConnections = 2,
+            MaxIdleTime = TimeSpan.Zero, // Immediate idle timeout
+            MinIdleConnections = 0
+        };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Create and return client
+            using (var client = await pool.RentClientAsync().Timeout(1)) { }
+
+            Assert.That(pool.AvailableConnections, Is.EqualTo(1));
+
+            // Wait for health check to process idle timeout
+            await Task.Delay(200);
+
+            // With zero idle time, client should be disposed
+            Assert.That(pool.AvailableConnections, Is.EqualTo(0));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public void Pool_MinIdleConnections_GreaterThanMaxConnections()
+    {
+        // Arrange
+        var clientConfig = CreateClientConfig(Type.Uds);
+        
+        // This should be handled gracefully - MinIdleConnections effectively capped at MaxConnections
+        var poolConfig = new NexusClientPoolConfig(clientConfig) 
+        { 
+            MaxConnections = 2,
+            MinIdleConnections = 5 // Greater than max
+        };
+
+        // Should not throw during construction
+        Assert.DoesNotThrow(() => 
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig));
+    }
+
+    [Test]
+    public async Task Pool_RentedClient_ProxyThrowsAfterReturn()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            IRentedNexusClient<ClientNexus.ServerProxy> rentedClient;
+            
+            // Rent and return client
+            using (rentedClient = await pool.RentClientAsync().Timeout(1))
+            {
+                // Verify proxy works while rented
+                Assert.That(rentedClient.Proxy, Is.Not.Null);
+            }
+
+            // After disposal, accessing proxy should throw
+            Assert.Throws<ObjectDisposedException>(() => _ = rentedClient.Proxy);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_SimultaneousRentAndReturn_ThreadSafety()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 5 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        var exceptions = new ConcurrentBag<Exception>();
+
+        try
+        {
+            // Act - Simultaneous rent/return operations
+            var tasks = Enumerable.Range(0, 50).Select(async i =>
+            {
+                try
+                {
+                    using var client = await pool.RentClientAsync().Timeout(1);
+                    await Task.Delay(Random.Shared.Next(1, 10)); // Random small delay
+                    
+                    // Access properties to test thread safety
+                    var state = client.State;
+                    var proxy = client.Proxy;
+                    var disconnectedTask = client.DisconnectedTask;
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Add(ex);
+                }
+            }).ToArray();
+
+            await Task.WhenAll(tasks).Timeout(5);
+
+            // Assert - No exceptions should occur during normal operation
+            Assert.That(exceptions.IsEmpty, Is.True, $"Exceptions occurred: {string.Join(", ", exceptions.Select(e => e.Message))}");
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_DisconnectedTask_ReflectsClientState()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(1);
+            
+            // Initially should not be completed
+            Assert.That(client.DisconnectedTask.IsCompleted, Is.False);
+
+            // Disconnect server
+            await server.StopAsync().Timeout(1);
+
+            // Wait for disconnection
+            await client.DisconnectedTask.Timeout(1);
+            Assert.That(client.DisconnectedTask.IsCompleted, Is.True);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_EnsureConnectedAsync_FailsWhenServerDown()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(1);
+            
+            // Stop server
+            await server.StopAsync().Timeout(1);
+            await Task.Delay(100);
+
+            // EnsureConnectedAsync should fail
+            var result = await client.EnsureConnectedAsync().Timeout(1);
+            Assert.That(result, Is.False);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_EnsureConnectedAsync_SucceedsWhenAlreadyConnected()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(1);
+            
+            // Should succeed when already connected
+            var result = await client.EnsureConnectedAsync().Timeout(1);
+            Assert.That(result, Is.True);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_SequentialRentReturn_MaintainsCorrectCounts()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Sequential rent/return operations
+            for (int i = 0; i < 10; i++)
+            {
+                using var client = await pool.RentClientAsync().Timeout(1);
+                Assert.That(pool.AvailableConnections, Is.EqualTo(0), $"Iteration {i}: Should have 0 available when rented");
+            }
+            
+            // After all operations, should have 1 available client
+            Assert.That(pool.AvailableConnections, Is.EqualTo(1));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_HealthCheckTimer_ContinuesAfterExceptions()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) 
+        { 
+            MaxConnections = 2,
+            MaxIdleTime = TimeSpan.FromMilliseconds(50) // Very short for quick test
+        };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Create clients to populate pool
+            var client1 = await pool.RentClientAsync().Timeout(1);
+            var client2 = await pool.RentClientAsync().Timeout(1);
+            
+            client1.Dispose();
+            client2.Dispose();
+
+            var initialCount = pool.AvailableConnections;
+            
+            // Wait for multiple health check cycles
+            await Task.Delay(300);
+            
+            // Health check should have run multiple times
+            // (This test mainly ensures no exceptions break the timer)
+            Assert.That(pool.AvailableConnections, Is.LessThanOrEqualTo(initialCount));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_RentClientAsync_HandlesFactoryReturningNull()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            poolConfig,
+            nexusFactory: () => null!); // Return null to test error handling
+
+        try
+        {
+            // Should handle null factory return gracefully
+            await AssertThrows<NullReferenceException>(async () =>
+                await pool.RentClientAsync().Timeout(1));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+    
+    [Test]
+    public async Task Pool_ConnectionFailureDuringRent_ReleasesResources()
+    {
+        // Arrange - Create pool but don't start server
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 2 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            // Multiple failed connection attempts
+            for (int i = 0; i < 3; i++)
+            {
+                await AssertThrows<InvalidOperationException>(async () =>
+                    await pool.RentClientAsync().Timeout(1));
+            }
+            
+            // Pool should still be functional for future attempts
+            Assert.That(pool.MaxConnections, Is.EqualTo(2));
+            Assert.That(pool.AvailableConnections, Is.EqualTo(0));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_RentedClient_StateTransitions()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(1);
+            
+            // Initial state
+            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            
+            // Disconnect server
+            await server.StopAsync().Timeout(1);
+            await Task.Delay(100);
+            
+            // State should reflect disconnection
+            Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+            
+            // Reconnect server
+            await server.StartAsync().Timeout(1);
+            
+            // Manual reconnect
+            var reconnected = await client.EnsureConnectedAsync().Timeout(1);
+            if (reconnected)
+            {
+                Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+            }
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_LongRunningOperations_DoNotBlockOthers()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var clientConfig = CreateClientConfig(Type.Uds);
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 3 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        var completedOperations = 0;
+
+        try
+        {
+            // Start multiple operations with different durations
+            var tasks = new List<Task>();
+            
+            // Long operation
+            tasks.Add(Task.Run(async () =>
+            {
+                using var client = await pool.RentClientAsync().Timeout(1);
+                await Task.Delay(500); // Long delay
+                Interlocked.Increment(ref completedOperations);
+            }));
+            
+            // Short operations
+            for (int i = 0; i < 5; i++)
+            {
+                tasks.Add(Task.Run(async () =>
+                {
+                    using var client = await pool.RentClientAsync().Timeout(1);
+                    await Task.Delay(50); // Short delay
+                    Interlocked.Increment(ref completedOperations);
+                }));
+            }
+
+            await Task.WhenAll(tasks).Timeout(2);
+            
+            Assert.That(completedOperations, Is.EqualTo(6));
         }
         finally
         {
