@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
+using NexNet.Internals.Collections;
 using NexNet.Invocation;
 using NexNet.Transports;
 
@@ -20,7 +22,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
 {
     private readonly NexusClientPoolConfig _config;
     private readonly Func<TClientNexus> _nexusFactory;
-    private readonly ConcurrentQueue<PooledClient> _availableClients;
+    private readonly ConcurrentRemovableQueue<PooledClient> _availableClients;
     private readonly SemaphoreSlim _semaphore;
     private readonly Timer _healthCheckTimer;
     private volatile bool _disposed;
@@ -44,12 +46,16 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(config.MaxConnections, 0);
+        ArgumentOutOfRangeException.ThrowIfNegative(config.MinIdleConnections);
 
         _config = config;
         _nexusFactory = nexusFactory ?? (() => new TClientNexus());
-        _availableClients = new ConcurrentQueue<PooledClient>();
+        _availableClients = new ConcurrentRemovableQueue<PooledClient>();
         _semaphore = new SemaphoreSlim(config.MaxConnections, config.MaxConnections);
-        _healthCheckTimer = new Timer(PerformHealthAndIdleCheck, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        
+        // Set health check interval to be more frequent than idle timeout, but with reasonable bounds
+        var healthCheckInterval = TimeSpan.FromMilliseconds(Math.Max(100, Math.Min(30000, config.MaxIdleTime.TotalMilliseconds / 4)));
+        _healthCheckTimer = new Timer(PerformHealthAndIdleCheck, null, healthCheckInterval, healthCheckInterval);
     }
 
 
@@ -138,48 +144,45 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
         if (_disposed)
             return;
 
-        var healthyClients = new ConcurrentQueue<PooledClient>();
         var now = DateTime.UtcNow;
-        var clientCount = 0;
+        var minRequired = _config.MinIdleConnections;
+        var processedClients = new List<PooledClient>();
+        var healthyCount = 0;
 
-        // Check all available clients and keep only healthy, non-idle ones
-        while (_availableClients.TryDequeue(out var client))
+        // Count how many clients we're processing to determine idle eviction eligibility
+        var currentQueueSize = _availableClients.Count;
+        
+        // Process only the clients currently in the queue to avoid infinite processing
+        // of newly returned clients during health check
+        foreach (var client in _availableClients)
         {
-            clientCount++;
-            
-            if (client.IsHealthy)
+            if (!client.IsHealthy)
             {
-                // Check if client has been idle too long
-                var idleTime = now - client.LastUsed;
-                
-                // Always keep at least 1 client, even if idle
-                if (idleTime < _config.MaxIdleTime || clientCount == 1)
-                {
-                    healthyClients.Enqueue(client);
-                }
-                else
-                {
-                    // Client has been idle too long, dispose it
-                    _ = client.DisposeAsync();
-                }
+                // Client is unhealthy, dispose it
+                _availableClients.Remove(client);
+                _ = client.DisposeAsync();
+                continue;
+            }
+
+            // Client is healthy - check if it should be kept or evicted for idle time
+            var idleTime = now - client.LastUsed;
+            var shouldKeepForMinConnections = healthyCount < minRequired;
+            
+            if (idleTime < _config.MaxIdleTime || shouldKeepForMinConnections)
+            {
+                // Keep this client
+                healthyCount++;
             }
             else
             {
-                // Client is unhealthy, dispose it
+                // Client has been idle too long and we have enough connections
+                _availableClients.Remove(client);
                 _ = client.DisposeAsync();
             }
         }
 
-        // If we have no healthy clients left, we need to ensure at least 1 remains
-        // This shouldn't happen due to the logic above, but add as safety
-        if (healthyClients.IsEmpty && clientCount > 0)
-        {
-            // We disposed all clients, but we should maintain at least 1
-            // The next RentClientAsync call will create a new one
-        }
-
-        // Replace the queue with healthy, non-idle clients
-        while (healthyClients.TryDequeue(out var client))
+        // Put the healthy, non-idle clients back into the queue
+        foreach (var client in processedClients)
         {
             _availableClients.Enqueue(client);
         }
