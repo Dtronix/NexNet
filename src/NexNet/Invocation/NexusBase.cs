@@ -26,7 +26,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
 
     private readonly InvokeMethodCoreDelegate _invokeMethodCoreDelegate;
-    private SessionContext<TProxy>? _sessionContext = null;
+    private SessionContext<TProxy>? _sessionContext;
 
     internal SessionContext<TProxy> SessionContext
     {
@@ -236,7 +236,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         if (SessionContext.Session == null && SessionContext is ConfigurerSessionContext<TProxy> configurer)
             return configurer.CollectionManager.GetList<T>(id);
         
-        return SessionContext.Session.CollectionManager.GetList<T>(id);
+        return SessionContext.Session!.CollectionManager.GetList<T>(id);
     }
 
     ValueTask ICollectionStore.StartCollection(ushort id, INexusDuplexPipe pipe)

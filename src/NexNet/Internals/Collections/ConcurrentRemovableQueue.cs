@@ -4,7 +4,7 @@ using System.Threading;
 
 namespace NexNet.Internals.Collections;
 
-internal class ConcurrentRemovableQueue<T> : IEnumerable<T>
+internal class ConcurrentRemovableQueue<T> : IEnumerable<T> where T : notnull
 {
     private sealed class Node
     {
@@ -22,7 +22,6 @@ internal class ConcurrentRemovableQueue<T> : IEnumerable<T>
 
     // --- State ----------------------------------------------------------------
     private readonly Lock _gate = new Lock();
-    private readonly IEqualityComparer<T> _comparer;
     private Node? _head;
     private Node? _tail;
     private int _count;
@@ -32,10 +31,9 @@ internal class ConcurrentRemovableQueue<T> : IEnumerable<T>
 
     public ConcurrentRemovableQueue() : this(EqualityComparer<T>.Default) { }
 
-    public ConcurrentRemovableQueue(IEqualityComparer<T> comparer)
+    public ConcurrentRemovableQueue(IEqualityComparer<T>? comparer = null)
     {
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-        _index = new Dictionary<T, HashSet<Node>>(_comparer);
+        _index = new Dictionary<T, HashSet<Node>>(comparer ?? EqualityComparer<T>.Default);
     }
 
     public int Count { get { lock (_gate) return _count; } }
@@ -152,7 +150,7 @@ internal class ConcurrentRemovableQueue<T> : IEnumerable<T>
         }
 
         public T Current => _current;
-        object IEnumerator.Current => _current!;
+        object IEnumerator.Current => _current;
 
         public bool MoveNext()
         {
