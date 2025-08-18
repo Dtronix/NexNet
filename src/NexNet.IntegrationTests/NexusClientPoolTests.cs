@@ -117,6 +117,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             Interlocked.Increment(ref invocationCount);
             //await Task.Delay(100); // Hold connection briefly
+            return ValueTask.CompletedTask;
         };
         
         try
