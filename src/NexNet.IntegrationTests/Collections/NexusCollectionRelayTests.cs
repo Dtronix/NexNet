@@ -38,10 +38,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         
         var server2 = CreateServer(config2, nexus => { }, configureCollections: async nexus =>
         {
-            ;
-            var client = await clientPool.RentClientAsync();
-            client.GetCollection()
-            nexus.IntListSvToCl.ConnectAsync(clientPool.GetCollectionConnector(n => n.IntListBi));
+            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi));
         });
         
 

@@ -93,7 +93,7 @@ public static partial class NexNetMiddlewareExtensions
     public static NexusServer<TServerNexus, TClientProxy> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
         Action<WebSocketConfigure>? configure = null,
-        Func<TServerNexus, ValueTask>? configureCollections = null)
+        Action<TServerNexus>? configureCollections = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {

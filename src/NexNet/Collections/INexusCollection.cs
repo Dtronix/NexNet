@@ -29,7 +29,7 @@ public interface INexusCollection : IEnumerable
     /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the connection
     /// was successfully established and accepted by the server; otherwise <c>false</c>.
     /// </returns>
-    public Task<bool> ConnectAsync(INexusCollectionConnector collectionConnector, CancellationToken token = default);
+    public void ConfigureRelay(INexusCollectionClientConnector collectionConnector);
     
     /// <summary>
     /// Establishes a connection to a parent collection, making this collection a relay
@@ -46,7 +46,7 @@ public interface INexusCollection : IEnumerable
     /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the connection
     /// was successfully established; otherwise <c>false</c>.
     /// </returns>
-    public Task<bool> ConnectAsync(INexusCollection parent, CancellationToken token = default);
+    public Task<bool> ConnectAsync(CancellationToken token = default);
     
     /// <summary>
     /// Gracefully disconnects from the server

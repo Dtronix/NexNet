@@ -15,7 +15,7 @@ using NexNet.Transports;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollection : INexusCollectionConnector
+internal abstract partial class NexusCollection : INexusCollectionConnector
 {
     private NexusCollectionState _state;
     protected readonly ushort Id;
@@ -26,6 +26,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
+    
+    private NexusCollection? _relayTo;
+    private INexusCollectionClientConnector? _clientRelayConnector;
     
     private readonly SnapshotList<Client>? _nexusPipeList;
     
@@ -131,7 +134,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         {
             // First relay the message to child collection if one exists
             var relayResult = true;
-            if (_childRelay != null)
+            if (_relayTo != null)
             {
                 try
                 {
@@ -139,7 +142,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     var clonedMessage = messageFromServer.Clone();
                     
                     // Process the message in the child collection as if it came from a server
-                    relayResult = _childRelay.RelayMessageFromParent(clonedMessage);
+                    relayResult = _relayTo.RelayMessageFromParent(clonedMessage);
                 }
                 catch (Exception ex)
                 {
@@ -194,88 +197,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
 
     protected abstract bool OnClientClear(int version);
     
-    /// <summary>
-    /// Relays a message from a parent collection to this collection as if it came from a server
-    /// </summary>
-    private bool RelayMessageFromParent(INexusCollectionMessage messageFromParent)
-    {
-        try
-        {
-            // Process reset messages the same way as a client would
-            switch (messageFromParent)
-            {
-                case NexusCollectionResetStartMessage message:
-                    if (IsClientResetting)
-                        return false;
-                    IsClientResetting = true;
-                    var startResult = OnClientResetStarted(message.Version, message.TotalValues);
-                    messageFromParent.ReturnToCache();
-                    return startResult;
-            
-                case NexusCollectionResetValuesMessage message:
-                    if (!IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    var valuesResult = OnClientResetValues(message.Values.Span);
-                    if (message is INexusCollectionValueMessage valueMessage)
-                        valueMessage.ReturnValueToPool();
-                    messageFromParent.ReturnToCache();
-                    return valuesResult;
-
-                case NexusCollectionResetCompleteMessage:
-                    if (!IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    IsClientResetting = false;
-                    var completeResult = OnClientResetCompleted();
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    messageFromParent.ReturnToCache();
-                    return completeResult;
-
-                case NexusCollectionClearMessage message:
-                    if (IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    var clearResult = OnClientClear(message.Version);
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    messageFromParent.ReturnToCache();
-                    return clearResult;
-                    
-                default:
-                    if (IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    
-                    // Process other messages and trigger change events
-                    var processResult = OnClientProcessMessage(messageFromParent);
-                    if (processResult)
-                    {
-                        // Trigger change event for subscribers of this relay collection
-                        CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    }
-                    
-                    if (messageFromParent is INexusCollectionValueMessage valueMsg)
-                        valueMsg.ReturnValueToPool();
-                    messageFromParent.ReturnToCache();
-                    
-                    return processResult;
-            }
-        }
-        catch (Exception e)
-        {
-            Logger?.LogError(e, "Exception while relaying message from parent");
-            messageFromParent.ReturnToCache();
-            return false;
-        }
-    }
+    
 
     protected bool RequireValidProcessState()
     {
@@ -306,7 +228,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         {
             var collection = Unsafe.As<NexusCollection>(state)!;
 
-            while (true)
+            while (collection._broadcastCancellation?.IsCancellationRequested == false)
             {
                 try
                 {
@@ -520,69 +442,16 @@ internal abstract class NexusCollection : INexusCollectionConnector
         await pipe.CompleteTask.ConfigureAwait(false);
     }
 
-
-    private NexusCollection? _childRelay;
-    
-    public Task<bool> ConnectAsync(INexusCollection parent, CancellationToken token = default)
-    {
-        if (parent == null)
-            throw new ArgumentNullException(nameof(parent));
-            
-        if (IsServer)
-            throw new InvalidOperationException("Server collections cannot connect to parent collections");
-            
-        if (_state == NexusCollectionState.Connected)
-            throw new InvalidOperationException("Collection is already connected");
-            
-        if (parent.GetType() != this.GetType())
-            throw new InvalidOperationException("Parent collection must be of the same type");
-
-        var parentCollection = parent as NexusCollection;
-        if (parentCollection == null)
-            throw new InvalidOperationException("Parent must be a NexusCollection");
-            
-        // Set this collection as a child relay of the parent
-        parentCollection._childRelay = this;
-        
-        // Initialize this collection to act like it's connected to a server
-        // but it will receive messages from the parent instead
-        _state = NexusCollectionState.Connected;
-        
-        // Set up server-like broadcasting for this collection
-        StartUpdateBroadcast();
-        
-        // Create a dummy disconnection task that will be completed when parent disconnects
-        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _disconnectedTask = _disconnectTcs.Task;
-        
-        // Monitor parent disconnection to trigger this collection's disconnection
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await parent.DisconnectedTask.ConfigureAwait(false);
-                ClientDisconnected();
-            }
-            catch (Exception ex)
-            {
-                Logger?.LogError(ex, "Error while monitoring parent collection disconnection");
-                ClientDisconnected();
-            }
-        }, token);
-        
-        return Task.FromResult(true);
-    }
-
-
     /// <summary>
     /// Client side connect.  Execution on the server is a noop.
     /// </summary>
-    /// <param name="collectionConnector"></param>
     /// <param name="token"></param>
     /// <exception cref="Exception"></exception>
-    public async Task<bool> ConnectAsync(INexusCollectionConnector collectionConnector,
-        CancellationToken token = default)
+    public async Task<bool> ConnectAsync(CancellationToken token = default)
     {
+        if(_clientRelayConnector != null)
+            throw new InvalidOperationException("Collection is configured in a relay and ");
+        
         // Connect on the server is a noop.
         if (IsServer)
             return false;
@@ -781,7 +650,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         _ackTcs?.TrySetResult(false);
 
         // Clear child relay reference to prevent memory leaks
-        _childRelay = null;
+        _relayTo = null;
 
         try
         {

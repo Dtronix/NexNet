@@ -11,7 +11,7 @@ namespace NexNet;
 /// Represents a rented client from a NexusClientPool that must be returned when finished.
 /// </summary>
 /// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
-public interface IRentedNexusClient<out TServerProxy> : IAsyncDisposable, IDisposable
+public interface IRentedNexusClient<out TServerProxy> : IDisposable
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash
 {
     /// <summary>
@@ -38,11 +38,16 @@ public interface IRentedNexusClient<out TServerProxy> : IAsyncDisposable, IDispo
 }
 
 /// <sum
-public interface INexusCollectionConnector<TClientNexus, TServerProxy> : IAsyncDisposable
-    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer, new()
-    where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+//public interface INexusCollectionClientConnector<TClientNexus, TServerProxy> : INexusCollectionClientConnector
+//    where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer, new()
+//    where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
+//{
+//    public NexusClientPool<TClientNexus, TServerProxy> RentedClient { get; }
+//    
+//    
+//}
+
+public interface INexusCollectionClientConnector : IDisposable
 {
-    public NexusClientPool<TClientNexus, TServerProxy> RentedClient { get; }
     public ValueTask<INexusCollection> GetCollection();
-    
 }

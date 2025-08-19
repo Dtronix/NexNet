@@ -62,12 +62,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public NexusServer(
         ServerConfig config, 
         Func<TServerNexus> nexusFactory, 
-        Func<TServerNexus, ValueTask>? configureCollections = null)
+        Action<TServerNexus>? configureCollections = null)
         : this()
     {
-        ArgumentNullException.ThrowIfNull(config);
-        ArgumentNullException.ThrowIfNull(nexusFactory);
-
         Configure(config, nexusFactory, configureCollections);
     }
     
@@ -96,7 +93,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </remarks>
     public void Configure(ServerConfig config,
         Func<TServerNexus> nexusFactory,
-        Func<TServerNexus, ValueTask>? configureCollections)
+        Action<TServerNexus>? configureCollections)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
@@ -106,7 +103,21 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
-        _configureCollections = configureCollections;
+        
+        if (configureCollections != null)
+        {
+            var configNexus = _nexusFactory!.Invoke();
+            // Add a special context used for only configuring collections.  Any other usage of methods throws.
+            configNexus.SessionContext = new ConfigurerSessionContext<TClientProxy>(_collectionManager);
+            try
+            {
+                configureCollections.Invoke(configNexus);
+            }
+            catch (Exception e)
+            {
+                _logger?.LogError(e, "Exception while configuring collections.");
+            }
+        }
         
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(config);
@@ -155,23 +166,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
                 _ => FireAndForget(ListenForConnectionsAsync()), null);
         }
-
-        if (_configureCollections != null)
-        {
-            var configNexus = _nexusFactory!.Invoke();
-            // Add a special context used for only configuring collections.  Any other usage of methods throws.
-            configNexus.SessionContext = new ConfigurerSessionContext<TClientProxy>(_collectionManager);
-            try
-            {
-                await _configureCollections.Invoke(configNexus).ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                _config.Logger?.LogError(e, "Exception while configuring collections.");
-            }
-        }
-
+        
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
+        
+        await _collectionManager.StartRelayConnections().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -181,6 +179,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             throw new InvalidOperationException("Server is not running");
 
         _logger?.LogInfo("Stopping server");
+
+        _collectionManager.StopRelayConnections();
 
         // If the server is not listening for connections, we are done.
         if (_config?.ConnectionMode == ServerConnectionMode.Listener)

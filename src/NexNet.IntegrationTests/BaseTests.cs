@@ -460,20 +460,20 @@ internal abstract class BaseTests
     protected NexusServer<ServerNexus, ServerNexus.ClientProxy> CreateServer(
         ServerConfig sConfig,
         Action<ServerNexus>? nexusCreated,
-        Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null,
-        Func<ServerNexus, ValueTask>? configureCollections = null)
+        Action<WebApplicationBuilder>? onAspCreateServices = null,
+        Action<WebApplication>? onAspAppConfigure = null,
+        Action<ServerNexus>? configureCollections = null)
     {
         
-        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, OnAspCreateServices, OnAspAppConfigure, configureCollections);
+        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, onAspCreateServices, onAspAppConfigure, configureCollections);
     }
     
     protected NexusServer<TServerNexus, TClientProxy> CreateServer<TServerNexus, TClientProxy>(
         ServerConfig sConfig,
         Action<TServerNexus>? nexusCreated,
-        Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null,
-        Func<TServerNexus, ValueTask>? configureCollections = null
+        Action<WebApplicationBuilder>? onAspCreateServices = null,
+        Action<WebApplication>? onAspAppConfigure = null,
+        Action<TServerNexus>? configureCollections = null
         ) 
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
@@ -500,11 +500,11 @@ internal abstract class BaseTests
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
             
-            OnAspCreateServices?.Invoke(builder);
+            onAspCreateServices?.Invoke(builder);
 
             var app = builder.Build();
             
-            OnAspAppConfigure?.Invoke(app);
+            onAspAppConfigure?.Invoke(app);
 
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
