@@ -76,7 +76,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         }
     }
 
-    public async ValueTask StartRelayConnections()
+    public void StartRelayConnections()
     {
         if (_collections == null)
             return;
@@ -85,7 +85,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         {
             try
             {
-                await ((NexusCollection)nexusCollection.Value).StartRelay().ConfigureAwait(false);
+                ((NexusCollection)nexusCollection.Value).StartRelay();
             }
             catch (Exception e)
             {

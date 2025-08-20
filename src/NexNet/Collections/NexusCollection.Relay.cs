@@ -28,20 +28,23 @@ internal abstract partial class NexusCollection
 
         if (!IsServer)
             throw new InvalidOperationException("Client collections cannot be relayed");
-            
-        if (_state == NexusCollectionState.Connected)
-            throw new InvalidOperationException("Collection is already connected");
     }
 
 
     public void StopRelay()
     {
+        if (_clientRelayConnector == null)
+            return;
+        
         _relayCancellation?.Cancel();
     }
 
     public void StartRelay()
     {
-        if (_state != NexusCollectionState.Disconnected)
+        if (_clientRelayConnector == null)
+            return;
+        
+        if (_state != NexusCollectionState.Connected)
         {
             Logger?.LogWarning("Collection is not in a disconnected state.");
             return;
@@ -82,11 +85,14 @@ internal abstract partial class NexusCollection
     {
         if (_clientRelayConnector == null)
             return;
+        
+        Logger?.LogTrace("Running relay connection loop");
 
         INexusCollection relayConnection;
         try
         {
             relayConnection = await _clientRelayConnector.GetCollection().ConfigureAwait(false);
+            Logger?.LogTrace("Retrieved relay connection");
         }
         catch (Exception e)
         {
@@ -110,22 +116,19 @@ internal abstract partial class NexusCollection
         // Create a dummy disconnection task that will be completed when parent disconnects
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTask = _disconnectTcs.Task;
+        nexusCollection._disconnectedTask = _disconnectTcs.Task;
         
         // Monitor parent disconnection to trigger this collection's disconnection
-        _ = Task.Run(async () =>
+        try
         {
-            try
-            {
-                await nexusCollection.DisconnectedTask.ConfigureAwait(false);
-                ClientDisconnected();
-            }
-            catch (Exception ex)
-            {
-                Logger?.LogError(ex, "Error while monitoring parent collection disconnection");
-                ClientDisconnected();
-            }
-        }, _relayCancellation!.Token);
-        
+            await nexusCollection.DisconnectedTask.ConfigureAwait(false);
+            ClientDisconnected();
+        }
+        catch (Exception ex)
+        {
+            Logger?.LogError(ex, "Error while monitoring parent collection disconnection");
+            ClientDisconnected();
+        }
     }
     
     /// <summary>

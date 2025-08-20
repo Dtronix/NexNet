@@ -57,8 +57,7 @@ partial class NexusMeta
                                     /// <returns>NexusServer for handling incoming connections.</returns>
                                     public static global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}> CreateServer(
                                         global::NexNet.Transports.ServerConfig config, global::System.Func<{{this.Namespace}}.{{TypeName}}> nexusFactory,
-                                        global::System.Func<{{this.Namespace}}.{{TypeName}}, 
-                                        global::System.Threading.Tasks.ValueTask>? collectionConfigurer = null)
+                                        global::System.Action<{{this.Namespace}}.{{TypeName}}>? collectionConfigurer = null)
                                     {
                                         return new global::NexNet.NexusServer<{{this.Namespace}}.{{TypeName}}, {{this.Namespace}}.{{TypeName}}.{{this.ProxyInterface.ProxyImplName}}>(config, nexusFactory, collectionConfigurer);
                                     }

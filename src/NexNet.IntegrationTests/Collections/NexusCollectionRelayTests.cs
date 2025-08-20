@@ -30,19 +30,27 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var server2Port = CurrentTcpPort;
 
 
-        ServerNexus masterNexus;
+        ServerNexus masterNexus = null!;
         var server1 = CreateServer(config1, nexus =>
         {
             masterNexus = nexus;
         });
+
         
-        var server2 = CreateServer(config2, nexus => { }, configureCollections: async nexus =>
+        var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
         {
             nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi));
         });
         
 
-        await server1.StartAsync();
+        await server1.StartAsync().Timeout(1);
+        await server2.StartAsync().Timeout(1);
+        await Task.Delay(800);
+
+        await masterNexus.IntListBi.AddAsync(1);
+        await Task.Delay(1000);
+        
+        Assert.Fail();
         //server1.Config
         
         //await server2.StartAsync();

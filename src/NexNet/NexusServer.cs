@@ -104,6 +104,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
         
+        // Set the collection manager and configure for this nexus.
+        _collectionManager = new NexusCollectionManager(config);
+        TServerNexus.ConfigureCollections(_collectionManager);
+        
         if (configureCollections != null)
         {
             var configNexus = _nexusFactory!.Invoke();
@@ -118,10 +122,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                 _logger?.LogError(e, "Exception while configuring collections.");
             }
         }
-        
-        // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(config);
-        TServerNexus.ConfigureCollections(_collectionManager);
     }
 
     /// <inheritdoc />
@@ -169,7 +169,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
         
-        await _collectionManager.StartRelayConnections().ConfigureAwait(false);
+        _collectionManager.StartRelayConnections();
     }
 
     /// <inheritdoc />

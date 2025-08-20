@@ -140,7 +140,7 @@ internal class NexusClientPoolTests : BaseTests
             Assert.That(rentTask.IsCompleted, Is.False);
 
             // Return one client
-            await client1.DisposeAsync();
+            client1.Dispose();
             
             // Now third client should be available
             using var client3 = await rentTask.Timeout(1);
@@ -327,10 +327,10 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(0)); // Both rented
 
-            await client1.DisposeAsync();
+            client1.Dispose();
             Assert.That(pool.AvailableConnections, Is.EqualTo(1)); // One returned
 
-            await client2.DisposeAsync();
+            client2.Dispose();
             Assert.That(pool.AvailableConnections, Is.EqualTo(2)); // Both returned
         }
         finally
@@ -832,7 +832,7 @@ internal class NexusClientPoolTests : BaseTests
             Assert.That(rentedClient.State, Is.EqualTo(ConnectionState.Connected));
 
             // Dispose the rented client
-            await rentedClient.DisposeAsync();
+            rentedClient.Dispose();
 
             // Should throw ObjectDisposedException
             Assert.Throws<ObjectDisposedException>(() => _ = rentedClient.Proxy);
@@ -867,9 +867,9 @@ internal class NexusClientPoolTests : BaseTests
             var rentedClient = await pool.RentClientAsync().Timeout(1);
             
             // Dispose multiple times - should not throw
-            await rentedClient.DisposeAsync();
             rentedClient.Dispose();
-            await rentedClient.DisposeAsync();
+            rentedClient.Dispose();
+            rentedClient.Dispose();
             rentedClient.Dispose();
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(1)); // Client returned once
@@ -904,7 +904,7 @@ internal class NexusClientPoolTests : BaseTests
             await Task.Delay(200); // Wait for disconnection
 
             // Return the now-unhealthy client
-            await rentedClient.DisposeAsync();
+            rentedClient.Dispose();
 
             // Pool should not have the unhealthy client
             Assert.That(pool.AvailableConnections, Is.EqualTo(0));
