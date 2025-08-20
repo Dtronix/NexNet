@@ -318,14 +318,13 @@ internal class NexusServerTests_ReceiveInvocation : BaseTests
     private async Task ServerReceivesInvocation(Type type, Action<ServerNexus, ClientNexus, TaskCompletionSource> action)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
-
+        
+        server.OnNexusCreated = nexus => action(nexus, clientNexus, tcs);
+        
         await server.StartAsync().Timeout(1);
-
-        action(serverNexus, clientNexus, tcs);
-
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);

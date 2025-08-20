@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -40,14 +41,19 @@ internal abstract class BaseTests
     private UnixDomainSocketEndPoint? CurrentPath;
     private int? _currentTcpPort;
     private int? _currentUdpPort;
-    private List<INexusServer> Servers = new List<INexusServer>();
-    private List<INexusClient> Clients = new List<INexusClient>();
+    private List<INexusServer> Servers = new ();
+    private List<INexusServerFactory> ServerFactories = new ();
+    private List<INexusClient> Clients = new();
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
     private readonly List<WebApplication> AspServers = new List<WebApplication>();
     public RollingLogger Logger => _logger;
-    
-    public int? CurrentTcpPort => _currentTcpPort;
+
+    public int? CurrentTcpPort
+    {
+        get => _currentTcpPort;
+        set => _currentTcpPort = value;
+    }
 
     [OneTimeSetUp]
     public void OneTimeSetUp()
@@ -112,6 +118,16 @@ internal abstract class BaseTests
         }
 
         Servers.Clear();
+        
+        foreach (var nexusServer in ServerFactories)
+        {
+            if (nexusServer.ServerBase.State != NexusServerState.Running)
+                continue;
+
+            _ = nexusServer.ServerBase.StopAsync();
+        }
+        ServerFactories.Clear();
+        
         foreach (var se in AspServers)
         {
             try
@@ -324,17 +340,16 @@ internal abstract class BaseTests
 
 
 
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
-        ServerNexus serverNexus,
-        NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
+    protected (
+        NexusServerFactory<ServerNexus, ServerNexus.ClientProxy> serverFactory, 
+        NexusClient<ClientNexus, ClientNexus.ServerProxy> client, 
         ClientNexus clientNexus)
         CreateServerClient(ServerConfig sConfig, ClientConfig cConfig, bool startServer = true)
     {
-        var serverNexus = new ServerNexus();
+        var serverFactory = new NexusServerFactory<ServerNexus, ServerNexus.ClientProxy>(sConfig);
         var clientNexus = new ClientNexus();
-        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
-        Servers.Add(server);
+        ServerFactories.Add(serverFactory);
         Clients.Add(client);
 
 
@@ -356,34 +371,34 @@ internal abstract class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(sWebSocketConfig, server);
+                app.MapWebSocketNexus(sWebSocketConfig, serverFactory.Server);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(sHttpSocketConfig, server);
+                app.MapHttpSocketNexus(sHttpSocketConfig, serverFactory.Server);
             }
+            
+            
 
             _ = app.RunAsync();
             AspServers.Add(app);
         }
 
-        return (server, serverNexus, client, clientNexus);
+        return (serverFactory, client, clientNexus);
     }
 
-    protected (NexusServer<ServerNexus, ServerNexus.ClientProxy> server,
-        ServerNexus serverNexus,
+    protected (NexusServerFactory<ServerNexus, ServerNexus.ClientProxy> serverFactory,
         NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         Action startAspServer,
         Action stopAspServer)
         CreateServerClientWithStoppedServer(ServerConfig sConfig, ClientConfig cConfig)
     {
-        var serverNexus = new ServerNexus();
+        var serverFactory = new NexusServerFactory<ServerNexus, ServerNexus.ClientProxy>(sConfig);
         var clientNexus = new ClientNexus();
-        var server = ServerNexus.CreateServer(sConfig, () => serverNexus);
         var client = ClientNexus.CreateClient(cConfig, clientNexus);
-        Servers.Add(server);
+        ServerFactories.Add(serverFactory);
         Clients.Add(client);
 
         WebApplication? app = null;
@@ -406,12 +421,12 @@ internal abstract class BaseTests
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
                 app.UseWebSockets();
-                app.MapWebSocketNexus(sWebSocketConfig, server);
+                app.MapWebSocketNexus(sWebSocketConfig, serverFactory.Server);
             }
             else if (sConfig is HttpSocketServerConfig sHttpSocketConfig)
             {
                 app.UseHttpSockets();
-                app.MapHttpSocketNexus(sHttpSocketConfig, server);
+                app.MapHttpSocketNexus(sHttpSocketConfig, serverFactory.Server);
 
             }
 
@@ -439,33 +454,36 @@ internal abstract class BaseTests
         }
 
 
-        return (server, serverNexus, client, clientNexus, StartAspServer, StopAspServer);
+        return (serverFactory, client, clientNexus, StartAspServer, StopAspServer);
     }
 
     protected NexusServer<ServerNexus, ServerNexus.ClientProxy> CreateServer(
         ServerConfig sConfig,
         Action<ServerNexus>? nexusCreated,
-        Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null)
+        Action<WebApplicationBuilder>? onAspCreateServices = null,
+        Action<WebApplication>? onAspAppConfigure = null,
+        Action<ServerNexus>? configureCollections = null)
     {
         
-        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, OnAspCreateServices, OnAspAppConfigure);
+        return CreateServer<ServerNexus, ServerNexus.ClientProxy>(sConfig, nexusCreated, onAspCreateServices, onAspAppConfigure, configureCollections);
     }
     
     protected NexusServer<TServerNexus, TClientProxy> CreateServer<TServerNexus, TClientProxy>(
         ServerConfig sConfig,
         Action<TServerNexus>? nexusCreated,
-        Action<WebApplicationBuilder>? OnAspCreateServices = null,
-        Action<WebApplication>? OnAspAppConfigure = null) 
+        Action<WebApplicationBuilder>? onAspCreateServices = null,
+        Action<WebApplication>? onAspAppConfigure = null,
+        Action<TServerNexus>? configureCollections = null
+        ) 
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new() 
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
-        var server = new global::NexNet.NexusServer<TServerNexus, TClientProxy>(sConfig, () =>
+        var server = new NexusServer<TServerNexus, TClientProxy>(sConfig, () =>
         {
             var nexus = new TServerNexus();
             nexusCreated?.Invoke(nexus);
             return nexus;
-        });
+        }, configureCollections);
 
         Servers.Add(server);
 
@@ -482,11 +500,11 @@ internal abstract class BaseTests
             if (sConfig.Logger != null)
                 builder.Logging.AddProvider(new AspLoggerProviderBridge(sConfig.Logger));
             
-            OnAspCreateServices?.Invoke(builder);
+            onAspCreateServices?.Invoke(builder);
 
             var app = builder.Build();
             
-            OnAspAppConfigure?.Invoke(app);
+            onAspAppConfigure?.Invoke(app);
 
             if (sConfig is WebSocketServerConfig sWebSocketConfig)
             {
@@ -526,7 +544,7 @@ internal abstract class BaseTests
         return (client, clientNexus);
     }
 
-    private int FreeTcpPort()
+    protected int FreeTcpPort()
     {
         TcpListener l = new TcpListener(IPAddress.Loopback, 0);
         l.Start();
@@ -535,7 +553,7 @@ internal abstract class BaseTests
         return port;
     }
 
-    private int FreeUdpPort()
+    protected int FreeUdpPort()
     {
         IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Loopback, 0);
         using var udpServer = new UdpClient();

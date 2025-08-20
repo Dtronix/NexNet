@@ -49,7 +49,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <summary>
     /// Proxy used for invoking remote methods on the server.
     /// </summary>
-    public TServerProxy Proxy { get; private set; }
+    public TServerProxy Proxy { get; }
 
     /// <inheritdoc />
     public ClientConfig Config => _config;

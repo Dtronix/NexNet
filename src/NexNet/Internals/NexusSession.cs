@@ -31,6 +31,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
     
+    private static int _counter = 0;
+    
+    private int _internalId = Interlocked.Increment(ref _counter);
+    
     // NnP(DC4) = NexNetProtocol(Device Control Four)
     // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
     // ReSharper disable twice StaticMemberInGenericType
@@ -164,7 +168,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);
 
-        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger);
+        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger, this);
         SessionStore = new SessionStore();
         _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
             _config.MaxConcurrentConnectionInvocations);

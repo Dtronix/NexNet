@@ -11,7 +11,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ServerProcessChannel_HandlesCapacityLimit(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
         
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 60);
@@ -36,7 +37,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ClientMessageChannel_HandlesSaturation(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
 
@@ -62,7 +64,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ConcurrentOperations_DoNotBlockChannel(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 50);

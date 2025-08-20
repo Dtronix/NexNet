@@ -10,7 +10,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync();
 
         var stopwatch = Stopwatch.StartNew();
@@ -26,7 +26,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         // Disable acknowledgments to simulate timeout
@@ -48,7 +49,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListBi.ConnectAsync();
 
         // Send multiple operations concurrently
@@ -68,7 +69,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         var internalCollection = (NexusCollection)serverNexus.IntListBi;

@@ -17,16 +17,31 @@ public interface INexusCollection : IEnumerable
     /// A <see cref="NexusCollectionState"/> enum indicating the state.
     /// </value>
     public NexusCollectionState State { get; }
-    
+
     /// <summary>
     /// Establishes a connection to the server backing this collection.
     /// </summary>
+    /// <param name="collectionConnector"></param>
+    /// <returns>
+    /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the connection
+    /// was successfully established and accepted by the server; otherwise <c>false</c>.
+    /// </returns>
+    public void ConfigureRelay(INexusCollectionClientConnector collectionConnector);
+    
+    /// <summary>
+    /// Establishes a connection to a parent collection, making this collection a relay
+    /// that forwards any changes from the parent collection to its own subscribers.
+    /// The child collection becomes effectively read-only and cannot modify the parent.
+    /// </summary>
+    /// <param name="parent">
+    /// The parent <see cref="INexusCollection"/> to connect to. Must be of the same type.
+    /// </param>
     /// <param name="token">
     /// A <see cref="CancellationToken"/> that can be used to cancel the connection attempt.
     /// </param>
     /// <returns>
     /// A <see cref="Task{TResult}"/> that completes with <c>true</c> if the connection
-    /// was successfully established and accepted by the server; otherwise <c>false</c>.
+    /// was successfully established; otherwise <c>false</c>.
     /// </returns>
     public Task<bool> ConnectAsync(CancellationToken token = default);
     

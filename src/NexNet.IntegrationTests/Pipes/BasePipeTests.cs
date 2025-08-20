@@ -15,9 +15,7 @@ internal class BasePipeTests : BaseTests
     protected byte[] Data = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
 
     protected async Task<(
-        NexusServer<ServerNexus,
-            ServerNexus.ClientProxy> server,
-        ServerNexus serverNexus,
+        NexusServerFactory<ServerNexus, ServerNexus.ClientProxy> server,
         NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         TaskCompletionSource tcs
@@ -25,18 +23,16 @@ internal class BasePipeTests : BaseTests
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var (server, sNexus, client, cNexus) = CreateServerClient(
+        var (server, client, cNexus) = CreateServerClient(
             CreateServerConfig(type, log),
             CreateClientConfig(type, log));
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        return (server, sNexus, client, cNexus, tcs);
+        return (server, client, cNexus, tcs);
     }
     
     protected async Task<(
-        NexusServer<ServerNexus,
-            ServerNexus.ClientProxy> server,
-        ServerNexus serverNexus,
+        NexusServerFactory<ServerNexus, ServerNexus.ClientProxy> server,
         NexusClient<ClientNexus, ClientNexus.ServerProxy> client,
         ClientNexus clientNexus,
         TaskCompletionSource tcs
@@ -57,11 +53,11 @@ internal class BasePipeTests : BaseTests
             serverLogger = logger.CreateLogger(null);
         }
         
-        var (server, sNexus, client, cNexus) = CreateServerClient(
+        var (server, client, cNexus) = CreateServerClient(
             CreateServerConfigWithLog(type, serverLogger),
             CreateClientConfigWithLog(type, clientLogger));
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
-        return (server, sNexus, client, cNexus, tcs);
+        return (server, client, cNexus, tcs);
     }
 }

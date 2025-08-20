@@ -21,7 +21,7 @@ internal partial class NexusServerTests : BaseTests
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var serverConfig = CreateServerConfig(type);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             serverConfig,
             CreateClientConfig(type));
 
@@ -43,11 +43,11 @@ internal partial class NexusServerTests : BaseTests
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        serverNexus.OnConnectedEvent = nexus =>
+        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus =>
         {
             tcs.SetResult();
             return ValueTask.CompletedTask;
@@ -72,7 +72,7 @@ internal partial class NexusServerTests : BaseTests
     {
 
         var clientConfig = CreateClientConfig(type);
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
@@ -100,7 +100,7 @@ internal partial class NexusServerTests : BaseTests
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StopsAndReleasesStoppedTcs(Type type)
     {
-        var (server, _, client, clientHub) = CreateServerClient(
+        var (server, client, clientHub) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -178,11 +178,11 @@ internal partial class NexusServerTests : BaseTests
     public async Task ServerFiresOnDisconnectedEvent(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
-
-        serverNexus.OnDisconnectedEvent = nexus =>
+        
+        server.OnNexusCreated = nexus => nexus.OnDisconnectedEvent = _ =>
         {
             tcs.SetResult();
             return ValueTask.CompletedTask;
@@ -214,10 +214,10 @@ internal partial class NexusServerTests : BaseTests
         };
 
         var clientConfig = CreateClientConfig(type);
-        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
 
         // Force authentication failure
-        serverHub.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
         await client.TryConnectAsync().Timeout(1);
@@ -259,16 +259,18 @@ internal partial class NexusServerTests : BaseTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
 
-        var (server, serverNexus, client, _) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
         // Force authentication to succeed
-        serverNexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
-
-        // Only fire once auth is done
-        serverNexus.OnConnectedEvent = nexus =>
+        server.OnNexusCreated = nexus =>
         {
-            tcs.SetResult();
-            return ValueTask.CompletedTask;
+            nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
+            // Only fire once auth is done
+            nexus.OnConnectedEvent = _ =>
+            {
+                tcs.SetResult();
+                return ValueTask.CompletedTask;
+            };
         };
 
         await server.StartAsync().Timeout(1);
@@ -300,10 +302,10 @@ internal partial class NexusServerTests : BaseTests
         if(authenticateClient)
             clientConfig.Authenticate = () => Memory<byte>.Empty;
 
-        var (server, serverHub, client, clientNexus) =
+        var (server, client, clientNexus) =
             CreateServerClient(serverConfig, clientConfig);
 
-        serverHub.OnAuthenticateEvent = _ => throw new InvalidOperationException("boom!");
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => throw new InvalidOperationException("boom!");
 
         // Track whether the client ever thinks it's connected
         var connectedFired = false;
@@ -336,11 +338,11 @@ internal partial class NexusServerTests : BaseTests
     {
         var serverConfig = CreateServerConfig(type);
         var clientConfig = CreateClientConfig(type);
-        var (server, serverNexus, client, clientNexus) =
+        var (server, client, _) =
             CreateServerClient(serverConfig, clientConfig);
 
         bool first = true;
-        serverNexus.OnDisconnectedEvent = nexus =>
+        server.OnNexusCreated = nexus => nexus.OnDisconnectedEvent = nexus =>
         {
             if (first)
             {

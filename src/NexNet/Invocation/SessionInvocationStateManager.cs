@@ -15,19 +15,25 @@ internal class SessionInvocationStateManager
 {
     private readonly CacheManager _cacheManager;
     private readonly INexusLogger? _logger;
+    private readonly INexusSession _nexusSession;
     private ushort _invocationId = 0;
     private readonly List<ushort> _currentInvocations = new List<ushort>();
     private readonly Lock _currentInvocationsLock = new Lock();
 
+    private static int _counter = 0;
+    
+    private int _id = Interlocked.Increment(ref _counter);
+
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
     //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
 
-    public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger)
+    public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger, INexusSession nexusSession)
     {
         _invocationStates = new ConcurrentDictionary<int, RegisteredInvocationState>();
         //_waitingPipes = new ConcurrentDictionary<int, RegisteredNexusPipe>();
         _cacheManager = cacheManager;
         _logger = logger;
+        _nexusSession = nexusSession;
     }
 
 

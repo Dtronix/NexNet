@@ -15,7 +15,7 @@ using NexNet.Transports;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollection : INexusCollectionConnector
+internal abstract partial class NexusCollection : INexusCollectionConnector
 {
     private NexusCollectionState _state;
     protected readonly ushort Id;
@@ -26,6 +26,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
+    
+    private NexusCollection? _relayTo;
+    private INexusCollectionClientConnector? _clientRelayConnector;
     
     private readonly SnapshotList<Client>? _nexusPipeList;
     
@@ -125,23 +128,42 @@ internal abstract class NexusCollection : INexusCollectionConnector
         }
     }
     
-    private bool ClientProcessMessage(INexusCollectionMessage serverMessage)
+    private bool ClientProcessMessage(INexusCollectionMessage messageFromServer)
     {
         try
         {
-            switch (serverMessage)
+            // First relay the message to child collection if one exists
+            var relayResult = true;
+            if (_relayTo != null)
+            {
+                try
+                {
+                    // Clone the message for the child to avoid conflicts
+                    var clonedMessage = messageFromServer.Clone();
+                    
+                    // Process the message in the child collection as if it came from a server
+                    relayResult = _relayTo.RelayMessageFromParent(clonedMessage);
+                }
+                catch (Exception ex)
+                {
+                    Logger?.LogError(ex, "Error while relaying message to child collection");
+                    relayResult = false;
+                }
+            }
+            
+            switch (messageFromServer)
             {
                 // No broadcasting on the reset operations as they are only client operations.
                 case NexusCollectionResetStartMessage message:
                     if (IsClientResetting)
                         return false;
                     IsClientResetting = true;
-                    return OnClientResetStarted(message.Version, message.TotalValues);
+                    return OnClientResetStarted(message.Version, message.TotalValues) && relayResult;
             
                 case NexusCollectionResetValuesMessage message:
                     if (!IsClientResetting)
                         return false;
-                    return OnClientResetValues(message.Values.Span);
+                    return OnClientResetValues(message.Values.Span) && relayResult;
 
                 case NexusCollectionResetCompleteMessage:
                     if (!IsClientResetting)
@@ -150,20 +172,21 @@ internal abstract class NexusCollection : INexusCollectionConnector
                     var completeResult = OnClientResetCompleted();
                     _clientConnectTcs?.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    return completeResult;
+                    return completeResult && relayResult;
 
                 case NexusCollectionClearMessage message:
                     if (IsClientResetting)
                         return false;
                     var clearResult = OnClientClear(message.Version);
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    return clearResult;
+                    return clearResult && relayResult;
             }
 
             if (IsClientResetting)
                 return false;
             
-            return OnClientProcessMessage(serverMessage);
+            var processResult = OnClientProcessMessage(messageFromServer);
+            return processResult && relayResult;
         }
         catch (Exception e)
         {
@@ -173,6 +196,8 @@ internal abstract class NexusCollection : INexusCollectionConnector
     }
 
     protected abstract bool OnClientClear(int version);
+    
+    
 
     protected bool RequireValidProcessState()
     {
@@ -203,7 +228,7 @@ internal abstract class NexusCollection : INexusCollectionConnector
         {
             var collection = Unsafe.As<NexusCollection>(state)!;
 
-            while (true)
+            while (collection._broadcastCancellation?.IsCancellationRequested == false)
             {
                 try
                 {
@@ -424,6 +449,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
     /// <exception cref="Exception"></exception>
     public async Task<bool> ConnectAsync(CancellationToken token = default)
     {
+        if(_clientRelayConnector != null)
+            throw new InvalidOperationException("Collection is configured in a relay and ");
+        
         // Connect on the server is a noop.
         if (IsServer)
             return false;
@@ -620,6 +648,9 @@ internal abstract class NexusCollection : INexusCollectionConnector
     protected void ClientDisconnected()
     {
         _ackTcs?.TrySetResult(false);
+
+        // Clear child relay reference to prevent memory leaks
+        _relayTo = null;
 
         try
         {

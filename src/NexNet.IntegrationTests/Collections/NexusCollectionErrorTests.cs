@@ -9,7 +9,8 @@ internal class NexusCollectionErrorTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ServerException_DoesNotCrashClient(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         // Simulate server processing error
@@ -26,7 +27,8 @@ internal class NexusCollectionErrorTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task RapidReconnection_HandledGracefully(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.ConnectAsync();
 
         // Rapid disconnect/reconnect cycle
