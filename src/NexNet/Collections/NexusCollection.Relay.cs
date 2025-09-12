@@ -92,6 +92,7 @@ internal abstract partial class NexusCollection
         try
         {
             relayConnection = await _clientRelayConnector.GetCollection().ConfigureAwait(false);
+            await relayConnection.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
             Logger?.LogTrace("Retrieved relay connection");
         }
         catch (Exception e)

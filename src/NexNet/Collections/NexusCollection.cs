@@ -267,7 +267,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                             
                             // If there is 0 remaining and the client is set, then we are only responding to the client that
                             // sent the change to begin with.
-                            var respondingToClientOnly = result.Message.Remaining == 0 && req.Client != null;
+                            var respondingToClientOnly = result.Message.Remaining <= 0 && req.Client != null;
                             
                             // For testing only
                             if (!collection.DoNotSendAck)

@@ -209,6 +209,8 @@ await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
 ## Lifetimes
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
 
+Hubs can be created and disposed temporarily by methods such as NexusServer<>.ContextProvider.  This means no calculations or work should be performed inside the constructor.
+
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
 
 ## Versioning

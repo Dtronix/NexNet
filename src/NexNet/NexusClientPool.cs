@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Internals.Collections;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Transports;
 
 namespace NexNet;
@@ -108,7 +109,8 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
                 if (!result.Success)
                 {
                     await pooledClient.DisposeAsync().ConfigureAwait(false);
-                    throw new InvalidOperationException($"Failed to connect client: {result.DisconnectReason}", result.Exception);
+                    _config.ClientConfig.Logger?.LogError(result.Exception, "Failed to connect after renting.");
+                    throw new ClientPoolConnectionException("Failed to connect after renting.", result);
                 }
             }
 

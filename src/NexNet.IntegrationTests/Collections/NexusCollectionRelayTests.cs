@@ -13,6 +13,19 @@ namespace NexNet.IntegrationTests.Collections;
 /// </summary>
 internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 {
+    
+    
+    [TestCase(Type.Uds)]
+    public async Task AccessesCollectionListFromContextProviderSuccessfully(Type type)
+    {
+        var server = CreateServer(CreateServerConfig(type), nexus => { });
+        await server.StartAsync();
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+        var list = server.ContextProvider.Rent().Collections.IntListBi;
+        Assert.That(list, Is.Not.Null);
+    }
+    
     [Test]
     public async Task ChildCanConnectToParentCollection()
     {
@@ -28,27 +41,20 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         CurrentTcpPort = null;
         var config2 = CreateServerConfig(Type.Tcp);
         var server2Port = CurrentTcpPort;
-
-
-        ServerNexus masterNexus = null!;
-        var server1 = CreateServer(config1, nexus =>
-        {
-            masterNexus = nexus;
-        });
-
-        
+        var server1 = CreateServer(config1, nexus => { });
+        server1.ContextProvider.Rent();
         var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
         {
             nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi));
         });
-        
-
         await server1.StartAsync().Timeout(1);
         await server2.StartAsync().Timeout(1);
         await Task.Delay(800);
 
-        await masterNexus.IntListBi.AddAsync(1);
-        await Task.Delay(1000);
+        var collection = server1.ContextProvider.Rent().Collections.IntListBi;
+        await collection.AddAsync(1);
+        
+        await Task.Delay(500);
         
         Assert.Fail();
         //server1.Config

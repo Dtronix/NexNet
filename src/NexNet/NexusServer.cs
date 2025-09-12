@@ -18,7 +18,7 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServerNexus, TClientProxy> 
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
@@ -51,7 +51,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public bool IsConfigured => _config != null;
     
     /// <inheritdoc />
-    public ServerNexusContextProvider<TClientProxy> ContextProvider { get; }
+    public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; private set; }
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
@@ -78,7 +78,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
-        ContextProvider = new ServerNexusContextProvider<TClientProxy>(_sessionManager, _cacheManager);
     }
 
     /// <summary>
@@ -100,6 +99,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         if(_config != null)
             throw new InvalidOperationException("Server has already been configured.");
         
+
         _config = config;
         _nexusFactory = nexusFactory;
         _logger = config.Logger?.CreateLogger("NexusServer");
@@ -107,6 +107,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(config);
         TServerNexus.ConfigureCollections(_collectionManager);
+        
+        ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
+            nexusFactory,
+            _collectionManager, 
+            _sessionManager, 
+            _cacheManager);
         
         if (configureCollections != null)
         {

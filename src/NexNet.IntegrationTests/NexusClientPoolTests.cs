@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Messages;
 using NexNet.Transports;
 using NUnit.Framework;
 
@@ -249,7 +250,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Act & Assert
-            await AssertThrows<InvalidOperationException>(async () =>
+            await AssertThrows<ClientPoolConnectionException>(async () =>
                 await pool.RentClientAsync().Timeout(1));
         }
         finally
@@ -616,11 +617,11 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             // Act - Try to rent when connection will fail
-            await AssertThrows<InvalidOperationException>(async () =>
+            await AssertThrows<ClientPoolConnectionException>(async () =>
                 await pool.RentClientAsync().Timeout(1));
 
             // Assert - Semaphore should be released, allowing another attempt
-            await AssertThrows<InvalidOperationException>(async () =>
+            await AssertThrows<ClientPoolConnectionException>(async () =>
                 await pool.RentClientAsync().Timeout(1));
         }
         finally
@@ -963,7 +964,7 @@ internal class NexusClientPoolTests : BaseTests
         {
             // Act & Assert - Connection will fail since no server is running
             using var cts = new CancellationTokenSource(50);
-            await AssertThrows<InvalidOperationException>(async () =>
+            await AssertThrows<ClientPoolConnectionException>(async () =>
                 await pool.RentClientAsync(cts.Token));
         }
         finally
@@ -1506,7 +1507,7 @@ internal class NexusClientPoolTests : BaseTests
             // Multiple failed connection attempts
             for (int i = 0; i < 3; i++)
             {
-                await AssertThrows<InvalidOperationException>(async () =>
+                await AssertThrows<ClientPoolConnectionException>(async () =>
                     await pool.RentClientAsync().Timeout(1));
             }
             
@@ -1611,6 +1612,39 @@ internal class NexusClientPoolTests : BaseTests
         finally
         {
             await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Pool_RentClientAsync_ThrowsSpecificErrorOnAuthenticationRequired()
+    {
+        // Arrange - Create server that requires authentication but will reject it
+        var serverConfig = CreateServerConfig(Type.Uds);
+        serverConfig.Authenticate = true; // Require authentication
+        
+        var server = CreateServer(serverConfig, nexus =>
+        {
+            // Override OnAuthenticate to always reject authentication
+            nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+        });
+
+        await server.StartAsync().Timeout(1);
+
+        // Create client without authentication configured
+        var clientConfig = CreateClientConfig(Type.Uds);
+
+        var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 1 };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            var exception = Assert.ThrowsAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
+            Assert.That(exception.ConnectionResult.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication));
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+            await server.StopAsync().Timeout(1);
         }
     }
 }
