@@ -102,7 +102,7 @@ internal class NexusPipeManager
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
         {
-            _logger?.LogError($"Cant Remove (P{pipe.Id});");
+            _logger?.LogError($"Can't Remove (P{pipe.Id});");
             return;
         }
 

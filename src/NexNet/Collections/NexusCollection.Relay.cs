@@ -18,7 +18,8 @@ namespace NexNet.Collections;
 internal abstract partial class NexusCollection
 {
     private CancellationTokenSource? _relayCancellation;
-    
+    private bool _relayEnabled;
+
     public void ConfigureRelay(INexusCollectionClientConnector relay)
     {
         if(_clientRelayConnector != null)
@@ -37,10 +38,8 @@ internal abstract partial class NexusCollection
         if (_clientRelayConnector == null)
             return;
 
+        _relayEnabled = false;
         _ = _relayFrom?.DisconnectAsync();
-
-        //_relayCancellation?.Cancel();
-        //_ = DisconnectAsync();
     }
 
     public void StartRelay()
@@ -58,8 +57,7 @@ internal abstract partial class NexusCollection
         if (_clientRelayConnector == null)
             return;
         
-        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _disconnectedTask = _disconnectTcs.Task;
+        _relayEnabled = false;
         
         _relayCancellation = new CancellationTokenSource();
         
@@ -77,6 +75,8 @@ internal abstract partial class NexusCollection
                 try
                 {
                     await collection.RunRelayConnectionLoop().ConfigureAwait(false);
+                    if(!_relayEnabled)
+                        return;
                 }
                 catch (Exception e)
                 {
@@ -93,7 +93,7 @@ internal abstract partial class NexusCollection
         if (_clientRelayConnector == null)
             return;
         
-        Logger?.LogTrace("Running relay connection loop");
+        Logger?.LogTrace("Connecting relay connection loop");
 
         INexusCollection relayConnection;
         try
@@ -105,6 +105,8 @@ internal abstract partial class NexusCollection
             Logger?.LogError(e, "Failed to connect relay connection.");
             return;
         }
+        
+        Logger?.LogTrace("Relay connection made.");
 
         if (relayConnection is not NexusCollection parentNexusCollection)
             throw new InvalidOperationException("Parent must be a NexusCollection");
