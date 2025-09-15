@@ -61,6 +61,12 @@ public interface INexusCollection : IEnumerable
     public Task DisconnectedTask { get; }
     
     /// <summary>
+    /// Task that is completed when the collection is ready. Once disconnected,
+    /// the task is replaced with a new task that will fire when ready again.
+    /// </summary>
+    public Task ReadyTask { get; }
+    
+    /// <summary>
     /// Event raised when the collection has been changed by the server.
     /// </summary>
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed { get; }

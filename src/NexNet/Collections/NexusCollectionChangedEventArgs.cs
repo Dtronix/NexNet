@@ -53,4 +53,6 @@ public enum NexusCollectionChangedAction
     Move,
     /// <summary>The contents of the collection changed dramatically.</summary>
     Reset,
+    /// <summary>The contents of the collection is ready for use.</summary>
+    Ready,
 }

@@ -18,6 +18,7 @@ namespace NexNet.Collections;
 internal abstract partial class NexusCollection
 {
     private CancellationTokenSource? _relayCancellation;
+    
     public void ConfigureRelay(INexusCollectionClientConnector relay)
     {
         if(_clientRelayConnector != null)
@@ -35,8 +36,11 @@ internal abstract partial class NexusCollection
     {
         if (_clientRelayConnector == null)
             return;
-        
-        _relayCancellation?.Cancel();
+
+        _ = _relayFrom?.DisconnectAsync();
+
+        //_relayCancellation?.Cancel();
+        //_ = DisconnectAsync();
     }
 
     public void StartRelay()
@@ -53,6 +57,9 @@ internal abstract partial class NexusCollection
         // Check to see if a relay has been configured.
         if (_clientRelayConnector == null)
             return;
+        
+        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _disconnectedTask = _disconnectTcs.Task;
         
         _relayCancellation = new CancellationTokenSource();
         
@@ -92,6 +99,24 @@ internal abstract partial class NexusCollection
         try
         {
             relayConnection = await _clientRelayConnector.GetCollection().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Failed to connect relay connection.");
+            return;
+        }
+
+        if (relayConnection is not NexusCollection parentNexusCollection)
+            throw new InvalidOperationException("Parent must be a NexusCollection");
+            
+        if (relayConnection.GetType() != this.GetType())
+            throw new InvalidOperationException("Parent collection must be of the same type");
+            
+        // Set this collection as a child relay of the parent
+        parentNexusCollection._relayTo = this;
+        _relayFrom = parentNexusCollection;
+        try
+        {
             await relayConnection.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
             Logger?.LogTrace("Retrieved relay connection");
         }
@@ -100,29 +125,15 @@ internal abstract partial class NexusCollection
             Logger?.LogError(e, "Failed to connect relay connection.");
             return;
         }
-
-        if (relayConnection is not NexusCollection nexusCollection)
-            throw new InvalidOperationException("Parent must be a NexusCollection");
-            
-        if (relayConnection.GetType() != this.GetType())
-            throw new InvalidOperationException("Parent collection must be of the same type");
-            
-        // Set this collection as a child relay of the parent
-        nexusCollection._relayTo = this;
         
         // Initialize this collection to act like it's connected to a server
         // but it will receive messages from the parent instead
         _state = NexusCollectionState.Connected;
         
-        // Create a dummy disconnection task that will be completed when parent disconnects
-        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _disconnectedTask = _disconnectTcs.Task;
-        nexusCollection._disconnectedTask = _disconnectTcs.Task;
-        
         // Monitor parent disconnection to trigger this collection's disconnection
         try
         {
-            await nexusCollection.DisconnectedTask.ConfigureAwait(false);
+            await parentNexusCollection._disconnectedTask.ConfigureAwait(false);
             ClientDisconnected();
         }
         catch (Exception ex)
@@ -170,6 +181,7 @@ internal abstract partial class NexusCollection
                     }
                     IsClientResetting = false;
                     var completeResult = OnClientResetCompleted();
+                    _tcsReady.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     messageFromParent.ReturnToCache();
                     return completeResult;

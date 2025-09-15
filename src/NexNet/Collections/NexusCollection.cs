@@ -22,11 +22,14 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     protected readonly NexusCollectionMode Mode;
     
     protected readonly bool IsServer;
+
+    private TaskCompletionSource _tcsReady = new TaskCompletionSource();
     
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     
+    private NexusCollection? _relayFrom;
     private NexusCollection? _relayTo;
     private INexusCollectionClientConnector? _clientRelayConnector;
     
@@ -42,6 +45,8 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     protected bool IsClientResetting { get; private set; }
 
     public Task DisconnectedTask => _disconnectedTask;
+    
+    public Task ReadyTask => _tcsReady.Task;
     
     private SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
 
@@ -81,6 +86,8 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     protected record struct ServerProcessMessageResult(INexusCollectionMessage? Message, bool Disconnect, bool Ack);
     private ServerProcessMessageResult ServerProcessMessage(INexusCollectionMessage message)
     {
+        
+        Logger?.LogTrace($"Server processing {message} message.");
         switch (message)
         {
             case NexusCollectionResetStartMessage:
@@ -141,15 +148,19 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     // Clone the message for the child to avoid conflicts
                     var clonedMessage = messageFromServer.Clone();
                     
+                    Logger?.LogTrace($"Client relaying {clonedMessage} message to child collection");
+                    
                     // Process the message in the child collection as if it came from a server
                     relayResult = _relayTo.RelayMessageFromParent(clonedMessage);
                 }
                 catch (Exception ex)
                 {
-                    Logger?.LogError(ex, "Error while relaying message to child collection");
+                    Logger?.LogError(ex, $"Client error while relaying {messageFromServer} message to child collection");
                     relayResult = false;
                 }
             }
+            
+            Logger?.LogTrace($"Client processing {messageFromServer} message.");
             
             switch (messageFromServer)
             {
@@ -171,6 +182,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     IsClientResetting = false;
                     var completeResult = OnClientResetCompleted();
                     _clientConnectTcs?.TrySetResult();
+                    _tcsReady.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return completeResult && relayResult;
 
@@ -203,6 +215,10 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     {
         if (IsClientResetting)
             return false;
+
+        // Special condition when this collection is acting as a relay.
+        if (_clientRelayConnector != null && Mode == NexusCollectionMode.ServerToClient)
+            return true;
 
         // If this is the server, and we are not in bidirectional mode, then the client
         // is sending messages when they are not supposed to.
@@ -450,7 +466,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     public async Task<bool> ConnectAsync(CancellationToken token = default)
     {
         if(_clientRelayConnector != null)
-            throw new InvalidOperationException("Collection is configured in a relay and ");
+            throw new InvalidOperationException("Collection is configured in a relay and can't be manually controlled.");
         
         // Connect on the server is a noop.
         if (IsServer)
@@ -490,6 +506,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTask = _disconnectTcs.Task;
+
+        if (_relayTo != null)
+        {
+            _relayTo._disconnectedTask = _disconnectedTask;
+        }
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
@@ -648,9 +669,10 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     protected void ClientDisconnected()
     {
         _ackTcs?.TrySetResult(false);
-
-        // Clear child relay reference to prevent memory leaks
-        _relayTo = null;
+        
+        // Reset the ready task
+        _tcsReady.TrySetResult();
+        _tcsReady = new TaskCompletionSource();
 
         try
         {

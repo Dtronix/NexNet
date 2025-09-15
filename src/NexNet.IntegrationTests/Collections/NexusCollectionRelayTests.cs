@@ -32,55 +32,103 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         var config1 = CreateServerConfig(Type.Tcp);
         var clientConfig1 = CreateClientConfig(Type.Tcp);
-        var server1Port = CurrentTcpPort;
-
         var clientPool =
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
         
         // Reset the port to get a new port.
         CurrentTcpPort = null;
         var config2 = CreateServerConfig(Type.Tcp);
-        var server2Port = CurrentTcpPort;
         var server1 = CreateServer(config1, nexus => { });
         server1.ContextProvider.Rent();
         var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
-        {
-            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi));
-        });
+            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
         await server1.StartAsync().Timeout(1);
         await server2.StartAsync().Timeout(1);
-        await Task.Delay(800);
+    }
+    
+    [Test]
+    public async Task ServerReadyIsFiredOnConnection()
+    {
 
-        var collection = server1.ContextProvider.Rent().Collections.IntListBi;
-        await collection.AddAsync(1);
+        var config1 = CreateServerConfig(Type.Tcp);
+        var clientConfig1 = CreateClientConfig(Type.Tcp);
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
         
-        await Task.Delay(500);
+        // Reset the port to get a new port.
+        CurrentTcpPort = null;
+        var config2 = CreateServerConfig(Type.Tcp);
+        var server1 = CreateServer(config1, nexus => { });
+        var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
+            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        await server1.StartAsync().Timeout(1);
+        await server2.StartAsync().Timeout(1);
         
-        Assert.Fail();
-        //server1.Config
-        
-        //await server2.StartAsync();
-        
-        
-        //server2.
+        var intListSvToCl = server2.ContextProvider.Rent().Collections.IntListSvToCl; // Second Server
+        await intListSvToCl.ReadyTask.Timeout(1);
+    }
+    
+    [Test]
+    public async Task RelayServerDisconnectsUponServerClose()
+    {
 
-        return;
-        /*try
+        var config1 = CreateServerConfig(Type.Tcp);
+        var clientConfig1 = CreateClientConfig(Type.Tcp);
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
+        
+        // Reset the port to get a new port.
+        CurrentTcpPort = null;
+        var config2 = CreateServerConfig(Type.Tcp);
+        var server1 = CreateServer(config1, nexus => { });
+        var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
+            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        await server1.StartAsync().Timeout(1);
+        await server2.StartAsync().Timeout(1);
+        
+        var intListSvToCl = server2.ContextProvider.Rent().Collections.IntListSvToCl; // Second Server
+        await intListSvToCl.ReadyTask.Timeout(1);
+        var disconnectTask = intListSvToCl.DisconnectedTask;
+        
+        await server2.StopAsync();
+        await disconnectTask.Timeout(1);
+        
+        
+    }
+    
+    [Test]
+    public async Task ParentItemsAreRelayedToChildCollection()
+    {
+
+        var config1 = CreateServerConfig(Type.Tcp);
+        var clientConfig1 = CreateClientConfig(Type.Tcp);
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
+        
+        // Reset the port to get a new port.
+        CurrentTcpPort = null;
+        var config2 = CreateServerConfig(Type.Tcp);
+        var server1 = CreateServer(config1, nexus => { });
+        server1.ContextProvider.Rent();
+        var server2 = CreateServer(config2, nexus => { }, configureCollections: nexus =>
+            nexus.IntListSvToCl.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        await server1.StartAsync().Timeout(1);
+        await server2.StartAsync().Timeout(1);
+        
+        var intListSvToCl = server2.ContextProvider.Rent().Collections.IntListSvToCl; // Second Server
+        var intListBi = server1.ContextProvider.Rent().Collections.IntListBi; // First server
+        
+        await intListSvToCl.ReadyTask.Timeout(1);
+        var addWait = intListSvToCl.WaitForEvent(NexusCollectionChangedAction.Add, 10);
+
+        for (int i = 0; i < 10; i++)
         {
-            //// Connect parent collection
-            //await client1.Proxy.IntListBi.ConnectAsync().Timeout(1);
-            //
-            //// Connect child collection to parent
-            //var success = await client2.Proxy.IntListBi.ConnectAsync(client1.Proxy.IntListBi).Timeout(1);
-            //
-            //Assert.That(success, Is.True);
-            //Assert.That(client2.Proxy.IntListBi.State, Is.EqualTo(NexusCollectionState.Connected));
+            await intListBi.AddAsync(1);
         }
-        finally
-        {
-            await server1.DisposeAsync();
-            await server2.DisposeAsync();
-        }*/
+
+        await addWait.Wait();
+        
+        Assert.That(intListBi, Is.EquivalentTo(intListSvToCl));
     }
     
     /*
