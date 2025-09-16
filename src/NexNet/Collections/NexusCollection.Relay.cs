@@ -45,8 +45,12 @@ internal abstract partial class NexusCollection
     public void StartRelay()
     {
         if (_clientRelayConnector == null)
+        {
+            // Since this is not a relay and it is on the server, the collection is ready.
+            _tcsReady.SetResult();
             return;
-        
+        }
+
         if (_state != NexusCollectionState.Connected)
         {
             Logger?.LogWarning("Collection is not in a disconnected state.");

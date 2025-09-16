@@ -87,7 +87,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     private ServerProcessMessageResult ServerProcessMessage(INexusCollectionMessage message)
     {
         
-        Logger?.LogTrace($"Server processing {message} message.");
+        //Logger?.LogTrace($"Server processing {message} message.");
         switch (message)
         {
             case NexusCollectionResetStartMessage:
@@ -146,7 +146,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             {
                 try
                 {
-                    Logger?.LogTrace($"Client relaying {messageFromServer} message to child collection");
+                    //Logger?.LogTrace($"Client relaying {messageFromServer} message to child collection");
                     
                     // Process the message in the child collection as if it came from a server
                     relayResult = _relayTo.ClientProcessMessage(messageFromServer);
@@ -158,7 +158,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                 }
             }
             
-            Logger?.LogTrace($"Client processing {messageFromServer} message.");
+            //Logger?.LogTrace($"Client processing {messageFromServer} message.");
             
             switch (messageFromServer)
             {
@@ -687,6 +687,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
 
     protected void ClientDisconnected()
     {
+        _state = NexusCollectionState.Disconnected;
         _ackTcs?.TrySetResult(false);
         
         // Reset the ready task

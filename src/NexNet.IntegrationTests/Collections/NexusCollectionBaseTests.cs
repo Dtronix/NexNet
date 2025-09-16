@@ -1,4 +1,5 @@
-﻿using NexNet.IntegrationTests.Pipes;
+﻿using NexNet.Collections.Lists;
+using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -26,6 +27,7 @@ internal class NexusCollectionBaseTests : BaseTests
     
     protected async ValueTask<RelayedCollectionServerClient> CreateRelayCollectionClientServers(bool startServers = false)
     {
+        CurrentUdsPath = null;
         var serverConfig1 = CreateServerConfig(Type.Uds);
         var server1 = CreateServer(serverConfig1, nexus => { });
         var clientConfig1 = CreateClientConfig(Type.Uds);
@@ -48,6 +50,43 @@ internal class NexusCollectionBaseTests : BaseTests
             await server2.StartAsync().Timeout(1);
         }
         return new RelayedCollectionServerClient(server1, client1.client, server2, client2.client);
+    }
+    
+    protected record RelayCollectionClientServers(
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> Parent, 
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> Child1, 
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> Child2, 
+        INexusList<int> ParentRelay, 
+        INexusList<int> Child1Relay,
+        INexusList<int> Child2Relay);
+    
+    protected async ValueTask<RelayCollectionClientServers> CreateRelayCollectionServers()
+    {
+        var parentConfig = CreateServerConfig(Type.Uds);
+        var parent = CreateServer(parentConfig, nexus => { });
+        var parentClientConfig = CreateClientConfig(Type.Uds);
+        
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(parentClientConfig));
+        
+        CurrentUdsPath = null;
+        var serverConfig2 = CreateServerConfig(Type.Uds);
+        var child1 = CreateServer(serverConfig2, nexus => { }, configureCollections: nexus =>
+            nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        
+        CurrentUdsPath = null;
+        var serverConfig3 = CreateServerConfig(Type.Uds);
+        var child2 = CreateServer(serverConfig3, nexus => { }, configureCollections: nexus =>
+            nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        
+        await parent.StartAsync().Timeout(1);
+        await child1.StartAsync().Timeout(1);
+        await child2.StartAsync().Timeout(1);
+        
+        var parentRelay = parent.ContextProvider.Rent().Collections.IntListBi;
+        var child1Relay = child1.ContextProvider.Rent().Collections.IntListRelay;
+        var child2Relay = child2.ContextProvider.Rent().Collections.IntListRelay;
+        return new (parent, child1, child2, parentRelay, child1Relay, child2Relay);
     }
 
 }
