@@ -536,9 +536,9 @@ internal class NexusListTests : NexusCollectionBaseTests
     public async Task IsReadOnly_IsTrueOnServerToClient(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListSvToCl.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListRelay.ConnectAsync().Timeout(1);
 
-        Assert.That(client.Proxy.IntListSvToCl.IsReadOnly, Is.True);
+        Assert.That(client.Proxy.IntListRelay.IsReadOnly, Is.True);
     }
     
     [TestCase(Type.Quic)]

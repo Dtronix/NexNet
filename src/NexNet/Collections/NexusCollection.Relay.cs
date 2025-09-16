@@ -57,7 +57,7 @@ internal abstract partial class NexusCollection
         if (_clientRelayConnector == null)
             return;
         
-        _relayEnabled = false;
+        _relayEnabled = true;
         
         _relayCancellation = new CancellationTokenSource();
         
@@ -77,6 +77,8 @@ internal abstract partial class NexusCollection
                     await collection.RunRelayConnectionLoop().ConfigureAwait(false);
                     if(!_relayEnabled)
                         return;
+                    
+                    collection.Logger?.LogWarning("Collection failed to run relay");
                 }
                 catch (Exception e)
                 {
@@ -142,90 +144,6 @@ internal abstract partial class NexusCollection
         {
             Logger?.LogError(ex, "Error while monitoring parent collection disconnection");
             ClientDisconnected();
-        }
-    }
-    
-    /// <summary>
-    /// Relays a message from a parent collection to this collection as if it came from a server
-    /// </summary>
-    private bool RelayMessageFromParent(INexusCollectionMessage messageFromParent)
-    {
-        try
-        {
-            // Process reset messages the same way as a client would
-            switch (messageFromParent)
-            {
-                case NexusCollectionResetStartMessage message:
-                    if (IsClientResetting)
-                        return false;
-                    IsClientResetting = true;
-                    var startResult = OnClientResetStarted(message.Version, message.TotalValues);
-                    messageFromParent.ReturnToCache();
-                    return startResult;
-            
-                case NexusCollectionResetValuesMessage message:
-                    if (!IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    var valuesResult = OnClientResetValues(message.Values.Span);
-                    if (message is INexusCollectionValueMessage valueMessage)
-                        valueMessage.ReturnValueToPool();
-                    messageFromParent.ReturnToCache();
-                    return valuesResult;
-
-                case NexusCollectionResetCompleteMessage:
-                    if (!IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    IsClientResetting = false;
-                    var completeResult = OnClientResetCompleted();
-                    _tcsReady.TrySetResult();
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    messageFromParent.ReturnToCache();
-                    return completeResult;
-
-                case NexusCollectionClearMessage message:
-                    if (IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    var clearResult = OnClientClear(message.Version);
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    messageFromParent.ReturnToCache();
-                    return clearResult;
-                    
-                default:
-                    if (IsClientResetting)
-                    {
-                        messageFromParent.ReturnToCache();
-                        return false;
-                    }
-                    
-                    // Process other messages and trigger change events
-                    var processResult = OnClientProcessMessage(messageFromParent);
-                    if (processResult)
-                    {
-                        // Trigger change event for subscribers of this relay collection
-                        CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    }
-                    
-                    if (messageFromParent is INexusCollectionValueMessage valueMsg)
-                        valueMsg.ReturnValueToPool();
-                    messageFromParent.ReturnToCache();
-                    
-                    return processResult;
-            }
-        }
-        catch (Exception e)
-        {
-            Logger?.LogError(e, "Exception while relaying message from parent");
-            messageFromParent.ReturnToCache();
-            return false;
         }
     }
 }

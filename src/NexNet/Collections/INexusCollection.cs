@@ -33,9 +33,6 @@ public interface INexusCollection : IEnumerable
     /// that forwards any changes from the parent collection to its own subscribers.
     /// The child collection becomes effectively read-only and cannot modify the parent.
     /// </summary>
-    /// <param name="parent">
-    /// The parent <see cref="INexusCollection"/> to connect to. Must be of the same type.
-    /// </param>
     /// <param name="token">
     /// A <see cref="CancellationToken"/> that can be used to cancel the connection attempt.
     /// </param>

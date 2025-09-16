@@ -32,7 +32,7 @@ public partial interface IServerNexus
     INexusList<int> IntListBi { get; }
     
     [NexusCollection(NexusCollectionMode.ServerToClient)]
-    INexusList<int> IntListSvToCl { get; }
+    INexusList<int> IntListRelay { get; }
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

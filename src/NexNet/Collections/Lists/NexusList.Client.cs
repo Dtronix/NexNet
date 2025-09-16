@@ -15,7 +15,6 @@ internal partial class NexusList<T>
     {
         _itemList.Reset();
     }
-    
     protected override bool OnClientResetStarted(int version, int totalValues)
     {
         _clientInitialization = new List<T>(totalValues);

@@ -38,7 +38,7 @@ internal abstract class BaseTests
 
     private int _counter;
     private DirectoryInfo? _socketDirectory;
-    private UnixDomainSocketEndPoint? CurrentPath;
+    private UnixDomainSocketEndPoint? _currentUdsPath;
     private int? _currentTcpPort;
     private int? _currentUdpPort;
     private List<INexusServer> Servers = new ();
@@ -53,6 +53,12 @@ internal abstract class BaseTests
     {
         get => _currentTcpPort;
         set => _currentTcpPort = value;
+    }
+
+    public UnixDomainSocketEndPoint? CurrentUdsPath
+    {
+        get => _currentUdsPath;
+        set => _currentUdsPath = value;
     }
 
     [OneTimeSetUp]
@@ -93,7 +99,7 @@ internal abstract class BaseTests
             _logger.Flush(TestContext.Out);
         }
 
-        CurrentPath = null;
+        CurrentUdsPath = null;
         _currentTcpPort = null;
         _currentUdpPort = null;
 
@@ -151,11 +157,11 @@ internal abstract class BaseTests
     {
         if (type == Type.Uds)
         {
-            CurrentPath ??=
+            CurrentUdsPath ??=
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsServerConfig() { EndPoint = CurrentPath, Logger = logger };
+            return new UdsServerConfig() { EndPoint = CurrentUdsPath, Logger = logger };
         }
 
         if (type == Type.Tcp)
@@ -245,11 +251,11 @@ internal abstract class BaseTests
     {
         if (type == Type.Uds)
         {
-            CurrentPath ??=
+            CurrentUdsPath ??=
                 new UnixDomainSocketEndPoint(Path.Combine(_socketDirectory!.FullName,
                     $"socket_{Interlocked.Increment(ref _counter)}"));
 
-            return new UdsClientConfig() { EndPoint = CurrentPath, Logger = logger, };
+            return new UdsClientConfig() { EndPoint = CurrentUdsPath, Logger = logger, };
         }
 
         if (type == Type.Tcp)

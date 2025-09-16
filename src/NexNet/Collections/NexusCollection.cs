@@ -112,6 +112,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     
     public Task<bool> ClearAsync()
     {
+        EnsureAllowedModificationState();
         var message = NexusCollectionClearMessage.Rent();
         message.Version = GetVersion();
         return UpdateAndWaitAsync(message);
@@ -145,13 +146,10 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             {
                 try
                 {
-                    // Clone the message for the child to avoid conflicts
-                    var clonedMessage = messageFromServer.Clone();
-                    
-                    Logger?.LogTrace($"Client relaying {clonedMessage} message to child collection");
+                    Logger?.LogTrace($"Client relaying {messageFromServer} message to child collection");
                     
                     // Process the message in the child collection as if it came from a server
-                    relayResult = _relayTo.RelayMessageFromParent(clonedMessage);
+                    relayResult = _relayTo.ClientProcessMessage(messageFromServer);
                 }
                 catch (Exception ex)
                 {
@@ -561,6 +559,14 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         return isConnected;
     }
 
+    private async Task<bool> WriteMessageToProcessChannel(INexusCollectionMessage message)
+    {
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await _processChannel!.Writer.WriteAsync(new ProcessRequest(null, message, tcs)).ConfigureAwait(false);
+
+        return await tcs.Task.ConfigureAwait(false);
+    }
+    
     protected async Task<bool> UpdateAndWaitAsync(INexusCollectionMessage message)
     {
         if (_state != NexusCollectionState.Connected)
@@ -572,10 +578,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         //Logger?.LogTrace($"--> Sending {message.GetType()} message.");
         if (IsServer)
         {
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await _processChannel!.Writer.WriteAsync(new ProcessRequest(null, message, tcs)).ConfigureAwait(false);
-
-            return await tcs.Task.ConfigureAwait(false);
+            return await WriteMessageToProcessChannel(message).ConfigureAwait(false);
         }
         else
         {
@@ -596,7 +599,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             return false;
         }
     }
-
+    
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator(
         NexusCollectionResetValuesMessage message);
     
@@ -664,6 +667,22 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     {
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _session = session ?? throw new ArgumentNullException(nameof(session));
+    }
+
+    protected void EnsureAllowedModificationState()
+    {
+        if (IsServer)
+        {
+            if (_relayFrom != null)
+                throw new InvalidOperationException(
+                    "Cannot perform operations when collection is operating in a relay, read-only state.");
+        }
+        else
+        {
+            if (_client?.State != Client.StateType.AcceptingUpdates)
+                throw new InvalidOperationException(
+                    "Cannot perform operations when collection is disconnected.");
+        }
     }
 
     protected void ClientDisconnected()

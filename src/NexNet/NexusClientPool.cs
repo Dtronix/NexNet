@@ -59,6 +59,11 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
         _healthCheckTimer = new Timer(PerformHealthAndIdleCheck, null, healthCheckInterval, healthCheckInterval);
     }
 
+    /// <summary>
+    /// Gets a collection connector that provides access to a Nexus collection through pooled client connections.
+    /// </summary>
+    /// <param name="collectionSelector">Function that selects the collection from the server proxy.</param>
+    /// <returns>A collection connector that manages access to the specified collection.</returns>
     public INexusCollectionClientConnector GetCollectionConnector(Func<TServerProxy, INexusCollection> collectionSelector)
     {
         return new NexusCollectionClientConnector(this, collectionSelector);

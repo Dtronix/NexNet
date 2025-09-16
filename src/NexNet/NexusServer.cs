@@ -36,7 +36,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
     private NexusCollectionManager _collectionManager = null!;
-    private Func<TServerNexus, ValueTask>? _configureCollections;
+    //private Func<TServerNexus, ValueTask>? _configureCollections;
 
     /// <inheritdoc />
     public NexusServerState State => _state;
@@ -51,7 +51,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     public bool IsConfigured => _config != null;
     
     /// <inheritdoc />
-    public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; private set; }
+    public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; private set; } = null!;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.

@@ -132,6 +132,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public int IndexOf(T item) => _itemList.IndexOf(item);
     public async Task<bool> RemoveAsync(T item)
     {
+        EnsureAllowedModificationState();
         var message = NexusListRemoveMessage.Rent();
         using (_ = await OperationLock().ConfigureAwait(false))
         {
@@ -148,6 +149,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     
     public async Task<bool> InsertAsync(int index, T item)
     {
+        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListInsertMessage.Rent();
 
@@ -162,6 +164,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
 
     public async Task<bool> MoveAsync(int fromIndex, int toIndex)
     {
+        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
         var message = NexusListMoveMessage.Rent();
 
@@ -176,6 +179,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
 
     public async Task<bool> ReplaceAsync(int index, T value)
     {
+        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListReplaceMessage.Rent();
 
@@ -190,6 +194,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
 
     public async Task<bool> RemoveAtAsync(int index)
     {
+        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
         var message = NexusListRemoveMessage.Rent();
         using (_ = await OperationLock().ConfigureAwait(false))
@@ -202,6 +207,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     
     public async Task<bool> AddAsync(T item)
     {
+        EnsureAllowedModificationState();
         var message = NexusListInsertMessage.Rent();
 
         using (_ = await OperationLock().ConfigureAwait(false))
