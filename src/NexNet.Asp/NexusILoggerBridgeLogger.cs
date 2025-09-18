@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NexNet.Logging;
@@ -8,59 +9,37 @@ namespace NexNet.Asp;
 /// <summary>
 /// Bridge for ILogger and INexusLogger
 /// </summary>
-public class NexusILoggerBridgeLogger : INexusLogger
+public class NexusILoggerBridgeLogger : CoreLogger<NexusILoggerBridgeLogger>
 {
-    private readonly ILogger? _logger;
-    private readonly Stopwatch _sw;
+    private readonly ILogger _logger;
 
-    private readonly NexusILoggerBridgeLogger _baseLogger;
-    private NexusLogBehaviors _behaviors = NexusLogBehaviors.Default;
-
-    /// <inheritdoc />
-    public NexusLogBehaviors Behaviors
-    {
-        get => _baseLogger._behaviors;
-        set => _baseLogger._behaviors = value;
-    }
-
-    /// <inheritdoc />
-    public string? Category { get; }
-
-    /// <inheritdoc />
-    public string? SessionDetails { get; set; }
 
     /// <summary>
-    /// Creates a logger wrapper from a ILogger interface.
+    /// Initializes a new instance of the NexusILoggerBridgeLogger with the specified ILogger and optional base logger.
     /// </summary>
-    /// <param name="logger"></param>
-    public NexusILoggerBridgeLogger(ILogger logger)
+    /// <param name="logger">The Microsoft.Extensions.Logging.ILogger to bridge to.</param>
+    /// <param name="parentLogger">The optional base CoreLogger for hierarchical logging.</param>
+    /// <param name="pathSegment">The optional path segment for this logger instance.</param>
+    /// <exception cref="ArgumentNullException">Thrown when logger is null.</exception>
+    public NexusILoggerBridgeLogger(ILogger logger, NexusILoggerBridgeLogger? parentLogger = null, string? pathSegment = null)
+        : base(parentLogger, pathSegment)
     {
-        _baseLogger = this;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _sw = Stopwatch.StartNew();
-    }
-
-    private NexusILoggerBridgeLogger(NexusILoggerBridgeLogger baseLogger, string? category, string? sessionDetails)
-    {
-        _baseLogger = baseLogger;
-        _logger = null;
-        Category = category;
-        SessionDetails = sessionDetails;
-        _sw = Stopwatch.StartNew();
-    }
-
-
-    /// <inheritdoc />
-    public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
-    {
-        var time = _sw.ElapsedTicks / (double)Stopwatch.Frequency;
-
-        _baseLogger._logger!.Log((LogLevel)logLevel, exception, $"[{time:0.000000}][{category}:{SessionDetails}] {message} {exception}", (string?)null);
     }
 
     /// <inheritdoc />
-    public INexusLogger CreateLogger(string? category, string? sessionDetails = null)
+    public override void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
     {
-        return new NexusILoggerBridgeLogger(_baseLogger, category, sessionDetails ?? SessionDetails);
+        var log = GetFormattedLogString(logLevel, category, exception, message);
+        
+        if(log != null)
+            _logger.Log((LogLevel)logLevel, exception, log, (string?)null);
+        
+    }
+
+    /// <inheritdoc />
+    public override INexusLogger CreateLogger(string? pathSegment = null)
+    {
+        return new NexusILoggerBridgeLogger(_logger, this, pathSegment);
     }
 }

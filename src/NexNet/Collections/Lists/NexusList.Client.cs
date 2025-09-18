@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Collections.Specialized;
+using System.Threading;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
@@ -82,8 +83,11 @@ internal partial class NexusList<T>
         return result is ListProcessResult.Successful or ListProcessResult.DiscardOperation;
     }
 
+    private int _clientEventCounter = 0;
+
     protected override bool OnClientProcessMessage(INexusCollectionMessage serverMessage)
     {
+        Interlocked.Increment(ref _clientEventCounter);
         if(!RequireValidProcessState())
             return false;
 
@@ -96,31 +100,31 @@ internal partial class NexusList<T>
         
         op.Return();
 
-        if (result == ListProcessResult.Successful)
+        if (result == ListProcessResult.Successful || result == ListProcessResult.DiscardOperation)
         {
             switch (serverMessage)
             {
                 case NexusListInsertMessage:
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
                     break;
-            
+
                 case NexusListReplaceMessage:
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
                     break;
-            
+
                 case NexusListMoveMessage:
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
                     break;
-            
+
                 case NexusListRemoveMessage:
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
                     break;
-                
+
                 case NexusCollectionClearMessage:
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     break;
             }
-            
+
             return true;
         }
         op.Return();

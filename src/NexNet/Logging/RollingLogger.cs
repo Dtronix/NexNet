@@ -8,12 +8,12 @@ namespace NexNet.Logging;
 /// The RollingLogger class extends the CoreLogger abstract class and provides functionality for logging with a rolling line buffer.
 /// It maintains a buffer of log lines, and when the buffer is full, it discards the oldest log lines to make room for new ones.
 /// </summary>
-public class RollingLogger : CoreLogger
+public class RollingLogger : CoreLogger<RollingLogger>
 {
     private readonly string[]? _lines;
     private int _currentLineIndex = 0;
-    private readonly RollingLogger _baseLogger;
     private int _totalLinesWritten;
+    private readonly RollingLogger? _baseLogger;
 
     /// <summary>
     /// Gets the total number of lines that have been written by the logger.
@@ -25,54 +25,48 @@ public class RollingLogger : CoreLogger
         get => _totalLinesWritten;
     }
 
-    /// <summary>
-    /// Initializes a new instance of the <see cref="RollingLogger"/> class.
-    /// </summary>
-    /// <param name="maxLines">The maximum number of lines that can be stored in the logger. Default value is 200.</param>
-    public RollingLogger(int maxLines = 200)
+ 
+    public RollingLogger(int maxLines = 200, RollingLogger? parentLogger = null, string? pathSegment = null)
+        : base(parentLogger, pathSegment)
     {
-        _lines = new string[maxLines];
-        _baseLogger = this;
-        SessionDetails = "";
+        if (parentLogger == null)
+        {
+            _baseLogger = this; 
+            _lines = new string[maxLines];
+        }
+        else
+        {
+            // Get the root logger
+            var current = parentLogger;
+
+            while (current != null && current != this)
+                current = current.BaseLogger;
+
+            _baseLogger = current;
+        }
     }
 
-    private RollingLogger(RollingLogger baseLogger, string? category, string? prefix = null,
-        string? sessionDetails = null)
-    {
-        _baseLogger = baseLogger;
-        Prefix = prefix;
-        SessionDetails = sessionDetails ?? "";
-        Category = category;
-    }
 
     /// <inheritdoc/>
     public override void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
     {
-        if (!_baseLogger.LogEnabled)
-            return;
+        var log = GetFormattedLogString(logLevel, category, exception, message);
 
-        if (logLevel < MinLogLevel)
+        if (log == null)
             return;
-        var time = _baseLogger.Sw.ElapsedTicks / (double)Stopwatch.Frequency;
-
-        lock (_baseLogger._lines!)
+        
+        lock (BaseLogger._lines!)
         {
-            _baseLogger._lines[_baseLogger._currentLineIndex] = Prefix != null
-                ? $"[{time:0.000000}]{Prefix} [{category}:{SessionDetails}] {message} {exception}"
-                : $"[{time:0.000000}] [{category}:{SessionDetails}] {message} {exception}";
-            _baseLogger._currentLineIndex = (_baseLogger._currentLineIndex + 1) % _baseLogger._lines.Length;
-            _baseLogger._totalLinesWritten++;
+            BaseLogger._lines[BaseLogger._currentLineIndex] = log;
+            BaseLogger._currentLineIndex = (BaseLogger._currentLineIndex + 1) % BaseLogger._lines.Length;
+            BaseLogger._totalLinesWritten++;
         }
     }
-    /// <inheritdoc/>
-    public override INexusLogger CreateLogger(string? category, string? sessionDetails = null)
+    
+    /// <inheritdoc />
+    public override INexusLogger CreateLogger(string? pathSegment = null)
     {
-        return new RollingLogger(_baseLogger, category, Prefix, sessionDetails ?? SessionDetails);
-    }
-    /// <inheritdoc/>
-    public override CoreLogger CreatePrefixedLogger(string? category, string prefix, string? sessionDetails = null)
-    {
-        return new RollingLogger(_baseLogger, category, prefix, sessionDetails ?? SessionDetails);
+        return new RollingLogger(parentLogger: this, pathSegment: pathSegment);
     }
 
     /// <summary>

@@ -42,10 +42,10 @@ internal class BasePipeTests : BaseTests
 
         INexusLogger clientLogger;
         INexusLogger serverLogger;
-        if (logger is CoreLogger coreLogger)
+        if (logger is INexusLogger coreLogger)
         {
-            clientLogger = coreLogger.CreatePrefixedLogger(null,"CL");
-            serverLogger = coreLogger.CreatePrefixedLogger(null,"SV");
+            clientLogger = coreLogger;
+            serverLogger = coreLogger;
         }
         else
         {

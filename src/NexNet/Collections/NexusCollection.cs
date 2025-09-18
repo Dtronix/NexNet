@@ -66,13 +66,12 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     
     public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
     
-    protected NexusCollection(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
+    protected NexusCollection(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer)
     {
         Id = id;
         Mode = mode;
         IsServer = isServer;
-        
-        Logger = config.Logger?.CreateLogger("NexusCollection", $"{this.GetType().Name}:{id}");
+        Logger = logger?.CreateLogger($"Collection<{this.GetType().Name}>:{id}");
         
         if (isServer)
         {
@@ -484,7 +483,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             (_invoker.Logger.Behaviors & Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0
                 ? Logging.NexusLogLevel.Information
                 : Logging.NexusLogLevel.Debug,
-            _invoker.Logger.Category,
+            null,
             null,
             $"Connecting Proxy Collection[{Id}];");
         await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),

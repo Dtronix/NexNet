@@ -98,10 +98,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             _id = value;
             if (Logger != null)
-                Logger.SessionDetails = value.ToString();
-
-            PipeManager.SetSessionId(value);
-
+                Logger.PathSegment = $"Session-{value}";
         }
     }
     
@@ -109,7 +106,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public SessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
-    public INexusLogger? Logger { get; }
+    public INexusLogger? Logger { get; private set; }
     CacheManager INexusSession.CacheManager => CacheManager;
 
     public List<int> RegisteredGroups { get; } = new();
@@ -160,7 +157,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = _config.Logger?.CreateLogger("NexusSession", Id.ToString());
+        Logger = _config.Logger?.CreateLogger($"Session-{Id}");
         
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);

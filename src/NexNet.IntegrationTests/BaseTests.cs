@@ -242,7 +242,7 @@ internal abstract class BaseTests
     {
         _loggerMode = log;
         var logger = log != BasePipeTests.LogMode.None
-            ? _logger.CreatePrefixedLogger(null, "SV")
+            ? _logger
             : null;
         return CreateServerConfigWithLog(type, logger);
     }
@@ -338,7 +338,7 @@ internal abstract class BaseTests
         _loggerMode = log;
         
         var logger = log != BasePipeTests.LogMode.None
-            ? _logger.CreatePrefixedLogger(null, "CL")
+            ? _logger
             : null;
 
         return CreateClientConfigWithLog(type, logger);
@@ -626,7 +626,7 @@ internal abstract class BaseTests
             public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
                 Func<TState, Exception?, string> formatter)
             {
-                _logger.Log((NexusLogLevel)logLevel, _logger.Category, exception,
+                _logger.Log((NexusLogLevel)logLevel, null, exception,
                     formatter?.Invoke(state, exception) ?? "");
             }
         }

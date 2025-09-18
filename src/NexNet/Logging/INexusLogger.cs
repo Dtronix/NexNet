@@ -1,9 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace NexNet.Logging;
 
 /// <summary>
-/// Basic logging interface.
+/// Basic logging interface with hierarchical path tracking.
 /// </summary>
 public interface INexusLogger
 {
@@ -11,16 +12,17 @@ public interface INexusLogger
     /// Configures the logger to behave certain ways.  Can be updated on the fly.
     /// </summary>
     public NexusLogBehaviors Behaviors { get; set; }
-    /// <summary>
-    /// Category for the log event.
-    /// </summary>
-    public string? Category { get; }
 
     /// <summary>
-    /// Gets or sets the session-specific details to be included in the log.
-    /// This can be used to provide additional context about the session during which the log events occur.
+    /// Gets the full logging path as a formatted string for display purposes.
+    /// Example: "Server→Session-123→Pipe-456→Collection-Users"
     /// </summary>
-    public string? SessionDetails { get; set;  }
+    public string FormattedPath { get; }
+    
+    /// <summary>
+    /// Gets or sets the current path segment for this logger instance.
+    /// </summary>
+    public string? PathSegment { get; set; }
 
     /// <summary>
     /// Logs a message with a specified level, category, and associated exception.
@@ -32,10 +34,11 @@ public interface INexusLogger
     void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message);
 
     /// <summary>
-    /// Creates a new instance of INexusLogger with the specified category.
+    /// Creates a new instance of INexusLogger with optional path extension.
     /// </summary>
-    /// <param name="category">The category name for the logger. This value is used to organize and filter log messages.</param>
-    /// <param name="sessionDetails">The session specific details to be included in the log.</param>
-    /// <returns>A new instance of INexusLogger with the specified category.</returns>
-    INexusLogger CreateLogger(string? category, string? sessionDetails = null);
+    /// <param name="pathSegment">Optional path segment to add to the logging hierarchy (e.g., "Session-123", "Pipe-456", "Collection-Users")</param>
+    /// <returns>A new instance of INexusLogger with extended path.</returns>
+    INexusLogger CreateLogger(string? pathSegment = null);
+    
+    
 }

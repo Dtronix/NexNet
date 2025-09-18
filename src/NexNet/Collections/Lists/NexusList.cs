@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
-using NexNet.Transports;
 
 namespace NexNet.Collections.Lists;
 
@@ -20,10 +19,10 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     
     public int Count => _itemList.Count;
 
-    public NexusList(ushort id, NexusCollectionMode mode, ConfigBase config, bool isServer)
-        : base(id, mode, config, isServer)
+    public NexusList(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer)
+        : base(id, mode, logger, isServer)
     {
-        _itemList = new(1024, config.Logger);
+        _itemList = new(1024, logger);
     }
 
     protected override int GetVersion() => _itemList.Version;

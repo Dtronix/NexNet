@@ -102,10 +102,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         _config = config;
         _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger("NexusServer");
+        _logger = config.Logger?.CreateLogger("SV");
         
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(config);
+        _collectionManager = new NexusCollectionManager(_logger, true);
         TServerNexus.ConfigureCollections(_collectionManager);
         
         ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
@@ -266,7 +266,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             Client = null,
             Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
             Nexus = _nexusFactory!.Invoke(),
-            CollectionManager = _collectionManager
+            CollectionManager = _collectionManager,
+            Logger = _logger
         }, cancellationToken);
     }
 
@@ -382,7 +383,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         SessionManager = _sessionManager,
                         Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
                         Nexus = _nexusFactory!.Invoke(),
-                        CollectionManager = _collectionManager
+                        CollectionManager = _collectionManager,
+                        Logger = _logger
                     });
             }
         }

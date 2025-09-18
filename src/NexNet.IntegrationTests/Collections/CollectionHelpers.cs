@@ -14,27 +14,28 @@ public class WaitForActionHandler : IDisposable
 {
     private readonly IDisposable _eventDisposable;
     private readonly TaskCompletionSource _tcs;
+    private int _counter = 0;
+    public int Counter => _counter;
 
     public WaitForActionHandler(INexusCollection collection, NexusCollectionChangedAction action, int count = 1)
     {
-        var currentCount = 0;
         _tcs = new TaskCompletionSource();
         
         _eventDisposable = collection.Changed.Subscribe(e =>
         {
-            if (e.ChangedAction == action && Interlocked.Increment(ref currentCount) == count)
+            if (e.ChangedAction == action && Interlocked.Increment(ref _counter) == count)
                 _tcs.SetResult();
         });
     }
     
-    public async Task WaitForActionNoTimeout(int timeout = 1)
+    public Task WaitForActionNoTimeout(int timeout = 1)
     {
-        await _tcs.Task;
+        return _tcs.Task;
     }
     
-    public async Task Wait(int timeout = 1)
+    public Task Wait(int timeout = 1)
     {
-        await _tcs.Task.Timeout(timeout);
+        return _tcs.Task.Timeout(timeout);
     }
 
 

@@ -1,12 +1,15 @@
-﻿using NexNet.Internals.Collections.Versioned;
+﻿using System.Threading;
+using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
 internal partial class NexusList<T>
 {
+    private int _serverEventCounter = 0;
     protected override ServerProcessMessageResult OnServerProcessMessage(INexusCollectionMessage message)
     {
+        Interlocked.Increment(ref _serverEventCounter);
         var op = GetRentedOperation(message);
 
         if (op.Operation == null)

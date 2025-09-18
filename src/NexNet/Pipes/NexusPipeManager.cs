@@ -28,7 +28,7 @@ internal class NexusPipeManager
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
-        _logger = session.Logger?.CreateLogger($"NexusPipeManager", session.Id.ToString());
+        _logger = session.Logger?.CreateLogger("PipeManager");
     }
 
     public IRentedNexusDuplexPipe? RentPipe()
@@ -202,12 +202,6 @@ internal class NexusPipeManager
         }
 
         _activePipes.Clear();
-    }
-
-    public void SetSessionId(long value)
-    {
-        if(_logger != null)
-            _logger.SessionDetails = value.ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

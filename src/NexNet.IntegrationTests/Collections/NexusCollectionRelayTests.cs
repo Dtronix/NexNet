@@ -185,8 +185,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList, Is.Empty);
     }
 
-    #region Relay Configuration and Lifecycle Tests
-
     [Test]
     public async Task ConfigureRelay_ThrowsWhenAlreadyLinked()
     {
@@ -207,11 +205,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             relayCollection.ConfigureRelay(anotherConnector);
         });
     }
-    
 
-    #endregion
-
-    #region Relay Connection Error Handling Tests
 
     [Test]
     public async Task RelayConnection_RecoversFromTransientFailures()
@@ -232,10 +226,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
     }
-
-    #endregion
-
-    #region Multi-level Relay Chain Tests
 
     [Test]
     public async Task RelayChain_ThreeLevelHierarchy()
@@ -294,12 +284,18 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSvs.ParentRelay.ReadyTask.Timeout(1);
         await clSvs.Child1Relay.ReadyTask.Timeout(1);
         await clSvs.Child2Relay.ReadyTask.Timeout(1);
-        
         for (int i = 0; i < 10; i++)
             await clSvs.ParentRelay.AddAsync(i);
-
-        await child1Wait.Wait();
-        await child2Wait.Wait();
+        try
+        {
+            await child1Wait.Wait();
+            await child2Wait.Wait();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            throw;
+        }
         
         Assert.That(clSvs.ParentRelay, Is.EquivalentTo(clSvs.Child1Relay));
         Assert.That(clSvs.ParentRelay, Is.EquivalentTo(clSvs.Child2Relay));
@@ -324,14 +320,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(clSvs.Child1Relay.State, Is.EqualTo(NexusCollectionState.Disconnected));
         Assert.That(clSvs.Child2Relay.State, Is.EqualTo(NexusCollectionState.Disconnected));
     }
-    
 
-
-
-
-    #endregion
-
-    #region Concurrent Operations and Race Condition Tests
 
     [Test]
     public async Task RelayReconnection_DuringActiveOperations()
@@ -403,10 +392,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
 
-    #endregion
-
-    #region Advanced Relay State Management Tests
-
     [Test]
     public async Task RelayState_TransitionsDuringParentReconnection()
     {
@@ -451,10 +436,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.DoesNotThrow(() => { var count = relayList.Count; });
         Assert.DoesNotThrow(() => relayList.Contains(1));
     }
-
-    #endregion
-
-    #region Relay Message Processing Edge Cases
 
     [Test]
     public async Task RelayMessage_OrderingGuarantees()
@@ -518,10 +499,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
 
-    #endregion
-
-    #region Performance and Stress Tests
-
     [Test]
     public async Task RelayStress_MultipleChildCollections()
     {
@@ -562,10 +539,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relay2, Is.EquivalentTo(parentList));
         Assert.That(relay3, Is.EquivalentTo(parentList));
     }
-
-    #endregion
-
-    #region Integration with Existing Collection Operations
 
     [Test]
     public async Task RelayEvents_ChangedEventPropagation()
@@ -626,10 +599,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
 
-    #endregion
-
-    #region Error Recovery and Resilience Tests
-
     [Test]
     public async Task RelayRecovery_FromTransientNetworkFailures()
     {
@@ -676,10 +645,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
     }
 
-    #endregion
-
-    #region Cancellation and Resource Management Tests
-
     [Test]
     public async Task RelayCancellation_ProperResourceCleanup()
     {
@@ -703,6 +668,4 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // Should not throw during cleanup
         Assert.DoesNotThrow(() => relayCollection.StopRelay());
     }
-
-    #endregion
 }

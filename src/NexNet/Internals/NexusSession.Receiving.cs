@@ -569,9 +569,14 @@ internal partial class NexusSession<TNexus, TProxy>
                 
                 // There is no versioning on the client so we can just use the hash directly.
                 _versionHash = TNexus.MethodHash;
-
+                
                 // Set the server assigned client id.
                 Id = greetingMessage.ClientId;
+
+                Logger = Logger.CreateLogger(Id.ToString());
+   
+                
+
 
                 EnumUtilities<InternalState>.SetFlag(
                     ref _internalState, InternalState.NexusCompletedConnection);

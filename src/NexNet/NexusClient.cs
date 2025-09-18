@@ -30,6 +30,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
     private bool _isReconnecting = false;
+    private readonly INexusLogger? _logger;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -66,10 +67,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     {
         ArgumentNullException.ThrowIfNull(config);
         _config = config;
+        _logger = config.Logger?.CreateLogger("CL");
         _cacheManager = new SessionCacheManager<TServerProxy>();
         
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(config);
+        _collectionManager = new NexusCollectionManager(_logger, false);
         TClientNexus.ConfigureCollections(_collectionManager);
 
         Proxy = new TServerProxy() { CacheManager = _cacheManager };
@@ -143,7 +145,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             Nexus = _nexus,
             ReadyTaskCompletionSource = readyTaskCompletionSource,
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
-            CollectionManager = _collectionManager
+            CollectionManager = _collectionManager,
+            Logger = _logger
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)

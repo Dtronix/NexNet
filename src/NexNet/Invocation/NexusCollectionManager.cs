@@ -14,17 +14,15 @@ namespace NexNet.Invocation;
 
 internal class NexusCollectionManager : IConfigureCollectionManager
 {
-    private readonly ConfigBase _config;
     private readonly bool _isServer;
     private Dictionary<ushort, INexusCollection>? _collectionBuilder = new();
     private FrozenDictionary<ushort, INexusCollection>? _collections;
     private readonly INexusLogger? _logger;
 
-    public NexusCollectionManager(ConfigBase config)
+    public NexusCollectionManager(INexusLogger? logger, bool isServer)
     {
-        _config = config;
-        _logger = _config.Logger?.CreateLogger("NexusCollectionManager");
-        _isServer = config is ServerConfig;
+        _logger = logger;
+        _isServer = isServer;
     }
 
     public NexusList<T> GetList<T>(ushort id)
@@ -42,7 +40,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
     {
         if(_collectionBuilder == null)
             throw new InvalidOperationException("CollectionManager is already configured.  Can't add any new collections.");
-        var list = new NexusList<T>(id, mode, _config, _isServer);
+        var list = new NexusList<T>(id, mode, _logger, _isServer);
         _collectionBuilder.Add(id, list);
         
         // Only broadcast on the server.

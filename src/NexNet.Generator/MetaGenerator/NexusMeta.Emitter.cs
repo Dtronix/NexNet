@@ -273,14 +273,14 @@ partial class NexusMeta
                                 {
                                  logger.Log((logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.LocalInvocationsLogAsInfo) != 0 
                                      ? global::NexNet.Logging.NexusLogLevel.Information
-                                     : global::NexNet.Logging.NexusLogLevel.Debug, logger.Category, null, message);
+                                     : global::NexNet.Logging.NexusLogLevel.Debug, null, null, message);
                                 }
 
                                 public static void ProxyLog(this global::NexNet.Logging.INexusLogger logger, string message)
                                 {
                                  logger.Log((logger.Behaviors & global::NexNet.Logging.NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0 
                                      ? global::NexNet.Logging.NexusLogLevel.Information
-                                     : global::NexNet.Logging.NexusLogLevel.Debug, logger.Category, null, message);
+                                     : global::NexNet.Logging.NexusLogLevel.Debug, null, null, message);
                                 }
                             }
                         }
