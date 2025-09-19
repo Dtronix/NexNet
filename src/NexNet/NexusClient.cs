@@ -22,6 +22,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
+    private long _id;
     private readonly Timer _pingTimer;
     private readonly ClientConfig _config;
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
@@ -66,8 +67,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);
+        
+        var id = Interlocked.Increment(ref _id);
         _config = config;
-        _logger = config.Logger?.CreateLogger("CL");
+        _logger = config.Logger?.CreateLogger($"CL{id}");
         _cacheManager = new SessionCacheManager<TServerProxy>();
         
         // Set the collection manager and configure for this nexus.

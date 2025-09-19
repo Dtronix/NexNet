@@ -22,6 +22,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
+    private long _id = 0;
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
     private ServerConfig? _config;
@@ -102,7 +103,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         _config = config;
         _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger("SV");
+        var id = Interlocked.Increment(ref _id);
+        _logger = config.Logger?.CreateLogger($"SV{id}");
         
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(_logger, true);

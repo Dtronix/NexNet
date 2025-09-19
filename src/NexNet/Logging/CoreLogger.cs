@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text;
+using System.Threading;
 
 namespace NexNet.Logging;
 
@@ -26,7 +29,7 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// Represents the base logger used in the CoreLogger class.
     /// It is used to manage the minimum log level and to provide a reference for the logger's own instance.
     /// </summary>
-    protected readonly TLogger? BaseLogger;
+    protected readonly TLogger? ParentLogger;
 
     /// <summary>
     /// The path node representing this logger's position in the hierarchy.
@@ -53,8 +56,8 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// <inheritdoc />
     public NexusLogBehaviors Behaviors
     {
-        get => BaseLogger._behaviors;
-        set => BaseLogger._behaviors = value;
+        get => ParentLogger._behaviors;
+        set => ParentLogger._behaviors = value;
     }
 
     /// <summary>
@@ -72,8 +75,8 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// </value>
     public NexusLogLevel MinLogLevel
     {
-        get => BaseLogger._thisMinLogLevel;
-        set => BaseLogger._thisMinLogLevel = value;
+        get => ParentLogger._thisMinLogLevel;
+        set => ParentLogger._thisMinLogLevel = value;
     }
 
     /// <inheritdoc />
@@ -108,14 +111,14 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// </summary>
     protected CoreLogger(TLogger? parentLogger = null, string? pathSegment = null)
     {
-        BaseLogger = parentLogger ?? (TLogger)this;
+        ParentLogger = parentLogger ?? (TLogger)this;
         Sw = Stopwatch.StartNew();
 
         // Create a new path node with the parent's path node as the parent
         _pathNode = new PathNode(parentLogger?._pathNode, pathSegment);
     }
 
-    /// <summary>
+/// <summary>
     /// Formats a log entry into a string representation.
     /// </summary>
     /// <param name="logLevel">The severity level of the log entry.</param>
@@ -125,15 +128,63 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// <returns>A formatted log string containing timestamp, log level, path, category, message and exception information, or null if logging is disabled or the log level is below the minimum threshold.</returns>
     protected string? GetFormattedLogString(NexusLogLevel logLevel, string? category, Exception? exception, string message)
     {
-        if (!BaseLogger.LogEnabled)
+        if (!ParentLogger.LogEnabled)
             return null;
 
-        if (logLevel < BaseLogger.MinLogLevel)
+        if (logLevel < ParentLogger.MinLogLevel)
             return null;
-        var time = BaseLogger.Sw.ElapsedTicks / (double)Stopwatch.Frequency;
 
-        var pathDisplay = string.IsNullOrEmpty(FormattedPath) ? "" : $"{FormattedPath} ";
-        return $"[{time:0.000000}][{logLevel}] {pathDisplay}[{category}] {message} {exception}";
+        var logName = logLevel switch
+        {
+            NexusLogLevel.Trace => "TRA",
+            NexusLogLevel.Debug => "DEB",
+            NexusLogLevel.Information => "INF",
+            NexusLogLevel.Warning => "WAR",
+            NexusLogLevel.Error => "ERR",
+            NexusLogLevel.Critical => "CRI",
+            NexusLogLevel.None => "NON",
+            _ => throw new ArgumentOutOfRangeException(nameof(logLevel), logLevel, null)
+        };
+        var time = ParentLogger.Sw.ElapsedTicks / (double)Stopwatch.Frequency;
+
+        // Use pooled StringBuilder for the entire log message
+        var sb = StringBuilderPool.Rent();
+        try
+        {
+            sb.Append('[');
+            sb.AppendFormat("{0:0.000000}", time);
+            sb.Append("][");
+            sb.Append(logName);
+            sb.Append("] [");
+
+            var path = FormattedPath;
+            if (!string.IsNullOrEmpty(path))
+            {
+                sb.Append(path);
+            }
+
+            if (category != null)
+            {
+                sb.Append('(');
+                sb.Append(category);
+                sb.Append(')');
+            }
+            sb.Append("] ");
+
+            sb.Append(message);
+
+            if (exception != null)
+            {
+                sb.Append(' ');
+                sb.Append(exception);
+            }
+
+            return sb.ToString();
+        }
+        finally
+        {
+            StringBuilderPool.Return(sb);
+        }
     }
 
     /// <inheritdoc />
@@ -230,6 +281,50 @@ public abstract class CoreLogger<TLogger> : INexusLogger
             }
 
             return path;
+        }
+    }
+    /// <summary>
+    /// Thread-safe pool of StringBuilder instances to reduce allocations.
+    /// </summary>
+    private static class StringBuilderPool
+    {
+        private const int MaxPoolSize = 100;
+        private const int MaxBuilderCapacity = 1024;
+        private static readonly ConcurrentBag<StringBuilder> _pool = new();
+        private static int _poolSize = 0;
+
+        /// <summary>
+        /// Rents a StringBuilder from the pool or creates a new one if the pool is empty.
+        /// </summary>
+        public static StringBuilder Rent()
+        {
+            if (_pool.TryTake(out var sb))
+            {
+                Interlocked.Decrement(ref _poolSize);
+                return sb;
+            }
+
+            return new StringBuilder(256); // Initial capacity for typical log messages
+        }
+
+        /// <summary>
+        /// Returns a StringBuilder to the pool for reuse.
+        /// </summary>
+        public static void Return(StringBuilder sb)
+        {
+            ArgumentNullException.ThrowIfNull(sb);
+
+            // Don't pool builders that have grown too large
+            if (sb.Capacity > MaxBuilderCapacity)
+                return;
+
+            // Don't exceed max pool size
+            if (Volatile.Read(ref _poolSize) >= MaxPoolSize)
+                return;
+
+            sb.Clear();
+            _pool.Add(sb);
+            Interlocked.Increment(ref _poolSize);
         }
     }
 }

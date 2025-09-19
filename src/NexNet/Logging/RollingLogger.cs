@@ -13,7 +13,7 @@ public class RollingLogger : CoreLogger<RollingLogger>
     private readonly string[]? _lines;
     private int _currentLineIndex = 0;
     private int _totalLinesWritten;
-    private readonly RollingLogger? _baseLogger;
+    private readonly RollingLogger _baseLogger;
 
     /// <summary>
     /// Gets the total number of lines that have been written by the logger.
@@ -39,10 +39,10 @@ public class RollingLogger : CoreLogger<RollingLogger>
             // Get the root logger
             var current = parentLogger;
 
-            while (current != null && current != this)
-                current = current.BaseLogger;
+            while (current != null && current != current.ParentLogger)
+                current = current.ParentLogger;
 
-            _baseLogger = current;
+            _baseLogger = current ?? this;
         }
     }
 
@@ -55,11 +55,11 @@ public class RollingLogger : CoreLogger<RollingLogger>
         if (log == null)
             return;
         
-        lock (BaseLogger._lines!)
+        lock (_baseLogger._lines!)
         {
-            BaseLogger._lines[BaseLogger._currentLineIndex] = log;
-            BaseLogger._currentLineIndex = (BaseLogger._currentLineIndex + 1) % BaseLogger._lines.Length;
-            BaseLogger._totalLinesWritten++;
+            _baseLogger._lines[_baseLogger._currentLineIndex] = log;
+            _baseLogger._currentLineIndex = (_baseLogger._currentLineIndex + 1) % _baseLogger._lines.Length;
+            _baseLogger._totalLinesWritten++;
         }
     }
     
@@ -80,26 +80,29 @@ public class RollingLogger : CoreLogger<RollingLogger>
     /// </remarks>
     public void Flush(TextWriter writer)
     {
-        if (_baseLogger._totalLinesWritten == 0)
-            return;
-
-        var startIndex = _baseLogger._currentLineIndex;
-        var maxLines = _baseLogger._lines!.Length;
-
-        if (_baseLogger._totalLinesWritten > maxLines)
+        lock (_baseLogger._lines!)
         {
-            writer.WriteLine(
-                $"Truncating Log. Showing only last {maxLines} out of {_baseLogger._totalLinesWritten} total lines written.");
-        }
+            if (_baseLogger._totalLinesWritten == 0)
+                return;
 
-        var readingIndexStart = _baseLogger._totalLinesWritten >= maxLines ? startIndex : 0;
-        var loops = _baseLogger._totalLinesWritten >= maxLines ? maxLines : _baseLogger._totalLinesWritten;
-        for (int i = 0; i < loops; i++)
-        {
-            writer.WriteLine(_baseLogger._lines![(readingIndexStart + i) % maxLines]);
-        }
+            var startIndex = _baseLogger._currentLineIndex;
+            var maxLines = _baseLogger._lines!.Length;
 
-        _baseLogger._currentLineIndex = 0;
-        _baseLogger._totalLinesWritten = 0;
+            if (_baseLogger._totalLinesWritten > maxLines)
+            {
+                writer.WriteLine(
+                    $"Truncating Log. Showing only last {maxLines} out of {_baseLogger._totalLinesWritten} total lines written.");
+            }
+
+            var readingIndexStart = _baseLogger._totalLinesWritten >= maxLines ? startIndex : 0;
+            var loops = _baseLogger._totalLinesWritten >= maxLines ? maxLines : _baseLogger._totalLinesWritten;
+            for (int i = 0; i < loops; i++)
+            {
+                writer.WriteLine(_baseLogger._lines![(readingIndexStart + i) % maxLines]);
+            }
+
+            _baseLogger._currentLineIndex = 0;
+            _baseLogger._totalLinesWritten = 0;
+        }
     }
 }

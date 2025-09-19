@@ -71,7 +71,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         Id = id;
         Mode = mode;
         IsServer = isServer;
-        Logger = logger?.CreateLogger($"Collection<{this.GetType().Name}>:{id}");
+        Logger = logger?.CreateLogger($"Coll{id}");
         
         if (isServer)
         {

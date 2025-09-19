@@ -573,7 +573,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Set the server assigned client id.
                 Id = greetingMessage.ClientId;
 
-                Logger = Logger.CreateLogger(Id.ToString());
+                //Logger = Logger.CreateLogger(Id.ToString());
    
                 
 

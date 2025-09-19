@@ -98,7 +98,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             _id = value;
             if (Logger != null)
-                Logger.PathSegment = $"Session-{value}";
+                Logger.PathSegment = $"S{value}";
         }
     }
     
@@ -157,7 +157,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = _config.Logger?.CreateLogger($"Session-{Id}");
+        Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
