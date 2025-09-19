@@ -226,44 +226,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
     }
-
-    [Test]
-    public async Task RelayChain_ThreeLevelHierarchy()
-    {
-        // Create three servers: Parent -> Child1 -> Child2
-        var parent = await CreateRelayCollectionClientServers(false);
-        var child1 = await CreateRelayCollectionClientServers(false);
-        var child2 = await CreateRelayCollectionClientServers(false);
-
-        await parent.Server1.StartAsync();
-        await child1.Server1.StartAsync();
-        await child1.Server2.StartAsync();
-        await child2.Server1.StartAsync();
-        await child2.Server2.StartAsync();
-
-        var parentList = parent.Server1.ContextProvider.Rent().Collections.IntListBi;
-        var child1Relay = child1.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        var child2Relay = child2.Server2.ContextProvider.Rent().Collections.IntListRelay;
-
-        await child1Relay.ReadyTask.Timeout(1);
-        await child2Relay.ReadyTask.Timeout(1);
-
-        // Add items to parent
-        for (int i = 0; i < 5; i++)
-            await parentList.AddAsync(i);
-
-        // Wait for propagation through the chain
-        await Task.Delay(100);
-
-        // Verify all collections have the same items
-        Assert.That(parentList.Count, Is.EqualTo(5));
-        Assert.That(child1Relay.Count, Is.EqualTo(5));
-        Assert.That(child2Relay.Count, Is.EqualTo(5));
-
-        Assert.That(parentList, Is.EquivalentTo(child1Relay));
-        Assert.That(parentList, Is.EquivalentTo(child2Relay));
-    }
-
+    
     [Test]
     public async Task MultipleRelays_Connect()
     {

@@ -127,16 +127,17 @@ internal abstract partial class NexusCollection
         {
             await relayConnection.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
             Logger?.LogTrace("Retrieved relay connection");
+            
+            // Initialize this collection to act like it's connected to a server
+            // but it will receive messages from the parent instead
+            _state = NexusCollectionState.Connected;
         }
         catch (Exception e)
         {
+            _state = NexusCollectionState.Disconnected;
             Logger?.LogError(e, "Failed to connect relay connection.");
             return;
         }
-        
-        // Initialize this collection to act like it's connected to a server
-        // but it will receive messages from the parent instead
-        _state = NexusCollectionState.Connected;
         
         // Monitor parent disconnection to trigger this collection's disconnection
         try
