@@ -178,6 +178,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                         return false;
                     IsClientResetting = false;
                     var completeResult = OnClientResetCompleted();
+
+                    // Set client state to accepting updates after reset completion
+                    if (_client != null)
+                        _client.State = Client.StateType.AcceptingUpdates;
+
                     _clientConnectTcs?.TrySetResult();
                     _tcsReady.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
