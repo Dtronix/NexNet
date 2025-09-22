@@ -56,7 +56,7 @@ internal class NexusCollectionBaseTests : BaseTests
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Parent, 
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Child1, 
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Child2, 
-        INexusList<int> ParentRelay, 
+        INexusList<int> SourceList, 
         INexusList<int> Child1Relay,
         INexusList<int> Child2Relay);
     

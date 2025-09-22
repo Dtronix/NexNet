@@ -134,9 +134,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                 ackTcs.TrySetResult(true);
         }
     }
-    
+
+    private int _collectionMessageCounter = 0;
     private bool ClientProcessMessage(INexusCollectionMessage messageFromServer)
     {
+        Interlocked.Increment(ref _collectionMessageCounter);
         try
         {
             // First relay the message to child collection if one exists
@@ -182,7 +184,9 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     // Set client state to accepting updates after reset completion
                     if (_client != null)
                         _client.State = Client.StateType.AcceptingUpdates;
-
+                    
+                    _state = NexusCollectionState.Connected;
+                    
                     _clientConnectTcs?.TrySetResult();
                     _tcsReady.TrySetResult();
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
@@ -525,7 +529,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
 
                 await foreach (var message in collection._client!.Reader!.ConfigureAwait(false))
                 {
-                    //collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
+                    collection.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
                     var success = collection.ClientProcessMessage(message);
                     
                     if(success)
@@ -695,8 +699,8 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         _ackTcs?.TrySetResult(false);
         
         // Reset the ready task
-        _tcsReady.TrySetResult();
-        _tcsReady = new TaskCompletionSource();
+        if (_tcsReady.Task.Status != TaskStatus.WaitingForActivation)
+            _tcsReady = new TaskCompletionSource();
 
         try
         {

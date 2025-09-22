@@ -84,7 +84,7 @@ internal partial class NexusList<T>
     }
 
     private int _clientEventCounter = 0;
-
+    private int _clientInsertEventCounter = 0;
     protected override bool OnClientProcessMessage(INexusCollectionMessage serverMessage)
     {
         Interlocked.Increment(ref _clientEventCounter);
@@ -105,6 +105,7 @@ internal partial class NexusList<T>
             switch (serverMessage)
             {
                 case NexusListInsertMessage:
+                    Interlocked.Increment(ref _clientInsertEventCounter);
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
                     break;
 

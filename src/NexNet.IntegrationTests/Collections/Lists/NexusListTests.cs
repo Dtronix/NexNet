@@ -47,10 +47,10 @@ internal class NexusListTests : NexusCollectionBaseTests
         await client.Proxy.IntListBi.InsertAsync(0, 1);
         Assert.Multiple(() =>
         {
-            var clist = client.Proxy.IntListBi.ToArray();
-            var slist = serverNexus.IntListBi.ToArray();
-            Assert.That(clist, Is.EquivalentTo(slist));
-            Assert.That(clist, Is.EquivalentTo([1, 2, 3]));
+            var cList = client.Proxy.IntListBi.ToArray();
+            var sList = serverNexus.IntListBi.ToArray();
+            Assert.That(cList, Is.EquivalentTo(sList));
+            Assert.That(cList, Is.EquivalentTo([1, 2, 3]));
         });
     }
 

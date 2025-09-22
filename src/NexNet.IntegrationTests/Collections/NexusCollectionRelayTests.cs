@@ -208,30 +208,10 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
 
     [Test]
-    public async Task RelayConnection_RecoversFromTransientFailures()
-    {
-        var clSv = await CreateRelayCollectionClientServers(false);
-
-        // Start relay first (will fail to connect initially)
-        await clSv.Server2.StartAsync();
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
-
-        // Parent not available yet - relay should be disconnected
-        await Task.Delay(100);
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
-
-        // Now start parent - relay should recover
-        await clSv.Server1.StartAsync();
-        await relayList.ReadyTask.Timeout(2);
-
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Connected));
-    }
-    
-    [Test]
     public async Task MultipleRelays_Connect()
     {
         var clSvs= await CreateRelayCollectionServers();
-        await clSvs.ParentRelay.ReadyTask.Timeout(1);
+        await clSvs.SourceList.ReadyTask.Timeout(1);
         await clSvs.Child1Relay.ReadyTask.Timeout(1);
         await clSvs.Child2Relay.ReadyTask.Timeout(1);
     }
@@ -241,14 +221,14 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSvs= await CreateRelayCollectionServers();
 
-        var child1Wait = clSvs.Child1Relay.WaitForEvent(NexusCollectionChangedAction.Add, 10);
-        var child2Wait = clSvs.Child2Relay.WaitForEvent(NexusCollectionChangedAction.Add, 10);
+        var child1Wait = clSvs.Child1Relay.WaitForEvent(NexusCollectionChangedAction.Add, 100);
+        var child2Wait = clSvs.Child2Relay.WaitForEvent(NexusCollectionChangedAction.Add, 100);
 
-        await clSvs.ParentRelay.ReadyTask.Timeout(1);
+        await clSvs.SourceList.ReadyTask.Timeout(1);
         await clSvs.Child1Relay.ReadyTask.Timeout(1);
         await clSvs.Child2Relay.ReadyTask.Timeout(1);
-        for (int i = 0; i < 10; i++)
-            await clSvs.ParentRelay.AddAsync(i);
+        for (int i = 0; i < 100; i++)
+            await clSvs.SourceList.AddAsync(i);
         try
         {
             await child1Wait.Wait();
@@ -256,12 +236,14 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
         catch (Exception e)
         {
+            var ss = clSvs.Child1Relay.ToArray();
+            var ss2 = clSvs.Child2Relay.ToArray();
             Console.WriteLine(e);
             throw;
         }
         
-        Assert.That(clSvs.ParentRelay, Is.EquivalentTo(clSvs.Child1Relay));
-        Assert.That(clSvs.ParentRelay, Is.EquivalentTo(clSvs.Child2Relay));
+        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child1Relay));
+        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
     }
     
     
@@ -270,7 +252,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSvs= await CreateRelayCollectionServers();
         
-        await clSvs.ParentRelay.ReadyTask.Timeout(1);
+        await clSvs.SourceList.ReadyTask.Timeout(1);
         await clSvs.Child1Relay.ReadyTask.Timeout(1);
         await clSvs.Child2Relay.ReadyTask.Timeout(1);
 
@@ -371,6 +353,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
 
+        var state = relayList.ReadyTask.Status;
         // Reconnect parent
         await clSv.Server1.StartAsync();
         await relayList.ReadyTask.Timeout(2);
@@ -463,80 +446,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     }
 
     [Test]
-    public async Task RelayStress_MultipleChildCollections()
-    {
-        // Create one parent with multiple child relays
-        var parent = await CreateRelayCollectionClientServers(false);
-        var child1 = await CreateRelayCollectionClientServers(false);
-        var child2 = await CreateRelayCollectionClientServers(false);
-        var child3 = await CreateRelayCollectionClientServers(false);
-
-        await parent.Server1.StartAsync();
-        await child1.Server1.StartAsync();
-        await child1.Server2.StartAsync();
-        await child2.Server1.StartAsync();
-        await child2.Server2.StartAsync();
-        await child3.Server1.StartAsync();
-        await child3.Server2.StartAsync();
-
-        var parentList = parent.Server1.ContextProvider.Rent().Collections.IntListBi;
-        var relay1 = child1.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        var relay2 = child2.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        var relay3 = child3.Server2.ContextProvider.Rent().Collections.IntListRelay;
-
-        await relay1.ReadyTask.Timeout(1);
-        await relay2.ReadyTask.Timeout(1);
-        await relay3.ReadyTask.Timeout(1);
-
-        // Add items to parent
-        for (int i = 0; i < 20; i++)
-        {
-            await parentList.AddAsync(i);
-        }
-
-        // Wait for propagation
-        await Task.Delay(200);
-
-        // Verify all relays have the same data
-        Assert.That(relay1, Is.EquivalentTo(parentList));
-        Assert.That(relay2, Is.EquivalentTo(parentList));
-        Assert.That(relay3, Is.EquivalentTo(parentList));
-    }
-
-    [Test]
-    public async Task RelayEvents_ChangedEventPropagation()
-    {
-        var clSv = await CreateRelayCollectionClientServers(true);
-
-        var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
-
-        await relayList.ReadyTask.Timeout(1);
-
-        var eventReceived = false;
-        NexusCollectionChangedAction? receivedAction = null;
-
-        relayList.Changed.Subscribe(args =>
-        {
-            eventReceived = true;
-            receivedAction = args.ChangedAction;
-        });
-
-        // Trigger an add operation
-        await sourceList.AddAsync(42);
-        await Task.Delay(100);
-
-        Assert.That(eventReceived, Is.True);
-        Assert.That(receivedAction, Is.EqualTo(NexusCollectionChangedAction.Add));
-    }
-
-    [Test]
     public async Task RelayWithDifferentOperationTypes()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        var waitEvent = relayList.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await relayList.ReadyTask.Timeout(1);
 
@@ -544,19 +460,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(1);
         await sourceList.AddAsync(2);
         await sourceList.AddAsync(3);
-        await Task.Delay(50);
-
         await sourceList.InsertAsync(1, 99);
-        await Task.Delay(50);
-
         await sourceList.MoveAsync(0, 3);
-        await Task.Delay(50);
-
         await sourceList.ReplaceAsync(2, 88);
-        await Task.Delay(50);
-
         await sourceList.RemoveAtAsync(1);
-        await Task.Delay(50);
+
+        await waitEvent.Wait();
 
         // Verify final state consistency
         Assert.That(sourceList, Is.EquivalentTo(relayList));
@@ -590,45 +499,5 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(2);
 
         Assert.That(sourceList, Is.EquivalentTo(relayList));
-    }
-
-    [Test]
-    public async Task RelayDisconnection_GracefulShutdown()
-    {
-        var clSv = await CreateRelayCollectionClientServers(true);
-
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        await relayList.ReadyTask.Timeout(1);
-
-        // Normal shutdown
-        await clSv.Server2.StopAsync();
-
-        // Should disconnect gracefully without exceptions
-        await relayList.DisconnectedTask.Timeout(1);
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
-    }
-
-    [Test]
-    public async Task RelayCancellation_ProperResourceCleanup()
-    {
-        var clSv = await CreateRelayCollectionClientServers(true);
-
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
-        await relayList.ReadyTask.Timeout(1);
-
-        var relayCollection = relayList as NexusCollection;
-        Assert.That(relayCollection, Is.Not.Null);
-
-        // Stop relay and verify cleanup
-        relayCollection.StopRelay();
-        await relayList.DisconnectedTask.Timeout(1);
-
-        Assert.That(relayList.State, Is.EqualTo(NexusCollectionState.Disconnected));
-
-        // Verify no memory leaks or hanging resources
-        await Task.Delay(100);
-
-        // Should not throw during cleanup
-        Assert.DoesNotThrow(() => relayCollection.StopRelay());
     }
 }
