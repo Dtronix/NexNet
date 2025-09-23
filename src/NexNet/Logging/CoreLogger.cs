@@ -111,9 +111,17 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// </summary>
     protected CoreLogger(TLogger? parentLogger = null, string? pathSegment = null)
     {
-        ParentLogger = parentLogger ?? (TLogger)this;
-        Sw = Stopwatch.StartNew();
-
+        ParentLogger = parentLogger;
+        if (ParentLogger == null)
+        {
+            ParentLogger = (TLogger)this;
+            Sw = Stopwatch.StartNew();
+        }
+        else
+        {
+            Sw = ParentLogger.Sw;
+        }
+        
         // Create a new path node with the parent's path node as the parent
         _pathNode = new PathNode(parentLogger?._pathNode, pathSegment);
     }
