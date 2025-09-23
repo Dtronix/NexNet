@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.CompilerServices;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
@@ -131,7 +132,9 @@ internal class NexusChannelWriterTests
             return OnMessageSent.Invoke(type, messageHeader, body);
         }
 
-        public Task DisconnectAsync(DisconnectReason reason)
+        public Task DisconnectAsync(DisconnectReason reason, 
+            [CallerFilePath]string? filePath = null, 
+            [CallerLineNumber] int? lineNumber = null)
         {
             throw new NotImplementedException();
         }

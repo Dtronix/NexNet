@@ -141,7 +141,7 @@ Notes:
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
 ### Synchronized Collection Usage
-The synchronized collections exists on the server nexus and is accessed through the server proxy on the client.  Collections must be decorated with NexusCollectionAttribute, otherwise the Server nexus it will throw.  Synchronized collections are only allowed on the server nexus.  Collections are to be configured as either `BiDrirectional` or `ServerToClient`.
+The synchronized collections exists on the server nexus and is accessed through the server proxy on the client.  Collections must be decorated with NexusCollectionAttribute, otherwise the Server nexus it will throw.  Synchronized collections are only allowed on the server nexus.  Collections are to be configured as either `BiDirectional` or `ServerToClient`.
 
 INexusList offers a list-like API but with each mutation routed to the server.  Methods like AddAsync, InsertAsync, RemoveAsync, RemoveAtAsync, ClearAsync, MoveAsync, and ReplaceAsync all return Task, where the completion indicates acceptance or rejection by the server (noop).  All data accessed in the synchronous methods access the current state on the client.
 
@@ -149,7 +149,7 @@ INexusList offers a list-like API but with each mutation routed to the server.  
 public partial interface IClientNexus { }
 public partial interface IServerNexus
 {
-    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> IntList { get; }
 }
 

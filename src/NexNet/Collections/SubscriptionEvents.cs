@@ -54,21 +54,16 @@ internal class SubscriptionEvent<T> : ISubscriptionEvent<T>
         // ReSharper disable once InconsistentlySynchronizedField
         var snapshot = _handlers;
 
-        for (int i = 0; i < snapshot.Length; i++)
+        foreach (var ev in snapshot)
         {
-            var local = snapshot[i];
-            Task.Factory.StartNew(static state =>
+            try
             {
-                var (handler, arguments, logger) = ((Action<T>, T, INexusLogger?))state!;
-                try
-                {
-                    handler(arguments); 
-                }
-                catch (Exception e)
-                {
-                    logger?.LogWarning(e, "Event raised an exception");
-                }
-            }, (local, args, Logger), CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
+                ev(args); 
+            }
+            catch (Exception e)
+            {
+                Logger?.LogWarning(e, "Event raised an exception");
+            }
         }
     }
 

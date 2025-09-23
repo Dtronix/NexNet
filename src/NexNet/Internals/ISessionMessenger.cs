@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Messages;
@@ -53,5 +54,7 @@ internal interface ISessionMessenger
     /// </summary>
     /// <param name="reason">Reason for disconnect.</param>
     /// <returns>Task which completes upon disconnection.</returns>
-    Task DisconnectAsync(DisconnectReason reason);
+    Task DisconnectAsync(DisconnectReason reason , 
+        [CallerFilePath]string? filePath = null, 
+        [CallerLineNumber] int? lineNumber = null);
 }

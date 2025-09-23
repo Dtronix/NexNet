@@ -52,6 +52,33 @@ internal class NexusCollectionBaseTests : BaseTests
         return new RelayedCollectionServerClient(server1, client1.client, server2, client2.client);
     }
     
+    protected async ValueTask<RelayedCollectionServerClient> CreateRelayCollectionClientServers2(bool startServers = false)
+    {
+        CurrentUdsPath = null;
+        var serverConfig1 = CreateServerConfig(Type.Uds);
+        var server1 = CreateServer(serverConfig1, nexus => { });
+        var clientConfig1 = CreateClientConfig(Type.Uds);
+        var client1 = CreateClient(clientConfig1);
+        
+        var clientPool =
+            new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(clientConfig1));
+        
+        // Reset the port to get a new port.
+        CurrentUdsPath = null;
+        var serverConfig2 = CreateServerConfig(Type.Uds);
+        var server2 = CreateServer(serverConfig2, nexus => { }, configureCollections: nexus =>
+            nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        var clientConfig2 = CreateClientConfig(Type.Uds);
+        var client2 = CreateClient(clientConfig2);
+
+        if (startServers)
+        {
+            await server1.StartAsync().Timeout(1);
+            await server2.StartAsync().Timeout(1);
+        }
+        return new RelayedCollectionServerClient(server1, client1.client, server2, client2.client);
+    }
+    
     protected record RelayCollectionClientServers(
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Parent, 
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Child1, 
@@ -62,20 +89,20 @@ internal class NexusCollectionBaseTests : BaseTests
     
     protected async ValueTask<RelayCollectionClientServers> CreateRelayCollectionServers()
     {
-        var parentConfig = CreateServerConfig(Type.Uds);
+        var parentConfig = CreateServerConfig(Type.Uds, BasePipeTests.LogMode.Always);
         var parent = CreateServer(parentConfig, nexus => { });
-        var parentClientConfig = CreateClientConfig(Type.Uds);
+        var parentClientConfig = CreateClientConfig(Type.Uds, BasePipeTests.LogMode.Always);
         
         var clientPool =
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(new NexusClientPoolConfig(parentClientConfig));
         
         CurrentUdsPath = null;
-        var serverConfig2 = CreateServerConfig(Type.Uds);
+        var serverConfig2 = CreateServerConfig(Type.Uds, BasePipeTests.LogMode.Always);
         var child1 = CreateServer(serverConfig2, nexus => { }, configureCollections: nexus =>
             nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
         
         CurrentUdsPath = null;
-        var serverConfig3 = CreateServerConfig(Type.Uds);
+        var serverConfig3 = CreateServerConfig(Type.Uds, BasePipeTests.LogMode.Always);
         var child2 = CreateServer(serverConfig3, nexus => { }, configureCollections: nexus =>
             nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
         

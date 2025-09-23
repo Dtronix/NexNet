@@ -4,5 +4,6 @@ internal enum NexusCollectionMode
 {
     Unset,
     ServerToClient,
-    BiDrirectional
+    BiDirectional,
+    Relay
 }

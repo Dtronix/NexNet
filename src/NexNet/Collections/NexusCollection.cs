@@ -33,7 +33,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     private NexusCollection? _relayTo;
     private INexusCollectionClientConnector? _clientRelayConnector;
     
-    private readonly SnapshotList<Client>? _nexusPipeList;
+    private readonly SnapshotList<Client>? _connectedClients;
     
     private CancellationTokenSource? _broadcastCancellation;
     private Channel<ProcessRequest>? _processChannel;
@@ -64,7 +64,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         INexusCollectionMessage Message,
         TaskCompletionSource<bool>? Tcs);
     
-    public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDrirectional;
+    public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDirectional;
     
     protected NexusCollection(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer)
     {
@@ -75,7 +75,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         
         if (isServer)
         {
-            _nexusPipeList = new SnapshotList<Client>(64);
+            _connectedClients = new SnapshotList<Client>(64);
             
             // This task is always compelted on the server.
             _disconnectedTask = Task.CompletedTask;
@@ -141,24 +141,6 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         Interlocked.Increment(ref _collectionMessageCounter);
         try
         {
-            // First relay the message to child collection if one exists
-            var relayResult = true;
-            if (_relayTo != null)
-            {
-                try
-                {
-                    //Logger?.LogTrace($"Client relaying {messageFromServer} message to child collection");
-                    
-                    // Process the message in the child collection as if it came from a server
-                    relayResult = _relayTo.ClientProcessMessage(messageFromServer);
-                }
-                catch (Exception ex)
-                {
-                    Logger?.LogError(ex, $"Client error while relaying {messageFromServer} message to child collection");
-                    relayResult = false;
-                }
-            }
-            
             //Logger?.LogTrace($"Client processing {messageFromServer} message.");
             
             switch (messageFromServer)
@@ -168,12 +150,12 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     if (IsClientResetting)
                         return false;
                     IsClientResetting = true;
-                    return OnClientResetStarted(message.Version, message.TotalValues) && relayResult;
+                    return OnClientResetStarted(message.Version, message.TotalValues);
             
                 case NexusCollectionResetValuesMessage message:
                     if (!IsClientResetting)
                         return false;
-                    return OnClientResetValues(message.Values.Span) && relayResult;
+                    return OnClientResetValues(message.Values.Span);
 
                 case NexusCollectionResetCompleteMessage:
                     if (!IsClientResetting)
@@ -189,22 +171,24 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     
                     _clientConnectTcs?.TrySetResult();
                     _tcsReady.TrySetResult();
+                    _relayTo?._tcsReady.TrySetResult();
+                    
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    return completeResult && relayResult;
+                    return completeResult;
 
                 case NexusCollectionClearMessage message:
                     if (IsClientResetting)
                         return false;
                     var clearResult = OnClientClear(message.Version);
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                    return clearResult && relayResult;
+                    return clearResult;
             }
 
             if (IsClientResetting)
                 return false;
             
             var processResult = OnClientProcessMessage(messageFromServer);
-            return processResult && relayResult;
+            return processResult;
         }
         catch (Exception e)
         {
@@ -228,7 +212,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
 
         // If this is the server, and we are not in bidirectional mode, then the client
         // is sending messages when they are not supposed to.
-        return !IsServer || Mode == NexusCollectionMode.BiDrirectional;
+        return !IsServer || Mode == NexusCollectionMode.BiDirectional;
     }
     
 
@@ -259,9 +243,49 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                        .ReadAllAsync(collection._broadcastCancellation!.Token)
                                        .ConfigureAwait(false))
                     {
+              
+                        if (collection.Mode == NexusCollectionMode.Relay)
+                        {
+                            // Relays ignore these types of messages.
+                            if(req.Message is NexusCollectionResetStartMessage 
+                               or NexusCollectionResetValuesMessage 
+                               or NexusCollectionResetCompleteMessage)
+                                continue;
+                            
+                            try
+                            {
+                                // Set the total clients that should need to broadcast prior to returning.
+                                req.Message.Remaining = collection._connectedClients!.Count - 1;
+                                foreach (var client in collection._connectedClients)
+                                {
+                                    try
+                                    {
+                                        if (!client.MessageSender.Writer.TryWrite(req.Message))
+                                        {
+                                            collection.Logger?.LogTrace("Could not send to client collection");
+                                            // Complete the pipe as it is full and not writing to the client at a decent
+                                            // rate.
+                                            await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        collection.Logger?.LogTrace(ex, "Exception while forwarding relay message to client");
+                                        // If we threw, the client is disconnected.  Remove the client.
+                                        collection._connectedClients.Remove(client);
+                                    }
+                                }
+                            }
+                            catch (Exception e)
+                            {
+                                collection.Logger?.LogError(e, "Exception while processing relay message");
+                                return new ServerProcessMessageResult(null, true, false);
+                            }
+                            continue;
+                        }
+
                         //collection.Logger?.LogTrace($"Server received broadcast message request {req.Message}.");
                         var result = collection.ServerProcessMessage(req.Message);
-                        
                         //collection.Logger?.LogTrace($"Server received message type: {result.Message?.GetType()}");
                         
                         if(req.Message is INexusCollectionValueMessage valueMessage)
@@ -285,7 +309,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                         if (result.Message != null)
                         {
                             // Set the total clients that should need to broadcast prior to returning.
-                            result.Message.Remaining = collection._nexusPipeList!.Count - 1;
+                            result.Message.Remaining = collection._connectedClients!.Count - 1;
                             
                             // If there is 0 remaining and the client is set, then we are only responding to the client that
                             // sent the change to begin with.
@@ -294,7 +318,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                             // For testing only
                             if (!collection.DoNotSendAck)
                             {
-                                foreach (var client in collection._nexusPipeList)
+                                foreach (var client in collection._connectedClients)
                                 {
                                     try
                                     {
@@ -350,7 +374,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                     {
                                         collection.Logger?.LogTrace(ex, "Exception while sending to collection");
                                         // If we threw, the client is disconnected.  Remove the client.
-                                        collection._nexusPipeList.Remove(client);
+                                        collection._connectedClients.Remove(client);
                                     }
                                 }
                             }
@@ -370,8 +394,9 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     collection.Logger?.LogError(e, "Exception in UpdateBroadcast loop");
                 }
             }
-
-
+            
+            return default;
+            
         }, this, TaskCreationOptions.DenyChildAttach);
 
         // The server is always connected.
@@ -390,21 +415,21 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             return;
 
         var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
-        var reader = Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelReader<INexusCollectionMessage>(pipe) : null;
+        var reader = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelReader<INexusCollectionMessage>(pipe) : null;
         
         var client = new Client(
             pipe,
             reader,
             writer,
             session) { State = Client.StateType.Initializing };
-        _nexusPipeList!.Add(client);
+        _connectedClients!.Add(client);
         
         // Add in the completion removal for execution later.
         _ = pipe.CompleteTask.ContinueWith(static (_, state )=>
         {
             var (client, list) = ((Client,  SnapshotList<Client>))state!;
             list.Remove(client);
-        }, (client, _nexusPipeList), TaskContinuationOptions.RunContinuationsAsynchronously);
+        }, (client, _connectedClients), TaskContinuationOptions.RunContinuationsAsynchronously);
 
         
         Logger?.LogTrace("Starting channel listener.");
@@ -432,6 +457,16 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         
         Logger?.LogTrace("Sending client init data");
         // Initialize the client's data.
+
+        // If this a connection to a relay connection, send the init data from the source collection and not this one
+        // as we don't keep any data in here.
+        
+        var relayFrom = _relayFrom;
+        if (relayFrom != null)
+        {
+            await relayFrom.SendClientInitData(client).ConfigureAwait(false);
+        }
+
         var initResult = await SendClientInitData(client).ConfigureAwait(false);
         
         if (!initResult)
@@ -506,7 +541,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         _client = new Client(
             pipe,
             new NexusChannelReader<INexusCollectionMessage>(pipe),
-            Mode == NexusCollectionMode.BiDrirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null,
+            Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null,
             _session);
         
         _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -535,16 +570,59 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     if(success)
                         collection.ProcessFlags(message);
                     
-                    // Don't return these messages to the cache as they are created on reading.
-                    //operation.ReturnToCache();
-                    if (message is INexusCollectionValueMessage valueMessage)
-                        valueMessage.ReturnValueToPool();
-
-                    // If the result is false, close the whole pipe
-                    if (!success)
+                    var relayTo = collection._relayTo;
+                    if (relayTo != null && success)
                     {
-                        await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError).ConfigureAwait(false);
-                        return;
+                        // Relays ignore these types of messages.
+                        if (message is NexusCollectionResetStartMessage
+                            or NexusCollectionResetValuesMessage
+                            or NexusCollectionResetCompleteMessage)
+                            continue;
+
+                        try
+                        {
+                            // Set the total clients that should need to broadcast prior to returning.
+                            message.Remaining = relayTo._connectedClients!.Count - 1;
+                            foreach (var client in relayTo._connectedClients)
+                            {
+                                try
+                                {
+                                    if (!client.MessageSender.Writer.TryWrite(message))
+                                    {
+                                        collection.Logger?.LogTrace("Could not send to client collection");
+                                        // Complete the pipe as it is full and not writing to the client at a decent
+                                        // rate.
+                                        await client.Pipe.CompleteAsync().ConfigureAwait(false);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    collection.Logger?.LogTrace(ex,
+                                        "Exception while forwarding relay message to client");
+                                    // If we threw, the client is disconnected.  Remove the client.
+                                    relayTo._connectedClients.Remove(client);
+                                }
+                            }
+                        }
+                        catch (Exception e)
+                        {
+                            collection.Logger?.LogError(e, "Exception while processing relay message");
+                        }
+                    }
+                    else
+                    {
+                        // Don't return these messages to the cache as they are created on reading.
+                        //operation.ReturnToCache();
+                        if (message is INexusCollectionValueMessage valueMessage)
+                            valueMessage.ReturnValueToPool();
+
+                        // If the result is false, close the whole pipe
+                        if (!success)
+                        {
+                            await collection._client.Session.DisconnectAsync(DisconnectReason.ProtocolError)
+                                .ConfigureAwait(false);
+                            return;
+                        }
                     }
                 } 
             }

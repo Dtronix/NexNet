@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
@@ -278,7 +279,9 @@ public class NexusPipeWriterTests
             return default;
         }
 
-        public Task DisconnectAsync(DisconnectReason reason) => Task.CompletedTask;
+        public Task DisconnectAsync(DisconnectReason reason, 
+            [CallerFilePath]string? filePath = null, 
+            [CallerLineNumber] int? lineNumber = null) => Task.CompletedTask;
     }
 
     // A messenger that always throws InvalidOperationException in SendHeaderWithBody
@@ -300,7 +303,9 @@ public class NexusPipeWriterTests
             CancellationToken cancellationToken = default)
             => throw new InvalidOperationException("simulated failure");
 
-        public Task DisconnectAsync(DisconnectReason reason) => Task.CompletedTask;
+        public Task DisconnectAsync(DisconnectReason reason, 
+            [CallerFilePath]string? filePath = null, 
+            [CallerLineNumber] int? lineNumber = null) => Task.CompletedTask;
     }
 
     // A messenger that always throws TaskCanceledException in SendHeaderWithBody
@@ -322,7 +327,9 @@ public class NexusPipeWriterTests
             CancellationToken cancellationToken = default)
             => throw new TaskCanceledException("simulated cancel");
 
-        public Task DisconnectAsync(DisconnectReason reason) => Task.CompletedTask;
+        public Task DisconnectAsync(DisconnectReason reason, 
+            [CallerFilePath]string? filePath = null, 
+            [CallerLineNumber] int? lineNumber = null) => Task.CompletedTask;
     }
     
     

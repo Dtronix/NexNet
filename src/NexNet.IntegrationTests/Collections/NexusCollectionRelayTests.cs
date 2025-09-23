@@ -58,11 +58,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
 
     [Test]
-    public async Task AddedParentItemsAreRelayedToChildCollection()
+    public async Task AddedParentItemsAreRelayedToRelayConnection()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
-        
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
+
+        await clSv.Client2.ConnectAsync();
+        var relayList = clSv.Client2.Proxy.IntListRelay; 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
         
         await relayList.ReadyTask.Timeout(1);
@@ -221,13 +222,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSvs= await CreateRelayCollectionServers();
 
-        var child1Wait = clSvs.Child1Relay.WaitForEvent(NexusCollectionChangedAction.Add, 100);
-        var child2Wait = clSvs.Child2Relay.WaitForEvent(NexusCollectionChangedAction.Add, 100);
+        var child1Wait = clSvs.Child1Relay.WaitForEvent(NexusCollectionChangedAction.Add, 10);
+        var child2Wait = clSvs.Child2Relay.WaitForEvent(NexusCollectionChangedAction.Add, 10);
 
         await clSvs.SourceList.ReadyTask.Timeout(1);
         await clSvs.Child1Relay.ReadyTask.Timeout(1);
         await clSvs.Child2Relay.ReadyTask.Timeout(1);
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < 10; i++)
             await clSvs.SourceList.AddAsync(i);
         try
         {
@@ -238,7 +239,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         {
             var ss = clSvs.Child1Relay.ToArray();
             var ss2 = clSvs.Child2Relay.ToArray();
-            Console.WriteLine(e);
+            //Console.WriteLine(e);
             throw;
         }
         

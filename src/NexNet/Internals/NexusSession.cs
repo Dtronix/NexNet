@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
@@ -178,9 +179,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         Logger?.LogInfo($"Created session {Id}");
     }
 
-    public Task DisconnectAsync(DisconnectReason reason)
+    public Task DisconnectAsync(
+        DisconnectReason reason, 
+        [CallerFilePath]string? filePath = null, 
+        [CallerLineNumber] int? lineNumber = null)
     {
-        return DisconnectCore(reason, true).AsTask();
+        // ReSharper disable twice ExplicitCallerInfoArgument
+        return DisconnectCore(reason, true, filePath, lineNumber).AsTask();
     }
 
 
@@ -246,7 +251,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         Logger?.LogInfo("Client connected");
     }
 
-    private async ValueTask DisconnectCore(DisconnectReason reason, bool sendDisconnect)
+    private async ValueTask DisconnectCore(
+        DisconnectReason reason,
+        bool sendDisconnect, 
+        [CallerFilePath]string? filePath = null, 
+        [CallerLineNumber] int? lineNumber = null)
     {
         // If we are already disconnecting, don't do anything
         var state = Interlocked.Exchange(ref _state, ConnectionState.Disconnecting);
@@ -260,7 +269,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _registeredDisconnectReason = reason;
 
-        Logger?.LogInfo($"Session disconnected with reason: {reason}");
+        Logger?.LogInfo($"Session disconnected with reason: {reason}. {Path.GetFileName(filePath)}:{lineNumber}");
         
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {

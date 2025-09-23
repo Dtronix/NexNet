@@ -17,7 +17,7 @@ namespace NexNet;
 /// Main client class which facilitates the communication with a matching NexNet server.
 /// </summary>
 /// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
-/// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
+/// <typeparam name="TServerProxy">Server _proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
@@ -48,10 +48,22 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public event EventHandler<ConnectionState>? StateChanged;
 
+
+    private TServerProxy _proxy;
+
     /// <summary>
     /// Proxy used for invoking remote methods on the server.
     /// </summary>
-    public TServerProxy Proxy { get; }
+    public TServerProxy Proxy
+    {
+        get
+        {
+            if(_session == null)
+                throw new InvalidOperationException("Client not connected");
+
+            return _proxy;
+        }
+    }
 
     /// <inheritdoc />
     public ClientConfig Config => _config;
@@ -77,7 +89,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _collectionManager = new NexusCollectionManager(_logger, false);
         TClientNexus.ConfigureCollections(_collectionManager);
 
-        Proxy = new TServerProxy() { CacheManager = _cacheManager };
+        _proxy = new TServerProxy() { CacheManager = _cacheManager };
         _nexus = nexus;
         _pingTimer = new Timer(PingTimer);
     }
@@ -158,7 +170,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             OnStateChanged = state => StateChanged?.Invoke(this, state)
         };
 
-        Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
+        _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
         await session.StartAsClient().ConfigureAwait(false);
 

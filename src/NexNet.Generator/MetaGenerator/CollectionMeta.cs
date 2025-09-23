@@ -61,7 +61,8 @@ internal partial class CollectionMeta
         CollectionModeFullTypeString = NexusCollectionAttribute.Mode switch
         {
             NexusCollectionMode.ServerToClient => "global::NexNet.Collections.NexusCollectionMode.ServerToClient",
-            NexusCollectionMode.BiDrirectional => "global::NexNet.Collections.NexusCollectionMode.BiDrirectional",
+            NexusCollectionMode.BiDirectional => "global::NexNet.Collections.NexusCollectionMode.BiDirectional",
+            NexusCollectionMode.Relay => "global::NexNet.Collections.NexusCollectionMode.Relay",
             _ => "INVALID",
         };
         
