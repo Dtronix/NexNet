@@ -58,6 +58,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
 
     [Test]
+
     public async Task AddedParentItemsAreRelayedToRelayConnection()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
@@ -65,16 +66,26 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Client2.ConnectAsync();
         var relayList = clSv.Client2.Proxy.IntListRelay; 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
-        
-        await relayList.ReadyTask.Timeout(1);
-        var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 10);
 
-        for (int i = 0; i < 10; i++)
+        await relayList.ConnectAsync().Timeout(1);
+        //await relayList.ReadyTask.Timeout(1);
+        var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 100);
+
+        for (int i = 0; i < 100; i++)
         {
-            await sourceList.AddAsync(1);
+            await sourceList.AddAsync(i);
         }
 
-        await addWait.Wait();
+        try
+        {
+            await addWait.Wait();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(addWait.Counter);
+            throw;
+        }
+
         
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
@@ -84,8 +95,11 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSv = await CreateRelayCollectionClientServers(true);
         
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
+        
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var relayList = clSv.Client2.Proxy.IntListRelay;
+        await relayList.ConnectAsync().Timeout(1);
         
         await relayList.ReadyTask.Timeout(1);
         var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
@@ -313,9 +327,11 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var clSv = await CreateRelayCollectionClientServers(true);
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var relayList = clSv.Client2.Proxy.IntListRelay;
+        await relayList.ConnectAsync().Timeout(1);
 
-        await relayList.ReadyTask.Timeout(1);
 
         // Perform concurrent operations from multiple threads
         var tasks = new List<Task>();

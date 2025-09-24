@@ -262,7 +262,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                     {
                                         if (!client.MessageSender.Writer.TryWrite(req.Message))
                                         {
-                                            collection.Logger?.LogTrace("Could not send to client collection");
+                                            collection.Logger?.LogTrace($"S{client.Session.Id} Could not send to client collection");
                                             // Complete the pipe as it is full and not writing to the client at a decent
                                             // rate.
                                             await client.Pipe.CompleteAsync().ConfigureAwait(false);
@@ -270,7 +270,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                     }
                                     catch (Exception ex)
                                     {
-                                        collection.Logger?.LogTrace(ex, "Exception while forwarding relay message to client");
+                                        collection.Logger?.LogTrace(ex, $"S{client.Session.Id} Exception while forwarding relay message to client");
                                         // If we threw, the client is disconnected.  Remove the client.
                                         collection._connectedClients.Remove(client);
                                     }
@@ -335,7 +335,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                             if (!client.MessageSender.Writer.TryWrite(clientResponse))
                                             {
                                                 collection.Logger?.LogTrace(
-                                                    "ACK Client Could not send to client collection");
+                                                    $"S{client.Session.Id} ACK Client Could not send to client collection");
                                                 // Complete the pipe as it is full and not writing to the client at a decent
                                                 // rate.
                                                 await client.Pipe.CompleteAsync().ConfigureAwait(false);
@@ -354,19 +354,20 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                                             {
                                                 if (!client.MessageSender.Writer.TryWrite(result.Message))
                                                 {
-                                                    collection.Logger?.LogTrace("Could not send to client collection");
+                                                    collection.Logger?.LogTrace($"S{client.Session.Id} Could not send to client collection");
                                                     // Complete the pipe as it is full and not writing to the client at a decent
                                                     // rate.
                                                     await client.Pipe.CompleteAsync().ConfigureAwait(false);
                                                 }
                                                 else
                                                 {
-                                                    collection.Logger?.LogTrace("Sent to client collection");
+                                                    collection.Logger?.LogTrace($"S{client.Session.Id} Sent to client collection");
                                                 }
                                             }
                                             else
                                             {
-                                                collection.Logger?.LogTrace("Client is not accepting updates");
+                                                client.RequireReset = true;
+                                                collection.Logger?.LogTrace($"S{client.Session.Id} Client is not accepting updates");
                                             }
                                         }
                                     }
@@ -381,7 +382,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                         }
                         else
                         {
-                            collection.Logger?.LogTrace("Translated into noop message");
+                            collection.Logger?.LogTrace($"Translated into noop message");
                         }
 
                         req.Tcs?.TrySetResult(true);
@@ -432,7 +433,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         }, (client, _connectedClients), TaskContinuationOptions.RunContinuationsAsynchronously);
 
         
-        Logger?.LogTrace("Starting channel listener.");
+        Logger?.LogTrace($"S{client.Session.Id} Starting channel listener.");
         
         // Start the listener on the channel to handle sending updates to the client.
         _ = Task.Factory.StartNew(static async state =>
@@ -449,29 +450,41 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             }
             catch (Exception e)
             {
-                client.Session.Logger?.LogInfo(e, "Could not send collection broadcast message to session.");
+                client.Session.Logger?.LogInfo(e, $"S{client.Session.Id} Could not send collection broadcast message to session.");
                 // Ignore and disconnect.
             }
 
         }, client, TaskCreationOptions.DenyChildAttach);
         
-        Logger?.LogTrace("Sending client init data");
+        Logger?.LogTrace($"S{client.Session.Id} Sending client init data");
         // Initialize the client's data.
 
         // If this a connection to a relay connection, send the init data from the source collection and not this one
         // as we don't keep any data in here.
-        
-        var relayFrom = _relayFrom;
-        if (relayFrom != null)
+        var sourceCollection = _relayFrom ?? this;
+        var resetCount = 0;
+        while(true)
         {
-            await relayFrom.SendClientInitData(client).ConfigureAwait(false);
+            var initResult = await sourceCollection.SendClientInitData(client).ConfigureAwait(false);
+            var requiresReset = client.RequireReset;
+            client.RequireReset = false;
+            
+            if (!initResult)
+                return;
+            
+            // If we don't require a reset, we can exit this loop.
+            if (!requiresReset && !client.RequireReset)
+                break;
+            
+            if (2 > ++resetCount)
+            {
+                Logger?.LogWarning($"S{client.Session.Id} Client reset attempt limit hit. Disconnecting");
+                return;
+            }
+            
+            Logger?.LogWarning($"S{client.Session.Id} Collection was updated during a reset attempt {resetCount}");
         }
 
-        var initResult = await SendClientInitData(client).ConfigureAwait(false);
-        
-        if (!initResult)
-            return;
-        
         // Ensure all initial data is fully flushed.
         await writer.Writer.FlushAsync().ConfigureAwait(false);
         
@@ -819,6 +832,13 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         public readonly INexusChannelWriter<INexusCollectionMessage>? Writer;
         public readonly INexusSession Session;
         public readonly Channel<INexusCollectionMessage> MessageSender;
+        
+        /// <summary>
+        /// If this has been set to true, the collection has been sent updated while initializing
+        /// and those updates can't be guaranteed to be included in the current initialization.
+        /// So a full reset is required.
+        /// </summary>
+        public bool RequireReset;
 
         public StateType State;
 

@@ -30,7 +30,7 @@ internal abstract partial class NexusCollection
             return;
 
         _relayEnabled = false;
-        _ = _relayFrom?.DisconnectAsync();
+        //_ = _relayFrom?.DisconnectAsync();
     }
 
     public void StartRelay()
