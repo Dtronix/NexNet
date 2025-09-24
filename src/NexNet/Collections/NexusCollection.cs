@@ -23,15 +23,15 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     
     protected readonly bool IsServer;
 
-    private TaskCompletionSource _tcsReady = new TaskCompletionSource();
+    //private TaskCompletionSource _tcsReady = new TaskCompletionSource();
     
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     
-    private NexusCollection? _relayFrom;
-    private NexusCollection? _relayTo;
-    private INexusCollectionClientConnector? _clientRelayConnector;
+    //private NexusCollection? _relayFrom;
+    //private NexusCollection? _relayTo;
+    //private INexusCollectionClientConnector? _clientRelayConnector;
     
     private readonly SnapshotList<Client>? _connectedClients;
     
@@ -46,7 +46,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
 
     public Task DisconnectedTask => _disconnectedTask;
     
-    public Task ReadyTask => _tcsReady.Task;
+    //public Task ReadyTask => _tcsReady.Task;
     
     private SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
 
@@ -170,8 +170,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     _state = NexusCollectionState.Connected;
                     
                     _clientConnectTcs?.TrySetResult();
-                    _tcsReady.TrySetResult();
-                    _relayTo?._tcsReady.TrySetResult();
+                    //_tcsReady.TrySetResult();
                     
                     CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return completeResult;
@@ -205,10 +204,6 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     {
         if (IsClientResetting)
             return false;
-
-        // Special condition when this collection is acting as a relay.
-        if (_clientRelayConnector != null && Mode == NexusCollectionMode.ServerToClient)
-            return true;
 
         // If this is the server, and we are not in bidirectional mode, then the client
         // is sending messages when they are not supposed to.
@@ -458,14 +453,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         
         Logger?.LogTrace($"S{client.Session.Id} Sending client init data");
         // Initialize the client's data.
-
-        // If this a connection to a relay connection, send the init data from the source collection and not this one
-        // as we don't keep any data in here.
-        var sourceCollection = _relayFrom ?? this;
+        
         var resetCount = 0;
         while(true)
         {
-            var initResult = await sourceCollection.SendClientInitData(client).ConfigureAwait(false);
+            var initResult = await SendClientInitData(client).ConfigureAwait(false);
             var requiresReset = client.RequireReset;
             client.RequireReset = false;
             
@@ -560,11 +552,6 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectedTask = _disconnectTcs.Task;
-
-        if (_relayTo != null)
-        {
-            _relayTo._disconnectedTask = _disconnectedTask;
-        }
 
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
@@ -771,17 +758,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     protected void EnsureAllowedModificationState()
     {
         if (IsServer)
-        {
-            if (_relayFrom != null)
-                throw new InvalidOperationException(
-                    "Cannot perform operations when collection is operating in a relay, read-only state.");
-        }
-        else
-        {
-            if (_client?.State != Client.StateType.AcceptingUpdates)
-                throw new InvalidOperationException(
-                    "Cannot perform operations when collection is disconnected.");
-        }
+            return;
+
+        if (_client?.State != Client.StateType.AcceptingUpdates)
+            throw new InvalidOperationException(
+                "Cannot perform operations when collection is disconnected.");
     }
 
     protected void ClientDisconnected()
