@@ -2,20 +2,14 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals;
-using NexNet.Invocation;
 using NexNet.Logging;
-using NexNet.Pipes;
 
 namespace NexNet.Collections;
 
-internal class NexusCollectionRelay : INexusCollectionConnector
+internal abstract partial class NexusCollection
 {
     private CancellationTokenSource? _relayCancellation;
     private bool _relayEnabled;
-    
-    private NexusCollection? _relaySource;
-    private INexusCollectionClientConnector? _clientRelayConnector;
 
     public void ConfigureRelay(INexusCollectionClientConnector relay)
     {
@@ -24,6 +18,9 @@ internal class NexusCollectionRelay : INexusCollectionConnector
         
         _clientRelayConnector = relay;
         ArgumentNullException.ThrowIfNull(relay);
+
+        if (!IsServer)
+            throw new InvalidOperationException("Client collections cannot be relayed");
     }
 
 
@@ -97,10 +94,10 @@ internal class NexusCollectionRelay : INexusCollectionConnector
 
     record struct ConnectionResult(bool Fatal, string? FatalReason = null, Exception? FatalException = null);
 
-    private async ValueTask<NexusCollection.ConnectionResult> RunRelayConnectionLoop()
+    private async ValueTask<ConnectionResult> RunRelayConnectionLoop()
     {
         if (_clientRelayConnector == null)
-            return new NexusCollection.ConnectionResult(true);
+            return new ConnectionResult(true);
         
         Logger?.LogTrace("Connecting relay connection loop");
 
@@ -111,26 +108,26 @@ internal class NexusCollectionRelay : INexusCollectionConnector
         }
         catch (Exception e)
         {
-            return new NexusCollection.ConnectionResult(false, "Failed to connect relay connection.", e);
+            return new ConnectionResult(false, "Failed to connect relay connection.", e);
         }
         
         Logger?.LogTrace("Relay connection made.");
 
         if (relayCollection is not NexusCollection parentNexusCollection)
-            return new NexusCollection.ConnectionResult(true, "Source relay connection is not a NexusCollection.");
+            return new ConnectionResult(true, "Source relay connection is not a NexusCollection.");
             
         if (relayCollection.GetType() != this.GetType())
-            return new NexusCollection.ConnectionResult(true, "Parent collection must be of the same type");
+            return new ConnectionResult(true, "Parent collection must be of the same type");
         
         if (parentNexusCollection.Mode != NexusCollectionMode.ServerToClient)
-            return new NexusCollection.ConnectionResult(true, "Parent collection must be in ServerToClient mode when relaying.");
+            return new ConnectionResult(true, "Parent collection must be in ServerToClient mode when relaying.");
         
         if (Mode != NexusCollectionMode.Relay)
-            return new NexusCollection.ConnectionResult(true, "Collection must be in Relay mode.");
+            return new ConnectionResult(true, "Collection must be in Relay mode.");
             
         // Set this collection as a child relay of the parent
         parentNexusCollection._relayTo = this;
-        _relaySource = parentNexusCollection;
+        _relayFrom = parentNexusCollection;
         try
         {
             await relayCollection.ConnectAsync(CancellationToken.None).ConfigureAwait(false);
@@ -144,7 +141,7 @@ internal class NexusCollectionRelay : INexusCollectionConnector
         {
             _state = NexusCollectionState.Disconnected;
             Logger?.LogError(e, "Failed to connect relay connection.");
-            return new NexusCollection.ConnectionResult(false);
+            return new ConnectionResult(false);
         }
         
         // Monitor parent disconnection to trigger this collection's disconnection
@@ -159,16 +156,6 @@ internal class NexusCollectionRelay : INexusCollectionConnector
             ClientDisconnected();
         }
 
-        return new NexusCollection.ConnectionResult(false);
-    }
-
-    public ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession context)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
-    {
-        throw new NotImplementedException();
+        return new ConnectionResult(false);
     }
 }

@@ -4,32 +4,61 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
+using NexNet.Logging;
 using NexNet.Pipes;
 
 namespace NexNet.Collections;
 
-internal class NexusCollectionClient
+internal interface INexusCollectionClient
 {
-    public readonly INexusDuplexPipe Pipe;
+    public long Id { get; }
+    
+    public Channel<NexusBroadcastMessageWrapper> MessageBuffer { get; }
+    
+    public CancellationToken CompletionToken { get; }
+    
+    public INexusLogger? Logger { get; }
+
+    public ValueTask CompletePipe();
+
+    public ValueTask<bool> WriteAsync(INexusCollectionMessage message, CancellationToken ct = default);
+}
+
+internal class NexusCollectionClient : INexusCollectionClient
+{
+    public INexusDuplexPipe Pipe { get; }
+    
     //public readonly INexusChannelReader<INexusCollectionMessage>? Reader;
-    public readonly INexusChannelWriter<INexusCollectionMessage>? Writer;
+
     public readonly INexusSession Session;
-    public readonly Channel<NexusBroadcastMessageWrapper> MessageSender;
+    public INexusChannelWriter<INexusCollectionMessage> Writer { get; }
+    public Channel<NexusBroadcastMessageWrapper> MessageBuffer { get; }
 
     public StateType State;
     
-    public CancellationToken CompletionToken;
-    
+    public CancellationToken CompletionToken { get; }
+    public INexusLogger? Logger { get; }
 
+    public long Id => Session.Id;
+
+    public ValueTask CompletePipe() => Pipe.CompleteAsync();
+
+    public ValueTask<bool> WriteAsync(INexusCollectionMessage message, CancellationToken ct = default)
+    {
+        return Writer.WriteAsync(message, ct);
+    }
+    
     public NexusCollectionClient(INexusDuplexPipe pipe, 
-        INexusChannelWriter<INexusCollectionMessage>? writer,
+        INexusChannelWriter<INexusCollectionMessage> writer,
         INexusSession session)
     {
+        
         Pipe = pipe;
         State = StateType.Initializing;
+        Logger = session.Logger?.CreateLogger($"COL{pipe.Id}");
         Writer = writer;
         Session = session;
-        MessageSender = Channel.CreateUnbounded<NexusBroadcastMessageWrapper>(new  UnboundedChannelOptions()
+        MessageBuffer = Channel.CreateUnbounded<NexusBroadcastMessageWrapper>(new  UnboundedChannelOptions()
         {
             SingleReader = true,
             SingleWriter = true, 
@@ -53,4 +82,5 @@ internal class NexusCollectionClient
         Initializing,
         Disconnected
     }
+
 }
