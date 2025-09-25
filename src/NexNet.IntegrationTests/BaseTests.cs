@@ -47,6 +47,8 @@ internal abstract class BaseTests
     private RollingLogger _logger = null!;
     private BasePipeTests.LogMode _loggerMode;
     private readonly List<WebApplication> AspServers = new List<WebApplication>();
+    
+    
     public RollingLogger Logger => _logger;
 
     public int? CurrentTcpPort
@@ -55,10 +57,16 @@ internal abstract class BaseTests
         set => _currentTcpPort = value;
     }
 
-    public UnixDomainSocketEndPoint? CurrentUdsPath
+    protected UnixDomainSocketEndPoint? CurrentUdsPath
     {
         get => _currentUdsPath;
         set => _currentUdsPath = value;
+    }
+
+    protected BasePipeTests.LogMode LoggerMode
+    {
+        get => _loggerMode;
+        set => _loggerMode = value;
     }
 
     [OneTimeSetUp]
@@ -72,7 +80,7 @@ internal abstract class BaseTests
     [OneTimeTearDown]
     public virtual void OneTimeTearDown()
     {
-        _loggerMode = BasePipeTests.LogMode.None;
+        LoggerMode = BasePipeTests.LogMode.None;
         _socketDirectory?.Delete(true);
         Trace.Flush();
     }
@@ -86,7 +94,7 @@ internal abstract class BaseTests
     [TearDown]
     public virtual void TearDown()
     {
-        if (_loggerMode == BasePipeTests.LogMode.OnTestFail)
+        if (LoggerMode == BasePipeTests.LogMode.OnTestFail)
         {
             if (TestContext.CurrentContext.Result.Outcome != ResultState.Success)
             {
@@ -94,7 +102,7 @@ internal abstract class BaseTests
             }
         }
 
-        if (_loggerMode == BasePipeTests.LogMode.Always)
+        if (LoggerMode == BasePipeTests.LogMode.Always)
         {
             _logger.Flush(TestContext.Out);
         }
@@ -240,7 +248,7 @@ internal abstract class BaseTests
 
     protected ServerConfig CreateServerConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
-        _loggerMode = log;
+        LoggerMode = log;
         var logger = log != BasePipeTests.LogMode.None
             ? _logger
             : null;
@@ -335,7 +343,7 @@ internal abstract class BaseTests
 
     protected ClientConfig CreateClientConfig(Type type, BasePipeTests.LogMode log = BasePipeTests.LogMode.OnTestFail)
     {
-        _loggerMode = log;
+        LoggerMode = log;
         
         var logger = log != BasePipeTests.LogMode.None
             ? _logger
