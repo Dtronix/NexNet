@@ -52,13 +52,28 @@ internal class NexusCollectionBroadcaster
                         ? messageWrapper.SourceMessage ?? throw new Exception("Message to source client is null.")
                         : messageWrapper.Message;
 
-                    await client.SendAsync(message, client.CompletionToken)
-                        .ConfigureAwait(false);
+                    if (!await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false))
+                    {
+                        client.Logger?.LogInfo("Cound not send client message.");
+                        await client.CompletePipe().ConfigureAwait(false);
+                        return;
+                    }
                 }
                 catch (Exception e)
                 {
                     client.Logger?.LogInfo(e, "Could not send collection broadcast message to session.");
                     // Ignore and disconnect.
+                    try
+                    {
+                        await client.CompletePipe().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        client.Logger?.LogInfo(ex, "Exception while completing pipe.");
+                    }
+
+                    return;
+
                 }
                 finally
                 {
@@ -138,11 +153,11 @@ internal class NexusCollectionBroadcaster
 
                         }
                     }
-                    broadcaster._logger?.LogDebug("Stopped broadcast reading loop.");
+                    broadcaster._logger?.LogDebug("Exited broadcast reading loop.");
                 }
                 catch (Exception e)
                 {
-                    broadcaster._logger?.LogError(e, "Exception in boradcast loop");
+                    broadcaster._logger?.LogError(e, "Exception in broadcast loop");
                 }
             }
         }, (this, token), TaskCreationOptions.DenyChildAttach);
