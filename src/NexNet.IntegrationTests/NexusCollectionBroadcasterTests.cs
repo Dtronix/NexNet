@@ -17,6 +17,31 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         base.SetUp();
     }
     
+    [Test]
+    public async Task BroadcastClassProvidesCorrectStatus()
+    {
+        var cts = new CancellationTokenSource();
+        var client1 = CreateTestClient();
+        using var bl = new BroadcasterLifetime(Logger, false);
+        Assert.That(bl.Broadcaster.IsRunning, Is.False);
+        bl.Broadcaster.Run(cts.Token);
+        bl.Broadcaster.AddClientAsync(client1);
+        Assert.That(bl.Broadcaster.IsRunning, Is.True);
+        var completeTask = client1.EventCount(ClientEvent.CompletePipe, 1).Complete;
+        await cts.CancelAsync();
+        await completeTask.Timeout(1);
+        Assert.That(bl.Broadcaster.IsRunning, Is.False);
+    }
+    
+    [Test]
+    public void CanNotAddClientWhenNotRunning()
+    {
+        var cts = new CancellationTokenSource();
+        using var bl = new BroadcasterLifetime(Logger, false);
+        Assert.That(bl.Broadcaster.IsRunning, Is.False);
+        Assert.Throws<InvalidOperationException>(() => bl.Broadcaster.AddClientAsync(CreateTestClient()));
+    }
+    
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastReturnsMessageToCache(bool hasSource)
@@ -183,6 +208,26 @@ internal class NexusCollectionBroadcasterTests : BaseTests
 
         Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
     }
+    
+    [Test]
+    public async Task FiringRunCancellationTokenClosesConnections()
+    {
+        using var bl = new BroadcasterLifetime(Logger, false);
+        var cts = new CancellationTokenSource();
+        bl.Broadcaster.Run(cts.Token);
+        var clients = new TestCollectionClient[50];
+        for (int i = 0; i < clients.Length; i++)
+            bl.Broadcaster.AddClientAsync(clients[i] = CreateTestClient());
+
+        var clientComplete = clients.Select(
+            c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
+
+        await cts.CancelAsync().Timeout(1);
+        
+        await Task.WhenAll(clientComplete).Timeout(1);
+
+        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
+    }
 
 
     
@@ -198,11 +243,13 @@ internal class NexusCollectionBroadcasterTests : BaseTests
 
         public NexusCollectionBroadcaster Broadcaster { get; }
 
-        public BroadcasterLifetime(INexusLogger logger)
+        public BroadcasterLifetime(INexusLogger logger, bool autoRun = true)
         {
             Broadcaster = new NexusCollectionBroadcaster(logger);
             _cts = new CancellationTokenSource();
-            Broadcaster.Run(_cts.Token);
+            
+            if(autoRun)
+                Broadcaster.Run(_cts.Token);
         }
         
         public void Dispose()

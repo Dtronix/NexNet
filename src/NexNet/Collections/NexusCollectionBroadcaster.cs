@@ -32,7 +32,7 @@ internal class NexusCollectionBroadcaster
 
     public void AddClientAsync(INexusCollectionClient client)
     {
-        if(!IsRunning)
+        if(!_isRunning)
             throw new InvalidOperationException("Broadcaster is not running.");
         
         // Add in the completion removal for execution later.
@@ -94,8 +94,10 @@ internal class NexusCollectionBroadcaster
 
     public void Run(CancellationToken token)
     {
-        if(IsRunning)
+        if(_isRunning)
             throw new InvalidOperationException("Broadcaster is already running.");
+        
+        _isRunning = true;
         
         Task.Factory.StartNew(async static args =>
         {
@@ -160,14 +162,30 @@ internal class NexusCollectionBroadcaster
                     broadcaster._logger?.LogError(e, "Exception in broadcast loop");
                 }
             }
-        }, (this, token), TaskCreationOptions.DenyChildAttach);
+            
+            broadcaster._isRunning = false;
 
-        _isRunning = true;
+            // Close the client connections.
+            foreach (var client in broadcaster._connectedClients)
+            {
+                try
+                {
+                    await client.CompletePipe().ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    broadcaster._logger?.LogWarning(e, $"S{client.Id} Could not complete pipe.");
+                }
+            }
+            
+            broadcaster._connectedClients.Clear();
+            
+        }, (this, token), TaskCreationOptions.DenyChildAttach);
     }
     
     private class NexusBroadcastMessageWrapper : INexusBroadcastMessageWrapper
     {
-        private int _completedCount = 0;
+        private int _completedCount;
         public int ClientCount { get; set; }
         public INexusCollectionClient? SourceClient { get; }
     
