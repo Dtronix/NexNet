@@ -8,7 +8,7 @@ namespace NexNet.Collections;
 
 internal abstract partial class NexusCollection
 {
-    /*
+    
     private CancellationTokenSource? _relayCancellation;
     private bool _relayEnabled;
 
@@ -158,5 +158,5 @@ internal abstract partial class NexusCollection
         }
 
         return new ConnectionResult(false);
-    }*/
+    }
 }
