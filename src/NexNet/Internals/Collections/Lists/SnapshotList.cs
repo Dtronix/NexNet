@@ -203,7 +203,7 @@ internal class SnapshotList<T> : IEnumerable<T>
 
             if (currIdx == NullIndex)
                 return false;
-            
+
             // 2) stamp delete-version before we unlink
             nodes[currIdx].DeleteVersion = ++_globalVersion;
 
@@ -213,6 +213,31 @@ internal class SnapshotList<T> : IEnumerable<T>
             _liveCount--;
             PushFreeIndex(currIdx);
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Removes all elements from the list.
+    /// </summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            var nodes = GetNodes();
+            int currIdx = nodes[0].Next;
+
+            // mark all live nodes as deleted and add to free list
+            while (currIdx != NullIndex)
+            {
+                int nextIdx = nodes[currIdx].Next;
+                nodes[currIdx].DeleteVersion = ++_globalVersion;
+                PushFreeIndex(currIdx);
+                currIdx = nextIdx;
+            }
+
+            // reset head to point to nothing
+            nodes[0].Next = NullIndex;
+            _liveCount = 0;
         }
     }
     
