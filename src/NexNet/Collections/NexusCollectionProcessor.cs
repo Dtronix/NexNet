@@ -15,7 +15,7 @@ internal abstract class NexusCollectionProcessor
     private record ProcessRequestWrapper(
         INexusCollectionClient? Client, 
         INexusCollectionMessage Message,
-        TaskCompletionSource<bool> CompletionTaskSource);
+        TaskCompletionSource<bool>? CompletionTaskSource);
 
     protected NexusCollectionProcessor(INexusLogger? logger)
     {
@@ -30,7 +30,7 @@ internal abstract class NexusCollectionProcessor
         });
     }
 
-    protected abstract void OnProcess(INexusCollectionMessage process);
+    protected abstract bool OnProcess(INexusCollectionMessage process, CancellationToken ct);
     
     public async ValueTask<bool> EnqueueWaitForResult(INexusCollectionMessage message, INexusCollectionClient? client)
     {
@@ -59,23 +59,19 @@ internal abstract class NexusCollectionProcessor
                 {
                     await foreach (var messageWrapper in processor._processorChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                     {
+                        bool success = false;
                         try
                         {
-                            processor.OnProcess(messageWrapper.Message);
+                            success = processor.OnProcess(messageWrapper.Message, ct);
                         }
                         catch (Exception e)
                         {
-
                             processor._logger?.LogInfo(e,
-                                $"S{messageWrapper.Client?.Id} Exception while sending to collection. Removing from broadcast.");
-
-                            // If we threw, the client is disconnected. Remove the client and signal completion.
-                            processor._connectedClients.Remove(client);
-                            messageWrapper.SignalCompletion();
+                                $"S{messageWrapper.Client?.Id} Exception while processing collection.");
                         }
                         finally
                         {
-                            messageWrapper.
+                            messageWrapper.CompletionTaskSource?.TrySetResult(success);
                         }
                     }
                     processor._logger?.LogDebug("Exited broadcast reading loop.");
@@ -85,23 +81,6 @@ internal abstract class NexusCollectionProcessor
                     processor._logger?.LogError(e, "Exception in broadcast loop");
                 }
             }
-            
-            processor._isRunning = false;
-
-            // Close the client connections.
-            foreach (var client in processor._connectedClients)
-            {
-                try
-                {
-                    await client.CompletePipe().ConfigureAwait(false);
-                }
-                catch (Exception e)
-                {
-                    processor._logger?.LogWarning(e, $"S{client.Id} Could not complete pipe.");
-                }
-            }
-            
-            processor._connectedClients.Clear();
             
         }, (this, token), TaskCreationOptions.DenyChildAttach);
     }
