@@ -30,6 +30,7 @@ public enum NexusCollectionMessageFlags : byte
 [MemoryPackUnion(5, typeof(NexusListReplaceMessage))]
 [MemoryPackUnion(6, typeof(NexusListMoveMessage))]
 [MemoryPackUnion(7, typeof(NexusListRemoveMessage))]
+[MemoryPackUnion(8, typeof(NexusListNoopMessage))]
 internal partial interface INexusCollectionMessage
 {
     public NexusCollectionMessageFlags Flags { get; set; }
@@ -230,3 +231,14 @@ internal partial class NexusListRemoveMessage :
     }
 }
 
+[MemoryPackable(SerializeLayout.Explicit)]
+internal partial class NexusListNoopMessage :
+    NexusCollectionMessage<NexusListNoopMessage>
+{
+    public override INexusCollectionMessage Clone()  
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        return clone;
+    }
+}

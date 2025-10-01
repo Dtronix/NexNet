@@ -13,7 +13,7 @@ using NexNet.Pipes;
 
 namespace NexNet.Collections;
 
-internal abstract partial class NexusCollection : INexusCollectionConnector
+internal abstract partial class NexusCollection2 : INexusCollectionConnector
 {
     private NexusCollectionState _state;
     protected readonly ushort Id;
@@ -26,85 +26,24 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     private Client? _client;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
-    
-    private NexusCollection? _relayFrom;
-    private NexusCollection? _relayTo;
-    private INexusCollectionClientConnector? _clientRelayConnector;
-    
-    private readonly SnapshotList<Client>? _connectedClients;
-    
-    private CancellationTokenSource? _broadcastCancellation;
-    private Channel<ProcessRequest>? _processChannel;
-    private TaskCompletionSource<bool>? _ackTcs;
-    protected readonly INexusLogger? Logger;
-    private TaskCompletionSource? _clientConnectTcs;
-    private TaskCompletionSource? _disconnectTcs;
-    private Task _disconnectedTask = Task.CompletedTask;
-    protected bool IsClientResetting { get; private set; }
 
-    public Task DisconnectedTask => _disconnectedTask;
+    protected readonly INexusLogger? Logger;
     
     public Task ReadyTask => _tcsReady.Task;
     
-    private SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
-
-    protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent = new();
-    
     public NexusCollectionState State => _state;
-
-    /// <summary>
-    /// Internal testing for times the server does not ack a message, when it would normally do so.
-    /// </summary>
-    internal bool DoNotSendAck = false;
-
-    private record struct ProcessRequest(
-        Client? Client,
-        INexusCollectionMessage Message,
-        TaskCompletionSource<bool>? Tcs);
+    
+    
+    protected SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
     
     public bool IsReadOnly => !IsServer && Mode != NexusCollectionMode.BiDirectional;
     
-    protected NexusCollection(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer)
+    protected NexusCollection2(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer)
     {
         Id = id;
         Mode = mode;
         IsServer = isServer;
         Logger = logger?.CreateLogger($"Coll{id}");
-        
-        if (isServer)
-        {
-            _connectedClients = new SnapshotList<Client>(64);
-            
-            // This task is always compelted on the server.
-            _disconnectedTask = Task.CompletedTask;
-        }
-    }
-
-    protected record struct ServerProcessMessageResult(INexusCollectionMessage? Message, bool Disconnect, bool Ack);
-    private ServerProcessMessageResult ServerProcessMessage(INexusCollectionMessage message)
-    {
-        
-        //Logger?.LogTrace($"Server processing {message} message.");
-        switch (message)
-        {
-            case NexusCollectionResetStartMessage:
-            case NexusCollectionResetValuesMessage:
-            case NexusCollectionResetCompleteMessage:
-            {
-                Logger?.LogError($"Server received an invalid message from the client. {message.GetType()}");
-                return new ServerProcessMessageResult(null, true, false);
-            }
-        }
-        
-        try
-        {
-            return OnServerProcessMessage(message);
-        }
-        catch (Exception e)
-        {
-            Logger?.LogError(e, "Exception while processing server message");
-            return new ServerProcessMessageResult(null, true, false);
-        }
     }
     
     public Task<bool> ClearAsync()
@@ -115,11 +54,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         return UpdateAndWaitAsync(message);
     }
     
-    protected abstract ServerProcessMessageResult OnServerProcessMessage(INexusCollectionMessage message);
-    protected abstract bool OnClientProcessMessage(INexusCollectionMessage message);
-    protected abstract bool OnClientResetValues(ReadOnlySpan<byte> data);
-    protected abstract bool OnClientResetStarted(int version, int totalValues);
-    protected abstract bool OnClientResetCompleted();
+
 
     protected void ProcessFlags(INexusCollectionMessage serverMessage)
     {
@@ -156,7 +91,6 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     return OnClientResetValues(message.Values.Span);
 
                 case NexusCollectionResetCompleteMessage:
-                {
                     if (!IsClientResetting)
                         return false;
                     IsClientResetting = false;
@@ -165,27 +99,22 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     // Set client state to accepting updates after reset completion
                     if (_client != null)
                         _client.State = Client.StateType.AcceptingUpdates;
-
+                    
                     _state = NexusCollectionState.Connected;
-
+                    
                     _clientConnectTcs?.TrySetResult();
                     _tcsReady.TrySetResult();
                     _relayTo?._tcsReady.TrySetResult();
-                    using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset);
-
-                    CoreChangedEvent.Raise(eventArgsOwner.Value);
+                    
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return completeResult;
-                }
 
                 case NexusCollectionClearMessage message:
-                {
                     if (IsClientResetting)
                         return false;
                     var clearResult = OnClientClear(message.Version);
-                    using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset);
-                    CoreChangedEvent.Raise(eventArgsOwner.Value);
+                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                     return clearResult;
-                }
             }
 
             if (IsClientResetting)
@@ -236,7 +165,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
 
         _ = Task.Factory.StartNew(async static state =>
         {
-            var collection = Unsafe.As<NexusCollection>(state)!;
+            var collection = Unsafe.As<NexusCollection2>(state)!;
 
             while (collection._broadcastCancellation?.IsCancellationRequested == false)
             {
@@ -553,7 +482,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         await pipe.ReadyTask.ConfigureAwait(false);
 
         _ = pipe.CompleteTask.ContinueWith((s, state) => 
-            Unsafe.As<NexusCollection>(state)!.ClientDisconnected(), this, token);
+            Unsafe.As<NexusCollection2>(state)!.ClientDisconnected(), this, token);
 
         _client = new Client(
             pipe,
@@ -574,7 +503,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         _ = Task.Factory.StartNew(async static state =>
 
         {
-            var collection = Unsafe.As<NexusCollection>(state)!;
+            var collection = Unsafe.As<NexusCollection2>(state)!;
             try
             {
                 await collection._client!.Pipe.ReadyTask.ConfigureAwait(false);
@@ -806,9 +735,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             Logger?.LogError(e, "Error while disconnecting client.");
         }
         
-        using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset);
-        
-        CoreChangedEvent.Raise(eventArgsOwner.Value);
+        CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
         
         _disconnectTcs?.TrySetResult();
     }

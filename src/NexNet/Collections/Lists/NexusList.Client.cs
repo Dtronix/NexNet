@@ -102,29 +102,36 @@ internal partial class NexusList<T>
 
         if (result == ListProcessResult.Successful || result == ListProcessResult.DiscardOperation)
         {
+            using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent();
             switch (serverMessage)
             {
                 case NexusListInsertMessage:
-                    Interlocked.Increment(ref _clientInsertEventCounter);
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
+                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Add;
+                    CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
                 case NexusListReplaceMessage:
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
+                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Replace;
+                    CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
                 case NexusListMoveMessage:
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
+                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Move;
+                    CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
                 case NexusListRemoveMessage:
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
+                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Remove;
+                    CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
                 case NexusCollectionClearMessage:
-                    CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Reset;
+                    CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
             }
+
+            return true;
 
             return true;
         }
