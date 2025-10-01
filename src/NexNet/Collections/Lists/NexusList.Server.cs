@@ -59,7 +59,7 @@ internal partial class NexusList<T>
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
                 break;
             
-            case NexusCollectionClearMessage:
+            case NexusListClearMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                 break;
         }

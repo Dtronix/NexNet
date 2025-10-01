@@ -125,7 +125,7 @@ internal partial class NexusList<T>
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusCollectionClearMessage:
+                case NexusListClearMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Reset;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;

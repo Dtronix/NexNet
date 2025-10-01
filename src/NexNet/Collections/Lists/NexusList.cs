@@ -33,7 +33,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         int version;
         switch (message)
         {
-            case NexusCollectionClearMessage msg:
+            case NexusListClearMessage msg:
                 op = ClearOperation<T>.Rent();
                 version = msg.Version;
                 break;
@@ -85,7 +85,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             
             case ClearOperation<T>:
             {
-                var message = NexusCollectionClearMessage.Rent();
+                var message = NexusListClearMessage.Rent();
                 message.Version = version;
                 return message;
             }

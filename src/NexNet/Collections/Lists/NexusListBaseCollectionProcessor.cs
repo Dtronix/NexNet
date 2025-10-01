@@ -6,28 +6,31 @@ using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListBaseCollectionProcessor<T> : NexusCollectionProcessor<T>
+internal class NexusListBaseCollectionMessageProcessor<T> : NexusCollectionMessageProcessor<T>
 {
     private readonly SubscriptionEvent<NexusCollectionChangedEventArgs> _changedEvent;
     private readonly VersionedList<T> _list;
-    
-    public NexusListCollectionProcessor(
+    private readonly bool _isServer;
+
+    public NexusListBaseCollectionMessageProcessor(
         INexusLogger? logger,
         SubscriptionEvent<NexusCollectionChangedEventArgs> changedEvent,
-        VersionedList<T> list)
+        VersionedList<T> list,
+        bool isServer)
         : base(logger)
     {
         _changedEvent = changedEvent;
         _list = list;
+        _isServer = isServer;
     }
     
-    protected override (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message)
+    protected (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message)
     {
         Operation<T>? op;
         int version;
         switch (message)
         {
-            case NexusCollectionClearMessage msg:
+            case NexusListClearMessage msg:
                 op = ClearOperation<T>.Rent();
                 version = msg.Version;
                 break;
@@ -79,7 +82,7 @@ internal class NexusListBaseCollectionProcessor<T> : NexusCollectionProcessor<T>
             
             case ClearOperation<T>:
             {
-                var message = NexusCollectionClearMessage.Rent();
+                var message = NexusListClearMessage.Rent();
                 message.Version = version;
                 return message;
             }
@@ -155,7 +158,7 @@ internal class NexusListBaseCollectionProcessor<T> : NexusCollectionProcessor<T>
                     _changedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusCollectionClearMessage:
+                case NexusListClearMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Reset;
                     _changedEvent.Raise(eventArgsOwner.Value);
                     break;

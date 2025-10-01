@@ -2,24 +2,20 @@
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionProcessor<T>
+internal class NexusCollectionMessageProcessor
 {
+    private readonly OnProcessDelegate _process;
     protected readonly INexusLogger? Logger;
     private readonly Channel<ProcessRequestWrapper> _processorChannel;
     private bool _isRunning;
     
-    private record ProcessRequestWrapper(
-        INexusCollectionClient? Client, 
-        INexusCollectionMessage Message,
-        TaskCompletionSource<bool>? CompletionTaskSource);
-
-    protected NexusCollectionProcessor(INexusLogger? logger)
+    public NexusCollectionMessageProcessor(INexusLogger? logger, OnProcessDelegate process)
     {
+        _process = process;
         Logger = logger?.CreateLogger("Processor");
         
         _processorChannel = Channel.CreateBounded<ProcessRequestWrapper>(new BoundedChannelOptions(50)
@@ -31,10 +27,7 @@ internal abstract class NexusCollectionProcessor<T>
         });
     }
 
-    protected abstract bool OnProcess(INexusCollectionMessage process, CancellationToken ct);
-    protected abstract (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message);
-    protected abstract INexusCollectionMessage? GetRentedMessage(IOperation operation, int version);
-    
+
     public async ValueTask<bool> EnqueueWaitForResult(INexusCollectionMessage message, INexusCollectionClient? client)
     {
         var tcs = new TaskCompletionSource<bool>();
@@ -53,7 +46,7 @@ internal abstract class NexusCollectionProcessor<T>
         
         Task.Factory.StartNew(async static args =>
         {
-            var (processor, ct) = ((NexusCollectionProcessor<T>, CancellationToken))args!;
+            var (processor, ct) = ((NexusCollectionMessageProcessor, CancellationToken))args!;
             
             processor.Logger?.LogTrace("Started processing loop.");
             
@@ -66,7 +59,7 @@ internal abstract class NexusCollectionProcessor<T>
                         bool success = false;
                         try
                         {
-                            success = processor.OnProcess(messageWrapper.Message, ct);
+                            success = processor._process(messageWrapper.Message, ct);
                         }
                         catch (Exception e)
                         {
@@ -89,4 +82,11 @@ internal abstract class NexusCollectionProcessor<T>
         }, (this, token), TaskCreationOptions.DenyChildAttach);
     }
     
+    
+    private record ProcessRequestWrapper(
+        INexusCollectionClient? Client, 
+        INexusCollectionMessage Message,
+        TaskCompletionSource<bool>? CompletionTaskSource);
+    
+    public delegate bool OnProcessDelegate(INexusCollectionMessage process, CancellationToken ct);
 }

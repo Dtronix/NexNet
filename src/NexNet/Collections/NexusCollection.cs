@@ -110,7 +110,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     public Task<bool> ClearAsync()
     {
         EnsureAllowedModificationState();
-        var message = NexusCollectionClearMessage.Rent();
+        var message = NexusListClearMessage.Rent();
         message.Version = GetVersion();
         return UpdateAndWaitAsync(message);
     }
@@ -177,7 +177,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     return completeResult;
                 }
 
-                case NexusCollectionClearMessage message:
+                case NexusListClearMessage message:
                 {
                     if (IsClientResetting)
                         return false;

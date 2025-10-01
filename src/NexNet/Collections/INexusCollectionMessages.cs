@@ -25,7 +25,7 @@ public enum NexusCollectionMessageFlags : byte
 [MemoryPackUnion(0, typeof(NexusCollectionResetStartMessage))]        
 [MemoryPackUnion(1, typeof(NexusCollectionResetValuesMessage))]      
 [MemoryPackUnion(2, typeof(NexusCollectionResetCompleteMessage))]                
-[MemoryPackUnion(3, typeof(NexusCollectionClearMessage))]                
+[MemoryPackUnion(3, typeof(NexusListClearMessage))]                
 [MemoryPackUnion(4, typeof(NexusListInsertMessage))]
 [MemoryPackUnion(5, typeof(NexusListReplaceMessage))]
 [MemoryPackUnion(6, typeof(NexusListMoveMessage))]
@@ -194,8 +194,8 @@ internal partial class NexusListMoveMessage : NexusCollectionMessage<NexusListMo
 
 
 [MemoryPackable(SerializeLayout.Explicit)]
-internal partial class NexusCollectionClearMessage :
-    NexusCollectionMessage<NexusCollectionClearMessage>
+internal partial class NexusListClearMessage :
+    NexusCollectionMessage<NexusListClearMessage>
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }

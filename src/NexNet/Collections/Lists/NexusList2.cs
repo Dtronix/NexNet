@@ -8,7 +8,7 @@ using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
-internal partial class NexusList2<T> : NexusCollection2
+internal partial class NexusList2<T> : NexusCollectionServer
 {
     private readonly VersionedList<T> _itemList;
 
@@ -40,6 +40,17 @@ internal partial class NexusList2<T> : NexusCollection2
 
             message.Version = version;
             message.Index = index;
+            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
+        }
+    }
+    
+    public async Task<bool> ClearAsync()
+    {
+        EnsureAllowedModificationState();
+        var message = NexusListClearMessage.Rent();
+        using (_ = await OperationLock().ConfigureAwait(false))
+        {
+            message.Version = GetVersion();
             return await UpdateAndWaitAsync(message).ConfigureAwait(false);
         }
     }
