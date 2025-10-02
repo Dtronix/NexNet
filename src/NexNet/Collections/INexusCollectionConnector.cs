@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Pipes;
@@ -20,5 +21,6 @@ internal interface INexusCollectionConnector
     /// </summary>
     /// <param name="invoker"></param>
     /// <param name="session"></param>
+    [Obsolete("To be removed")]
     void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session);
 }

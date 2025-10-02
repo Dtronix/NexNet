@@ -43,23 +43,23 @@ internal partial class NexusList<T>
         
         switch (message)
         {
-            case NexusListInsertMessage:
+            case NexusCollectionListInsertMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
                 break;
             
-            case NexusListReplaceMessage:
+            case NexusCollectionListReplaceMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
                 break;
             
-            case NexusListMoveMessage:
+            case NexusCollectionListMoveMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
                 break;
             
-            case NexusListRemoveMessage:
+            case NexusCollectionListRemoveMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
                 break;
             
-            case NexusListClearMessage:
+            case NexusCollectionListClearMessage:
                 CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
                 break;
         }

@@ -5,7 +5,7 @@ using MemoryPack;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
+internal abstract class NexusCollectionMessage<T>
     where T : NexusCollectionMessage<T>, new()
 {
     public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
@@ -43,4 +43,7 @@ internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
     }
 
     public abstract INexusCollectionMessage Clone();
+
+    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusCollectionClient? client = null) =>
+        NexusCollectionBroadcasterMessageWrapper.Rent(this, client);
 }

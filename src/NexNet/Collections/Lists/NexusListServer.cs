@@ -1,27 +1,115 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Threading;
 using MemoryPack;
+using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
-internal partial class NexusList2<T> : NexusCollectionServer
+internal partial class NexusListServer<T> : NexusCollectionServer
 {
     private readonly VersionedList<T> _itemList;
-
-    /// <inheritdoc />
-    public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
     
     public int Count => _itemList.Count;
 
-    public NexusList2(ushort id, NexusCollectionMode mode, INexusLogger? logger, bool isServer) 
-        : base(id, mode, logger, isServer)
+    public NexusListServer(ushort id, NexusCollectionMode mode, INexusLogger? logger) 
+        :base(id, mode, logger)
     {
         _itemList = new(1024, logger);
     }
+    
+    protected override IEnumerable<INexusCollectionMessage> ResetValuesEnumerator()
+    {
+        var state = _itemList.State;
+        
+        // Send the reset start message even if we don't have any data.
+        var reset = NexusCollectionListResetStartMessage.Rent();
+        reset.Version = state.Version;
+        reset.TotalValues = state.List.Count;
+        
+        yield return reset;
+
+        if (state.List.Count == 0)
+            yield break;
+
+        var bufferSize = Math.Min(state.List.Count, 40);
+        
+        reset.ReturnToCache();
+        
+        foreach (var item in state.List.MemoryChunk(bufferSize))
+        {
+            var message = NexusCollectionListResetValuesMessage.Rent();
+            message.Values = MemoryPackSerializer.Serialize(item);
+            yield return message;
+        }
+        
+        var resetComplete = NexusCollectionListResetCompleteMessage.Rent();
+        yield return resetComplete;
+    }
+
+    protected override INexusCollectionMessage? OnProcess(INexusCollectionMessage process, CancellationToken ct)
+    {
+        var op = GetRentedOperation(message);
+
+        if (op.Operation == null)
+            return new ServerProcessMessageResult(null, true, false);
+        
+        var opResult = _itemList.ProcessOperation(
+            op.Operation,
+            op.Version,
+            out var processResult);
+            
+        // If the operational result is null, but the result is success, this is an unknown state.
+        // Ensure this is not just a noop.
+        if ((processResult != ListProcessResult.Successful && processResult != ListProcessResult.DiscardOperation)
+            || opResult == null)
+        {
+            op.Operation.Return();
+            return new ServerProcessMessageResult(null, true, false);
+        }
+
+        // Operation was valid, but now it has been noop'd
+        if (opResult is NoopOperation<T>)
+        {
+            op.Operation.Return();
+            base.Logger?.LogTrace("Nooped");
+            return new ServerProcessMessageResult(null, true, true);
+        }
+
+        var resultMessage = GetRentedMessage(opResult, _itemList.Version);
+        
+        op.Operation.Return();
+        
+        switch (message)
+        {
+            case NexusCollectionListInsertMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
+                break;
+            
+            case NexusCollectionListReplaceMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
+                break;
+            
+            case NexusCollectionListMoveMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
+                break;
+            
+            case NexusCollectionListRemoveMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
+                break;
+            
+            case NexusCollectionListClearMessage:
+                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
+                break;
+        }
+        
+        return new ServerProcessMessageResult(resultMessage, false, true);
+    
+    }
+    
+    /*
 
     public bool Contains(T item) => _itemList.Contains(item);
 
@@ -138,5 +226,6 @@ internal partial class NexusList2<T> : NexusCollectionServer
     IEnumerator IEnumerable.GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
-    }
+    }*/
+ 
 }

@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests;
 
 [TestFixture]
-internal class NexusCollectionBroadcasterTests : BaseTests
+internal class NexusCollectionConnectionManagerTests : BaseTests
 {
 
     [SetUp]
@@ -23,14 +23,14 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         var cts = new CancellationTokenSource();
         var client1 = CreateTestClient();
         using var bl = new BroadcasterLifetime(Logger, false);
-        Assert.That(bl.Broadcaster.IsRunning, Is.False);
-        bl.Broadcaster.Run(cts.Token);
-        bl.Broadcaster.AddClientAsync(client1);
-        Assert.That(bl.Broadcaster.IsRunning, Is.True);
+        Assert.That(bl.ConnectionManager.IsRunning, Is.False);
+        bl.ConnectionManager.Run(cts.Token);
+        bl.ConnectionManager.AddClientAsync(client1);
+        Assert.That(bl.ConnectionManager.IsRunning, Is.True);
         var completeTask = client1.EventCount(ClientEvent.CompletePipe, 1).Complete;
         await cts.CancelAsync();
         await completeTask.Timeout(1);
-        Assert.That(bl.Broadcaster.IsRunning, Is.False);
+        Assert.That(bl.ConnectionManager.IsRunning, Is.False);
     }
     
     [Test]
@@ -38,8 +38,8 @@ internal class NexusCollectionBroadcasterTests : BaseTests
     {
         var cts = new CancellationTokenSource();
         using var bl = new BroadcasterLifetime(Logger, false);
-        Assert.That(bl.Broadcaster.IsRunning, Is.False);
-        Assert.Throws<InvalidOperationException>(() => bl.Broadcaster.AddClientAsync(CreateTestClient()));
+        Assert.That(bl.ConnectionManager.IsRunning, Is.False);
+        Assert.Throws<InvalidOperationException>(() => bl.ConnectionManager.AddClientAsync(CreateTestClient()));
     }
     
     [TestCase(true)]
@@ -48,9 +48,9 @@ internal class NexusCollectionBroadcasterTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
         var client1 = CreateTestClient();
-        bl.Broadcaster.AddClientAsync(client1);
+        bl.ConnectionManager.AddClientAsync(client1);
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? client1 : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? client1 : null);
 
         await message.ReturnedToCacheTask.Timeout(1);
 
@@ -70,11 +70,11 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         for (int i = 0; i < clients.Length; i++)
         {
             clients[i] = CreateTestClient();
-            bl.Broadcaster.AddClientAsync(clients[i]);
+            bl.ConnectionManager.AddClientAsync(clients[i]);
         }
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await message.ReturnedToCacheTask.Timeout(1);
 
@@ -92,12 +92,12 @@ internal class NexusCollectionBroadcasterTests : BaseTests
 
         var clients = new TestCollectionClient[100];
         for (int i = 0; i < clients.Length; i++)
-            bl.Broadcaster.AddClientAsync(clients[i] = CreateTestClient());
+            bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
         
         var clientComplete = clients.Select(c => c.EventCount(ClientEvent.SendAsync, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
@@ -112,12 +112,12 @@ internal class NexusCollectionBroadcasterTests : BaseTests
 
         var clients = new TestCollectionClient[10];
         for (int i = 0; i < clients.Length; i++)
-            bl.Broadcaster.AddClientAsync(clients[i] = CreateTestClient());
+            bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
         
         var clientComplete = clients.Select(c => c.EventCount(ClientEvent.SendAsync, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
@@ -145,14 +145,14 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         {
             clients[i] = CreateTestClient();
             clients[i].StopBuffers = true;
-            bl.Broadcaster.AddClientAsync(clients[i]);
+            bl.ConnectionManager.AddClientAsync(clients[i]);
         }
 
         var clientComplete = clients.Select(
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
@@ -170,14 +170,14 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         {
             clients[i] = CreateTestClient();
             clients[i].ThrowOnSend = true;
-            bl.Broadcaster.AddClientAsync(clients[i]);
+            bl.ConnectionManager.AddClientAsync(clients[i]);
         }
 
         var clientComplete = clients.Select(
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
@@ -195,14 +195,14 @@ internal class NexusCollectionBroadcasterTests : BaseTests
         {
             clients[i] = CreateTestClient();
             clients[i].StopSends = true;
-            bl.Broadcaster.AddClientAsync(clients[i]);
+            bl.ConnectionManager.AddClientAsync(clients[i]);
         }
 
         var clientComplete = clients.Select(
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        await bl.Broadcaster.BroadcastAsync(message, hasSource ? clients[0] : null);
+        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
@@ -214,10 +214,10 @@ internal class NexusCollectionBroadcasterTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger, false);
         var cts = new CancellationTokenSource();
-        bl.Broadcaster.Run(cts.Token);
+        bl.ConnectionManager.Run(cts.Token);
         var clients = new TestCollectionClient[50];
         for (int i = 0; i < clients.Length; i++)
-            bl.Broadcaster.AddClientAsync(clients[i] = CreateTestClient());
+            bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
 
         var clientComplete = clients.Select(
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
@@ -241,15 +241,15 @@ internal class NexusCollectionBroadcasterTests : BaseTests
     {
         private CancellationTokenSource _cts;
 
-        public NexusCollectionBroadcaster Broadcaster { get; }
+        public NexusCollectionConnectionManager ConnectionManager { get; }
 
         public BroadcasterLifetime(INexusLogger logger, bool autoRun = true)
         {
-            Broadcaster = new NexusCollectionBroadcaster(logger);
+            ConnectionManager = new NexusCollectionConnectionManager(logger);
             _cts = new CancellationTokenSource();
             
             if(autoRun)
-                Broadcaster.Run(_cts.Token);
+                ConnectionManager.Run(_cts.Token);
         }
         
         public void Dispose()
@@ -289,6 +289,11 @@ internal class NexusCollectionBroadcasterTests : BaseTests
                 Flags = this.Flags, Remaining = this.Remaining, Value = this.Value
             };
         }
+
+        public INexusCollectionBroadcasterMessageWrapper Wrap(INexusCollectionClient? client = null)
+        {
+            return NexusCollectionBroadcasterMessageWrapper.Rent(this, client);
+        }
     }
     
     private enum ClientEvent
@@ -305,13 +310,13 @@ internal class NexusCollectionBroadcasterTests : BaseTests
     {
         private static int _idCounter;
         public bool CompletePipeFired;
-        private readonly Channel<INexusBroadcastMessageWrapper> _messageBuffer;
+        private readonly Channel<INexusCollectionBroadcasterMessageWrapper> _messageBuffer;
 
         public long Id { get; }
         public CancellationToken CompletionToken { get; }
         public INexusLogger? Logger { get; }
 
-        public List<INexusBroadcastMessageWrapper> BufferWrites { get; } = new();
+        public List<INexusCollectionBroadcasterMessageWrapper> BufferWrites { get; } = new();
         public List<INexusCollectionMessage> Sends { get; } = new();
 
         public bool StopSends = false;
@@ -326,7 +331,7 @@ internal class NexusCollectionBroadcasterTests : BaseTests
             Logger = logger;
             Id = Interlocked.Increment(ref _idCounter);
             
-            _messageBuffer = Channel.CreateUnbounded<INexusBroadcastMessageWrapper>(new  UnboundedChannelOptions()
+            _messageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper>(new  UnboundedChannelOptions()
             {
                 SingleReader = true,
                 SingleWriter = true, 
@@ -358,7 +363,7 @@ internal class NexusCollectionBroadcasterTests : BaseTests
             return new ValueTask<bool>(true);
         }
 
-        public bool BufferTryWrite(INexusBroadcastMessageWrapper message)
+        public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper message)
         {
             OnEvent?.Invoke(ClientEvent.BeginBufferTryWrite);
             if(StopBuffers)
@@ -372,7 +377,7 @@ internal class NexusCollectionBroadcasterTests : BaseTests
             return _messageBuffer.Writer.TryWrite(message);
         }
 
-        public IAsyncEnumerable<INexusBroadcastMessageWrapper> BufferRead(CancellationToken ct = default)
+        public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper> BufferRead(CancellationToken ct = default)
         {
             OnEvent?.Invoke(ClientEvent.BufferRead);
             return _messageBuffer.Reader.ReadAllAsync(ct);

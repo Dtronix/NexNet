@@ -18,9 +18,15 @@ internal interface INexusCollectionClient
 
     public ValueTask CompletePipe();
 
+    /// <summary>
+    /// Sends the message over the wire to the client.
+    /// </summary>
+    /// <param name="message">Message to send</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>True upon success, false otherwise.</returns>
     public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default);
-    public bool BufferTryWrite(INexusBroadcastMessageWrapper message);
-    public IAsyncEnumerable<INexusBroadcastMessageWrapper> BufferRead(CancellationToken ct = default);
+    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper message);
+    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper> BufferRead(CancellationToken ct = default);
 }
 
 internal class NexusCollectionClient : INexusCollectionClient
@@ -31,31 +37,12 @@ internal class NexusCollectionClient : INexusCollectionClient
 
     public readonly INexusSession Session;
     public INexusChannelWriter<INexusCollectionMessage> Writer { get; }
-    public Channel<INexusBroadcastMessageWrapper> MessageBuffer { get; }
-
-    public StateType State;
+    public Channel<INexusCollectionBroadcasterMessageWrapper> MessageBuffer { get; }
     
     public CancellationToken CompletionToken { get; }
     public INexusLogger? Logger { get; }
 
     public long Id => Session.Id;
-
-    public ValueTask CompletePipe() => Pipe.CompleteAsync();
-
-    public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default)
-    {
-        return Writer.WriteAsync(message, ct);
-    }
-
-    public bool BufferTryWrite(INexusBroadcastMessageWrapper message)
-    {
-        return MessageBuffer.Writer.TryWrite(message);
-    }
-    
-    public IAsyncEnumerable<INexusBroadcastMessageWrapper> BufferRead(CancellationToken ct = default)
-    {
-        return MessageBuffer.Reader.ReadAllAsync(ct);
-    }
 
     public NexusCollectionClient(INexusDuplexPipe pipe, 
         INexusChannelWriter<INexusCollectionMessage> writer,
@@ -63,11 +50,10 @@ internal class NexusCollectionClient : INexusCollectionClient
     {
         
         Pipe = pipe;
-        State = StateType.Initializing;
         Logger = session.Logger?.CreateLogger($"COL{pipe.Id}");
         Writer = writer;
         Session = session;
-        MessageBuffer = Channel.CreateUnbounded<INexusBroadcastMessageWrapper>(new  UnboundedChannelOptions()
+        MessageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper>(new  UnboundedChannelOptions()
         {
             SingleReader = true,
             SingleWriter = true, 
@@ -83,13 +69,55 @@ internal class NexusCollectionClient : INexusCollectionClient
             TaskScheduler.Default);
 
     }
-        
-    public enum StateType
+    
+    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper message)
     {
-        Unset,
-        AcceptingUpdates,
-        Initializing,
-        Disconnected
+        return MessageBuffer.Writer.TryWrite(message);
     }
+    
+    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper> BufferRead(CancellationToken ct = default)
+    {
+        return MessageBuffer.Reader.ReadAllAsync(ct);
+    }    public ValueTask CompletePipe() => Pipe.CompleteAsync();
+
+    public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default)
+    {
+        return Writer.WriteAsync(message, ct);
+    }
+    
+    private class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadcasterMessageWrapper
+    {
+        private int _completedCount;
+        public int ClientCount { get; set; }
+        public INexusCollectionClient? SourceClient { get; }
+    
+        /// <summary>
+        /// Message for the source client. Usually includes as Ack.
+        /// </summary>
+        public INexusCollectionMessage? MessageToSource { get; }
+        public INexusCollectionMessage Message { get; }
+
+        public NexusCollectionBroadcasterMessageWrapper(INexusCollectionClient? sourceClient, INexusCollectionMessage message)
+        {
+            SourceClient = sourceClient;
+            Message = message;
+        
+            if (sourceClient != null)
+            {
+                MessageToSource = message.Clone();
+                MessageToSource.Flags |= NexusCollectionMessageFlags.Ack;
+            }
+        }
+
+        public void SignalSent()
+        {
+            if (Interlocked.Increment(ref _completedCount) == ClientCount)
+            {
+                MessageToSource?.ReturnToCache();
+                Message.ReturnToCache();
+            }
+        }
+    }
+
 
 }

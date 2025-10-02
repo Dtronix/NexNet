@@ -33,11 +33,11 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
         int version;
         switch (message)
         {
-            case NexusListClearMessage msg:
+            case NexusCollectionListClearMessage msg:
                 op = ClearOperation<T>.Rent();
                 version = msg.Version;
                 break;
-            case NexusListInsertMessage msg:
+            case NexusCollectionListInsertMessage msg:
                 var insOp = InsertOperation<T>.Rent();
                 insOp.Index = msg.Index;
                 insOp.Item = msg.DeserializeValue<T>()!;
@@ -45,7 +45,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
                 version = msg.Version;
                 break;
             
-            case NexusListReplaceMessage msg:
+            case NexusCollectionListReplaceMessage msg:
                 var modOp = ModifyOperation<T>.Rent();
                 modOp.Index = msg.Index;
                 modOp.Value = msg.DeserializeValue<T>()!;
@@ -53,7 +53,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
                 version = msg.Version;
                 break;
             
-            case NexusListMoveMessage msg:
+            case NexusCollectionListMoveMessage msg:
                 var mvOp = MoveOperation<T>.Rent();
                 mvOp.FromIndex = msg.FromIndex;
                 mvOp.ToIndex = msg.ToIndex;
@@ -61,7 +61,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
                 version = msg.Version;
                 break;
             
-            case NexusListRemoveMessage msg:
+            case NexusCollectionListRemoveMessage msg:
                 var rmOp = RemoveOperation<T>.Rent();
                 rmOp.Index = msg.Index;
                 op = rmOp;
@@ -85,13 +85,13 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             
             case ClearOperation<T>:
             {
-                var message = NexusListClearMessage.Rent();
+                var message = NexusCollectionListClearMessage.Rent();
                 message.Version = version;
                 return message;
             }
             case InsertOperation<T> insert:
             {
-                var message = NexusListInsertMessage.Rent();
+                var message = NexusCollectionListInsertMessage.Rent();
                 message.Version = version;
                 message.Index = insert.Index;
                 message.Value = MemoryPackSerializer.Serialize(insert.Item);
@@ -99,7 +99,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             }
             case ModifyOperation<T> modify:
             {
-                var message = NexusListReplaceMessage.Rent();
+                var message = NexusCollectionListReplaceMessage.Rent();
                 message.Version = version;
                 message.Index = modify.Index;
                 message.Value = MemoryPackSerializer.Serialize(modify.Value);
@@ -107,7 +107,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             }
             case MoveOperation<T> move:
             {
-                var message = NexusListMoveMessage.Rent();
+                var message = NexusCollectionListMoveMessage.Rent();
                 message.Version = version;
                 message.FromIndex = move.FromIndex;
                 message.ToIndex = move.ToIndex;
@@ -115,7 +115,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
             }      
             case RemoveOperation<T> remove:
             {
-                var message = NexusListRemoveMessage.Rent();
+                var message = NexusCollectionListRemoveMessage.Rent();
                 message.Version = version;
                 message.Index = remove.Index;
                 return message;
@@ -132,7 +132,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public async Task<bool> RemoveAsync(T item)
     {
         EnsureAllowedModificationState();
-        var message = NexusListRemoveMessage.Rent();
+        var message = NexusCollectionListRemoveMessage.Rent();
         using (_ = await OperationLock().ConfigureAwait(false))
         {
             var index = _itemList.IndexOf(item, out var version);
@@ -150,7 +150,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     {
         EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListInsertMessage.Rent();
+        var message = NexusCollectionListInsertMessage.Rent();
 
         using (_ = await OperationLock().ConfigureAwait(false))
         {
@@ -165,7 +165,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     {
         EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
-        var message = NexusListMoveMessage.Rent();
+        var message = NexusCollectionListMoveMessage.Rent();
 
         using (_ = await OperationLock().ConfigureAwait(false))
         {
@@ -180,7 +180,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     {
         EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListReplaceMessage.Rent();
+        var message = NexusCollectionListReplaceMessage.Rent();
 
         using (_ = await OperationLock().ConfigureAwait(false))
         {
@@ -195,7 +195,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     {
         EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListRemoveMessage.Rent();
+        var message = NexusCollectionListRemoveMessage.Rent();
         using (_ = await OperationLock().ConfigureAwait(false))
         {
             message.Version = _itemList.Version;
@@ -207,7 +207,7 @@ internal partial class NexusList<T> : NexusCollection, INexusList<T>
     public async Task<bool> AddAsync(T item)
     {
         EnsureAllowedModificationState();
-        var message = NexusListInsertMessage.Rent();
+        var message = NexusCollectionListInsertMessage.Rent();
 
         using (_ = await OperationLock().ConfigureAwait(false))
         {

@@ -1,30 +1,13 @@
 ﻿using System;
-using System.Threading;
 using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
-using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListBaseCollectionMessageProcessor<T> : NexusCollectionMessageProcessor
+internal class NexusListTransformers<T>
 {
-    private readonly SubscriptionEvent<NexusCollectionChangedEventArgs> _changedEvent;
-    private readonly VersionedList<T> _list;
-    private readonly bool _isServer;
-
-    public NexusListBaseCollectionMessageProcessor(
-        INexusLogger? logger,
-        SubscriptionEvent<NexusCollectionChangedEventArgs> changedEvent,
-        VersionedList<T> list,
-        bool isServer)
-        : base(logger)
-    {
-        _changedEvent = changedEvent;
-        _list = list;
-        _isServer = isServer;
-    }
     
-    protected (Operation<T>? Operation, int Version) GetRentedOperation(INexusCollectionMessage message)
+    protected (Operation<T>? Operation, int Version) RentOperation(INexusCollectionMessage message)
     {
         Operation<T>? op;
         int version;
@@ -122,53 +105,4 @@ internal class NexusListBaseCollectionMessageProcessor<T> : NexusCollectionMessa
         }
     }
 
-    protected bool OnProcess(INexusCollectionMessage message, CancellationToken ct)
-    {
-        var (op, version) = GetRentedOperation(message);
-        
-        if(op == null)
-            return false;
-        
-        var result = _list.ApplyOperation(op, version);
-        
-        op.Return();
-
-        if (result == ListProcessResult.Successful || result == ListProcessResult.DiscardOperation)
-        {
-            using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent();
-            switch (message)
-            {
-                case NexusCollectionListInsertMessage:
-                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Add;
-                    _changedEvent.Raise(eventArgsOwner.Value);
-                    break;
-
-                case NexusCollectionListReplaceMessage:
-                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Replace;
-                    _changedEvent.Raise(eventArgsOwner.Value);
-                    break;
-
-                case NexusCollectionListMoveMessage:
-                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Move;
-                    _changedEvent.Raise(eventArgsOwner.Value);
-                    break;
-
-                case NexusCollectionListRemoveMessage:
-                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Remove;
-                    _changedEvent.Raise(eventArgsOwner.Value);
-                    break;
-
-                case NexusCollectionListClearMessage:
-                    eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Reset;
-                    _changedEvent.Raise(eventArgsOwner.Value);
-                    break;
-            }
-
-            return true;
-        }
-        op.Return();
-
-        Logger?.LogError($"Processing failed. Returned result {result}");
-        return false;
-    }
 }

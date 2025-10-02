@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Invocation;
@@ -87,9 +88,9 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
         //Logger?.LogTrace($"Server processing {message} message.");
         switch (message)
         {
-            case NexusCollectionResetStartMessage:
-            case NexusCollectionResetValuesMessage:
-            case NexusCollectionResetCompleteMessage:
+            case NexusCollectionListResetStartMessage:
+            case NexusCollectionListResetValuesMessage:
+            case NexusCollectionListResetCompleteMessage:
             {
                 Logger?.LogError($"Server received an invalid message from the client. {message.GetType()}");
                 return new ServerProcessMessageResult(null, true, false);
@@ -110,7 +111,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     public Task<bool> ClearAsync()
     {
         EnsureAllowedModificationState();
-        var message = NexusListClearMessage.Rent();
+        var message = NexusCollectionListClearMessage.Rent();
         message.Version = GetVersion();
         return UpdateAndWaitAsync(message);
     }
@@ -144,18 +145,18 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             switch (messageFromServer)
             {
                 // No broadcasting on the reset operations as they are only client operations.
-                case NexusCollectionResetStartMessage message:
+                case NexusCollectionListResetStartMessage message:
                     if (IsClientResetting)
                         return false;
                     IsClientResetting = true;
                     return OnClientResetStarted(message.Version, message.TotalValues);
             
-                case NexusCollectionResetValuesMessage message:
+                case NexusCollectionListResetValuesMessage message:
                     if (!IsClientResetting)
                         return false;
                     return OnClientResetValues(message.Values.Span);
 
-                case NexusCollectionResetCompleteMessage:
+                case NexusCollectionListResetCompleteMessage:
                 {
                     if (!IsClientResetting)
                         return false;
@@ -177,7 +178,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     return completeResult;
                 }
 
-                case NexusListClearMessage message:
+                case NexusCollectionListClearMessage message:
                 {
                     if (IsClientResetting)
                         return false;
@@ -251,9 +252,9 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                         if (collection.Mode == NexusCollectionMode.Relay)
                         {
                             // Relays ignore these types of messages.
-                            if(req.Message is NexusCollectionResetStartMessage 
-                               or NexusCollectionResetValuesMessage 
-                               or NexusCollectionResetCompleteMessage)
+                            if(req.Message is NexusCollectionListResetStartMessage 
+                               or NexusCollectionListResetValuesMessage 
+                               or NexusCollectionListResetCompleteMessage)
                                 continue;
                             
                             try
@@ -591,9 +592,9 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                     if (relayTo != null && success)
                     {
                         // Relays ignore these types of messages.
-                        if (message is NexusCollectionResetStartMessage
-                            or NexusCollectionResetValuesMessage
-                            or NexusCollectionResetCompleteMessage)
+                        if (message is NexusCollectionListResetStartMessage
+                            or NexusCollectionListResetValuesMessage
+                            or NexusCollectionListResetCompleteMessage)
                             continue;
 
                         try
@@ -704,15 +705,15 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
     }
     
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator(
-        NexusCollectionResetValuesMessage message);
+        NexusCollectionListResetValuesMessage message);
     
     private async ValueTask<bool> SendClientInitData(Client client)
     {
         try
         {
             var writer = client.Writer!;
-            var resetComplete = NexusCollectionResetCompleteMessage.Rent();
-            var batchValue = NexusCollectionResetValuesMessage.Rent();
+            var resetComplete = NexusCollectionListResetCompleteMessage.Rent();
+            var batchValue = NexusCollectionListResetValuesMessage.Rent();
             bool sentData = false;
 
             foreach (var values in ResetValuesEnumerator(batchValue))

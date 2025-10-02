@@ -49,12 +49,12 @@ internal partial class NexusList<T>
     }
     
     
-    protected override IEnumerable<INexusCollectionMessage> ResetValuesEnumerator(NexusCollectionResetValuesMessage message)
+    protected override IEnumerable<INexusCollectionMessage> ResetValuesEnumerator(NexusCollectionListResetValuesMessage message)
     {
         var state = _itemList.State;
         
         // Send the reset start message even if we don't have any data.
-        var reset = NexusCollectionResetStartMessage.Rent();
+        var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
         reset.TotalValues = state.List.Count;
         
@@ -72,7 +72,6 @@ internal partial class NexusList<T>
             message.Values = MemoryPackSerializer.Serialize(item);
             yield return message;
         }
-        
     }
 
     protected override bool OnClientClear(int version)
@@ -105,27 +104,27 @@ internal partial class NexusList<T>
             using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent();
             switch (serverMessage)
             {
-                case NexusListInsertMessage:
+                case NexusCollectionListInsertMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Add;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusListReplaceMessage:
+                case NexusCollectionListReplaceMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Replace;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusListMoveMessage:
+                case NexusCollectionListMoveMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Move;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusListRemoveMessage:
+                case NexusCollectionListRemoveMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Remove;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;
 
-                case NexusListClearMessage:
+                case NexusCollectionListClearMessage:
                     eventArgsOwner.Value.ChangedAction = NexusCollectionChangedAction.Reset;
                     CoreChangedEvent.Raise(eventArgsOwner.Value);
                     break;

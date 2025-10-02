@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -8,18 +9,18 @@ using NexNet.Logging;
 namespace NexNet.Collections;
 
 
-internal class NexusCollectionBroadcaster
+internal class NexusCollectionConnectionManager
 {
     private readonly SnapshotList<INexusCollectionClient> _connectedClients;
     private readonly INexusLogger? _logger;
-    private readonly Channel<INexusBroadcastMessageWrapper> _messageBroadcastChannel;
+    private readonly Channel<INexusCollectionBroadcasterMessageWrapper> _messageBroadcastChannel;
     
     private bool _isRunning;
-    public NexusCollectionBroadcaster(INexusLogger? logger)
+    public NexusCollectionConnectionManager(INexusLogger? logger)
     {
         _logger = logger?.CreateLogger("Broadcast");
         _connectedClients = new SnapshotList<INexusCollectionClient>(64);
-        _messageBroadcastChannel = Channel.CreateBounded<INexusBroadcastMessageWrapper>(new BoundedChannelOptions(50)
+        _messageBroadcastChannel = Channel.CreateBounded<INexusCollectionBroadcasterMessageWrapper>(new BoundedChannelOptions(50)
         {
             AllowSynchronousContinuations = false,
             FullMode = BoundedChannelFullMode.Wait,
@@ -38,19 +39,22 @@ internal class NexusCollectionBroadcaster
         // Add in the completion removal for execution later.
         _logger?.LogTrace($"S{client.Id} Starting collection message writer.");
         
-        // Start the listener on the channel to handle sending updates to the client.
+        // Start the client reader for handling of messages the client sends.
         Task.Factory.StartNew(static async state =>
         {
             var client = (INexusCollectionClient)(state!);
-            INexusBroadcastMessageWrapper? wrapper = null;
+            INexusCollectionBroadcasterMessageWrapper? wrapper = null;
             await foreach (var messageWrapper in client.BufferRead(client.CompletionToken).ConfigureAwait(false))
             {
                 try
                 {
                     wrapper = messageWrapper;
                     var message = messageWrapper.SourceClient == client
-                        ? messageWrapper.SourceMessage ?? throw new Exception("Message to source client is null.")
+                        ? messageWrapper.MessageToSource ?? throw new Exception("Message to source client is null.")
                         : messageWrapper.Message;
+
+                    if (message == null)
+                        throw new Exception("Message is null.");
 
                     if (!await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false))
                     {
@@ -77,7 +81,55 @@ internal class NexusCollectionBroadcaster
                 }
                 finally
                 {
-                    wrapper?.SignalCompletion();
+                    wrapper?.SignalSent();
+                }
+            }
+
+        }, client, TaskCreationOptions.DenyChildAttach);
+        
+        // Start the internal broadcast listener for this client to handle sending updates to the client.
+        Task.Factory.StartNew(static async state =>
+        {
+            var client = (INexusCollectionClient)(state!);
+            INexusCollectionBroadcasterMessageWrapper? wrapper = null;
+            await foreach (var messageWrapper in client.BufferRead(client.CompletionToken).ConfigureAwait(false))
+            {
+                try
+                {
+                    wrapper = messageWrapper;
+                    var message = messageWrapper.SourceClient == client
+                        ? messageWrapper.MessageToSource ?? throw new Exception("Message to source client is null.")
+                        : messageWrapper.Message;
+
+                    if (message == null)
+                        throw new Exception("Message is null.");
+
+                    if (!await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false))
+                    {
+                        client.Logger?.LogInfo("Cound not send client message.");
+                        await client.CompletePipe().ConfigureAwait(false);
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    client.Logger?.LogInfo(e, "Could not send collection broadcast message to session.");
+                    // Ignore and disconnect.
+                    try
+                    {
+                        await client.CompletePipe().ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        client.Logger?.LogInfo(ex, "Exception while completing pipe.");
+                    }
+
+                    return;
+
+                }
+                finally
+                {
+                    wrapper?.SignalSent();
                 }
             }
 
@@ -86,10 +138,12 @@ internal class NexusCollectionBroadcaster
         _connectedClients.Add(client);
     }
 
-    public ValueTask BroadcastAsync(INexusCollectionMessage message, INexusCollectionClient? sourceClient)
+    public void BroadcastAsync(INexusCollectionMessage message, INexusCollectionClient? sourceClient)
     {
-        var broadcastMessage = new NexusBroadcastMessageWrapper(sourceClient, message);
-        return _messageBroadcastChannel.Writer.WriteAsync(broadcastMessage);
+        if (!_messageBroadcastChannel.Writer.TryWrite(message.Wrap(sourceClient)))
+        {
+            _logger?.LogCritical("Could not write to Broadcast channel.");
+        }
     }
 
     public void Run(CancellationToken token)
@@ -101,7 +155,7 @@ internal class NexusCollectionBroadcaster
         
         Task.Factory.StartNew(async static args =>
         {
-            var (broadcaster, ct) = ((NexusCollectionBroadcaster, CancellationToken))args!;
+            var (broadcaster, ct) = ((NexusCollectionConnectionManager, CancellationToken))args!;
             
             broadcaster._logger?.LogTrace("Started broadcast loop.");
             
@@ -119,7 +173,7 @@ internal class NexusCollectionBroadcaster
                         {
                             // Force the client count to 1 and signal a return. 
                             broadcastMessage.ClientCount = 1;
-                            broadcastMessage.SignalCompletion();
+                            broadcastMessage.SignalSent();
                             continue;
                         }
 
@@ -135,7 +189,7 @@ internal class NexusCollectionBroadcaster
                                     // rate.
                                     await client.CompletePipe().ConfigureAwait(false);
                                     // Signal completion for this client since message won't be processed
-                                    broadcastMessage.SignalCompletion();
+                                    broadcastMessage.SignalSent();
                                 }
                                 else
                                 {
@@ -150,7 +204,7 @@ internal class NexusCollectionBroadcaster
                                 
                                 // If we threw, the client is disconnected. Remove the client and signal completion.
                                 broadcaster._connectedClients.Remove(client);
-                                broadcastMessage.SignalCompletion();
+                                broadcastMessage.SignalSent();
                             }
 
                         }
@@ -182,54 +236,72 @@ internal class NexusCollectionBroadcaster
             
         }, (this, token), TaskCreationOptions.DenyChildAttach);
     }
-    
-    private class NexusBroadcastMessageWrapper : INexusBroadcastMessageWrapper
+}
+
+internal class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadcasterMessageWrapper
+{    
+    private static readonly ConcurrentBag<NexusCollectionBroadcasterMessageWrapper> _pool = new ();
+    private int _completedCount;
+    public int ClientCount { get; set; }
+    public INexusCollectionClient? SourceClient { get; set; }
+
+    /// <summary>
+    /// Message for the source client. Usually includes as Ack.
+    /// </summary>
+    public INexusCollectionMessage? MessageToSource { get; private set; }
+
+    public INexusCollectionMessage? Message { get; private set; }
+
+    private NexusCollectionBroadcasterMessageWrapper()
     {
-        private int _completedCount;
-        public int ClientCount { get; set; }
-        public INexusCollectionClient? SourceClient { get; }
-    
-        /// <summary>
-        /// Message for the source client. Usually includes as Ack.
-        /// </summary>
-        public INexusCollectionMessage? SourceMessage { get; }
-        public INexusCollectionMessage Message { get; }
-
-        public NexusBroadcastMessageWrapper(INexusCollectionClient? sourceClient, INexusCollectionMessage message)
-        {
-            SourceClient = sourceClient;
-            Message = message;
         
-            if (sourceClient != null)
-            {
-                SourceMessage = message.Clone();
-                SourceMessage.Flags |= NexusCollectionMessageFlags.Ack;
-            }
-        }
+    }
 
-        public void SignalCompletion()
+    public static NexusCollectionBroadcasterMessageWrapper Rent(INexusCollectionMessage message, INexusCollectionClient? sourceClient)
+    {
+        if (!_pool.TryTake(out var wrapper))
+            wrapper = new NexusCollectionBroadcasterMessageWrapper();
+
+        wrapper.Message = message;
+        wrapper.SourceClient = sourceClient;
+        wrapper._completedCount = 0;
+        wrapper.ClientCount = 1;
+        if (sourceClient != null)
         {
-            if (Interlocked.Increment(ref _completedCount) == ClientCount)
-            {
-                SourceMessage?.ReturnToCache();
-                Message.ReturnToCache();
-            }
+            wrapper.MessageToSource = message.Clone();
+            wrapper.MessageToSource.Flags |= NexusCollectionMessageFlags.Ack;
         }
+        
+        return wrapper;
+    }
+
+    public void SignalSent()
+    {
+        if (Interlocked.Increment(ref _completedCount) != ClientCount)
+            return;
+
+        MessageToSource?.ReturnToCache();
+        MessageToSource = null;
+        
+        Message!.ReturnToCache();
+        Message = null;
+        
+        _pool.Add(this);
     }
 }
 
-internal interface INexusBroadcastMessageWrapper
+internal interface INexusCollectionBroadcasterMessageWrapper
 {
     INexusCollectionClient? SourceClient { get; }
 
     /// <summary>
     /// Message for the source client. Usually includes as Ack.
     /// </summary>
-    INexusCollectionMessage? SourceMessage { get; }
+    INexusCollectionMessage? MessageToSource { get; }
 
-    INexusCollectionMessage Message { get; }
+    INexusCollectionMessage? Message { get; }
     
     public int ClientCount { get; set; }
-    void SignalCompletion();
+    void SignalSent();
 }
 
