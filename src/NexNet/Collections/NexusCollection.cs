@@ -692,7 +692,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             var result = await _client!.Writer!.WriteAsync(message).ConfigureAwait(false);
 
             // Since the message is only used by one writer, return it directly to the cache.
-            message.ReturnToCache();
+            message.Return();
 
             if (result)
             {
@@ -722,11 +722,11 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
                 await writer.WriteAsync(values).ConfigureAwait(false);
             }
             
-            batchValue.ReturnToCache();
+            batchValue.Return();
             
             if (!sentData)
             {
-                resetComplete.ReturnToCache();
+                resetComplete.Return();
                 Logger?.LogError("No reset start reset message was sent during reset.");
                 return false;
             }
@@ -735,7 +735,7 @@ internal abstract partial class NexusCollection : INexusCollectionConnector
             client.State = Client.StateType.AcceptingUpdates;
             
             await writer.WriteAsync(resetComplete).ConfigureAwait(false);
-            resetComplete.ReturnToCache();
+            resetComplete.Return();
         }
         catch (Exception e)
         {

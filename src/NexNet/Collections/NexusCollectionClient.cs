@@ -113,8 +113,8 @@ internal class NexusCollectionClient : INexusCollectionClient
         {
             if (Interlocked.Increment(ref _completedCount) == ClientCount)
             {
-                MessageToSource?.ReturnToCache();
-                Message.ReturnToCache();
+                MessageToSource?.Return();
+                Message.Return();
             }
         }
     }

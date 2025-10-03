@@ -1,4 +1,5 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
 
@@ -40,28 +41,17 @@ internal partial class NexusList<T>
         var resultMessage = GetRentedMessage(opResult, _itemList.Version);
         
         op.Operation.Return();
-        
-        switch (message)
+        using (var args = NexusCollectionChangedEventArgs.Rent(message switch
+               {
+                   NexusCollectionListInsertMessage => NexusCollectionChangedAction.Add,
+                   NexusCollectionListRemoveMessage => NexusCollectionChangedAction.Remove,
+                   NexusCollectionListReplaceMessage => NexusCollectionChangedAction.Replace,
+                   NexusCollectionListMoveMessage => NexusCollectionChangedAction.Move,
+                   NexusCollectionListClearMessage => NexusCollectionChangedAction.Reset,
+                   _ => throw new ArgumentOutOfRangeException(nameof(message), message, null)
+               }))
         {
-            case NexusCollectionListInsertMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
-                break;
-            
-            case NexusCollectionListReplaceMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
-                break;
-            
-            case NexusCollectionListMoveMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
-                break;
-            
-            case NexusCollectionListRemoveMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
-                break;
-            
-            case NexusCollectionListClearMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                break;
+            CoreChangedEvent.Raise(args.Value);
         }
         
         return new ServerProcessMessageResult(resultMessage, false, true);

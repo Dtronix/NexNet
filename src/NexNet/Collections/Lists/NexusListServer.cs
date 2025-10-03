@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
@@ -8,216 +10,203 @@ using NexNet.Logging;
 
 namespace NexNet.Collections.Lists;
 
-internal partial class NexusListServer<T> : NexusCollectionServer
+internal class NexusListServer<T> : NexusCollectionServer, INexusList2<T>
 {
     private readonly VersionedList<T> _itemList;
-    
-    public int Count => _itemList.Count;
 
-    public NexusListServer(ushort id, NexusCollectionMode mode, INexusLogger? logger) 
-        :base(id, mode, logger)
+    public int Count => _itemList.Count;
+    public bool IsReadOnly { get; } = false;
+    
+    public NexusCollectionState State { get; }
+    public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
+    
+    public NexusListServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+        : base(id, mode, logger)
     {
         _itemList = new(1024, logger);
     }
-    
+
     protected override IEnumerable<INexusCollectionMessage> ResetValuesEnumerator()
     {
         var state = _itemList.State;
-        
+
         // Send the reset start message even if we don't have any data.
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
         reset.TotalValues = state.List.Count;
-        
+
         yield return reset;
 
         if (state.List.Count == 0)
             yield break;
 
         var bufferSize = Math.Min(state.List.Count, 40);
-        
-        reset.ReturnToCache();
-        
+
+        reset.Return();
+
         foreach (var item in state.List.MemoryChunk(bufferSize))
         {
             var message = NexusCollectionListResetValuesMessage.Rent();
             message.Values = MemoryPackSerializer.Serialize(item);
             yield return message;
         }
-        
+
         var resetComplete = NexusCollectionListResetCompleteMessage.Rent();
         yield return resetComplete;
     }
 
-    protected override INexusCollectionMessage? OnProcess(INexusCollectionMessage process, CancellationToken ct)
+    protected override ProcessResult OnProcess(INexusCollectionMessage message,
+        INexusCollectionClient? sourceClient,
+        CancellationToken ct)
     {
-        var op = GetRentedOperation(message);
+        // These are not allowed to be sent by the client to the server.
+        if (message is NexusCollectionListResetStartMessage
+            or NexusCollectionListResetCompleteMessage
+            or NexusCollectionListResetValuesMessage
+            or NexusCollectionListNoopMessage)
+            return new ProcessResult(null, true);
 
-        if (op.Operation == null)
-            return new ServerProcessMessageResult(null, true, false);
-        
-        var opResult = _itemList.ProcessOperation(
-            op.Operation,
-            op.Version,
-            out var processResult);
-            
-        // If the operational result is null, but the result is success, this is an unknown state.
-        // Ensure this is not just a noop.
-        if ((processResult != ListProcessResult.Successful && processResult != ListProcessResult.DiscardOperation)
-            || opResult == null)
-        {
-            op.Operation.Return();
-            return new ServerProcessMessageResult(null, true, false);
-        }
+        var (op, version) = NexusListTransformers<T>.RentOperation(message);
+
+        // Unknown operation
+        if (op == null)
+            return new ProcessResult(null, true);
+
+        var opResult = _itemList.ProcessOperation(op, version, out var processResult);
 
         // Operation was valid, but now it has been noop'd
         if (opResult is NoopOperation<T>)
         {
-            op.Operation.Return();
-            base.Logger?.LogTrace("Nooped");
-            return new ServerProcessMessageResult(null, true, true);
+            op.Return();
+            sourceClient?.BufferTryWrite(NexusCollectionListNoopMessage.Rent().Wrap());
+            return new ProcessResult(null, false);
         }
 
-        var resultMessage = GetRentedMessage(opResult, _itemList.Version);
-        
-        op.Operation.Return();
-        
-        switch (message)
+        // If the operational result is null, but the result is success, this is an unknown state.
+        // Ensure this is not just a noop.
+        if (processResult != ListProcessResult.Successful || opResult == null)
         {
-            case NexusCollectionListInsertMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Add));
-                break;
-            
-            case NexusCollectionListReplaceMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Replace));
-                break;
-            
-            case NexusCollectionListMoveMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Move));
-                break;
-            
-            case NexusCollectionListRemoveMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Remove));
-                break;
-            
-            case NexusCollectionListClearMessage:
-                CoreChangedEvent.Raise(new NexusCollectionChangedEventArgs(NexusCollectionChangedAction.Reset));
-                break;
+            op.Return();
+            return new ProcessResult(null, true);
         }
-        
-        return new ServerProcessMessageResult(resultMessage, false, true);
-    
+
+        var (resultMessage, action) = NexusListTransformers<T>.RentMessageAction(op, _itemList.Version);
+
+        op.Return();
+
+        using (var args = NexusCollectionChangedEventArgs.Rent(action))
+        {
+            CoreChangedEvent.Raise(args.Value);
+        }
+
+        return new ProcessResult(resultMessage, false);
     }
-    
-    /*
+
+
 
     public bool Contains(T item) => _itemList.Contains(item);
 
     public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
     public int IndexOf(T item) => _itemList.IndexOf(item);
+
     public async Task<bool> RemoveAsync(T item)
     {
-        EnsureAllowedModificationState();
-        var message = NexusListRemoveMessage.Rent();
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            var index = _itemList.IndexOf(item, out var version);
+        var index = _itemList.IndexOf(item, out var version);
 
-            if (index == -1)
-                return false;
+        if (index == -1)
+            return false;
 
-            message.Version = version;
-            message.Index = index;
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var message = NexusCollectionListRemoveMessage.Rent();
+        message.Version = version;
+        message.Index = index;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
-    
+
     public async Task<bool> ClearAsync()
     {
-        EnsureAllowedModificationState();
-        var message = NexusListClearMessage.Rent();
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            message.Version = GetVersion();
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var message = NexusCollectionListClearMessage.Rent();
+        message.Version = _itemList.Version;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
-    
+
     public async Task<bool> InsertAsync(int index, T item)
     {
-        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListInsertMessage.Rent();
 
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            message.Version = _itemList.Version;
-            message.Index = index;
-            message.Value = MemoryPackSerializer.Serialize(item);
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var message = NexusCollectionListInsertMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+        message.Value = MemoryPackSerializer.Serialize(item);
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+
     }
 
     public async Task<bool> MoveAsync(int fromIndex, int toIndex)
     {
-        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
-        var message = NexusListMoveMessage.Rent();
+        ArgumentOutOfRangeException.ThrowIfNegative(toIndex);
 
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            message.Version = _itemList.Version;
-            message.FromIndex = fromIndex;
-            message.ToIndex = toIndex;
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var message = NexusCollectionListMoveMessage.Rent();
+        message.Version = _itemList.Version;
+        message.FromIndex = fromIndex;
+        message.ToIndex = toIndex;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
 
     public async Task<bool> ReplaceAsync(int index, T value)
     {
-        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListReplaceMessage.Rent();
 
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            message.Version = _itemList.Version;
-            message.Index = index;
-            message.Value = MemoryPackSerializer.Serialize(value);
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var message = NexusCollectionListReplaceMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+        message.Value = MemoryPackSerializer.Serialize(value);
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
 
     public async Task<bool> RemoveAtAsync(int index)
     {
-        EnsureAllowedModificationState();
         ArgumentOutOfRangeException.ThrowIfNegative(index);
-        var message = NexusListRemoveMessage.Rent();
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            message.Version = _itemList.Version;
-            message.Index = index;
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+
+        var message = NexusCollectionListRemoveMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
-    
+
     public async Task<bool> AddAsync(T item)
     {
-        EnsureAllowedModificationState();
-        var message = NexusListInsertMessage.Rent();
+        var message = NexusCollectionListInsertMessage.Rent();
+        var state = _itemList.State;
+        message.Version = state.Version;
+        message.Index = state.List.Count;
+        message.Value = MemoryPackSerializer.Serialize(item);
 
-        using (_ = await OperationLock().ConfigureAwait(false))
-        {
-            var state = _itemList.State;
-            message.Version = state.Version;
-            message.Index = state.List.Count;
-            message.Value = MemoryPackSerializer.Serialize(item);
-            return await UpdateAndWaitAsync(message).ConfigureAwait(false);
-        }
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
     }
 
     public T this[int index] => _itemList[index];
-    
+
     public IEnumerator<T> GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
@@ -226,6 +215,5 @@ internal partial class NexusListServer<T> : NexusCollectionServer
     IEnumerator IEnumerable.GetEnumerator()
     {
         return _itemList.State.List.GetEnumerator();
-    }*/
- 
+    }
 }

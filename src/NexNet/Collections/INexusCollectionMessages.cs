@@ -27,7 +27,7 @@ internal interface INexusCollectionMessage
     [MemoryPackIgnore]
     int Remaining { get; set; }
     
-    void ReturnToCache();
+    void Return();
 
     void CompleteBroadcast();
 

@@ -5,8 +5,8 @@ using MemoryPack;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionMessage<T>
-    where T : NexusCollectionMessage<T>, new()
+internal abstract class NexusCollectionMessage<T>: INexusCollectionMessage
+    where T : NexusCollectionMessage<T>, new() 
 {
     public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
     private int _remaining;
@@ -16,13 +16,14 @@ internal abstract class NexusCollectionMessage<T>
 
     public static T Rent()
     {
-        if(!Cache.TryTake(out var operation))
-            operation = new T();
+        if(!Cache.TryTake(out var message))
+            message = new T();
 
-        return Unsafe.As<T>(operation);
+        message.Flags = NexusCollectionMessageFlags.Ack;
+        return Unsafe.As<T>(message);
     }
 
-    public virtual void ReturnToCache()
+    public virtual void Return()
     {
         Cache.Add(this);
     }
@@ -31,7 +32,7 @@ internal abstract class NexusCollectionMessage<T>
     {
         if (Interlocked.Decrement(ref _remaining) == 0)
         {
-            ReturnToCache();
+            Return();
         }
     }
 

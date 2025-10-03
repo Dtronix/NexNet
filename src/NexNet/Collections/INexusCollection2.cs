@@ -19,14 +19,6 @@ public interface INexusCollection2 : IEnumerable
     public NexusCollectionState State { get; }
     
     /// <summary>
-    /// Gracefully disconnects from the server
-    /// </summary>
-    /// <returns>
-    /// A <see cref="Task"/> that completes once disconnection is finished.
-    /// </returns>
-    public Task DisconnectAsync();
-    
-    /// <summary>
     /// Event raised when the collection has been changed by the server.
     /// </summary>
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed { get; }

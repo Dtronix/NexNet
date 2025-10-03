@@ -87,6 +87,8 @@ public class NexusCollectionChangedEventArgs
 /// </summary>
 public enum NexusCollectionChangedAction
 {
+    /// <summary>Action was unset.</summary>
+    Unset,
     /// <summary>An item was added to the collection.</summary>
     Add,
     /// <summary>An item was removed from the collection.</summary>

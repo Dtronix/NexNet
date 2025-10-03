@@ -280,10 +280,10 @@ internal class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadc
         if (Interlocked.Increment(ref _completedCount) != ClientCount)
             return;
 
-        MessageToSource?.ReturnToCache();
+        MessageToSource?.Return();
         MessageToSource = null;
         
-        Message!.ReturnToCache();
+        Message!.Return();
         Message = null;
         
         _pool.Add(this);

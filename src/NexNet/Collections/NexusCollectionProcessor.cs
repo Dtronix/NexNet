@@ -63,8 +63,10 @@ internal class NexusCollectionMessageProcessor
                         bool success = false;
                         try
                         {
-                            
-                            success = processor._process(messageWrapper.Message, messageWrapper.Client, ct);
+                            (success, var disconnect) = processor._process(messageWrapper.Message, messageWrapper.Client, ct);
+
+                            if (disconnect && messageWrapper.Client != null)
+                                await messageWrapper.Client.CompletePipe().ConfigureAwait(false);
                         }
                         catch (Exception e)
                         {
@@ -124,5 +126,7 @@ internal class NexusCollectionMessageProcessor
         }
     }
 
-    public delegate bool OnProcessDelegate(INexusCollectionMessage process, INexusCollectionClient? sourceClient, CancellationToken ct);
+    public record struct ProcessResult(bool Success, bool Disconnect);
+
+    public delegate ProcessResult OnProcessDelegate(INexusCollectionMessage process, INexusCollectionClient? sourceClient, CancellationToken ct);
 }

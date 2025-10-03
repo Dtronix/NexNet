@@ -270,7 +270,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         public  NexusCollectionMessageTest? SourceClientClone { get; set; }
         
-        public void ReturnToCache()
+        public void Return()
         {
             Interlocked.Increment(ref ReturnedToCacheCount);
             _returnedToCacheTaskTcs.TrySetResult();

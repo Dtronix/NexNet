@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -9,7 +10,8 @@ using NexNet.Pipes;
 
 namespace NexNet.Collections;
 
-internal abstract partial class NexusCollectionServer : INexusCollectionConnector
+
+internal abstract class NexusCollectionServer : INexusCollectionConnector
 {
     private readonly NexusCollectionConnectionManager _connectionManager;
     private readonly NexusCollectionMessageProcessor _processor;
@@ -17,29 +19,17 @@ internal abstract partial class NexusCollectionServer : INexusCollectionConnecto
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
     protected readonly INexusLogger? Logger;
-    protected SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
+    protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
 
     protected NexusCollectionServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
     {
         Id = id;
         Mode = mode;
         Logger = logger?.CreateLogger($"Coll{id}");
+        CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _connectionManager = new NexusCollectionConnectionManager(Logger);
         _processor = new NexusCollectionMessageProcessor(Logger, ProcessMessage);
     }
-
-    private bool ProcessMessage(INexusCollectionMessage message, INexusCollectionClient? sourceClient, CancellationToken ct)
-    {
-        var result = OnProcess(message, ct);
-        if (result != null)
-        {
-            _connectionManager.BroadcastAsync(result, sourceClient);
-            return true;
-        }
-        
-        return false;
-    }
-
 
     public void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
     {
@@ -107,9 +97,24 @@ internal abstract partial class NexusCollectionServer : INexusCollectionConnecto
     }
     
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator();
-    protected abstract INexusCollectionMessage? OnProcess(INexusCollectionMessage process, CancellationToken ct);
+    protected abstract ProcessResult OnProcess(INexusCollectionMessage message,
+        INexusCollectionClient? sourceClient,
+        CancellationToken ct);
     
-    private ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
+    
+    private NexusCollectionMessageProcessor.ProcessResult ProcessMessage(INexusCollectionMessage message, INexusCollectionClient? sourceClient, CancellationToken ct)
+    {
+        var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
+        if (broadcastMessage == null)
+            return new NexusCollectionMessageProcessor.ProcessResult(false, disconnect);
+
+        _connectionManager.BroadcastAsync(broadcastMessage, sourceClient);
+        return new NexusCollectionMessageProcessor.ProcessResult(true, disconnect);
+    }
+
+    public record struct ProcessResult(INexusCollectionMessage? BroadcastMessage, bool Disconnect);
+    
+    protected ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
     {
         return _processor.EnqueueWaitForResult(message, null);
     }

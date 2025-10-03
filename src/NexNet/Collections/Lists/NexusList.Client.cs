@@ -65,7 +65,7 @@ internal partial class NexusList<T>
 
         var bufferSize = Math.Min(state.List.Count, 40);
         
-        reset.ReturnToCache();
+        reset.Return();
         
         foreach (var item in state.List.MemoryChunk(bufferSize))
         {

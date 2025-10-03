@@ -25,10 +25,10 @@ internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<
         _isArgumentPoolArray = true;
     }
 
-    public override void ReturnToCache()
+    public override void Return()
     {
         ReturnValueToPool();
-        base.ReturnToCache();
+        base.Return();
     }
 
     public void ReturnValueToPool()
