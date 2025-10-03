@@ -7,10 +7,11 @@ using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
+using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListServer<T> : NexusCollectionServer, INexusList2<T>
+internal class NexusListServer<T> : NexusBroadcastServer, INexusList2<T>
 {
     private readonly VersionedList<T> _itemList;
 

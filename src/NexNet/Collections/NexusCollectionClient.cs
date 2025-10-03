@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -31,12 +32,10 @@ internal interface INexusCollectionClient
 
 internal class NexusCollectionClient : INexusCollectionClient
 {
+    private readonly INexusChannelWriter<INexusCollectionMessage>? _writer;
     public INexusDuplexPipe Pipe { get; }
-    
-    //public readonly INexusChannelReader<INexusCollectionMessage>? Reader;
 
     public readonly INexusSession Session;
-    public INexusChannelWriter<INexusCollectionMessage> Writer { get; }
     public Channel<INexusCollectionBroadcasterMessageWrapper> MessageBuffer { get; }
     
     public CancellationToken CompletionToken { get; }
@@ -45,13 +44,13 @@ internal class NexusCollectionClient : INexusCollectionClient
     public long Id => Session.Id;
 
     public NexusCollectionClient(INexusDuplexPipe pipe, 
-        INexusChannelWriter<INexusCollectionMessage> writer,
+        INexusChannelWriter<INexusCollectionMessage>? writer,
         INexusSession session)
     {
         
         Pipe = pipe;
         Logger = session.Logger?.CreateLogger($"COL{pipe.Id}");
-        Writer = writer;
+        _writer = writer;
         Session = session;
         MessageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper>(new  UnboundedChannelOptions()
         {
@@ -82,7 +81,9 @@ internal class NexusCollectionClient : INexusCollectionClient
 
     public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default)
     {
-        return Writer.WriteAsync(message, ct);
+        if(_writer == null)
+            throw new InvalidOperationException("Can't send when in a ")
+        return _writer.WriteAsync(message, ct);
     }
     
     private class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadcasterMessageWrapper

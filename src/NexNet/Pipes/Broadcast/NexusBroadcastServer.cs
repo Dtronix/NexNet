@@ -2,41 +2,36 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
-using NexNet.Pipes;
 
-namespace NexNet.Collections;
+namespace NexNet.Pipes.Broadcast;
 
 
-internal abstract class NexusCollectionServer : INexusCollectionConnector
+internal abstract class NexusBroadcastServer : INexusBroadcastConnector
 {
     private readonly NexusCollectionConnectionManager _connectionManager;
     private readonly NexusCollectionMessageProcessor _processor;
+    private CancellationTokenSource? _stopCts;
     
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
     protected readonly INexusLogger? Logger;
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
 
-    protected NexusCollectionServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+    protected NexusBroadcastServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
     {
         Id = id;
         Mode = mode;
-        Logger = logger?.CreateLogger($"Coll{id}");
+        Logger = logger?.CreateLogger($"BRS{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _connectionManager = new NexusCollectionConnectionManager(Logger);
         _processor = new NexusCollectionMessageProcessor(Logger, ProcessMessage);
     }
-
-    public void TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)
-    {
-        Logger?.LogError("Can not configure a non-proxy.");
-        throw new NotImplementedException();
-    }
-
+    
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
     {
         var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
@@ -95,7 +90,19 @@ internal abstract class NexusCollectionServer : INexusCollectionConnector
         //Ensure we await here because as soon as we exit this method, the pipe closes.
         await pipe.CompleteTask.ConfigureAwait(false);
     }
-    
+
+    public void Start()
+    {
+        _stopCts = new CancellationTokenSource();
+        _connectionManager.Run(_stopCts.Token);
+        _processor.Run(_stopCts.Token);
+    }
+
+    public void Stop()
+    {
+        _stopCts?.Cancel();
+    }
+
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator();
     protected abstract ProcessResult OnProcess(INexusCollectionMessage message,
         INexusCollectionClient? sourceClient,
