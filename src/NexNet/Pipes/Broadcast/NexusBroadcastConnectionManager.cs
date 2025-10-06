@@ -3,23 +3,24 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Internals.Collections.Lists;
 using NexNet.Logging;
 
-namespace NexNet.Collections;
+namespace NexNet.Pipes.Broadcast;
 
 
-internal class NexusCollectionConnectionManager
+internal class NexusBroadcastConnectionManager
 {
-    private readonly SnapshotList<INexusCollectionClient> _connectedClients;
+    private readonly SnapshotList<INexusBroadcastSession> _connectedClients;
     private readonly INexusLogger? _logger;
     private readonly Channel<INexusCollectionBroadcasterMessageWrapper> _messageBroadcastChannel;
     
     private bool _isRunning;
-    public NexusCollectionConnectionManager(INexusLogger? logger)
+    public NexusBroadcastConnectionManager(INexusLogger? logger)
     {
         _logger = logger?.CreateLogger("Broadcast");
-        _connectedClients = new SnapshotList<INexusCollectionClient>(64);
+        _connectedClients = new SnapshotList<INexusBroadcastSession>(64);
         _messageBroadcastChannel = Channel.CreateBounded<INexusCollectionBroadcasterMessageWrapper>(new BoundedChannelOptions(50)
         {
             AllowSynchronousContinuations = false,
@@ -31,7 +32,7 @@ internal class NexusCollectionConnectionManager
 
     public bool IsRunning => _isRunning;
 
-    public void AddClientAsync(INexusCollectionClient client)
+    public void AddClientAsync(INexusBroadcastSession client)
     {
         if(!_isRunning)
             throw new InvalidOperationException("Broadcaster is not running.");
@@ -42,7 +43,7 @@ internal class NexusCollectionConnectionManager
         // Start the client reader for handling of messages the client sends.
         Task.Factory.StartNew(static async state =>
         {
-            var client = (INexusCollectionClient)(state!);
+            var client = (INexusBroadcastSession)(state!);
             INexusCollectionBroadcasterMessageWrapper? wrapper = null;
             await foreach (var messageWrapper in client.BufferRead(client.CompletionToken).ConfigureAwait(false))
             {
@@ -90,7 +91,7 @@ internal class NexusCollectionConnectionManager
         // Start the internal broadcast listener for this client to handle sending updates to the client.
         Task.Factory.StartNew(static async state =>
         {
-            var client = (INexusCollectionClient)(state!);
+            var client = (INexusBroadcastSession)(state!);
             INexusCollectionBroadcasterMessageWrapper? wrapper = null;
             await foreach (var messageWrapper in client.BufferRead(client.CompletionToken).ConfigureAwait(false))
             {
@@ -138,7 +139,7 @@ internal class NexusCollectionConnectionManager
         _connectedClients.Add(client);
     }
 
-    public void BroadcastAsync(INexusCollectionMessage message, INexusCollectionClient? sourceClient)
+    public void BroadcastAsync(INexusCollectionMessage message, INexusBroadcastSession? sourceClient)
     {
         if (!_messageBroadcastChannel.Writer.TryWrite(message.Wrap(sourceClient)))
         {
@@ -155,7 +156,7 @@ internal class NexusCollectionConnectionManager
         
         Task.Factory.StartNew(async static args =>
         {
-            var (broadcaster, ct) = ((NexusCollectionConnectionManager, CancellationToken))args!;
+            var (broadcaster, ct) = ((NexusBroadcastConnectionManager, CancellationToken))args!;
             
             broadcaster._logger?.LogTrace("Started broadcast loop.");
             
@@ -243,7 +244,7 @@ internal class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadc
     private static readonly ConcurrentBag<NexusCollectionBroadcasterMessageWrapper> _pool = new ();
     private int _completedCount;
     public int ClientCount { get; set; }
-    public INexusCollectionClient? SourceClient { get; set; }
+    public INexusBroadcastSession? SourceClient { get; set; }
 
     /// <summary>
     /// Message for the source client. Usually includes as Ack.
@@ -257,7 +258,7 @@ internal class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadc
         
     }
 
-    public static NexusCollectionBroadcasterMessageWrapper Rent(INexusCollectionMessage message, INexusCollectionClient? sourceClient)
+    public static NexusCollectionBroadcasterMessageWrapper Rent(INexusCollectionMessage message, INexusBroadcastSession? sourceClient)
     {
         if (!_pool.TryTake(out var wrapper))
             wrapper = new NexusCollectionBroadcasterMessageWrapper();
@@ -292,7 +293,7 @@ internal class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadc
 
 internal interface INexusCollectionBroadcasterMessageWrapper
 {
-    INexusCollectionClient? SourceClient { get; }
+    INexusBroadcastSession? SourceClient { get; }
 
     /// <summary>
     /// Message for the source client. Usually includes as Ack.

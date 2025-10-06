@@ -2,6 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using MemoryPack;
+using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
@@ -45,6 +46,6 @@ internal abstract class NexusCollectionMessage<T>: INexusCollectionMessage
 
     public abstract INexusCollectionMessage Clone();
 
-    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusCollectionClient? client = null) =>
+    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null) =>
         NexusCollectionBroadcasterMessageWrapper.Rent(this, client);
 }

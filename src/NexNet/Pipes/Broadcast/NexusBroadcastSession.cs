@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Logging;
-using NexNet.Pipes;
 
-namespace NexNet.Collections;
+namespace NexNet.Pipes.Broadcast;
 
-internal interface INexusCollectionClient
+internal interface INexusBroadcastSession
 {
     public long Id { get; }
     
@@ -30,7 +30,7 @@ internal interface INexusCollectionClient
     public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper> BufferRead(CancellationToken ct = default);
 }
 
-internal class NexusCollectionClient : INexusCollectionClient
+internal class NexusBroadcastSession : INexusBroadcastSession
 {
     private readonly INexusChannelWriter<INexusCollectionMessage>? _writer;
     public INexusDuplexPipe Pipe { get; }
@@ -43,7 +43,7 @@ internal class NexusCollectionClient : INexusCollectionClient
 
     public long Id => Session.Id;
 
-    public NexusCollectionClient(INexusDuplexPipe pipe, 
+    public NexusBroadcastSession(INexusDuplexPipe pipe, 
         INexusChannelWriter<INexusCollectionMessage>? writer,
         INexusSession session)
     {
@@ -81,8 +81,8 @@ internal class NexusCollectionClient : INexusCollectionClient
 
     public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default)
     {
-        if(_writer == null)
-            throw new InvalidOperationException("Can't send when in a ")
+        if (_writer == null)
+            throw new InvalidOperationException("Can't send when writer is not set.");
         return _writer.WriteAsync(message, ct);
     }
     
@@ -90,7 +90,7 @@ internal class NexusCollectionClient : INexusCollectionClient
     {
         private int _completedCount;
         public int ClientCount { get; set; }
-        public INexusCollectionClient? SourceClient { get; }
+        public INexusBroadcastSession? SourceClient { get; }
     
         /// <summary>
         /// Message for the source client. Usually includes as Ack.
@@ -98,7 +98,7 @@ internal class NexusCollectionClient : INexusCollectionClient
         public INexusCollectionMessage? MessageToSource { get; }
         public INexusCollectionMessage Message { get; }
 
-        public NexusCollectionBroadcasterMessageWrapper(INexusCollectionClient? sourceClient, INexusCollectionMessage message)
+        public NexusCollectionBroadcasterMessageWrapper(INexusBroadcastSession? sourceClient, INexusCollectionMessage message)
         {
             SourceClient = sourceClient;
             Message = message;

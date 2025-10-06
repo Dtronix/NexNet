@@ -15,7 +15,7 @@ namespace NexNet.Pipes.Broadcast;
 
 internal abstract class NexusBroadcastClient
 {
-    private readonly NexusCollectionMessageProcessor _processor;
+    private readonly NexusBroadcastMessageProcessor _processor;
     private CancellationTokenSource? _stopCts;
     
     protected readonly ushort Id;
@@ -24,9 +24,12 @@ internal abstract class NexusBroadcastClient
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
-    private NexusCollectionClient? _client;
-    private TaskCompletionSource? _clientConnectTcs;
-    //private TaskCompletionSource? _disconnectTcs;
+    private NexusBroadcastSession? _client;
+    
+    private TaskCompletionSource? _initializedTcs;
+    private TaskCompletionSource? _disconnectTcs;
+
+    protected NexusBroadcastSession Client => _client;
 
     protected NexusBroadcastClient(ushort id, NexusCollectionMode mode, INexusLogger? logger)
     {
@@ -34,7 +37,7 @@ internal abstract class NexusBroadcastClient
         Mode = mode;
         Logger = logger?.CreateLogger($"BRC{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
-        _processor = new NexusCollectionMessageProcessor(Logger, ProcessMessage);
+        _processor = new NexusBroadcastMessageProcessor(Logger, OnProcess);
     }
     
     /// <summary>
@@ -72,10 +75,10 @@ internal abstract class NexusBroadcastClient
             Unsafe.As<NexusBroadcastClient>(state)!.Disconnected(), this);
         
         var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null;
-        _client = new NexusCollectionClient(pipe, writer, _session);
+        _client = new NexusBroadcastSession(pipe, writer, _session);
         
-        _clientConnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        //_disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         //_disconnectedTask = _disconnectTcs.Task;
         
 
@@ -102,30 +105,24 @@ internal abstract class NexusBroadcastClient
                 // Ignore and disconnect.
             }
 
+            // Ensure the pipe is completed if the reading loop exited.
             await clientState.CompletePipe().ConfigureAwait(false);
             
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Wait for either the complete task fires or the client is actually connected.
-        var result = await Task.WhenAny(_client!.Pipe.CompleteTask, _clientConnectTcs.Task).ConfigureAwait(false);
+        var result = await Task.WhenAny(_client!.Pipe.CompleteTask, _initializedTcs.Task).ConfigureAwait(false);
         
         // Check to see if we have connected or have just been disconnected.
         var isDisconnected = _client!.Pipe.CompleteTask.IsCompleted;
-        _clientConnectTcs = null;
+        _initializedTcs = null;
 
         return !isDisconnected;
     }
-    
-    
-    protected void Disconnected()
-    {
-        _state = NexusCollectionState.Disconnected;
-        _ackTcs?.TrySetResult(false);
-        
-        // Reset the ready task
-        if (_tcsReady.Task.Status != TaskStatus.WaitingForActivation)
-            _tcsReady = new TaskCompletionSource();
 
+
+    private void Disconnected()
+    {
         try
         {
             OnDisconnected();
@@ -138,7 +135,8 @@ internal abstract class NexusBroadcastClient
         using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset);
         
         CoreChangedEvent.Raise(eventArgsOwner.Value);
-        
+        _client = null;
+
         _disconnectTcs?.TrySetResult();
     }
     protected abstract void OnDisconnected();
@@ -148,29 +146,20 @@ internal abstract class NexusBroadcastClient
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
-
-
- 
-    protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator();
-    protected abstract ProcessResult OnProcess(INexusCollectionMessage message,
-        INexusCollectionClient? sourceClient,
+    
+    protected abstract NexusBroadcastMessageProcessor.ProcessResult OnProcess(INexusCollectionMessage message,
+        INexusBroadcastSession? sourceClient,
         CancellationToken ct);
-    
-    
-    private NexusCollectionMessageProcessor.ProcessResult ProcessMessage(INexusCollectionMessage message, INexusCollectionClient? sourceClient, CancellationToken ct)
-    {
-        var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
-        if (broadcastMessage == null)
-            return new NexusCollectionMessageProcessor.ProcessResult(false, disconnect);
-
-        _connectionManager.BroadcastAsync(broadcastMessage, sourceClient);
-        return new NexusCollectionMessageProcessor.ProcessResult(true, disconnect);
-    }
 
     public record struct ProcessResult(INexusCollectionMessage? BroadcastMessage, bool Disconnect);
     
     protected ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
     {
         return _processor.EnqueueWaitForResult(message, null);
+    }
+
+    protected void InitializationCompleted()
+    {
+        _initializedTcs?.TrySetResult();
     }
 }

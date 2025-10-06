@@ -1,0 +1,273 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Threading;
+using System.Threading.Tasks;
+using MemoryPack;
+using NexNet.Internals;
+using NexNet.Internals.Collections.Versioned;
+using NexNet.Logging;
+using NexNet.Pipes.Broadcast;
+
+namespace NexNet.Collections.Lists;
+
+internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
+{
+    private readonly VersionedList<T> _itemList;
+    private List<T>? _resettingList = null;
+    private List<INexusCollectionMessage>? _resettingMessageBuffer = null;
+    private int _resettingListVersion;
+    
+    public int Count => _itemList.Count;
+    public bool IsReadOnly { get; } = false;
+    
+    public NexusCollectionState State { get; }
+    public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
+    
+    public NexusListClient(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+        : base(id, mode, logger)
+    {
+        _itemList = new(1024, logger);
+    }
+
+    protected override void OnDisconnected()
+    {
+        _itemList.Reset();
+    }
+    
+    
+    protected override NexusBroadcastMessageProcessor.ProcessResult OnProcess(
+        INexusCollectionMessage message,
+        INexusBroadcastSession? sourceClient,
+        CancellationToken ct)
+    {
+
+        switch (message)
+        {
+            case NexusCollectionListResetStartMessage startMessage:
+                if (_resettingList != null)
+                {
+                    Client.Logger?.LogWarning("Received start message while already resetting.");
+                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                }
+                
+                _resettingList = new List<T>(startMessage.TotalValues);
+                _resettingMessageBuffer = new List<INexusCollectionMessage>();
+                _resettingListVersion = startMessage.Version;
+                return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+            
+            case NexusCollectionListResetCompleteMessage:
+                if (_resettingList != null)
+                {
+                    Client.Logger?.LogWarning("Received values message while not resetting.");
+                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                }
+                var completeResult = ProcessClientResetCompleted();
+
+                InitializationCompleted();
+                return new NexusBroadcastMessageProcessor.ProcessResult(false, !completeResult);
+
+            case NexusCollectionListResetValuesMessage valuesMessage:
+                if (_resettingList != null)
+                {
+                    Client.Logger?.LogWarning("Received values message while not resetting.");
+                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                }
+                
+                var values = MemoryPackSerializer.Deserialize<T[]>(valuesMessage.Values.Span);
+                if(values != null)
+                    _resettingList!.AddRange(values);
+                
+                return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+        }
+
+        if (_resettingList != null)
+        {
+            // Resetting. Buffer messages for after initialization has been completed. Buffer and process later.
+            _resettingMessageBuffer!.Add(message);
+            return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+        }
+        
+        var (op, version) = NexusListTransformers<T>.RentOperation(message);
+        
+        // Unknown operation
+        if (op == null)
+        {
+            Client.Logger?.LogWarning($"{message} did not match any known operations.");
+            return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+        }
+
+        var result = _itemList.ApplyOperation(op, version);
+
+        if (result != ListProcessResult.DiscardOperation && result == ListProcessResult.Successful)
+        {
+            Client.Logger?.LogWarning($"Processing {message} message failed with {result}");
+            return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+        }
+
+        op.Return();
+
+        using (var args = NexusCollectionChangedEventArgs.Rent(NexusListTransformers<T>.GetAction(message)))
+        {
+            CoreChangedEvent.Raise(args.Value);
+        }
+
+        return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+    }
+    private bool ProcessClientResetCompleted(CancellationToken ct = default)
+    {
+        if (_resettingList != null)
+        {
+            Client.Logger?.LogWarning("Received values message while not resetting.");
+            return false;
+        }
+        
+        var list = ImmutableList<T>.Empty.AddRange(_resettingList!);
+
+        // Reset the state manually.
+        _itemList.ResetTo(list, _resettingListVersion);
+        
+        _resettingList!.Clear();
+        _resettingList.Capacity = 0;
+        _resettingList = null;
+        _resettingListVersion = -1;
+
+        var bufferedCount = _resettingMessageBuffer?.Count ?? 0;
+        if (bufferedCount > 0)
+        {
+            Client.Logger?.LogDebug($"Processing {bufferedCount} buffered messages.");
+            // Process any buffered Messages.
+            foreach (var bufferedMessage in _resettingMessageBuffer!)
+            {
+                var result = OnProcess(bufferedMessage, null, ct);
+
+                if (result.Disconnect)
+                {
+                    Client.Logger?.LogDebug($"Processing {bufferedMessage} buffered message failed and disconnected.");
+                    return false;
+                }
+            }
+        }
+
+        _resettingMessageBuffer.Clear();
+        _resettingMessageBuffer.Capacity = 0;
+        _resettingMessageBuffer = null;
+        
+        return true;
+    }
+
+
+    public bool Contains(T item) => _itemList.Contains(item);
+
+    public void CopyTo(T[] array, int arrayIndex) => _itemList.CopyTo(array, arrayIndex);
+    public int IndexOf(T item) => _itemList.IndexOf(item);
+
+    public async Task<bool> RemoveAsync(T item)
+    {
+        var index = _itemList.IndexOf(item, out var version);
+
+        if (index == -1)
+            return false;
+
+        var message = NexusCollectionListRemoveMessage.Rent();
+        message.Version = version;
+        message.Index = index;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public async Task<bool> ClearAsync()
+    {
+        var message = NexusCollectionListClearMessage.Rent();
+        message.Version = _itemList.Version;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public async Task<bool> InsertAsync(int index, T item)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+
+        var message = NexusCollectionListInsertMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+        message.Value = MemoryPackSerializer.Serialize(item);
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+
+    }
+
+    public async Task<bool> MoveAsync(int fromIndex, int toIndex)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fromIndex);
+        ArgumentOutOfRangeException.ThrowIfNegative(toIndex);
+
+        var message = NexusCollectionListMoveMessage.Rent();
+        message.Version = _itemList.Version;
+        message.FromIndex = fromIndex;
+        message.ToIndex = toIndex;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public async Task<bool> ReplaceAsync(int index, T value)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+
+        var message = NexusCollectionListReplaceMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+        message.Value = MemoryPackSerializer.Serialize(value);
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public async Task<bool> RemoveAtAsync(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+
+        var message = NexusCollectionListRemoveMessage.Rent();
+        message.Version = _itemList.Version;
+        message.Index = index;
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public async Task<bool> AddAsync(T item)
+    {
+        var message = NexusCollectionListInsertMessage.Rent();
+        var state = _itemList.State;
+        message.Version = state.Version;
+        message.Index = state.List.Count;
+        message.Value = MemoryPackSerializer.Serialize(item);
+
+        var result = await ProcessMessage(message).ConfigureAwait(false);
+        message.Return();
+        return result;
+    }
+
+    public T this[int index] => _itemList[index];
+
+    public IEnumerator<T> GetEnumerator()
+    {
+        return _itemList.State.List.GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return _itemList.State.List.GetEnumerator();
+    }
+}

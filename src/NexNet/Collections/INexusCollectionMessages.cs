@@ -1,5 +1,6 @@
 ﻿using System;
 using MemoryPack;
+using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
@@ -33,6 +34,6 @@ internal interface INexusCollectionMessage
 
     public INexusCollectionMessage Clone();
     
-    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusCollectionClient? client = null);
+    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null);
 }
 

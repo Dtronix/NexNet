@@ -57,7 +57,7 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList2<T>
     }
 
     protected override ProcessResult OnProcess(INexusCollectionMessage message,
-        INexusCollectionClient? sourceClient,
+        INexusBroadcastSession? sourceClient,
         CancellationToken ct)
     {
         // These are not allowed to be sent by the client to the server.

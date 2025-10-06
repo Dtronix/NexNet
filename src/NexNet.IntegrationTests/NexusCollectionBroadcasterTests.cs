@@ -2,12 +2,13 @@ using System.Threading.Channels;
 using NexNet.Collections;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.Logging;
+using NexNet.Pipes.Broadcast;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
 [TestFixture]
-internal class NexusCollectionConnectionManagerTests : BaseTests
+internal class NexusBroadcastConnectionManagerTests : BaseTests
 {
 
     [SetUp]
@@ -66,7 +67,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[100];
+        var clients = new TestBroadcastSession[100];
         for (int i = 0; i < clients.Length; i++)
         {
             clients[i] = CreateTestClient();
@@ -90,7 +91,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[100];
+        var clients = new TestBroadcastSession[100];
         for (int i = 0; i < clients.Length; i++)
             bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
         
@@ -101,7 +102,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.BufferWrites.Count == 1));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.BufferWrites.Count == 1));
     }
     
     [TestCase(true)]
@@ -110,7 +111,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[10];
+        var clients = new TestBroadcastSession[10];
         for (int i = 0; i < clients.Length; i++)
             bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
         
@@ -124,12 +125,12 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         if (hasSource)
         {
             Assert.That(clients[0].Sends[0].Flags, Is.EqualTo(NexusCollectionMessageFlags.Ack));
-            Assert.That(clients[1..], Has.All.Matches<TestCollectionClient>(
+            Assert.That(clients[1..], Has.All.Matches<TestBroadcastSession>(
                 c => c.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
         }
         else
         {
-            Assert.That(clients, Has.All.Matches<TestCollectionClient>(
+            Assert.That(clients, Has.All.Matches<TestBroadcastSession>(
                 c => c.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
         }
     }
@@ -140,7 +141,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[2];
+        var clients = new TestBroadcastSession[2];
         for (int i = 0; i < clients.Length; i++)
         {
             clients[i] = CreateTestClient();
@@ -156,7 +157,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
     
     [TestCase(true)]
@@ -165,7 +166,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[2];
+        var clients = new TestBroadcastSession[2];
         for (int i = 0; i < clients.Length; i++)
         {
             clients[i] = CreateTestClient();
@@ -181,7 +182,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
     
     [TestCase(true)]
@@ -190,7 +191,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
     {
         using var bl = new BroadcasterLifetime(Logger);
 
-        var clients = new TestCollectionClient[2];
+        var clients = new TestBroadcastSession[2];
         for (int i = 0; i < clients.Length; i++)
         {
             clients[i] = CreateTestClient();
@@ -206,7 +207,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
     
     [Test]
@@ -215,7 +216,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         using var bl = new BroadcasterLifetime(Logger, false);
         var cts = new CancellationTokenSource();
         bl.ConnectionManager.Run(cts.Token);
-        var clients = new TestCollectionClient[50];
+        var clients = new TestBroadcastSession[50];
         for (int i = 0; i < clients.Length; i++)
             bl.ConnectionManager.AddClientAsync(clients[i] = CreateTestClient());
 
@@ -226,26 +227,26 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestCollectionClient>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
 
 
     
 
-    private TestCollectionClient CreateTestClient()
+    private TestBroadcastSession CreateTestClient()
     {
-        return new TestCollectionClient(Logger);
+        return new TestBroadcastSession(Logger);
     }
 
     private class BroadcasterLifetime : IDisposable
     {
         private CancellationTokenSource _cts;
 
-        public NexusCollectionConnectionManager ConnectionManager { get; }
+        public NexusBroadcastConnectionManager ConnectionManager { get; }
 
         public BroadcasterLifetime(INexusLogger logger, bool autoRun = true)
         {
-            ConnectionManager = new NexusCollectionConnectionManager(logger);
+            ConnectionManager = new NexusBroadcastConnectionManager(logger);
             _cts = new CancellationTokenSource();
             
             if(autoRun)
@@ -290,7 +291,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
             };
         }
 
-        public INexusCollectionBroadcasterMessageWrapper Wrap(INexusCollectionClient? client = null)
+        public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null)
         {
             return NexusCollectionBroadcasterMessageWrapper.Rent(this, client);
         }
@@ -306,7 +307,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         BeginBufferTryWrite
     }
 
-    private class TestCollectionClient : INexusCollectionClient
+    private class TestBroadcastSession : INexusBroadcastSession
     {
         private static int _idCounter;
         public bool CompletePipeFired;
@@ -326,7 +327,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
         public event Action<ClientEvent>? OnEvent; 
   
         
-        public TestCollectionClient(INexusLogger logger)
+        public TestBroadcastSession(INexusLogger logger)
         {
             Logger = logger;
             Id = Interlocked.Increment(ref _idCounter);
@@ -390,7 +391,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
 
         public class OnEventCounter
         {
-            private TestCollectionClient _client;
+            private TestBroadcastSession _client;
             private readonly ClientEvent _eventAction;
             private readonly int _targetCount;
             private int _fireCount;
@@ -398,7 +399,7 @@ internal class NexusCollectionConnectionManagerTests : BaseTests
             
             public Task Complete => _tcs.Task;
 
-            public OnEventCounter(TestCollectionClient client, ClientEvent eventAction, int targetCount)
+            public OnEventCounter(TestBroadcastSession client, ClientEvent eventAction, int targetCount)
             {
                 _client = client;
                 _client.OnEvent += ClientOnOnEvent;

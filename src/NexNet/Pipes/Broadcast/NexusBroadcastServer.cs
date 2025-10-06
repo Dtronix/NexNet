@@ -13,8 +13,8 @@ namespace NexNet.Pipes.Broadcast;
 
 internal abstract class NexusBroadcastServer : INexusBroadcastConnector
 {
-    private readonly NexusCollectionConnectionManager _connectionManager;
-    private readonly NexusCollectionMessageProcessor _processor;
+    private readonly NexusBroadcastConnectionManager _connectionManager;
+    private readonly NexusBroadcastMessageProcessor _processor;
     private CancellationTokenSource? _stopCts;
     
     protected readonly ushort Id;
@@ -28,14 +28,14 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         Mode = mode;
         Logger = logger?.CreateLogger($"BRS{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
-        _connectionManager = new NexusCollectionConnectionManager(Logger);
-        _processor = new NexusCollectionMessageProcessor(Logger, ProcessMessage);
+        _connectionManager = new NexusBroadcastConnectionManager(Logger);
+        _processor = new NexusBroadcastMessageProcessor(Logger, ProcessMessage);
     }
     
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
     {
         var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
-        var client = new NexusCollectionClient(pipe, writer, session);
+        var client = new NexusBroadcastSession(pipe, writer, session);
         _connectionManager.AddClientAsync(client);
         
         Logger?.LogTrace($"S{session.Id} Sending client init data");
@@ -105,18 +105,18 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
 
     protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator();
     protected abstract ProcessResult OnProcess(INexusCollectionMessage message,
-        INexusCollectionClient? sourceClient,
+        INexusBroadcastSession? sourceClient,
         CancellationToken ct);
     
     
-    private NexusCollectionMessageProcessor.ProcessResult ProcessMessage(INexusCollectionMessage message, INexusCollectionClient? sourceClient, CancellationToken ct)
+    private NexusBroadcastMessageProcessor.ProcessResult ProcessMessage(INexusCollectionMessage message, INexusBroadcastSession? sourceClient, CancellationToken ct)
     {
         var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
-            return new NexusCollectionMessageProcessor.ProcessResult(false, disconnect);
+            return new NexusBroadcastMessageProcessor.ProcessResult(false, disconnect);
 
         _connectionManager.BroadcastAsync(broadcastMessage, sourceClient);
-        return new NexusCollectionMessageProcessor.ProcessResult(true, disconnect);
+        return new NexusBroadcastMessageProcessor.ProcessResult(true, disconnect);
     }
 
     public record struct ProcessResult(INexusCollectionMessage? BroadcastMessage, bool Disconnect);

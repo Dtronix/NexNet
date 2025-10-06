@@ -54,8 +54,9 @@ internal static class NexusListTransformers<T>
         
         return (op, version);
     }
-    
-    public static (INexusCollectionMessage?, NexusCollectionChangedAction) RentMessageAction(IOperation operation, int version)
+
+    public static (INexusCollectionMessage?, NexusCollectionChangedAction) RentMessageAction(IOperation operation,
+        int version)
     {
         switch (operation)
         {
@@ -64,7 +65,7 @@ internal static class NexusListTransformers<T>
                 var message = NexusCollectionListNoopMessage.Rent();
                 return (message, NexusCollectionChangedAction.Unset);
             }
-            
+
             case ClearOperation<T>:
             {
                 var message = NexusCollectionListClearMessage.Rent();
@@ -94,7 +95,7 @@ internal static class NexusListTransformers<T>
                 message.FromIndex = move.FromIndex;
                 message.ToIndex = move.ToIndex;
                 return (message, NexusCollectionChangedAction.Move);
-            }      
+            }
             case RemoveOperation<T> remove:
             {
                 var message = NexusCollectionListRemoveMessage.Rent();
@@ -103,8 +104,23 @@ internal static class NexusListTransformers<T>
                 return (message, NexusCollectionChangedAction.Remove);
             }
             default:
-                throw new InvalidOperationException($"Could not convert operation of type {operation.GetType()} to message");
+                throw new InvalidOperationException(
+                    $"Could not convert operation of type {operation.GetType()} to message");
         }
+    }
+
+    public static NexusCollectionChangedAction GetAction(INexusCollectionMessage message)
+    {
+        return message switch
+        {
+            NexusCollectionListClearMessage => NexusCollectionChangedAction.Reset,
+            NexusCollectionListInsertMessage => NexusCollectionChangedAction.Add,
+            NexusCollectionListMoveMessage => NexusCollectionChangedAction.Move,
+            NexusCollectionListNoopMessage => NexusCollectionChangedAction.Unset,
+            NexusCollectionListRemoveMessage => NexusCollectionChangedAction.Remove,
+            NexusCollectionListReplaceMessage => NexusCollectionChangedAction.Replace,
+            _ => NexusCollectionChangedAction.Unset
+        };
     }
 
 }
