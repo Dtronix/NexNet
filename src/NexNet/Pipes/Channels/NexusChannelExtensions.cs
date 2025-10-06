@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Cache;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// Provides extension methods for the INexusDuplexChannel interface.

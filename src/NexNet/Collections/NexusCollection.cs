@@ -11,6 +11,7 @@ using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Pipes.Channels;
 using NexNet.Transports;
 
 namespace NexNet.Collections;

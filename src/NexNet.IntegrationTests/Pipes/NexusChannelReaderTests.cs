@@ -2,6 +2,7 @@
 using MemoryPack;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
+using NexNet.Pipes.Channels;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;

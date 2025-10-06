@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using NexNet.Pipes.Channels;
 
 namespace NexNet.Pipes;
 

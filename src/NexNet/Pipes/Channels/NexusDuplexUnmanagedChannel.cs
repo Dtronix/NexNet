@@ -1,7 +1,7 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 internal class NexusDuplexUnmanagedChannel<T> : INexusDuplexUnmanagedChannel<T>
     where T : unmanaged

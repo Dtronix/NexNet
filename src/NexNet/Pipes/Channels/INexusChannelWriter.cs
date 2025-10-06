@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// The channel writer is responsible for writing items of a specified type to the underlying INexusPipeWriter.
