@@ -1,4 +1,5 @@
 ﻿using NexNet.Pipes;
+using NexNet.Pipes.Channels;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Pipes;

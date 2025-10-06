@@ -1,5 +1,6 @@
 ﻿using NexNet;
 using NexNet.Pipes;
+using NexNet.Pipes.Channels;
 
 namespace NexNetDemo.Samples.Channel;
 

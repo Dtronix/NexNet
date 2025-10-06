@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// The channel reader is responsible for reading items of a specified type from the underlying INexusPipeWriter.

@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// Extension methods for the <see cref="INexusChannelReader{T}"/> interface.

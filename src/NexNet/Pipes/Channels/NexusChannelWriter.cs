@@ -4,7 +4,7 @@ using System.Threading.Tasks;
 using MemoryPack;
 using NexNet.Internals;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.

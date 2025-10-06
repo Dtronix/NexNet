@@ -5,7 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
 
-namespace NexNet.Pipes;
+namespace NexNet.Pipes.Channels;
 
 /// <summary>
 /// Represents a structure for reading unmanaged data from a duplex pipe in the Nexus system.
