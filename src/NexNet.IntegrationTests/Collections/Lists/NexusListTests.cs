@@ -423,7 +423,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         var expected = new[] { 1, 99, 3 };
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(expected));
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo(expected));
-    }
+    } 
     
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]

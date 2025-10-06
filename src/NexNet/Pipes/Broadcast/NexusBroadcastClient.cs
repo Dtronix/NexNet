@@ -86,77 +86,24 @@ internal abstract class NexusBroadcastClient
             var clientState = broadcaster._client;
             if (clientState == null)
                 return;
-            
+
+            var reader = new NexusChannelReader<INexusCollectionMessage>(clientState.Pipe);
             try
             {
-                await foreach (var message in clientState.BufferRead().ConfigureAwait(false))
+                // Read through all the messages received until complete.
+                await foreach (var message in reader.ConfigureAwait(false))
                 {
-                    clientState.Logger?.LogTrace($"<-- Receiving {message.GetType()}");
-                    var success = await broadcaster._processor.EnqueueWaitForResult(message.Message!, null).ConfigureAwait(false);
-                    
-                    if(success)
-                        clientState.ProcessFlags(message);
-                    
-                    var relayTo = clientState._relayTo;
-                    if (relayTo != null && success)
-                    {
-                        // Relays ignore these types of messages.
-                        if (message is NexusCollectionListResetStartMessage
-                            or NexusCollectionListResetValuesMessage
-                            or NexusCollectionListResetCompleteMessage)
-                            continue;
-
-                        try
-                        {
-                            // Set the total clients that should need to broadcast prior to returning.
-                            message.Remaining = relayTo._connectedClients!.Count - 1;
-                            foreach (var client in relayTo._connectedClients)
-                            {
-                                try
-                                {
-                                    if (!client.MessageSender.Writer.TryWrite(message))
-                                    {
-                                        clientState.Logger?.LogTrace("Could not send to client collection");
-                                        // Complete the pipe as it is full and not writing to the client at a decent
-                                        // rate.
-                                        await client.Pipe.CompleteAsync().ConfigureAwait(false);
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    clientState.Logger?.LogTrace(ex,
-                                        "Exception while forwarding relay message to client");
-                                    // If we threw, the client is disconnected.  Remove the client.
-                                    relayTo._connectedClients.Remove(client);
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            clientState.Logger?.LogError(e, "Exception while processing relay message");
-                        }
-                    }
-                    else
-                    {
-                        // Don't return these messages to the cache as they are created on reading.
-                        //operation.ReturnToCache();
-                        if (message is INexusCollectionValueMessage valueMessage)
-                            valueMessage.ReturnValueToPool();
-
-                        // If the result is false, close the whole pipe
-                        if (!success)
-                        {
-                            await clientState._client.Session.DisconnectAsync(DisconnectReason.ProtocolError)
-                                .ConfigureAwait(false);
-                            return;
-                        }
-                    }
-                } 
+                    await broadcaster._processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
+                }
             }
             catch (Exception e)
             {
-                clientState._client?.Session.Logger?.LogInfo(e, "Error while reading session collection message.");
+                clientState.Session.Logger?.LogInfo(e, "Error while reading session collection message.");
+                // Ignore and disconnect.
             }
+
+            await clientState.CompletePipe().ConfigureAwait(false);
+            
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Wait for either the complete task fires or the client is actually connected.
