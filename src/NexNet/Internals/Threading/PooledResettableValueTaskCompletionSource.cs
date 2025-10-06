@@ -20,7 +20,7 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
     /// </summary>
     public static int PoolCount => _pool.Count;
 
-    private PooledResettableValueTaskCompletionSource()
+    public PooledResettableValueTaskCompletionSource()
     {
         _core.RunContinuationsAsynchronously = true;
     }
@@ -49,8 +49,13 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
 
         _isRented = false;
         _isCompleted = false;
-        _core.Reset();
+        Reset();
         _pool.Add(this);
+    }
+
+    public void Reset()
+    {
+        _core.Reset();
     }
 
     /// <summary>

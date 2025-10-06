@@ -4,9 +4,11 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Sources;
 using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
+using NexNet.Internals.Threading;
 using NexNet.Logging;
 using NexNet.Pipes.Broadcast;
 
@@ -18,6 +20,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
     private List<T>? _resettingList = null;
     private List<INexusCollectionMessage>? _resettingMessageBuffer = null;
     private int _resettingListVersion;
+    private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource = new ();
     
     public int Count => _itemList.Count;
     public bool IsReadOnly { get; } = false;
@@ -99,19 +102,30 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         }
 
         var result = _itemList.ApplyOperation(op, version);
-
+        
         if (result != ListProcessResult.DiscardOperation && result == ListProcessResult.Successful)
         {
             Client.Logger?.LogWarning($"Processing {message} message failed with {result}");
+            if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
+            {
+                _operationCompletionSource.TrySetResult(false);
+                _operationCompletionSource.Reset();
+            }
             return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
         }
-
-        op.Return();
 
         using (var args = NexusCollectionChangedEventArgs.Rent(NexusListTransformers<T>.GetAction(message)))
         {
             CoreChangedEvent.Raise(args.Value);
         }
+
+        if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
+        {
+            _operationCompletionSource.TrySetResult(true);
+            _operationCompletionSource.Reset();
+        }
+
+        op.Return();
 
         return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
     }
@@ -156,7 +170,17 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         
         return true;
     }
-
+    
+    private async ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
+    {
+        if(Client == null)
+            throw new InvalidOperationException("Client not connected");
+        
+        await Client.SendAsync(message, CancellationToken.None).ConfigureAwait(false);
+        message.Return();
+        
+        return await _operationCompletionSource.Task.ConfigureAwait(false);
+    }
 
     public bool Contains(T item) => _itemList.Contains(item);
 
@@ -171,22 +195,20 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
             return false;
 
         var message = NexusCollectionListRemoveMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = version;
         message.Index = index;
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
     }
 
     public async Task<bool> ClearAsync()
     {
         var message = NexusCollectionListClearMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
     }
 
     public async Task<bool> InsertAsync(int index, T item)
@@ -194,13 +216,12 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         var message = NexusCollectionListInsertMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.Index = index;
         message.Value = MemoryPackSerializer.Serialize(item);
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
 
     }
 
@@ -210,13 +231,12 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         ArgumentOutOfRangeException.ThrowIfNegative(toIndex);
 
         var message = NexusCollectionListMoveMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.FromIndex = fromIndex;
         message.ToIndex = toIndex;
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
     }
 
     public async Task<bool> ReplaceAsync(int index, T value)
@@ -224,13 +244,13 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         var message = NexusCollectionListReplaceMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.Index = index;
         message.Value = MemoryPackSerializer.Serialize(value);
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
+   
     }
 
     public async Task<bool> RemoveAtAsync(int index)
@@ -238,25 +258,23 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
         ArgumentOutOfRangeException.ThrowIfNegative(index);
 
         var message = NexusCollectionListRemoveMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.Index = index;
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
     }
 
     public async Task<bool> AddAsync(T item)
     {
         var message = NexusCollectionListInsertMessage.Rent();
+        using var _ = await OperationLock().ConfigureAwait(false);
         var state = _itemList.State;
         message.Version = state.Version;
         message.Index = state.List.Count;
         message.Value = MemoryPackSerializer.Serialize(item);
 
-        var result = await ProcessMessage(message).ConfigureAwait(false);
-        message.Return();
-        return result;
+        return await ProcessMessage(message).ConfigureAwait(false);
     }
 
     public T this[int index] => _itemList[index];

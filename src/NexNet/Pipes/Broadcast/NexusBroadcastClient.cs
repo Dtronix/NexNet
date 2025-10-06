@@ -25,6 +25,7 @@ internal abstract class NexusBroadcastClient
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     private NexusBroadcastSession? _client;
+    private readonly SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
@@ -147,19 +148,26 @@ internal abstract class NexusBroadcastClient
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
     
+    protected async ValueTask<IDisposable> OperationLock()
+    {
+        await _operationSemaphore.WaitAsync().ConfigureAwait(false);
+        return new SemaphoreSlimDisposable(_operationSemaphore);
+    }
+    
     protected abstract NexusBroadcastMessageProcessor.ProcessResult OnProcess(INexusCollectionMessage message,
         INexusBroadcastSession? sourceClient,
         CancellationToken ct);
-
-    public record struct ProcessResult(INexusCollectionMessage? BroadcastMessage, bool Disconnect);
     
-    protected ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
-    {
-        return _processor.EnqueueWaitForResult(message, null);
-    }
-
     protected void InitializationCompleted()
     {
         _initializedTcs?.TrySetResult();
+    }
+    
+    private readonly struct SemaphoreSlimDisposable(SemaphoreSlim semaphore) : IDisposable
+    { 
+        public void Dispose()
+        {
+            semaphore.Release();
+        }
     }
 }
