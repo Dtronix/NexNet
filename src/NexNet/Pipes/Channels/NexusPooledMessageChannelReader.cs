@@ -69,10 +69,19 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
     {
     }
 
-    public override async ValueTask<bool> ReadAsync<TTo>(List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default)
+    public override async ValueTask<bool> ReadAsync<TTo>(
+        List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default)
     {
         if (IsComplete && BufferedLength == 0)
             return false;
+        
+        if(converter != null)
+            throw new InvalidOperationException("Can't convert on pooled message reader.");
+        
+        if(typeof(TTo) != typeof(T))
+            throw new InvalidOperationException("Reader type and TTo must be the same as conversions are not allowed.");
+
+        var tList = Unsafe.As<List<T>>(list)!;
 
         // Read the data from the pipe reader.
         var result = await Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
@@ -87,7 +96,7 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
         
         var consumed = _singleMap == null
             ? ReadUnion(result.Buffer, Reader, list, converter)
-            : Read(result.Buffer, Reader, list, converter);
+            : Read<T>(result.Buffer, Reader, tList);
 
         // There is left over data in the buffer that is less than the size of T.
         // Nothing can be done with this data, so return false.
@@ -104,13 +113,8 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
     /// <param name="buffer">The buffer containing the data to be read.</param>
     /// <param name="pipeReader">The pipe reader used to advance the buffer after reading.</param>
     /// <param name="list">The list used to store the data.  Will append the </param>
-    /// <param name="converter">An optional converter used to convert the data.</param>
     /// <returns>The consumed amount of bytes from the buffer.</returns>
-    private static int Read<TTo>(
-        ReadOnlySequence<byte> buffer,
-        NexusPipeReader pipeReader,
-        List<TTo> list,
-        Converter<T, TTo>? converter)
+    private static int Read<TTo>(ReadOnlySequence<byte> buffer, NexusPipeReader pipeReader, List<T?> list)
     {
         var length = buffer.Length;
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
@@ -120,10 +124,7 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
         {
             var type = _map[reader.ReadUnmanaged<byte>()].Invoke();
             reader.ReadValue(ref type);
-            
-            list.Add(converter == null 
-                ? reader.ReadValue<TTo>()! 
-                : converter.Invoke(reader.ReadValue<T>(!));
+            list.Add(type);
         }
 
         pipeReader.AdvanceTo(reader.Consumed, reader.Consumed);
@@ -151,18 +152,18 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
         
-        
-        
-        reader.Advance(1);
-
+        reader.GetSpanReference()
+        reader.TryPeekCollectionHeader()
         while ((length - reader.Consumed) >= 0)
         {
+            var typeByte = reader.<byte>();
+            
             var type = _map[reader.ReadUnmanaged<byte>()].Invoke();
             reader.ReadValue(ref type);
             
             list.Add(converter == null 
                 ? reader.ReadValue<TTo>()! 
-                : converter.Invoke(reader.ReadValue<T>(!));
+                : converter.Invoke(reader.ReadValue<T>()!));
         }
 
         pipeReader.AdvanceTo(reader.Consumed, reader.Consumed);
