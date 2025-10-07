@@ -1,5 +1,6 @@
 ﻿ using System.Diagnostics;
 using NexNet.Collections;
+using NexNet.Pipes.Broadcast;
 using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
@@ -11,7 +12,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         var stopwatch = Stopwatch.StartNew();
         var result = await client.Proxy.IntListBi.AddAsync(42);
@@ -28,10 +29,10 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         // Disable acknowledgments to simulate timeout
-        var internalCollection = (NexusCollection)serverNexus.IntListBi;
+        var internalCollection = (NexusBroadcastServer)serverNexus.IntListBi;
         internalCollection.DoNotSendAck = true;
 
         var stopwatch = Stopwatch.StartNew();
@@ -50,7 +51,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         // Send multiple operations concurrently
         var tasks = new List<Task<bool>>();
@@ -71,9 +72,9 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
-        var internalCollection = (NexusCollection)serverNexus.IntListBi;
+        var internalCollection = (NexusBroadcastServer)serverNexus.IntListBi;
         internalCollection.DoNotSendAck = true;
 
         var addTask = client.Proxy.IntListBi.AddAsync(42);

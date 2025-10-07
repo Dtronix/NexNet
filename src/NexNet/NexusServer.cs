@@ -177,7 +177,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
         
-        _collectionManager.StartRelayConnections();
+        _collectionManager.Start();
     }
 
     /// <inheritdoc />
@@ -188,7 +188,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         _logger?.LogInfo("Stopping server");
 
-        _collectionManager.StopRelayConnections();
+        _collectionManager.Stop();
 
         // If the server is not listening for connections, we are done.
         if (_config?.ConnectionMode == ServerConnectionMode.Listener)

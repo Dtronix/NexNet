@@ -16,11 +16,20 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
     private readonly NexusBroadcastConnectionManager _connectionManager;
     private readonly NexusBroadcastMessageProcessor _processor;
     private CancellationTokenSource? _stopCts;
+    private bool _isRunning;
     
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
     protected readonly INexusLogger? Logger;
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
+
+    internal bool DoNotSendAck
+    {
+        set
+        {
+            _connectionManager.DoNotSendAck = value;
+        }
+    }
 
     protected NexusBroadcastServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
     {
@@ -34,6 +43,13 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
     
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
     {
+        if (!_isRunning)
+        {
+            Logger?.LogError("Connection attempted to connect while the broadcaster has stopped.  Connection will be closed.");
+            await pipe.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+        
         var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
         var client = new NexusBroadcastSession(pipe, writer, session);
         _connectionManager.AddClientAsync(client);
@@ -93,13 +109,18 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
 
     public void Start()
     {
+        if (_isRunning)
+            return;
+        
         _stopCts = new CancellationTokenSource();
         _connectionManager.Run(_stopCts.Token);
         _processor.Run(_stopCts.Token);
+        _isRunning = true;
     }
 
     public void Stop()
     {
+        _isRunning = false;
         _stopCts?.Cancel();
     }
 

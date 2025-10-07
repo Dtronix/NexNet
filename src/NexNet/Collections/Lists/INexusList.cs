@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace NexNet.Collections.Lists;
@@ -148,4 +149,10 @@ public interface INexusList<T> : INexusCollection, IEnumerable<T>
     /// or the value was unchanged (no-op).
     /// </returns>
     Task<bool> ReplaceAsync(int index, T value);
+
+    public ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default);
+    public ValueTask DisableAsync();
+    
+    public Task DisabledTask { get; }
+    
 }

@@ -8,6 +8,7 @@ using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Pipes;
+using NexNet.Pipes.Broadcast;
 using NexNet.Transports;
 
 namespace NexNet.Invocation;
@@ -25,14 +26,17 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         _isServer = isServer;
     }
 
-    public NexusList<T> GetList<T>(ushort id)
+    public INexusList<T> GetList<T>(ushort id)
     {
-        return (NexusList<T>)_collections![id];
+        if(_isServer)
+         return (NexusListServer<T>)_collections![id];
+        
+        return (NexusListClient<T>)_collections![id];
     }
     
     public ValueTask  StartServerCollectionConnection(ushort id, INexusDuplexPipe pipe, INexusSession context)
     {
-        var connector = Unsafe.As<INexusCollectionConnector>(_collections![id]);
+        var connector = (INexusBroadcastConnector)_collections![id];
         return connector.ServerStartCollectionConnection(pipe, context);
     }
     
@@ -40,12 +44,20 @@ internal class NexusCollectionManager : IConfigureCollectionManager
     {
         if(_collectionBuilder == null)
             throw new InvalidOperationException("CollectionManager is already configured.  Can't add any new collections.");
-        var list = new NexusList<T>(id, mode, _logger, _isServer);
-        _collectionBuilder.Add(id, list);
         
-        // Only broadcast on the server.
-        if(_isServer)
-            list.StartUpdateBroadcast();
+        INexusCollection list;
+        if (_isServer)
+        {
+            var server = new NexusListServer<T>(id, mode, _logger);
+            server.Start();
+            list = server;
+        }
+        else
+        {
+            list = new NexusListClient<T>(id, mode, _logger);
+        }
+
+        _collectionBuilder.Add(id, list);
     }
 
     public void CompleteConfigure()
@@ -54,41 +66,53 @@ internal class NexusCollectionManager : IConfigureCollectionManager
             throw new InvalidOperationException("CollectionManager is already configured.  Can't re-configure.");
         
         _collections = _collectionBuilder.ToFrozenDictionary();
+        _collectionBuilder.Clear();
         _collectionBuilder = null;
     }
 
     public void SetClientProxySession(ProxyInvocationBase proxy, INexusSession session)
     {
         foreach (var collectionKvp in _collections!)
-            Unsafe.As<INexusCollectionConnector>(collectionKvp.Value).TryConfigureProxyCollection(proxy, session);
+            ((INexusCollectionConnector)collectionKvp.Value).TryConfigureProxyCollection(proxy, session);
     }
 
-    public void StopRelayConnections()
+    public void Stop()
     {
         if (_collections == null)
             return;
-        
-        foreach (var nexusCollection in _collections)
+
+        foreach (var collection in _collections!)
         {
-            ((NexusCollection)nexusCollection.Value).StopRelay();
+            ((INexusBroadcastConnector)collection.Value).Stop();
         }
+
+        //foreach (var nexusCollection in _collections)
+        //{
+        //    ((NexusCollection)nexusCollection.Value).StopRelay();
+        //}
     }
 
-    public void StartRelayConnections()
+    public void Start()
     {
         if (_collections == null)
             return;
         
+        foreach (var collection in _collections!)
+        {
+            ((INexusBroadcastConnector)collection.Value).Start();
+        }
+
+        
         foreach (var nexusCollection in _collections)
         {
-            try
-            {
-                ((NexusCollection)nexusCollection.Value).StartRelay();
-            }
-            catch (Exception e)
-            {
-                _logger?.LogError(e, $"Could not start relay for nexus collection with ID {nexusCollection.Key}");
-            }
+            //try
+            //{
+            //    ((NexusCollection)nexusCollection.Value).StartRelay();
+            //}
+            //catch (Exception e)
+            //{
+            //    _logger?.LogError(e, $"Could not start relay for nexus collection with ID {nexusCollection.Key}");
+            //}
 
         }
     }

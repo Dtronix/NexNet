@@ -39,7 +39,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
 
@@ -77,7 +77,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         
         await serverNexus.IntListBi.InsertAsync(0, 77).Timeout(1);
 
@@ -116,7 +116,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await serverNexus.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
@@ -155,7 +155,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await serverNexus.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
@@ -196,7 +196,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await serverNexus.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
@@ -237,7 +237,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await serverNexus.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
@@ -260,7 +260,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
         
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.AddAsync(77).Timeout(1);
 
         await eventReg.Wait();
@@ -278,7 +278,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         
         await client.Proxy.IntListBi.AddAsync(77).Timeout(1);
 
@@ -298,7 +298,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
         
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
@@ -316,7 +316,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (server, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
@@ -336,7 +336,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
@@ -356,7 +356,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
@@ -376,7 +376,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = serverNexus.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
@@ -396,7 +396,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Remove);
 
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await serverNexus.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
@@ -417,7 +417,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
@@ -438,7 +438,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
@@ -459,7 +459,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
@@ -480,7 +480,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
@@ -502,7 +502,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
         await eventReg.Wait();
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
@@ -519,8 +519,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 2);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
         await eventReg.Wait();
 
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
@@ -537,9 +537,9 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 3);
 
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
         await eventReg.Wait();
 
@@ -555,10 +555,10 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     public async Task ClientDisconnectionTaskCompletesOnDisconnect(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-        Assert.That(client.Proxy.IntListBi.DisconnectedTask.IsCompleted, Is.False);
-        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
-        Assert.That(client.Proxy.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        Assert.That(client.Proxy.IntListBi.DisabledTask.IsCompleted, Is.False);
+        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
+        Assert.That(client.Proxy.IntListBi.DisabledTask.IsCompleted, Is.True);
     }
     
     [TestCase(Type.Quic)]
@@ -571,10 +571,10 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
-        await client.Proxy.IntListBi.ConnectAsync().Timeout(1);
-        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
-        await client.Proxy.IntListBi.DisconnectAsync().Timeout(1);
-        Assert.That(serverNexus.IntListBi.DisconnectedTask.IsCompleted, Is.True);
+        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
+        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
+        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
     }
 }

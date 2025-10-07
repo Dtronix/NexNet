@@ -7,7 +7,7 @@ using MemoryPack;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<T>, INexusCollectionValueMessage
+internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<T>
     where T : NexusCollectionMessage<T>, new()
 {
     private bool _isArgumentPoolArray;

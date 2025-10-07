@@ -9,14 +9,6 @@ namespace NexNet.Collections;
 internal interface INexusCollectionConnector
 {
     /// <summary>
-    /// Server only
-    /// </summary>
-    /// <param name="pipe"></param>
-    /// <param name="context"></param>
-    /// <returns></returns>
-    public ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession context);
-    
-    /// <summary>
     /// Client Only
     /// </summary>
     /// <param name="invoker"></param>

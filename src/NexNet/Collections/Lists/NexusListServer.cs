@@ -11,7 +11,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListServer<T> : NexusBroadcastServer, INexusList2<T>
+internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
 
@@ -212,6 +212,20 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList2<T>
     {
         return _itemList.State.List.GetEnumerator();
     }
+    
+    public ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)
+    {
+        // Empty operation as the server is the authoritative source
+        return new ValueTask<bool>(true);
+    }
+
+    public ValueTask DisableAsync()
+    {
+        // No disabling of the connection.
+        return default;
+    }
+
+    public Task DisabledTask => throw new InvalidOperationException("Server can't be disabled.");
 
     IEnumerator IEnumerable.GetEnumerator()
     {

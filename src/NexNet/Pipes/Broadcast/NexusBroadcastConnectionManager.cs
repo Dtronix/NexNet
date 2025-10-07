@@ -17,6 +17,8 @@ internal class NexusBroadcastConnectionManager
     private readonly Channel<INexusCollectionBroadcasterMessageWrapper> _messageBroadcastChannel;
     
     private bool _isRunning;
+    
+    internal bool DoNotSendAck = false; 
     public NexusBroadcastConnectionManager(INexusLogger? logger)
     {
         _logger = logger?.CreateLogger("Broadcast");
@@ -141,7 +143,8 @@ internal class NexusBroadcastConnectionManager
 
     public void BroadcastAsync(INexusCollectionMessage message, INexusBroadcastSession? sourceClient)
     {
-        if (!_messageBroadcastChannel.Writer.TryWrite(message.Wrap(sourceClient)))
+        // DoNotSendAck is for testing logic only and not used in any production.
+        if (!_messageBroadcastChannel.Writer.TryWrite(message.Wrap(DoNotSendAck ? null : sourceClient)))
         {
             _logger?.LogCritical("Could not write to Broadcast channel.");
         }

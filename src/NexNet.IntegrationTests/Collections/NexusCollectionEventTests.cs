@@ -11,7 +11,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
         
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 40);
 
@@ -35,7 +35,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         var subscriber1Events = 0;
         var subscriber2Events = 0;
@@ -69,7 +69,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         var goodEventCount = 0;
 

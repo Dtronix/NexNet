@@ -14,7 +14,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListClient<T> : NexusBroadcastClient, INexusList2<T>
+internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
     private List<T>? _resettingList = null;

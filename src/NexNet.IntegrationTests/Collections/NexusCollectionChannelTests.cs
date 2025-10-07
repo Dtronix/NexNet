@@ -13,7 +13,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
         
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 60);
 
@@ -39,7 +39,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
 
         // Flood client with 20 rapid server operations to test 10-item client channel
@@ -66,7 +66,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.ConnectAsync();
+        await client.Proxy.IntListBi.EnableAsync();
 
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 50);
 
