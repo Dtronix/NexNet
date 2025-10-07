@@ -69,6 +69,12 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             return true;
         }
     }
+    
+    /// <inheritdoc/>
+    public virtual ValueTask<bool> ReadAsync(List<T> list, CancellationToken cancellationToken = default)
+    {
+        return ReadAsync<T>(list, null, cancellationToken);
+    }
 
     /// <summary>
     /// Reads data from the buffer and converts it into an enumerable collection of type T.
