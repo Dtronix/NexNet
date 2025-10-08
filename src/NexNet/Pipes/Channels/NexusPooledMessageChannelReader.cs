@@ -151,12 +151,13 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
         var length = buffer.Length;
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         using var reader = new MemoryPackReader(buffer, readerState);
+        int consumed = 0;
+        int lastConsumed = 0;
         
-        reader.GetSpanReference()
-        reader.TryPeekCollectionHeader()
-        while ((length - reader.Consumed) >= 0)
+        while (reader.Remaining > 0)
         {
-            var typeByte = reader.<byte>();
+            consumed = reader.Consumed;
+            var  buffer.Slice(reader.Consumed, 1);
             
             var type = _map[reader.ReadUnmanaged<byte>()].Invoke();
             reader.ReadValue(ref type);
@@ -164,9 +165,11 @@ internal class NexusPooledMessageChannelReader<T> : NexusChannelReader<T>
             list.Add(converter == null 
                 ? reader.ReadValue<TTo>()! 
                 : converter.Invoke(reader.ReadValue<T>()!));
+            
+            lastConsumed
         }
 
-        pipeReader.AdvanceTo(reader.Consumed, reader.Consumed);
+        pipeReader.AdvanceTo(consumed, (int)length);
 
         return reader.Consumed;
     }
