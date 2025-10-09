@@ -26,17 +26,17 @@ internal class NexusPooledUnionMessageChannelWriter<TUnion> : NexusPooledMessage
         => NexusPooledMessageUnionRegistry<TUnion>.GetMessageType<TMessage>();
 }
 
-internal class NexusPooledMessageChannelWriters<TMessage> : NexusPooledMessageChannelWriterBase<TMessage>
+internal class NexusPooledMessageChannelWriter<TMessage> : NexusPooledMessageChannelWriterBase<TMessage>
     where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
 {
     
-    public NexusPooledMessageChannelWriters(INexusDuplexPipe pipe)
+    public NexusPooledMessageChannelWriter(INexusDuplexPipe pipe)
         : base(pipe.WriterCore, false)
     {
 
     }
 
-    internal NexusPooledMessageChannelWriters(NexusPipeWriter writer)
+    internal NexusPooledMessageChannelWriter(NexusPipeWriter writer)
         : base(writer, false)
     {
 
@@ -124,6 +124,10 @@ internal abstract class NexusPooledMessageChannelWriterBase<T> : NexusChannelWri
         var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref writer, writerState);
         if (_typeHeader)
         {
+            if (typeof(TMessage) == typeof(T))
+            {
+                
+            }
             var type = GetMessageHeaderByte<TMessage>();
             memoryPackWriter.WriteUnmanaged(type);
         }

@@ -80,7 +80,7 @@ public static class NexusDuplexPipeExtensions
         where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
     {
         await pipe.ReadyTask.ConfigureAwait(false);
-        return new NexusPooledMessageChannelWriters<TMessage>(pipe.WriterCore);
+        return new NexusPooledMessageChannelWriter<TMessage>(pipe.WriterCore);
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

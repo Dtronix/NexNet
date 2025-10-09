@@ -19,4 +19,10 @@ public abstract class NexusPooledMessageBase<TMessage> : INexusPooledMessage<TMe
     /// Returns this message to the pool for reuse.
     /// </summary>
     public void Return() => NexusMessagePool<TMessage>.Return(Unsafe.As<TMessage>(this));
+
+    /// <summary>
+    /// Rents the message from the message pool.
+    /// </summary>
+    /// <returns>Rented message.</returns>
+    public static TMessage Rent() => NexusMessagePool<TMessage>.Rent();
 }

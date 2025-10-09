@@ -16,4 +16,9 @@ public interface INexusPooledMessage<TMessage>
     /// Returns this message to the pool.
     /// </summary>
     public void Return() => NexusMessagePool<TMessage>.Return(Unsafe.As<TMessage>(this));
+    
+    /// <summary>
+    /// Returns this message to the pool.
+    /// </summary>
+    public static TMessage Rent() => NexusMessagePool<TMessage>.Rent();
 }
