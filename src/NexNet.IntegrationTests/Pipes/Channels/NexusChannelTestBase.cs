@@ -3,7 +3,7 @@ using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
 
-namespace NexNet.IntegrationTests.Pipes;
+namespace NexNet.IntegrationTests.Pipes.Channels;
 
 internal class NexusChannelTestBase
 {

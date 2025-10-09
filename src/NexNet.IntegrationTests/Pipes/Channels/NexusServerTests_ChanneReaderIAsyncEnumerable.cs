@@ -1,9 +1,9 @@
 ﻿using NexNet.Pipes;
 using NUnit.Framework;
 
-namespace NexNet.IntegrationTests.Pipes;
+namespace NexNet.IntegrationTests.Pipes.Channels;
 
-internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
+internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
 {
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
@@ -15,7 +15,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
         var tcs = new TaskCompletionSource();
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
             int counter = 0;
@@ -25,8 +25,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
             }
         };
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
         await pipe.ReadyTask.Timeout(1);
         int counter = 0;
 
@@ -60,14 +60,14 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     public async Task StopsOnCompletion(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
             await writer.WriteAsync(1);
         };
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
         await pipe.ReadyTask.Timeout(1);
         var messageReceivedCount = 0;
         
@@ -90,15 +90,15 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     public async Task CancelsRead(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
             await Task.Delay(200);
             await writer.WriteAsync(1);
         };
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
         await pipe.ReadyTask.Timeout(1);
         var messageReceivedCount = 0;
         
@@ -120,15 +120,15 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     public async Task CancelsAndResumesRead(Type type)
     {
         var (_, sNexus, _, cNexus, _) = await Setup(type);
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
             await Task.Delay(200);
             await writer.WriteAsync(1);
         };
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
         await pipe.ReadyTask.Timeout(1);
         var messageReceivedCount = 0;
         
