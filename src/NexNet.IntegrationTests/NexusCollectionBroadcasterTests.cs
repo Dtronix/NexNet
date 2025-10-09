@@ -259,7 +259,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         }
     }
 
-    private class NexusCollectionMessageTest : INexusCollectionMessage
+    private class NexusCollectionMessageTest : INexusCollectionUnion<>
     {
         public int ReturnedToCacheCount;
         public NexusCollectionMessageFlags Flags { get; set; }
@@ -283,7 +283,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             throw new NotImplementedException();
         }
 
-        public INexusCollectionMessage Clone()
+        public INexusCollectionUnion<> Clone()
         {
             return SourceClientClone = new NexusCollectionMessageTest()
             {
@@ -318,7 +318,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         public INexusLogger? Logger { get; }
 
         public List<INexusCollectionBroadcasterMessageWrapper> BufferWrites { get; } = new();
-        public List<INexusCollectionMessage> Sends { get; } = new();
+        public List<INexusCollectionUnion<>> Sends { get; } = new();
 
         public bool StopSends = false;
         public bool StopBuffers = false;
@@ -346,7 +346,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<bool> SendAsync(INexusCollectionMessage message, CancellationToken ct = default)
+        public ValueTask<bool> SendAsync(INexusCollectionUnion<> message, CancellationToken ct = default)
         {
             OnEvent?.Invoke(ClientEvent.BeginSendAsync);
             

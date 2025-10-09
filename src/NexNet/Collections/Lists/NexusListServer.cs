@@ -27,7 +27,7 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
         _itemList = new(1024, logger);
     }
 
-    protected override IEnumerable<INexusCollectionMessage> ResetValuesEnumerator()
+    protected override IEnumerable<INexusCollectionUnion<>> ResetValuesEnumerator()
     {
         var state = _itemList.State;
 
@@ -56,7 +56,7 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
         yield return resetComplete;
     }
 
-    protected override ProcessResult OnProcess(INexusCollectionMessage message,
+    protected override ProcessResult OnProcess(INexusCollectionUnion<> message,
         INexusBroadcastSession? sourceClient,
         CancellationToken ct)
     {

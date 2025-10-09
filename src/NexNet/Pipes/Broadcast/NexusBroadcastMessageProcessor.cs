@@ -31,7 +31,7 @@ internal class NexusBroadcastMessageProcessor
     }
 
 
-    public async ValueTask<bool> EnqueueWaitForResult(INexusCollectionMessage message, INexusBroadcastSession? client)
+    public async ValueTask<bool> EnqueueWaitForResult(INexusCollectionUnion<> message, INexusBroadcastSession? client)
     {
         var tcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
         var wrapper = ProcessRequestWrapper.Rent(client, message, tcs);
@@ -98,7 +98,7 @@ internal class NexusBroadcastMessageProcessor
     {
         private static readonly ConcurrentBag<ProcessRequestWrapper> _pool = new ();
         public INexusBroadcastSession? Client;
-        public INexusCollectionMessage Message = null!;
+        public INexusCollectionUnion<> Message = null!;
         public PooledResettableValueTaskCompletionSource<bool>? CompletionTaskSource;
         
         private ProcessRequestWrapper()
@@ -107,7 +107,7 @@ internal class NexusBroadcastMessageProcessor
         }
         
         public static ProcessRequestWrapper Rent(INexusBroadcastSession? client, 
-            INexusCollectionMessage message,
+            INexusCollectionUnion<> message,
             PooledResettableValueTaskCompletionSource<bool>? completionTaskSource)
         {
             if (!_pool.TryTake(out var wrapper))
@@ -128,5 +128,5 @@ internal class NexusBroadcastMessageProcessor
 
     public record struct ProcessResult(bool Success, bool Disconnect);
 
-    public delegate ProcessResult OnProcessDelegate(INexusCollectionMessage process, INexusBroadcastSession? sourceClient, CancellationToken ct);
+    public delegate ProcessResult OnProcessDelegate(INexusCollectionUnion<> process, INexusBroadcastSession? sourceClient, CancellationToken ct);
 }

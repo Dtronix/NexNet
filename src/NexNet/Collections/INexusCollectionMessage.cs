@@ -5,7 +5,8 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
-internal interface INexusCollectionMessage
+internal interface INexusCollectionUnion<TUnion>
+    where TUnion : INexusCollectionUnion<TUnion>
 {
     public NexusCollectionMessageFlags Flags { get; set; }
     
@@ -16,9 +17,9 @@ internal interface INexusCollectionMessage
 
     void CompleteBroadcast();
 
-    public INexusCollectionMessage Clone();
+    public TUnion Clone();
     
-    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null);
+    public INexusCollectionBroadcasterMessageWrapper<TUnion> Wrap(INexusBroadcastSession<TUnion>? client = null);
 }
 
 /// <summary>

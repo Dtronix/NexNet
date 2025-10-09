@@ -50,7 +50,7 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
             return;
         }
         
-        var writer = new NexusChannelWriter<INexusCollectionMessage>(pipe);
+        var writer = new NexusChannelWriter<INexusCollectionUnion<>>(pipe);
         var client = new NexusBroadcastSession(pipe, writer, session);
         _connectionManager.AddClientAsync(client);
         
@@ -78,7 +78,7 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         await writer.Writer.FlushAsync().ConfigureAwait(false);
         
         var reader = Mode == NexusCollectionMode.BiDirectional 
-            ? new NexusChannelReader<INexusCollectionMessage>(pipe) 
+            ? new NexusChannelReader<INexusCollectionUnion<>>(pipe) 
             : null;
 
         if (reader != null)
@@ -124,13 +124,13 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         _stopCts?.Cancel();
     }
 
-    protected abstract IEnumerable<INexusCollectionMessage> ResetValuesEnumerator();
-    protected abstract ProcessResult OnProcess(INexusCollectionMessage message,
+    protected abstract IEnumerable<INexusCollectionUnion<>> ResetValuesEnumerator();
+    protected abstract ProcessResult OnProcess(INexusCollectionUnion<> message,
         INexusBroadcastSession? sourceClient,
         CancellationToken ct);
     
     
-    private NexusBroadcastMessageProcessor.ProcessResult ProcessMessage(INexusCollectionMessage message, INexusBroadcastSession? sourceClient, CancellationToken ct)
+    private NexusBroadcastMessageProcessor.ProcessResult ProcessMessage(INexusCollectionUnion<> message, INexusBroadcastSession? sourceClient, CancellationToken ct)
     {
         var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
@@ -140,9 +140,9 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         return new NexusBroadcastMessageProcessor.ProcessResult(true, disconnect);
     }
 
-    public record struct ProcessResult(INexusCollectionMessage? BroadcastMessage, bool Disconnect);
+    public record struct ProcessResult(INexusCollectionUnion<>? BroadcastMessage, bool Disconnect);
     
-    protected ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
+    protected ValueTask<bool> ProcessMessage(INexusCollectionUnion<> message)
     {
         return _processor.EnqueueWaitForResult(message, null);
     }

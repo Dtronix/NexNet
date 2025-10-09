@@ -7,8 +7,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionMessage<T>: INexusCollectionMessage
-    where T : NexusCollectionMessage<T>, new() 
+internal abstract class NexusCollectionMessage<T>: INexusCollectionUnion<> where T : NexusCollectionMessage<T>, new() 
 {
     public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
     private int _remaining;
@@ -45,7 +44,7 @@ internal abstract class NexusCollectionMessage<T>: INexusCollectionMessage
         set => _remaining = value;
     }
 
-    public abstract INexusCollectionMessage Clone();
+    public abstract INexusCollectionUnion<> Clone();
     
     public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null) 
         => NexusCollectionBroadcasterMessageWrapper.Rent((T)this, client);

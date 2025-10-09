@@ -18,7 +18,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
     private List<T>? _resettingList = null;
-    private List<INexusCollectionMessage>? _resettingMessageBuffer = null;
+    private List<INexusCollectionUnion<>>? _resettingMessageBuffer = null;
     private int _resettingListVersion;
     private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource = new ();
     
@@ -41,7 +41,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
     
     
     protected override NexusBroadcastMessageProcessor.ProcessResult OnProcess(
-        INexusCollectionMessage message,
+        INexusCollectionUnion<> message,
         INexusBroadcastSession? sourceClient,
         CancellationToken ct)
     {
@@ -56,7 +56,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
                 }
                 
                 _resettingList = new List<T>(startMessage.TotalValues);
-                _resettingMessageBuffer = new List<INexusCollectionMessage>();
+                _resettingMessageBuffer = new List<INexusCollectionUnion<>>();
                 _resettingListVersion = startMessage.Version;
                 return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
             
@@ -171,7 +171,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
         return true;
     }
     
-    private async ValueTask<bool> ProcessMessage(INexusCollectionMessage message)
+    private async ValueTask<bool> ProcessMessage(INexusCollectionUnion<> message)
     {
         if(Client == null)
             throw new InvalidOperationException("Client not connected");

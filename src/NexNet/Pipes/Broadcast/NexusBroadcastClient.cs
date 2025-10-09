@@ -80,7 +80,7 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         _ = pipe.CompleteTask.ContinueWith((s, state) => 
             Unsafe.As<NexusBroadcastClient>(state)!.Disconnected(), this, cancellationToken);
         
-        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionMessage>(pipe) : null;
+        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionUnion<>>(pipe) : null;
         _client = new NexusBroadcastSession(pipe, writer, _session);
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -96,7 +96,7 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
             if (clientState == null)
                 return;
 
-            var reader = new NexusChannelReader<INexusCollectionMessage>(clientState.Pipe);
+            var reader = new NexusChannelReader<INexusCollectionUnion<>>(clientState.Pipe);
             try
             {
                 // Read through all the messages received until complete.
@@ -153,7 +153,7 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         return new SemaphoreSlimDisposable(_operationSemaphore);
     }
     
-    protected abstract NexusBroadcastMessageProcessor.ProcessResult OnProcess(INexusCollectionMessage message,
+    protected abstract NexusBroadcastMessageProcessor.ProcessResult OnProcess(INexusCollectionUnion<> message,
         INexusBroadcastSession? sourceClient,
         CancellationToken ct);
     
