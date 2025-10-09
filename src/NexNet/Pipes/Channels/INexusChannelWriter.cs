@@ -21,7 +21,9 @@ public interface INexusChannelWriter<in T>
     /// <param name="item">The item of unmanaged type to be written to the NexusPipeWriter.</param>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
-    ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default);
+    ValueTask<bool> WriteAsync<TMessage>(TMessage item, CancellationToken cancellationToken = default)
+        where TMessage : T;
+        
 
     /// <summary>
     /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
@@ -29,7 +31,8 @@ public interface INexusChannelWriter<in T>
     /// <param name="items">The items of unmanaged type to be written to the NexusPipeWriter.</param>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
-    ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default);
+    ValueTask<bool> WriteAsync<TMessage>(IEnumerable<TMessage> items, CancellationToken cancellationToken = default)
+        where TMessage : T;
 
     /// <summary>
     /// Marks the channel writer as complete, indicating that no more items will be written to it.

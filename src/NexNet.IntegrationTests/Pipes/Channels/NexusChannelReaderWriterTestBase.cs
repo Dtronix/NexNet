@@ -4,7 +4,7 @@ using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
 
-namespace NexNet.IntegrationTests.Pipes;
+namespace NexNet.IntegrationTests.Pipes.Channels;
 
 internal class NexusChannelReaderWriterTestBase
 {

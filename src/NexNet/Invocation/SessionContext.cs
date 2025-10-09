@@ -46,22 +46,8 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// <returns>Pipe for communication over teh current session.</returns>
     public IRentedNexusDuplexPipe CreatePipe()
     {
-        return Session.PipeManager.RentPipe() 
+        return Session.PipeManager.RentPipe()
                ?? throw new InvalidOperationException("Can't create a pipe due to session being closed.");
-    }
-
-    /// <summary>
-    /// Creates an unmanaged duplex channel for the specified type.
-    /// </summary>
-    /// <typeparam name="T">The type of unmanaged data to be transmitted through the channel.</typeparam>
-    /// <returns>An instance of <see cref="INexusDuplexUnmanagedChannel{T}"/> that allows for bidirectional communication of unmanaged data.</returns>
-    /// <remarks>
-    /// This method is optimized for unmanaged types and should be used over the non-unmanaged version when possible.
-    /// </remarks>
-    public INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
-        where T : unmanaged
-    {
-        return CreatePipe().GetUnmanagedChannel<T>();
     }
 
 

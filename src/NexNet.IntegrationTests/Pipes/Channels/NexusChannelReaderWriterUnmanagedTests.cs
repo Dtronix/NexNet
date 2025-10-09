@@ -1,8 +1,7 @@
-﻿using NexNet.Pipes;
-using NexNet.Pipes.Channels;
+﻿using NexNet.Pipes.Channels;
 using NUnit.Framework;
 
-namespace NexNet.IntegrationTests.Pipes;
+namespace NexNet.IntegrationTests.Pipes.Channels;
 
 internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriterTestBase
 {
