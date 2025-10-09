@@ -14,7 +14,7 @@ namespace NexNetBenchmarks
                 return;
             }
             // Else, use BenchmarkRunner
-            var summary = BenchmarkRunner.Run<InvocationBenchmarks>(BenchmarkConfig.Get());
+            var summary = BenchmarkRunner.Run<ChannelBenchmarks>(BenchmarkConfig.Get());
         }
     }
 }

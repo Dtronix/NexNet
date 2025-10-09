@@ -17,4 +17,10 @@ public static class PooledMessageExtensions
     {
         NexusMessagePool<TMessage>.Return((TMessage)message);
     }
+    
+    public static class NexusMessage<TMessage> 
+        where TMessage : class, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+    {
+        public static TMessage Rent() => NexusMessagePool<TMessage>.Rent();
+    }
 }

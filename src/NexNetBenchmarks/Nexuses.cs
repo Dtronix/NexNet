@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using NexNet;
 using NexNet.Pipes;
 
@@ -17,6 +18,7 @@ interface IServerNexus
     ValueTask<int> InvocationNoArgumentWithResult();
 
     ValueTask InvocationWithDuplexPipe_Upload(INexusDuplexPipe duplexPipe);
+    ValueTask InvocationWithDuplexPipe_Channel(INexusDuplexPipe duplexPipe);
 }
 
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -67,4 +69,11 @@ partial class ServerNexus
             reader.AdvanceTo(result.Buffer.End);
         }
     }
+
+    public ValueTask InvocationWithDuplexPipe_Channel(INexusDuplexPipe duplexPipe)
+    {
+        return InvocationWithDuplexPipe_ChannelFunc?.Invoke(duplexPipe) ?? default;
+    }
+
+    public Func<INexusDuplexPipe, ValueTask>? InvocationWithDuplexPipe_ChannelFunc;
 }

@@ -6,9 +6,14 @@ using MemoryPack;
 namespace NexNet.Pipes.Channels;
 
 /// <summary>
-/// Thread-safe object pool for message instances
+/// Thread-safe object pool for message instances that implements efficient reuse of message objects
+/// to reduce garbage collection pressure and improve performance in high-throughput scenarios.
 /// </summary>
-internal static class NexusMessagePool<TMessage> 
+/// <typeparam name="TMessage">
+/// The message type to pool. Must be a reference type that implements <see cref="INexusPooledMessage{TMessage}"/>
+/// and <see cref="IMemoryPackable{TMessage}"/>, and has a parameterless constructor.
+/// </typeparam>
+internal static class NexusMessagePool<TMessage>
     where TMessage : class, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
 {
     private static readonly ConcurrentBag<TMessage> _pool = new();
@@ -16,8 +21,18 @@ internal static class NexusMessagePool<TMessage>
     private static int _poolCount;
     private const int MaxPoolSize = 1000; // Prevent unbounded growth
     
+    /// <summary>
+    /// Gets the current number of messages available in the pool.
+    /// </summary>
     public static int PoolCount => _poolCount;
     
+    /// <summary>
+    /// Retrieves a message instance from the pool, or creates a new one if the pool is empty.
+    /// </summary>
+    /// <returns>
+    /// A message instance ready for use. The caller is responsible for calling <see cref="Return"/>
+    /// when finished to return the instance to the pool.
+    /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TMessage Rent()
     {
@@ -26,10 +41,14 @@ internal static class NexusMessagePool<TMessage>
             Interlocked.Decrement(ref _poolCount);
             return instance;
         }
-        
+
         return new TMessage();
     }
     
+    /// <summary>
+    /// Returns a message instance to the pool for future reuse.
+    /// </summary>
+    /// <param name="instance">The message instance to return to the pool.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Return(TMessage instance)
     {
@@ -42,7 +61,7 @@ internal static class NexusMessagePool<TMessage>
     }
     
     /// <summary>
-    /// Clear all pooled instances
+    /// Clears all pooled instances from the pool.
     /// </summary>
     public static void Clear()
     {
