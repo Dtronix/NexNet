@@ -100,6 +100,11 @@ internal partial class NexusCollectionResetValuesMessage
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
+
+    public NexusCollectionResetValuesMessage()
+    {
+        
+    }
 }
 
 

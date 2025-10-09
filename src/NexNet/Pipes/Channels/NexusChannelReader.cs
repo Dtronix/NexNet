@@ -27,7 +27,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     public long BufferedLength => Reader.BufferedLength;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
+    /// Initializes a new instance of the <see cref="NexusChannelReader{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
     public NexusChannelReader(INexusDuplexPipe pipe)

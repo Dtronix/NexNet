@@ -25,7 +25,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
     {
         var messenger = new DummySessionMessenger();
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue);
-        var writer = new NexusChannelWriterUnmanaged<T>(nexusPipeWriter);
+        var writer = new NexusChannelWriter<T>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         messenger.OnMessageSent = (type, header, body) =>
         {
@@ -55,7 +55,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
         var messenger = new DummySessionMessenger();
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1);
 
-        var writer = new NexusChannelWriterUnmanaged<T>(nexusPipeWriter);
+        var writer = new NexusChannelWriter<T>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
 
         messenger.OnMessageSent = (type, header, body) =>
@@ -77,7 +77,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
             PauseWriting = true
         };
 
-        var writer = new NexusChannelWriterUnmanaged<long>(nexusPipeWriter);
+        var writer = new NexusChannelWriter<long>(nexusPipeWriter);
 
         var cts = new CancellationTokenSource(100);
         var writeResult = await writer.WriteAsync(123456789L, cts.Token).Timeout(1);
@@ -94,7 +94,7 @@ internal class NexusChannelWriterUnmanagedTests : NexusChannelTestBase
             PauseWriting = true
         };
 
-        var writer = new NexusChannelWriterUnmanaged<long>(nexusPipeWriter);
+        var writer = new NexusChannelWriter<long>(nexusPipeWriter);
 
         var cts = new CancellationTokenSource();
         cts.Cancel();

@@ -7,5 +7,5 @@ public interface INexusPooledMessageUnion<out TUnion>
     where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
     /// <summary>Register all message types for this union</summary>
-    static abstract void RegisterMessages(INexusUnionBuilder<TUnion> registerer);
+    static abstract void RegisterMessages(INexusPooledMessageUnionBuilder<TUnion> registerer);
 }

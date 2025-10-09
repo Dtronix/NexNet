@@ -17,7 +17,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var tcs = new TaskCompletionSource();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            var writer = await pipe.GetUnmanagedChannelWriter<int>();
+            var writer = await pipe.GetChannelWriter<int>();
             int counter = 0;
             await foreach (var _ in await pipe.GetChannelReader<ComplexMessage>())
             {
@@ -32,7 +32,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
 
         _ = Task.Run(async () =>
         {
-            await foreach (var _ in await pipe.GetUnmanagedChannelReader<int>())
+            await foreach (var _ in await pipe.GetChannelReader<int>())
             {
                 Interlocked.Increment(ref counter);
                 if(counter == 10)
@@ -62,7 +62,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var (_, sNexus, _, cNexus, _) = await Setup(type);
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
-            var writer = await pipe.GetUnmanagedChannelWriter<int>();
+            var writer = await pipe.GetChannelWriter<int>();
             await writer.WriteAsync(1);
         };
 
@@ -72,7 +72,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(1000);
-        await foreach (var _ in (await pipe.GetUnmanagedChannelReader<int>()).WithCancellation(cts.Token))
+        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
         {
             messageReceivedCount++;
         }
@@ -92,7 +92,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var (_, sNexus, _, cNexus, _) = await Setup(type);
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
-            var writer = await pipe.GetUnmanagedChannelWriter<int>();
+            var writer = await pipe.GetChannelWriter<int>();
             await Task.Delay(200);
             await writer.WriteAsync(1);
         };
@@ -103,7 +103,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await pipe.GetUnmanagedChannelReader<int>()).WithCancellation(cts.Token))
+        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
         {
             messageReceivedCount++;
         }
@@ -122,7 +122,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var (_, sNexus, _, cNexus, _) = await Setup(type);
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
-            var writer = await pipe.GetUnmanagedChannelWriter<int>();
+            var writer = await pipe.GetChannelWriter<int>();
             await Task.Delay(200);
             await writer.WriteAsync(1);
         };
@@ -133,14 +133,14 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         var messageReceivedCount = 0;
         
         var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await pipe.GetUnmanagedChannelReader<int>()).WithCancellation(cts.Token))
+        await foreach (var _ in (await pipe.GetChannelReader<int>()).WithCancellation(cts.Token))
         {
             messageReceivedCount++;
         }
         
         Assert.That(messageReceivedCount, Is.EqualTo(0));
         
-        await foreach (var _ in await pipe.GetUnmanagedChannelReader<int>())
+        await foreach (var _ in await pipe.GetChannelReader<int>())
         {
             messageReceivedCount++;
         }

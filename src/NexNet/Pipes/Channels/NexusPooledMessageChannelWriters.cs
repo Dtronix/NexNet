@@ -6,28 +6,64 @@ using NexNet.Internals;
 
 namespace NexNet.Pipes.Channels;
 
-/// <summary>
-/// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
-/// </summary>
-/// <typeparam name="TUnion">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
-internal class NexusPooledMessageChannelWriter<TUnion> : NexusChannelWriter<TUnion>
+internal class NexusPooledUnionMessageChannelWriter<TUnion> : NexusPooledMessageChannelWriterBase<TUnion>
     where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
-
-    /// <summary>
-    /// Initializes a new instance of the NexusChannelWriterUnmanaged class with the specified pipe.
-    /// </summary>
-    /// <param name="pipe">The duplex pipe to be used for writing.</param>
-    public NexusPooledMessageChannelWriter(INexusDuplexPipe pipe)
-        : base(pipe.WriterCore)
+    
+    public NexusPooledUnionMessageChannelWriter(INexusDuplexPipe pipe)
+        : base(pipe.WriterCore, true)
     {
 
     }
-    
-    internal NexusPooledMessageChannelWriter(NexusPipeWriter writer)
-        : base(writer)
+
+    internal NexusPooledUnionMessageChannelWriter(NexusPipeWriter writer)
+        : base(writer, true)
     {
 
+    }
+
+    protected override byte GetMessageHeaderByte<TMessage>()
+        => NexusPooledMessageUnionRegistry<TUnion>.GetMessageType<TMessage>();
+}
+
+internal class NexusPooledMessageChannelWriters<TMessage> : NexusPooledMessageChannelWriterBase<TMessage>
+    where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+{
+    
+    public NexusPooledMessageChannelWriters(INexusDuplexPipe pipe)
+        : base(pipe.WriterCore, false)
+    {
+
+    }
+
+    internal NexusPooledMessageChannelWriters(NexusPipeWriter writer)
+        : base(writer, false)
+    {
+
+    }
+
+    // Not used on this implementation as there is not header.
+    protected override byte GetMessageHeaderByte<TMessage2>() => 0;
+}
+
+/// <summary>
+/// The NexusPooledMessageChannelWriterBase class is a generic class that provides functionality for writing pooled message types to a NexusPipeWriter.
+/// </summary>
+/// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter.</typeparam>
+internal abstract class NexusPooledMessageChannelWriterBase<T> : NexusChannelWriter<T>
+{
+    private readonly bool _typeHeader;
+
+    protected NexusPooledMessageChannelWriterBase(INexusDuplexPipe pipe, bool typeHeader)
+        : base(pipe.WriterCore)
+    {
+        _typeHeader = typeHeader;
+    }
+    
+    internal NexusPooledMessageChannelWriterBase(NexusPipeWriter writer, bool typeHeader)
+        : base(writer)
+    {
+        _typeHeader = typeHeader;
     }
 
     /// <summary>
@@ -82,27 +118,45 @@ internal class NexusPooledMessageChannelWriter<TUnion> : NexusChannelWriter<TUni
         return true;
     }
 
-    private static void Write<TMessage>(ref TMessage item, ref NexusPipeWriter writer)
+    private void Write<TMessage>(ref TMessage item, ref NexusPipeWriter writer)
     {
         using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref writer, writerState);
-        var type = NexusMessageUnionRegistry<TUnion>.GetMessageType<TMessage>();
-        memoryPackWriter.WriteUnmanaged(type);
+        if (_typeHeader)
+        {
+            var type = GetMessageHeaderByte<TMessage>();
+            memoryPackWriter.WriteUnmanaged(type);
+        }
+
         memoryPackWriter.WriteValue(item);
         memoryPackWriter.Flush();
     }
 
-    private static void WriteEnumerable<TMessage>(IEnumerable<TMessage> items, ref NexusPipeWriter writer)
+    private void WriteEnumerable<TMessage>(IEnumerable<TMessage> items, ref NexusPipeWriter writer)
     {
         using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
         var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref writer, writerState);
-        var type = NexusMessageUnionRegistry<TUnion>.GetMessageType<TMessage>();
-        foreach (var item in items)
+
+        if (_typeHeader)
         {
-            memoryPackWriter.WriteUnmanaged(type);
-            memoryPackWriter.WriteValue(item);
+            var type = GetMessageHeaderByte<TMessage>();
+            foreach (var item in items)
+            {
+                memoryPackWriter.WriteUnmanaged(type);
+                memoryPackWriter.WriteValue(item);
+            }
         }
+        else
+        {
+            foreach (var item in items)
+            {
+                memoryPackWriter.WriteValue(item);
+            }
+        }
+        
 
         memoryPackWriter.Flush();
     }
+
+    protected abstract byte GetMessageHeaderByte<TMessage>();
 }

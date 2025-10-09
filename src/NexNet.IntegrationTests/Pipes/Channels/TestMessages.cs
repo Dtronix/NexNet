@@ -6,7 +6,7 @@ namespace NexNet.IntegrationTests.Pipes.Channels;
 
 abstract class NetworkMessageUnion : INexusPooledMessageUnion<NetworkMessageUnion>
 {
-    public static void RegisterMessages(INexusUnionBuilder<NetworkMessageUnion> registerer)
+    public static void RegisterMessages(INexusPooledMessageUnionBuilder<NetworkMessageUnion> registerer)
     {
         registerer.Add<LoginMessage>();
         registerer.Add<ChatMessage>();
@@ -42,7 +42,7 @@ partial class DisconnectMessage : NetworkMessageUnion, INexusPooledMessage<Disco
 }
 
 [MemoryPackable]
-partial class StandAloneMessage : NexusBasePooledMessage<StandAloneMessage>
+partial class StandAloneMessage : NexusPooledMessageBase<StandAloneMessage>
 {
     public string Reason { get; set; } = string.Empty;
     public int ErrorCode { get; set; }
