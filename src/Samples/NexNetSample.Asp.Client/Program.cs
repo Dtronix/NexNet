@@ -33,8 +33,8 @@ internal class Program
         var pipe = client.CreatePipe();
         await client.Proxy.CalculateNumber(pipe);
 
-        var unmanagedReader = await pipe.GetUnmanagedChannelReader<int>();
-        var unmanagedWriter = await pipe.GetUnmanagedChannelWriter<int>();
+        var unmanagedReader = await pipe.GetChannelReader<int>();
+        var unmanagedWriter = await pipe.GetChannelWriter<int>();
 
         await unmanagedWriter.WriteAsync(10);
         await unmanagedWriter.WriteAsync(100);

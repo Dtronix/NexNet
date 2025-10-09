@@ -7,8 +7,8 @@ namespace NexNet.Pipes.Channels;
 /// Base message for a single pooled message. Not to be used with unions.
 /// </summary>
 /// <typeparam name="TMessage">Message type.</typeparam>
-public abstract class NexusBasePooledMessage<TMessage> : INexusPooledMessage<TMessage>
-    where TMessage : NexusBasePooledMessage<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+public abstract class NexusPooledMessageBase<TMessage> : INexusPooledMessage<TMessage>
+    where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
 {
     /// <summary>
     /// Not used as this is not a union.

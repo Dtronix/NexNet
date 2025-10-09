@@ -14,8 +14,8 @@ public partial class ServerNexus
 {
     public async ValueTask CalculateNumber(INexusDuplexPipe pipe)
     {
-        var reader = await pipe.GetUnmanagedChannelReader<int>();
-        var writer = await pipe.GetUnmanagedChannelWriter<int>();
+        var reader = await pipe.GetChannelReader<int>();
+        var writer = await pipe.GetChannelWriter<int>();
     
         // Use IAsyncEnumerable for simple processing
         await foreach (var number in reader)

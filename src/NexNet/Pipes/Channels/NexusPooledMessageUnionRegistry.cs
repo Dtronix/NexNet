@@ -9,15 +9,15 @@ namespace NexNet.Pipes.Channels;
 /// <summary>
 /// Central registry for union message types with AOT-friendly design
 /// </summary>
-internal static class NexusMessageUnionRegistry<TUnion> 
+internal static class NexusPooledMessageUnionRegistry<TUnion> 
     where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
     private static readonly FrozenDictionary<byte, UnionEntry> _unions;
     private static readonly FrozenDictionary<Type, byte> _unionsByType;
     
-    static NexusMessageUnionRegistry()
+    static NexusPooledMessageUnionRegistry()
     {
-        var registerer = new NexusUnionBuilder();
+        var registerer = new NexusPooledMessageUnionBuilder();
         TUnion.RegisterMessages(registerer);
         _unions = registerer.Build();
         _unionsByType = registerer.BuildByteMap();
@@ -55,7 +55,7 @@ internal static class NexusMessageUnionRegistry<TUnion>
 
     public static byte GetMessageType<T>() => _unionsByType.GetValueOrDefault(typeof(T), (byte)0);
     
-    private sealed class NexusUnionBuilder : INexusUnionBuilder<TUnion>
+    private sealed class NexusPooledMessageUnionBuilder : INexusPooledMessageUnionBuilder<TUnion>
     {
         private readonly Dictionary<byte, UnionEntry> _entries = new();
         private readonly Dictionary<Type, byte> _typeByteMap = new();

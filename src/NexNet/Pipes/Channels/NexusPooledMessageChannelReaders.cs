@@ -20,7 +20,7 @@ internal class NexusPooledUnionMessageChannelReader<TUnion> : NexusPooledMessage
     where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
+    /// Initializes a new instance of the <see cref="NexusPooledUnionMessageChannelReader{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
     public NexusPooledUnionMessageChannelReader(INexusDuplexPipe pipe)
@@ -32,19 +32,11 @@ internal class NexusPooledUnionMessageChannelReader<TUnion> : NexusPooledMessage
         : base(reader)
     {
     }
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected override bool ParseValues(List<TUnion> list, MemoryPackReader reader)
-    {
-        var value = NexusMessageUnionRegistry<TUnion>.Rent(reader.ReadUnmanaged<byte>());
-        reader.ReadValue(ref value);
-                
-        if(value == null)
-            return false;
-                
-        list.Add(value);
-        return true;
-    }
+    protected override TUnion GetPooledMessage(ref MemoryPackReader reader)
+        => NexusPooledMessageUnionRegistry<TUnion>.Rent(reader.ReadUnmanaged<byte>());
+
 }
 
 /// <summary>
@@ -56,36 +48,27 @@ internal class NexusPooledUnionMessageChannelReader<TUnion> : NexusPooledMessage
 /// This structure provides asynchronous methods for reading data from the duplex pipe and converting it into an enumerable collection of type T.
 /// It uses a <see cref="INexusDuplexPipe"/> for reading data.
 /// </remarks>
-internal class NexusPooledMessageChannelReader<TMessage> : NexusPooledMessageChannelReaderBase<TMessage>
-    where TMessage : NexusBasePooledMessage<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+internal class NexusPooledMessageChannelReaders<TMessage> : NexusPooledMessageChannelReaderBase<TMessage>
+    where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="NexusPooledMessageChannelReader{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
+    /// Initializes a new instance of the <see cref="NexusPooledMessageChannelReaders{TMessage}"/> class using the specified <see cref="INexusDuplexPipe"/>.
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
-    public NexusPooledMessageChannelReader(INexusDuplexPipe pipe)
+    public NexusPooledMessageChannelReaders(INexusDuplexPipe pipe)
     : this(pipe.ReaderCore)
     {
 
     }
 
-    internal NexusPooledMessageChannelReader(NexusPipeReader reader)
+    internal NexusPooledMessageChannelReaders(NexusPipeReader reader)
         : base(reader)
     {
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected override bool ParseValues(List<TMessage> list, MemoryPackReader reader)
-    {
-        var value= NexusMessagePool<TMessage>.Rent();
-        reader.ReadValue(ref value);
-                
-        if(value == null)
-            return false;
-                
-        list.Add(value);
-        return true;
-    }
+    protected override TMessage GetPooledMessage(ref MemoryPackReader reader)
+        => NexusMessagePool<TMessage>.Rent();
 }
 
 
@@ -102,10 +85,10 @@ internal class NexusPooledMessageChannelReader<TMessage> : NexusPooledMessageCha
 internal abstract class NexusPooledMessageChannelReaderBase<T> : NexusChannelReader<T>
 {
     /// <summary>
-    /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
+    /// Initializes a new instance of the <see cref="NexusPooledMessageChannelReaderBase{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
-    public NexusPooledMessageChannelReaderBase(INexusDuplexPipe pipe)
+    protected NexusPooledMessageChannelReaderBase(INexusDuplexPipe pipe)
     : this(pipe.ReaderCore)
     {
 
@@ -145,7 +128,10 @@ internal abstract class NexusPooledMessageChannelReaderBase<T> : NexusChannelRea
         var buffer = result.Buffer;
         var length = buffer.Length;
         using var readerState = MemoryPackReaderOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
-        using var reader = new MemoryPackReader(buffer, readerState);
+        
+        // Only reason to dispose this is to release the any rented buffers, which we are not using.
+        var reader = new MemoryPackReader(buffer, readerState);
+        
         int consumed = 0;
         try
         {
@@ -153,9 +139,15 @@ internal abstract class NexusPooledMessageChannelReaderBase<T> : NexusChannelRea
             {     
                 // Set the consumed prior to any work as the work may fail.
                 consumed = reader.Consumed;
+
+                var value = GetPooledMessage(ref reader);
                 
-                if (!ParseValues(tList, reader))
+                reader.ReadValue(ref value);
+                
+                if(value == null)
                     break;
+                
+                tList.Add(value);
             }
         }
         catch (MemoryPackSerializationException)
@@ -174,5 +166,5 @@ internal abstract class NexusPooledMessageChannelReaderBase<T> : NexusChannelRea
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected abstract bool ParseValues(List<T> list, MemoryPackReader reader);
+    protected abstract T GetPooledMessage(ref MemoryPackReader reader);
 }

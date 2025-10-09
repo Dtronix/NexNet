@@ -7,7 +7,7 @@ using NexNet.Internals;
 namespace NexNet.Pipes.Channels;
 
 /// <summary>
-/// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
+/// The NexusChannelWriter class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
 /// </summary>
 /// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
 internal class NexusChannelWriter<T> : INexusChannelWriter<T>
@@ -23,7 +23,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     public bool IsComplete { get; set; }
 
     /// <summary>
-    /// Initializes a new instance of the NexusChannelWriterUnmanaged class with the specified pipe.
+    /// Initializes a new instance of the NexusChannelWriter class with the specified pipe.
     /// </summary>
     /// <param name="pipe">The duplex pipe to be used for writing.</param>
     public NexusChannelWriter(INexusDuplexPipe pipe)
@@ -35,7 +35,6 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     {
         Writer = writer;
     }
-
 
     /// <summary>
     /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
@@ -72,6 +71,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync<TMessage>(IEnumerable<TMessage> items, CancellationToken cancellationToken = default)
+        where TMessage : T
     {
         using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
         
@@ -98,7 +98,6 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
         
         await Writer.CompleteAsync().ConfigureAwait(false);
     }
-
 
     private static void Write<TMessage>(ref TMessage item, NexusPipeWriter nexusPipeWriter)
     {

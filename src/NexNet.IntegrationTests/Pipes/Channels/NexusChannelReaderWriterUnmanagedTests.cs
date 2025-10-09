@@ -22,7 +22,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
         var iterations = 1000;
         for (var i = 0; i < iterations; i++)
         {
-            await writer.WriteAsync(i).Timeout(1);
+            await writer.WriteAsync((long)i).Timeout(1);
         }
 
         var count = 0L;
@@ -46,7 +46,7 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
         {
             for (var i = 0; i < iterations; i++)
             {
-                await writer.WriteAsync(i).Timeout(1);
+                await writer.WriteAsync((long)i).Timeout(1);
             }
         });
 
@@ -85,13 +85,13 @@ internal class NexusChannelReaderWriterUnmanagedTests : NexusChannelReaderWriter
         Assert.That(completeRead.Count, Is.EqualTo(0));
     }
 
-    private (NexusChannelWriterUnmanaged<T>, NexusChannelReaderUnmanaged<T>) GetReaderWriter<T>()
+    private (NexusChannelWriter<T>, NexusChannelReader<T>) GetReaderWriter<T>()
         where T : unmanaged
     {
         var (pipeWriter, pipeReader, _) = GetConnectedPipeReaderWriter();
 
-        var writer = new NexusChannelWriterUnmanaged<T>(pipeWriter);
-        var reader = new NexusChannelReaderUnmanaged<T>(pipeReader);
+        var writer = new NexusChannelWriter<T>(pipeWriter);
+        var reader = new NexusChannelReader<T>(pipeReader);
 
         return (writer, reader);
     }

@@ -6,7 +6,7 @@ namespace NexNet.Pipes.Channels;
 /// Builder for unions.
 /// </summary>
 /// <typeparam name="TUnion">Union type</typeparam>
-public interface INexusUnionBuilder<in TUnion> 
+public interface INexusPooledMessageUnionBuilder<in TUnion> 
     where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
     /// <summary>

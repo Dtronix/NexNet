@@ -1,5 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using MemoryPack;
 using NexNet.Pipes.Channels;
 
 namespace NexNet.Pipes;
@@ -53,5 +54,57 @@ public static class NexusDuplexPipeExtensions
     {
         await pipe.ReadyTask.ConfigureAwait(false);
         return new NexusChannelWriter<T>(pipe.WriterCore);
+    }
+    
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static INexusDuplexChannel<TMessage> GetPooledMessageChannel<TMessage>(this INexusDuplexPipe pipe)
+        where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+    {
+        return new NexusPooledMessageDuplexChannel<TMessage>(pipe);
+    }
+    
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static async ValueTask<INexusChannelReader<TMessage>> GetPooledMessageChannelReader<TMessage>(this INexusDuplexPipe pipe)
+        where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+    {
+        await pipe.ReadyTask.ConfigureAwait(false);
+        return new NexusPooledMessageChannelReaders<TMessage>(pipe.ReaderCore);
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static async ValueTask<INexusChannelWriter<TMessage>> GetPooledMessageChannelWriter<TMessage>(this INexusDuplexPipe pipe)
+        where TMessage : NexusPooledMessageBase<TMessage>, INexusPooledMessage<TMessage>, IMemoryPackable<TMessage>, new()
+    {
+        await pipe.ReadyTask.ConfigureAwait(false);
+        return new NexusPooledMessageChannelWriters<TMessage>(pipe.WriterCore);
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static INexusDuplexChannel<TUnion> GetPooledUnionMessageChannel<TUnion>(this INexusDuplexPipe pipe)
+        where TUnion : class, INexusPooledMessageUnion<TUnion>
+    {
+        return new NexusPooledUnionMessageDuplexChannel<TUnion>(pipe);
+    }
+    
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static async ValueTask<INexusChannelReader<TUnion>> GetPooledUnionMessageChannelReader<TUnion>(this INexusDuplexPipe pipe)
+        where TUnion : class, INexusPooledMessageUnion<TUnion>
+    {
+        await pipe.ReadyTask.ConfigureAwait(false);
+        return new NexusPooledUnionMessageChannelReader<TUnion>(pipe.ReaderCore);
+    }
+
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static async ValueTask<INexusChannelWriter<TUnion>> GetPooledUnionMessageChannelWriter<TUnion>(this INexusDuplexPipe pipe)
+        where TUnion : class, INexusPooledMessageUnion<TUnion>
+    {
+        await pipe.ReadyTask.ConfigureAwait(false);
+        return new NexusPooledUnionMessageChannelWriter<TUnion>(pipe.WriterCore);
     }
 }

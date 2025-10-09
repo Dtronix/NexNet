@@ -12,6 +12,7 @@ public class ChannelSample : SampleBase
 
     }
 
+    /*
     public async Task UnmanagedChannelSample()
     {
         var(server, client) = await Setup();
@@ -60,8 +61,8 @@ public class ChannelSample : SampleBase
             }
             list.Clear();
         }
-        */
-    }
+        
+    }*/
 
     private class ChannelSampleStruct2
     {
@@ -74,6 +75,8 @@ public class ChannelSample : SampleBase
         }
     
     }
+    
+    /*
     public async Task ChannelStructConvertSample()
     {
         var (server, client) = await Setup();
@@ -111,8 +114,8 @@ public class ChannelSample : SampleBase
             }
             list.Clear();
         }
-        */
-    }
+        
+    }*/
 
     public async Task ClassSample()
     {
@@ -175,7 +178,7 @@ public class ChannelSample : SampleBase
 
         for (int i = 0; i < 50; i++)
         {
-            await writer.WriteAsync(i);
+            await writer.WriteAsync((long)i);
             Console.WriteLine("Sent " + i);
         }
 
