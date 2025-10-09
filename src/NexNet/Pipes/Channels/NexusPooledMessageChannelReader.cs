@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
-using System.IO.Pipelines;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,75 +10,80 @@ using MemoryPack;
 namespace NexNet.Pipes.Channels;
 
 
+/// <summary>
+/// Marker interface for union groups that automatically registers message types
+/// </summary>
+public interface INexusPooledMessageUnion<TUnion>
+    where TUnion : class, INexusPooledMessageUnion<TUnion>
+{
+    /// <summary>Register all message types for this union</summary>
+    static abstract void RegisterMessages(INexusUnionBuilder<TUnion> registerer);
+}
 
-
-
-// ============================================================================
-// Core Interfaces
-// ============================================================================
 
 /// <summary>
-/// Base interface for all union messages with pooling support
+/// Builder for unions.
 /// </summary>
-public interface INexusPooledMessage<TSelf> where TSelf : INexusPooledMessage<TSelf>, new()
+/// <typeparam name="TUnion">Union type</typeparam>
+public interface INexusUnionBuilder<TUnion> 
+    where TUnion : class, INexusPooledMessageUnion<TUnion>
+{
+    /// <summary>
+    /// Adds the provided message which is contained by this union.
+    /// </summary>
+    /// <typeparam name="TMessage"></typeparam>
+    public void Add<TMessage>()
+        where TMessage : class, TUnion, INexusPooledMessage<TMessage>, new();
+}
+
+/// <summary>
+/// Base message for a single pooled message. Not to be used with unions.
+/// </summary>
+/// <typeparam name="TMessage">Message type.</typeparam>
+public abstract class NexusBasePooledMessage<TMessage> : INexusPooledMessage<TMessage>
+    where TMessage : NexusBasePooledMessage<TMessage>, INexusPooledMessage<TMessage>, new()
+{
+    /// <summary>
+    /// Not used as this is not a union.
+    /// </summary>
+    public static byte UnionId => 0;
+    
+    /// <summary>
+    /// Returns this message to the pool for reuse.
+    /// </summary>
+    public void Return() => NexusMessagePool<TMessage>.Return(Unsafe.As<TMessage>(this));
+}
+
+/// <summary>
+/// Base interface for all union messages with pooling support.
+/// </summary>
+public interface INexusPooledMessage<TMessage> 
+    where TMessage : class, INexusPooledMessage<TMessage>, new()
 {
     /// <summary>Unique identifier for this message type within its union</summary>
     static abstract byte UnionId { get; }
     
-    /// <summary>Rent an instance from the pool</summary>
-    static abstract TSelf Rent();
-    
-    /// <summary>Return this instance to the pool</summary>
-    void Return();
-}
-
-/// <summary>
-/// Marker interface for union groups that automatically registers message types
-/// </summary>
-public interface INexusMessageUnion<TUnion>
-    where TUnion : INexusMessageUnion<TUnion>
-{
-    /// <summary>Register all message types for this union</summary>
-    static abstract void RegisterMessages(UnionBuilder<TUnion> registerer);
+    /// <summary>
+    /// Returns this message to the pool.
+    /// </summary>
+    public void Return() => NexusMessagePool<TMessage>.Return(Unsafe.As<TMessage>(this));
 }
 
 
-public sealed class UnionBuilder<TUnion> where TUnion : INexusMessageUnion<TUnion>
-{
-    private readonly Dictionary<byte, UnionEntry<TUnion>> _entries = new();
-    
-    public void Add<TMessage>() 
-        where TMessage : TUnion, INexusPooledMessage<TMessage>, new()
-    {
-        byte id = TMessage.UnionId;
-        if (_entries.ContainsKey(id))
-            throw new InvalidOperationException($"UnionId {id} already registered");
-        
-        _entries[id] = new UnionEntry<TUnion>(TMessage.Rent, typeof(TMessage));
-    }
-    
-    internal FrozenDictionary<byte, UnionEntry<TUnion>> Build()
-        => _entries.ToFrozenDictionary();
-}
 
-public record UnionEntry<TUnion>(Func<TUnion> Renter, Type Type)
-    where TUnion : INexusMessageUnion<TUnion>;
-// ============================================================================
-// Union Registry
-// ============================================================================
 
 /// <summary>
 /// Central registry for union message types with AOT-friendly design
 /// </summary>
-public static class UnionRegistry<TUnion> 
-    where TUnion : INexusMessageUnion<TUnion>
+internal static class NexusMessageUnionRegistry<TUnion> 
+    where TUnion : class, INexusPooledMessageUnion<TUnion>
 {
 
-    private static readonly FrozenDictionary<byte, UnionEntry<TUnion>> Unions;
+    private static readonly FrozenDictionary<byte, UnionEntry> Unions;
     
-    static UnionRegistry()
+    static NexusMessageUnionRegistry()
     {
-        var registerer = new UnionBuilder<TUnion>();
+        var registerer = new NexusUnionBuilder();
         TUnion.RegisterMessages(registerer);
         Unions = registerer.Build();
     }
@@ -91,9 +93,9 @@ public static class UnionRegistry<TUnion>
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TMessage Rent<TMessage>() 
-        where TMessage : TUnion, INexusPooledMessage<TMessage>, new()
+        where TMessage : class, TUnion, INexusPooledMessage<TMessage>, new()
     {
-        return TMessage.Rent();
+        return NexusMessagePool<TMessage>.Rent();
     }
     
     /// <summary>
@@ -112,14 +114,6 @@ public static class UnionRegistry<TUnion>
     }
     
     /// <summary>
-    /// Get metadata about registered messages
-    /// </summary>
-    public static IReadOnlyDictionary<byte, UnionEntry<TUnion>> GetRegisteredMessages()
-    {
-        return Unions;
-    }
-    
-    /// <summary>
     /// Check if a UnionId is registered
     /// </summary>
     public static bool IsRegistered(byte unionId)
@@ -134,16 +128,39 @@ public static class UnionRegistry<TUnion>
     {
         return Unions.TryGetValue(unionId, out var type) ? type.Type : null;
     }
+    
+    private sealed class NexusUnionBuilder : INexusUnionBuilder<TUnion>
+    {
+        private readonly Dictionary<byte, UnionEntry> _entries = new();
+    
+        public void Add<TMessage>() 
+            where TMessage : class, TUnion, INexusPooledMessage<TMessage>, new()
+        {
+            byte id = TMessage.UnionId;
+            if (_entries.ContainsKey(id))
+                throw new InvalidOperationException($"UnionId {id} already registered with {_entries[id].Type}");
+        
+            _entries[id] = new UnionEntry(NexusMessagePool<TMessage>.Rent, typeof(TMessage));
+        }
+    
+        public FrozenDictionary<byte, UnionEntry> Build()
+            => _entries.ToFrozenDictionary();
+    }
+
+
+    private record UnionEntry(Func<TUnion> Renter, Type Type);
+
 }
 
 
 /// <summary>
 /// Thread-safe object pool for message instances
 /// </summary>
-public static class NexusMessagePool<TMessage> 
-    where TMessage : INexusPooledMessage<TMessage>, new()
+internal static class NexusMessagePool<TMessage> 
+    where TMessage : class, INexusPooledMessage<TMessage>, new()
 {
     private static readonly ConcurrentBag<TMessage> _pool = new();
+    // ReSharper disable once StaticMemberInGenericType
     private static int _poolCount;
     private const int MaxPoolSize = 1000; // Prevent unbounded growth
     
@@ -184,15 +201,29 @@ public static class NexusMessagePool<TMessage>
     }
 }
 
-
-// ============================================================================
-// Example Usage
-// ============================================================================
-
-// Define a union group
-public abstract class NetworkMessageUnion : INexusMessageUnion<NetworkMessageUnion>
+/// <summary>
+/// Extensions for pooled messages
+/// </summary>
+public static class PooledMessageExtensions
 {
-    public static void RegisterMessages(UnionBuilder<NetworkMessageUnion> registerer)
+    /// <summary>
+    /// Returns the passed message to the pool.
+    /// </summary>
+    /// <param name="message">Message to return.</param>
+    /// <typeparam name="TMessage">Message type,</typeparam>
+    public static void Return<TMessage>(this INexusPooledMessage<TMessage> message)
+        where TMessage : class, INexusPooledMessage<TMessage>, new()
+    {
+        NexusMessagePool<TMessage>.Return((TMessage)message);
+    }
+}
+
+
+
+
+abstract class NetworkMessageUnion : INexusPooledMessageUnion<NetworkMessageUnion>
+{
+    public static void RegisterMessages(INexusUnionBuilder<NetworkMessageUnion> registerer)
     {
         registerer.Add<LoginMessage>();
         registerer.Add<ChatMessage>();
@@ -202,58 +233,37 @@ public abstract class NetworkMessageUnion : INexusMessageUnion<NetworkMessageUni
 
 
 [MemoryPackable]
-public partial class LoginMessage : NetworkMessageUnion, INexusPooledMessage<LoginMessage>
+partial class LoginMessage : NetworkMessageUnion, INexusPooledMessage<LoginMessage>
 {
-    public static byte UnionId => 1;
+    public static byte UnionId => 0;
     
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
-    
-    public static LoginMessage Rent() => NexusMessagePool<LoginMessage>.Rent();
-    public void Return() => NexusMessagePool<LoginMessage>.Return(this);
 }
 
 [MemoryPackable]
-public partial class ChatMessage : NetworkMessageUnion, INexusPooledMessage<ChatMessage>
+partial class ChatMessage : NetworkMessageUnion, INexusPooledMessage<ChatMessage>
 {
-    public static byte UnionId => 2;
+    public static byte UnionId => 1;
     
     public string Sender { get; set; } = string.Empty;
     public string Content { get; set; } = string.Empty;
     public long Timestamp { get; set; }
-    
-    public static ChatMessage Rent() => NexusMessagePool<ChatMessage>.Rent();
-    public void Return() => NexusMessagePool<ChatMessage>.Return(this);
 }
 
 [MemoryPackable]
-public partial class DisconnectMessage : NetworkMessageUnion, INexusPooledMessage<DisconnectMessage>
+partial class DisconnectMessage : NetworkMessageUnion, INexusPooledMessage<DisconnectMessage>
 {
-    public static byte UnionId => 3;
-    
-    public string Reason { get; set; } = string.Empty;
-    public int ErrorCode { get; set; }
-    
-    public static DisconnectMessage Rent() => NexusMessagePool<DisconnectMessage>.Rent();
-    public void Return() => NexusMessagePool<DisconnectMessage>.Return(this);
-}
-
-public class StandAloneMessage : NexusBasePooledMessage<StandAloneMessage>
-{
+    public static byte UnionId => 2;
     public string Reason { get; set; } = string.Empty;
     public int ErrorCode { get; set; }
 }
 
-public abstract class NexusBasePooledMessage<T> : INexusPooledMessage<T>
-    where T : NexusBasePooledMessage<T>, INexusPooledMessage<T>, new()
+class StandAloneMessage : NexusBasePooledMessage<StandAloneMessage>
 {
-    // Not used as this is not a union.
-    public static byte UnionId => 0;
-    public static T Rent() => NexusMessagePool<T>.Rent();
-    public void Return() => NexusMessagePool<T>.Return(Unsafe.As<T>(this));
+    public string Reason { get; set; } = string.Empty;
+    public int ErrorCode { get; set; }
 }
-
-
 
 /// <summary>
 /// Represents a structure for reading unmanaged data from a duplex pipe in the Nexus system.
@@ -265,7 +275,7 @@ public abstract class NexusBasePooledMessage<T> : INexusPooledMessage<T>
 /// It uses a <see cref="INexusDuplexPipe"/> for reading data.
 /// </remarks>
 internal class NexusPooledUnionMessageChannelReader<T> : NexusPooledMessageChannelReaderBase<T>
-    where T : INexusMessageUnion<T>
+    where T : class, INexusPooledMessageUnion<T>
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusChannelReaderUnmanaged{T}"/> class using the specified <see cref="INexusDuplexPipe"/>.
@@ -274,7 +284,6 @@ internal class NexusPooledUnionMessageChannelReader<T> : NexusPooledMessageChann
     public NexusPooledUnionMessageChannelReader(INexusDuplexPipe pipe)
     : this(pipe.ReaderCore)
     {
-
     }
 
     internal NexusPooledUnionMessageChannelReader(NexusPipeReader reader)
@@ -285,7 +294,7 @@ internal class NexusPooledUnionMessageChannelReader<T> : NexusPooledMessageChann
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected override bool ParseValues(List<T> list, MemoryPackReader reader)
     {
-        var value = UnionRegistry<T>.Rent(reader.ReadUnmanaged<byte>());
+        var value = NexusMessageUnionRegistry<T>.Rent(reader.ReadUnmanaged<byte>());
         reader.ReadValue(ref value);
                 
         if(value == null)
@@ -326,7 +335,7 @@ internal class NexusPooledMessageChannelReader<T> : NexusPooledMessageChannelRea
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected override bool ParseValues(List<T> list, MemoryPackReader reader)
     {
-        var value = T.Rent();
+        var value= NexusMessagePool<T>.Rent();
         reader.ReadValue(ref value);
                 
         if(value == null)
