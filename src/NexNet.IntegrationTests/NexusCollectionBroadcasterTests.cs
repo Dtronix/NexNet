@@ -242,11 +242,11 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
     {
         private CancellationTokenSource _cts;
 
-        public NexusBroadcastConnectionManager ConnectionManager { get; }
+        public NexusBroadcastConnectionManager<IUnionBase> ConnectionManager { get; }
 
         public BroadcasterLifetime(INexusLogger logger, bool autoRun = true)
         {
-            ConnectionManager = new NexusBroadcastConnectionManager(logger);
+            ConnectionManager = new NexusBroadcastConnectionManager<IUnionBase>(logger);
             _cts = new CancellationTokenSource();
             
             if(autoRun)
@@ -258,8 +258,13 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             _cts.Dispose();
         }
     }
+    
+    private interface IUnionBase : INexusCollectionUnion<IUnionBase>
+    {
+        
+    }
 
-    private class NexusCollectionMessageTest : INexusCollectionUnion<>
+    private class NexusCollectionMessageTest : IUnionBase
     {
         public int ReturnedToCacheCount;
         public NexusCollectionMessageFlags Flags { get; set; }
@@ -283,7 +288,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             throw new NotImplementedException();
         }
 
-        public INexusCollectionUnion<> Clone()
+        IUnionBase INexusCollectionUnion<IUnionBase>.Clone()
         {
             return SourceClientClone = new NexusCollectionMessageTest()
             {
@@ -291,10 +296,11 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             };
         }
 
-        public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null)
+        public INexusCollectionBroadcasterMessageWrapper<IUnionBase> Wrap(INexusBroadcastSession<IUnionBase>? client = null)
         {
-            return NexusCollectionBroadcasterMessageWrapper.Rent(this, client);
+            return NexusCollectionBroadcasterMessageWrapper<IUnionBase>.Rent(this, client);
         }
+        
     }
     
     private enum ClientEvent
@@ -307,18 +313,18 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         BeginBufferTryWrite
     }
 
-    private class TestBroadcastSession : INexusBroadcastSession
+    private class TestBroadcastSession : INexusBroadcastSession<IUnionBase>
     {
         private static int _idCounter;
         public bool CompletePipeFired;
-        private readonly Channel<INexusCollectionBroadcasterMessageWrapper> _messageBuffer;
+        private readonly Channel<INexusCollectionBroadcasterMessageWrapper<IUnionBase>> _messageBuffer;
 
         public long Id { get; }
         public CancellationToken CompletionToken { get; }
         public INexusLogger? Logger { get; }
 
-        public List<INexusCollectionBroadcasterMessageWrapper> BufferWrites { get; } = new();
-        public List<INexusCollectionUnion<>> Sends { get; } = new();
+        public List<INexusCollectionBroadcasterMessageWrapper<IUnionBase>> BufferWrites { get; } = new();
+        public List<INexusCollectionUnion<IUnionBase>> Sends { get; } = new();
 
         public bool StopSends = false;
         public bool StopBuffers = false;
@@ -332,7 +338,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             Logger = logger;
             Id = Interlocked.Increment(ref _idCounter);
             
-            _messageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper>(new  UnboundedChannelOptions()
+            _messageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper<IUnionBase>>(new  UnboundedChannelOptions()
             {
                 SingleReader = true,
                 SingleWriter = true, 
@@ -346,7 +352,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             return ValueTask.CompletedTask;
         }
 
-        public ValueTask<bool> SendAsync(INexusCollectionUnion<> message, CancellationToken ct = default)
+        public ValueTask<bool> SendAsync(IUnionBase message, CancellationToken ct = default)
         {
             OnEvent?.Invoke(ClientEvent.BeginSendAsync);
             
@@ -364,7 +370,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             return new ValueTask<bool>(true);
         }
 
-        public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper message)
+        public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<IUnionBase> message)
         {
             OnEvent?.Invoke(ClientEvent.BeginBufferTryWrite);
             if(StopBuffers)
@@ -378,7 +384,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             return _messageBuffer.Writer.TryWrite(message);
         }
 
-        public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper> BufferRead(CancellationToken ct = default)
+        public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<IUnionBase>> BufferRead(CancellationToken ct = default)
         {
             OnEvent?.Invoke(ClientEvent.BufferRead);
             return _messageBuffer.Reader.ReadAllAsync(ct);

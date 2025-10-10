@@ -1,13 +1,13 @@
 ﻿using System;
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using MemoryPack;
-using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
+internal class NexusUnionAttribute : Attribute
+{
+}
 
+[NexusUnion]
 [MemoryPackable]
 [MemoryPackUnion(0, typeof(NexusCollectionListResetStartMessage))]        
 [MemoryPackUnion(1, typeof(NexusCollectionListResetValuesMessage))]      
@@ -23,10 +23,9 @@ internal partial interface INexusCollectionListMessage : INexusCollectionUnion<I
     
 }
 
-
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListResetStartMessage 
-    : NexusCollectionMessage<NexusCollectionListResetStartMessage>, INexusCollectionListMessage
+    : NexusCollectionMessage<NexusCollectionListResetStartMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
@@ -34,33 +33,31 @@ internal partial class NexusCollectionListResetStartMessage
     [MemoryPackOrder(2)]
     public int TotalValues { get; set; }
 
-    public override NexusCollectionListResetStartMessage Clone()
+    public override INexusCollectionListMessage Clone()
     {
-        throw new NotImplementedException();
-    }
-
-    public INexusCollectionBroadcasterMessageWrapper<INexusCollectionListMessage> Wrap(INexusBroadcastSession<INexusCollectionListMessage>? client = null)
-    {
-        throw new NotImplementedException();
-    }
-
-    INexusCollectionListMessage INexusCollectionUnion<INexusCollectionListMessage>.Clone()
-    {
-        return Clone();
+        var clone = Rent();
+        clone.Flags = Flags;
+        clone.Version = Version;
+        clone.TotalValues = TotalValues;
+        return clone;
     }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListResetCompleteMessage :
-    NexusCollectionMessage<NexusCollectionListResetCompleteMessage>, INexusCollectionListMessage
+    NexusCollectionMessage<NexusCollectionListResetCompleteMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
-
-
+    public override INexusCollectionListMessage Clone()
+    {
+        var clone = Rent();
+        clone.Flags = Flags;
+        return clone;
+    }
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListResetValuesMessage
-    : NexusCollectionValueMessage<NexusCollectionListResetValuesMessage>, INexusCollectionListMessage
+    : NexusCollectionValueMessage<NexusCollectionListResetValuesMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     [MemoryPoolFormatter<byte>]
@@ -70,8 +67,7 @@ internal partial class NexusCollectionListResetValuesMessage
         set => base.ValueCore = value;
     }
     
-    
-    public override INexusCollectionUnion<> Clone()   
+    public override INexusCollectionListMessage Clone()
     {
         var clone = Rent();
         clone.Flags = Flags;
@@ -79,7 +75,6 @@ internal partial class NexusCollectionListResetValuesMessage
         // Reference the values only as we don't need a deep copy of the values.
         clone.Values = Values;
         return clone;
-        
     }
 
     [MemoryPackOnDeserialized]
@@ -93,7 +88,7 @@ internal partial class NexusCollectionListResetValuesMessage
 /// </summary>
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListInsertMessage
-    : NexusCollectionValueMessage<NexusCollectionListInsertMessage>, INexusCollectionListMessage
+    : NexusCollectionValueMessage<NexusCollectionListInsertMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     
     [MemoryPackOrder(1)]
@@ -110,7 +105,8 @@ internal partial class NexusCollectionListInsertMessage
         set => base.ValueCore = value;
     }
     
-    public override INexusCollectionUnion<> Clone()    {
+    public override INexusCollectionListMessage Clone()
+    {
         var clone = Rent();
         clone.Flags = Flags;
         clone.Version = Version;
@@ -121,11 +117,13 @@ internal partial class NexusCollectionListInsertMessage
 
     [MemoryPackOnDeserialized]
     private void OnDeserialized() => base.OnDeserializedCore();
+
+
 }
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListReplaceMessage
-    : NexusCollectionValueMessage<NexusCollectionListReplaceMessage>, INexusCollectionListMessage
+    : NexusCollectionValueMessage<NexusCollectionListReplaceMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
@@ -140,8 +138,9 @@ internal partial class NexusCollectionListReplaceMessage
         get => base.ValueCore;
         set => base.ValueCore = value;
     }
-    
-    public override INexusCollectionUnion<> Clone()    {
+
+    public override INexusCollectionListMessage Clone()
+    {
         var clone = Rent();
         clone.Flags = Flags;
         clone.Version = Version;
@@ -156,7 +155,7 @@ internal partial class NexusCollectionListReplaceMessage
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListMoveMessage 
-    : NexusCollectionMessage<NexusCollectionListMoveMessage>, INexusCollectionListMessage
+    : NexusCollectionMessage<NexusCollectionListMoveMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
@@ -167,7 +166,7 @@ internal partial class NexusCollectionListMoveMessage
     [MemoryPackOrder(3)]
     public int ToIndex { get; set; }
     
-    public override INexusCollectionUnion<> Clone() 
+    public override INexusCollectionListMessage Clone()
     {
         var clone = Rent();
         clone.Flags = Flags;
@@ -181,12 +180,12 @@ internal partial class NexusCollectionListMoveMessage
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListClearMessage :
-    NexusCollectionMessage<NexusCollectionListClearMessage>, INexusCollectionListMessage
+    NexusCollectionMessage<NexusCollectionListClearMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
     
-    public override INexusCollectionUnion<> Clone()
+    public override INexusCollectionListMessage Clone()
     {
         var clone = Rent();
         clone.Flags = Flags;
@@ -199,15 +198,16 @@ internal partial class NexusCollectionListClearMessage :
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListRemoveMessage :
-    NexusCollectionMessage<NexusCollectionListRemoveMessage>, INexusCollectionListMessage
+    NexusCollectionMessage<NexusCollectionListRemoveMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
     [MemoryPackOrder(1)]
     public int Version { get; set; }
     
     [MemoryPackOrder(2)]
     public int Index { get; set; }
-    
-    public override INexusCollectionUnion<> Clone()  
+
+
+    public override INexusCollectionListMessage Clone()
     {
         var clone = Rent();
         clone.Flags = Flags;
@@ -219,9 +219,9 @@ internal partial class NexusCollectionListRemoveMessage :
 
 [MemoryPackable(SerializeLayout.Explicit)]
 internal partial class NexusCollectionListNoopMessage :
-    NexusCollectionMessage<NexusCollectionListNoopMessage>, INexusCollectionListMessage
+    NexusCollectionMessage<NexusCollectionListNoopMessage, INexusCollectionListMessage>, INexusCollectionListMessage
 {
-    public override INexusCollectionUnion<> Clone()  
+    public override INexusCollectionListMessage Clone()
     {
         var clone = Rent();
         clone.Flags = Flags;
@@ -229,37 +229,38 @@ internal partial class NexusCollectionListNoopMessage :
     }
 }
 
-
-internal abstract class NexusCollectionMessage<TMessage>: INexusCollectionUnion<TMessage>
-    where TMessage : NexusCollectionMessage<TMessage>, INexusCollectionUnion<TMessage>, new() 
+/*
+internal abstract class NexusCollectionMessage<TUnion, TMessage> : INexusCollectionUnion<TUnion>
+    where TUnion : INexusCollectionUnion<TUnion>
+    where TMessage : NexusCollectionMessage<TUnion, TMessage>, TUnion, INexusCollectionUnion<TUnion>, new()
 {
-    public static readonly ConcurrentBag<NexusCollectionMessage<TMessage>> Cache = new();
+    private static readonly ConcurrentBag<TMessage> _cache = new();
     private int _remaining;
     
     [MemoryPackOrder(0)]
     public NexusCollectionMessageFlags Flags { get; set; }
 
-    public static TMessage Rent()
+    public static TUnion Rent()
     {
-        if(!Cache.TryTake(out var message))
+        if(!_cache.TryTake(out var message))
             message = new TMessage();
 
         message.Flags = NexusCollectionMessageFlags.Ack;
-        return Unsafe.As<TMessage>(message);
+        return (TUnion)message;
     }
 
-    public virtual void Return()
+    public void Return()
     {
-        Cache.Add(this);
+        _cache.Add((TMessage)this);
     }
 
     public void CompleteBroadcast()
     {
         if (Interlocked.Decrement(ref _remaining) == 0)
-        {
             Return();
-        }
     }
+    
+    public abstract TUnion Clone();
 
     [MemoryPackIgnore]
     public int Remaining
@@ -268,8 +269,8 @@ internal abstract class NexusCollectionMessage<TMessage>: INexusCollectionUnion<
         set => _remaining = value;
     }
 
-    public abstract TMessage Clone();
-
-    public INexusCollectionBroadcasterMessageWrapper<TMessage> Wrap(INexusBroadcastSession<TMessage>? client = null) =>
-        NexusCollectionBroadcasterMessageWrapper<TMessage>.Rent((TMessage)this, client);
-}
+    public INexusCollectionBroadcasterMessageWrapper<TUnion> Wrap(INexusBroadcastSession<TUnion>? client = null)
+    {
+        return NexusCollectionBroadcasterMessageWrapper<TUnion>.Rent<TMessage>(this, client);
+    }
+}*/

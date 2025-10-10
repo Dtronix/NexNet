@@ -22,7 +22,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(1000));
         Assert.That(client.Proxy.IntListBi.Contains(42), Is.True);
     }
-
+    
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
@@ -32,7 +32,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         await client.Proxy.IntListBi.EnableAsync();
 
         // Disable acknowledgments to simulate timeout
-        var internalCollection = (NexusBroadcastServer)serverNexus.IntListBi;
+        var internalCollection = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
         internalCollection.DoNotSendAck = true;
 
         var stopwatch = Stopwatch.StartNew();
@@ -65,7 +65,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         Assert.That(results, Is.All.True);
         Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(10));
     }
-
+    
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
     public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
@@ -74,7 +74,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.EnableAsync();
 
-        var internalCollection = (NexusBroadcastServer)serverNexus.IntListBi;
+        var internalCollection = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
         internalCollection.DoNotSendAck = true;
 
         var addTask = client.Proxy.IntListBi.AddAsync(42);

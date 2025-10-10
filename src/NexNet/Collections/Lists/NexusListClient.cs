@@ -14,11 +14,11 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
+internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
     private List<T>? _resettingList = null;
-    private List<INexusCollectionUnion<>>? _resettingMessageBuffer = null;
+    private List<INexusCollectionListMessage>? _resettingMessageBuffer = null;
     private int _resettingListVersion;
     private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource = new ();
     
@@ -38,11 +38,10 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
     {
         _itemList.Reset();
     }
-    
-    
-    protected override NexusBroadcastMessageProcessor.ProcessResult OnProcess(
-        INexusCollectionUnion<> message,
-        INexusBroadcastSession? sourceClient,
+
+    protected override BroadcastMessageProcessResult OnProcess(
+        INexusCollectionListMessage message,
+        INexusBroadcastSession<INexusCollectionListMessage>? sourceClient,
         CancellationToken ct)
     {
 
@@ -52,44 +51,44 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
                 if (_resettingList != null)
                 {
                     Client.Logger?.LogWarning("Received start message while already resetting.");
-                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                    return new BroadcastMessageProcessResult(false, true);
                 }
                 
                 _resettingList = new List<T>(startMessage.TotalValues);
-                _resettingMessageBuffer = new List<INexusCollectionUnion<>>();
+                _resettingMessageBuffer = new List<INexusCollectionListMessage>();
                 _resettingListVersion = startMessage.Version;
-                return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+                return new BroadcastMessageProcessResult(true, false);
             
             case NexusCollectionListResetCompleteMessage:
                 if (_resettingList != null)
                 {
                     Client.Logger?.LogWarning("Received values message while not resetting.");
-                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                    return new BroadcastMessageProcessResult(false, true);
                 }
                 var completeResult = ProcessClientResetCompleted();
 
                 InitializationCompleted();
-                return new NexusBroadcastMessageProcessor.ProcessResult(false, !completeResult);
+                return new BroadcastMessageProcessResult(false, !completeResult);
 
             case NexusCollectionListResetValuesMessage valuesMessage:
                 if (_resettingList != null)
                 {
                     Client.Logger?.LogWarning("Received values message while not resetting.");
-                    return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+                    return new BroadcastMessageProcessResult(false, true);
                 }
                 
                 var values = MemoryPackSerializer.Deserialize<T[]>(valuesMessage.Values.Span);
                 if(values != null)
                     _resettingList!.AddRange(values);
                 
-                return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+                return new BroadcastMessageProcessResult(true, false);
         }
 
         if (_resettingList != null)
         {
             // Resetting. Buffer messages for after initialization has been completed. Buffer and process later.
             _resettingMessageBuffer!.Add(message);
-            return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+            return new BroadcastMessageProcessResult(true, false);
         }
         
         var (op, version) = NexusListTransformers<T>.RentOperation(message);
@@ -98,7 +97,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
         if (op == null)
         {
             Client.Logger?.LogWarning($"{message} did not match any known operations.");
-            return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+            return new BroadcastMessageProcessResult(false, true);
         }
 
         var result = _itemList.ApplyOperation(op, version);
@@ -111,7 +110,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
                 _operationCompletionSource.TrySetResult(false);
                 _operationCompletionSource.Reset();
             }
-            return new NexusBroadcastMessageProcessor.ProcessResult(false, true);
+            return new BroadcastMessageProcessResult(false, true);
         }
 
         using (var args = NexusCollectionChangedEventArgs.Rent(NexusListTransformers<T>.GetAction(message)))
@@ -127,7 +126,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
 
         op.Return();
 
-        return new NexusBroadcastMessageProcessor.ProcessResult(true, false);
+        return new BroadcastMessageProcessResult(true, false);
     }
     private bool ProcessClientResetCompleted(CancellationToken ct = default)
     {
@@ -171,7 +170,7 @@ internal class NexusListClient<T> : NexusBroadcastClient, INexusList<T>
         return true;
     }
     
-    private async ValueTask<bool> ProcessMessage(INexusCollectionUnion<> message)
+    private async ValueTask<bool> ProcessMessage(INexusCollectionListMessage message)
     {
         if(Client == null)
             throw new InvalidOperationException("Client not connected");

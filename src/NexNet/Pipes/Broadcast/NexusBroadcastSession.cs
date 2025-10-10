@@ -9,8 +9,8 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
-internal interface INexusBroadcastSession<TMessage>
-    where TMessage : INexusCollectionUnion<TMessage>
+internal interface INexusBroadcastSession<TUnion>
+    where TUnion : INexusCollectionUnion<TUnion>
 {
     public long Id { get; }
     
@@ -26,19 +26,19 @@ internal interface INexusBroadcastSession<TMessage>
     /// <param name="message">Message to send</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True upon success, false otherwise.</returns>
-    public ValueTask<bool> SendAsync(TMessage message, CancellationToken ct = default);
-    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TMessage> message);
-    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TMessage>> BufferRead(CancellationToken ct = default);
+    public ValueTask<bool> SendAsync(TUnion message, CancellationToken ct = default);
+    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TUnion> message);
+    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TUnion>> BufferRead(CancellationToken ct = default);
 }
 
-internal class NexusBroadcastSession<TMessage> : INexusBroadcastSession<TMessage>
-    where TMessage : INexusCollectionUnion<TMessage>
+internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private readonly INexusChannelWriter<INexusCollectionUnion<TMessage>>? _writer;
+    private readonly INexusChannelWriter<TUnion>? _writer;
     public INexusDuplexPipe Pipe { get; }
 
     public readonly INexusSession Session;
-    public Channel<INexusCollectionBroadcasterMessageWrapper<TMessage>> MessageBuffer { get; }
+    public Channel<INexusCollectionBroadcasterMessageWrapper<TUnion>> MessageBuffer { get; }
     
     public CancellationToken CompletionToken { get; }
     public INexusLogger? Logger { get; }
@@ -46,7 +46,7 @@ internal class NexusBroadcastSession<TMessage> : INexusBroadcastSession<TMessage
     public long Id => Session.Id;
 
     public NexusBroadcastSession(INexusDuplexPipe pipe, 
-        INexusChannelWriter<INexusCollectionUnion<TMessage>>? writer,
+        INexusChannelWriter<TUnion>? writer,
         INexusSession session)
     {
         
@@ -54,7 +54,7 @@ internal class NexusBroadcastSession<TMessage> : INexusBroadcastSession<TMessage
         Logger = session.Logger?.CreateLogger($"COL{pipe.Id}");
         _writer = writer;
         Session = session;
-        MessageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper<TMessage>>(new  UnboundedChannelOptions()
+        MessageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper<TUnion>>(new  UnboundedChannelOptions()
         {
             SingleReader = true,
             SingleWriter = true, 
@@ -70,37 +70,37 @@ internal class NexusBroadcastSession<TMessage> : INexusBroadcastSession<TMessage
             TaskScheduler.Default);
 
     }
-    
-    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TMessage> message)
+
+    public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TUnion> message)
     {
         return MessageBuffer.Writer.TryWrite(message);
     }
-    
-    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TMessage>> BufferRead(CancellationToken ct = default)
+
+    public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TUnion>> BufferRead(CancellationToken ct = default)
     {
         return MessageBuffer.Reader.ReadAllAsync(ct);
     }    public ValueTask CompletePipe() => Pipe.CompleteAsync();
 
-    public ValueTask<bool> SendAsync(TMessage message, CancellationToken ct = default)
+    public ValueTask<bool> SendAsync(TUnion message, CancellationToken ct = default)
     {
         if (_writer == null)
             throw new InvalidOperationException("Can't send when writer is not set.");
         return _writer.WriteAsync(message, ct);
     }
     
-    private class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadcasterMessageWrapper<TMessage>
+    private class NexusCollectionBroadcasterMessageWrapper : INexusCollectionBroadcasterMessageWrapper<TUnion>
     {
         private int _completedCount;
         public int ClientCount { get; set; }
-        public INexusBroadcastSession<TMessage>? SourceClient { get; }
+        public INexusBroadcastSession<TUnion>? SourceClient { get; }
     
         /// <summary>
         /// Message for the source client. Usually includes as Ack.
         /// </summary>
-        public TMessage? MessageToSource { get; }
-        public TMessage Message { get; }
+        public TUnion? MessageToSource { get; }
+        public TUnion Message { get; }
 
-        public NexusCollectionBroadcasterMessageWrapper(INexusBroadcastSession<TMessage>? sourceClient, TMessage message)
+        public NexusCollectionBroadcasterMessageWrapper(INexusBroadcastSession<TUnion>? sourceClient, TUnion message)
         {
             SourceClient = sourceClient;
             Message = message;

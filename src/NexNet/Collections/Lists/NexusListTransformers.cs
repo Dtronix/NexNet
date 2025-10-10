@@ -7,7 +7,7 @@ namespace NexNet.Collections.Lists;
 internal static class NexusListTransformers<T>
 {
     
-    public static (Operation<T>? Operation, int Version) RentOperation(INexusCollectionUnion<> message)
+    public static (Operation<T>? Operation, int Version) RentOperation(INexusCollectionListMessage message)
     {
         Operation<T>? op;
         int version;
@@ -55,7 +55,7 @@ internal static class NexusListTransformers<T>
         return (op, version);
     }
 
-    public static (INexusCollectionUnion<>?, NexusCollectionChangedAction) RentMessageAction(IOperation operation,
+    public static (INexusCollectionListMessage?, NexusCollectionChangedAction) RentMessageAction(IOperation operation,
         int version)
     {
         switch (operation)
@@ -109,7 +109,7 @@ internal static class NexusListTransformers<T>
         }
     }
 
-    public static NexusCollectionChangedAction GetAction(INexusCollectionUnion<> message)
+    public static NexusCollectionChangedAction GetAction(INexusCollectionListMessage message)
     {
         return message switch
         {

@@ -9,7 +9,8 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
-internal class NexusBroadcastMessageProcessor
+internal class NexusBroadcastMessageProcessor<TUnion>
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
     private readonly OnProcessDelegate _process;
     protected readonly INexusLogger? Logger;
@@ -31,7 +32,7 @@ internal class NexusBroadcastMessageProcessor
     }
 
 
-    public async ValueTask<bool> EnqueueWaitForResult(INexusCollectionUnion<> message, INexusBroadcastSession? client)
+    public async ValueTask<bool> EnqueueWaitForResult(TUnion message, INexusBroadcastSession<TUnion>? client)
     {
         var tcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
         var wrapper = ProcessRequestWrapper.Rent(client, message, tcs);
@@ -50,7 +51,7 @@ internal class NexusBroadcastMessageProcessor
         
         Task.Factory.StartNew(async static args =>
         {
-            var (processor, ct) = ((NexusBroadcastMessageProcessor, CancellationToken))args!;
+            var (processor, ct) = ((NexusBroadcastMessageProcessor<TUnion>, CancellationToken))args!;
             
             processor.Logger?.LogTrace("Started processing loop.");
             
@@ -97,8 +98,8 @@ internal class NexusBroadcastMessageProcessor
     private class ProcessRequestWrapper
     {
         private static readonly ConcurrentBag<ProcessRequestWrapper> _pool = new ();
-        public INexusBroadcastSession? Client;
-        public INexusCollectionUnion<> Message = null!;
+        public INexusBroadcastSession<TUnion>? Client;
+        public TUnion Message = null!;
         public PooledResettableValueTaskCompletionSource<bool>? CompletionTaskSource;
         
         private ProcessRequestWrapper()
@@ -106,8 +107,8 @@ internal class NexusBroadcastMessageProcessor
 
         }
         
-        public static ProcessRequestWrapper Rent(INexusBroadcastSession? client, 
-            INexusCollectionUnion<> message,
+        public static ProcessRequestWrapper Rent(INexusBroadcastSession<TUnion>? client, 
+            TUnion message,
             PooledResettableValueTaskCompletionSource<bool>? completionTaskSource)
         {
             if (!_pool.TryTake(out var wrapper))
@@ -126,7 +127,15 @@ internal class NexusBroadcastMessageProcessor
         }
     }
 
-    public record struct ProcessResult(bool Success, bool Disconnect);
 
-    public delegate ProcessResult OnProcessDelegate(INexusCollectionUnion<> process, INexusBroadcastSession? sourceClient, CancellationToken ct);
+
+    public delegate BroadcastMessageProcessResult OnProcessDelegate(TUnion process, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct);
 }
+
+
+/// <summary>
+/// Result of processing a broadcast message.
+/// </summary>
+/// <param name="Success">Indicates if the message was processed successfully.</param>
+/// <param name="Disconnect">Indicates if the client should be disconnected.</param>
+public record struct BroadcastMessageProcessResult(bool Success, bool Disconnect);

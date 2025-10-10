@@ -1,32 +1,33 @@
 ﻿using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using MemoryPack;
-using NexNet.Collections.Lists;
 using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionMessage<T>: INexusCollectionUnion<> where T : NexusCollectionMessage<T>, new() 
+
+internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollectionUnion<TUnion>
+    where TMessage : NexusCollectionMessage<TMessage, TUnion>, TUnion, new()
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
+    private static readonly ConcurrentBag<TMessage> _cache = [];
     private int _remaining;
-    
-    [MemoryPackOrder(0)]
+
+    [MemoryPackOrder(0)] 
     public NexusCollectionMessageFlags Flags { get; set; }
 
-    public static T Rent()
+    public static TMessage Rent()
     {
-        if(!Cache.TryTake(out var message))
-            message = new T();
+        if (!_cache.TryTake(out var message))
+            message = new TMessage();
 
         message.Flags = NexusCollectionMessageFlags.Ack;
-        return Unsafe.As<T>(message);
+        return message;
     }
 
     public virtual void Return()
     {
-        Cache.Add(this);
+        _cache.Add((TMessage)this);
     }
 
     public void CompleteBroadcast()
@@ -36,16 +37,19 @@ internal abstract class NexusCollectionMessage<T>: INexusCollectionUnion<> where
             Return();
         }
     }
-    
+
+    public abstract TUnion Clone();
+
+    public INexusCollectionBroadcasterMessageWrapper<TUnion> Wrap(INexusBroadcastSession<TUnion>? client = null)
+    {
+        return NexusCollectionBroadcasterMessageWrapper<TUnion>.Rent((TMessage)this, client);
+    }
+
     [MemoryPackIgnore]
     public int Remaining
     {
         get => _remaining;
         set => _remaining = value;
     }
-
-    public abstract INexusCollectionUnion<> Clone();
-    
-    public INexusCollectionBroadcasterMessageWrapper Wrap(INexusBroadcastSession? client = null) 
-        => NexusCollectionBroadcasterMessageWrapper.Rent((T)this, client);
 }
+    

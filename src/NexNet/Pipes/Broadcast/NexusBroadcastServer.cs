@@ -10,11 +10,11 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
-
-internal abstract class NexusBroadcastServer : INexusBroadcastConnector
+internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector, INexusBroadcastServerTestModifier
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private readonly NexusBroadcastConnectionManager _connectionManager;
-    private readonly NexusBroadcastMessageProcessor _processor;
+    private readonly NexusBroadcastConnectionManager<TUnion> _connectionManager;
+    private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
     private CancellationTokenSource? _stopCts;
     private bool _isRunning;
     
@@ -23,12 +23,10 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
     protected readonly INexusLogger? Logger;
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
 
-    internal bool DoNotSendAck
+    bool INexusBroadcastServerTestModifier.DoNotSendAck
     {
-        set
-        {
-            _connectionManager.DoNotSendAck = value;
-        }
+        get => _connectionManager.DoNotSendAck;
+        set => _connectionManager.DoNotSendAck = value;
     }
 
     protected NexusBroadcastServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
@@ -37,8 +35,8 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         Mode = mode;
         Logger = logger?.CreateLogger($"BRS{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
-        _connectionManager = new NexusBroadcastConnectionManager(Logger);
-        _processor = new NexusBroadcastMessageProcessor(Logger, ProcessMessage);
+        _connectionManager = new NexusBroadcastConnectionManager<TUnion>(Logger);
+        _processor = new NexusBroadcastMessageProcessor<TUnion>(Logger, ProcessMessage);
     }
     
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
@@ -50,8 +48,8 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
             return;
         }
         
-        var writer = new NexusChannelWriter<INexusCollectionUnion<>>(pipe);
-        var client = new NexusBroadcastSession(pipe, writer, session);
+        var writer = new NexusChannelWriter<TUnion>(pipe);
+        var client = new NexusBroadcastSession<TUnion>(pipe, writer, session);
         _connectionManager.AddClientAsync(client);
         
         Logger?.LogTrace($"S{session.Id} Sending client init data");
@@ -59,13 +57,7 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         
         try
         {
-            client.BufferTryWrite(NexusCollectionListResetStartMessage.Rent().Wrap());
-            foreach (var values in ResetValuesEnumerator())
-            {
-                client.BufferTryWrite(values.Wrap());
-            }
-            
-            client.BufferTryWrite(NexusCollectionListResetCompleteMessage.Rent().Wrap());
+            OnConnected(client);
         }
         catch (Exception e)
         {
@@ -78,7 +70,7 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         await writer.Writer.FlushAsync().ConfigureAwait(false);
         
         var reader = Mode == NexusCollectionMode.BiDirectional 
-            ? new NexusChannelReader<INexusCollectionUnion<>>(pipe) 
+            ? new NexusChannelReader<TUnion>(pipe) 
             : null;
 
         if (reader != null)
@@ -123,27 +115,32 @@ internal abstract class NexusBroadcastServer : INexusBroadcastConnector
         _isRunning = false;
         _stopCts?.Cancel();
     }
-
-    protected abstract IEnumerable<INexusCollectionUnion<>> ResetValuesEnumerator();
-    protected abstract ProcessResult OnProcess(INexusCollectionUnion<> message,
-        INexusBroadcastSession? sourceClient,
+    
+    protected abstract void OnConnected(NexusBroadcastSession<TUnion> client);
+    protected abstract ProcessResult OnProcess(TUnion message,
+        INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
     
     
-    private NexusBroadcastMessageProcessor.ProcessResult ProcessMessage(INexusCollectionUnion<> message, INexusBroadcastSession? sourceClient, CancellationToken ct)
+    private BroadcastMessageProcessResult ProcessMessage(TUnion message, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct)
     {
         var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
-            return new NexusBroadcastMessageProcessor.ProcessResult(false, disconnect);
+            return new BroadcastMessageProcessResult(false, disconnect);
 
         _connectionManager.BroadcastAsync(broadcastMessage, sourceClient);
-        return new NexusBroadcastMessageProcessor.ProcessResult(true, disconnect);
+        return new BroadcastMessageProcessResult(true, disconnect);
     }
 
-    public record struct ProcessResult(INexusCollectionUnion<>? BroadcastMessage, bool Disconnect);
+    public record struct ProcessResult(TUnion? BroadcastMessage, bool Disconnect);
     
-    protected ValueTask<bool> ProcessMessage(INexusCollectionUnion<> message)
+    protected ValueTask<bool> ProcessMessage(TUnion message)
     {
         return _processor.EnqueueWaitForResult(message, null);
     }
+}
+
+internal interface INexusBroadcastServerTestModifier
+{
+    internal bool DoNotSendAck { get; set; }
 }

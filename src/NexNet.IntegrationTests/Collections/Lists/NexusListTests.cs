@@ -617,7 +617,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         
-        var internalList = (NexusBroadcastServer)serverNexus.IntListBi;
+        var internalList = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
         internalList.DoNotSendAck = true;
 
         await Utilities.InvokeAndNotifyAwait(async () =>
@@ -632,6 +632,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         await tcs.Task.Timeout(1);
     }
     
+    
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -645,7 +646,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         
-        var internalList = (NexusBroadcastServer)serverNexus.IntListBi;
+        var internalList = (INexusBroadcastServerTestModifier)serverNexus.IntListBi;
         internalList.DoNotSendAck = true;
 
         await Utilities.InvokeAndNotifyAwait(async () =>
@@ -659,6 +660,7 @@ internal class NexusListTests : NexusCollectionBaseTests
 
         await tcs.Task.Timeout(1);
     }
+    
     
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]

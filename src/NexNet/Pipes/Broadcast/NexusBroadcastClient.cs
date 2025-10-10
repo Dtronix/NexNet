@@ -13,22 +13,23 @@ using NexNet.Messages;
 namespace NexNet.Pipes.Broadcast;
 
 
-internal abstract class NexusBroadcastClient : INexusCollectionConnector
+internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private readonly NexusBroadcastMessageProcessor _processor;
+    private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
     private readonly ushort _id;
     private readonly NexusCollectionMode _mode;
     private readonly INexusLogger? _logger;
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
-    private NexusBroadcastSession? _client;
+    private NexusBroadcastSession<TUnion>? _client;
     private readonly SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
 
-    protected NexusBroadcastSession Client => _client;
+    protected NexusBroadcastSession<TUnion> Client => _client;
 
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
@@ -38,7 +39,7 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         _mode = mode;
         _logger = logger?.CreateLogger($"BRC{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
-        _processor = new NexusBroadcastMessageProcessor(_logger, OnProcess);
+        _processor = new NexusBroadcastMessageProcessor<TUnion>(_logger, OnProcess);
     }
 
     public async ValueTask DisableAsync()
@@ -78,10 +79,10 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         await pipe.ReadyTask.ConfigureAwait(false);
 
         _ = pipe.CompleteTask.ContinueWith((s, state) => 
-            Unsafe.As<NexusBroadcastClient>(state)!.Disconnected(), this, cancellationToken);
+            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
         
-        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionUnion<>>(pipe) : null;
-        _client = new NexusBroadcastSession(pipe, writer, _session);
+        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionUnion<TUnion>>(pipe) : null;
+        _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -91,12 +92,12 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         // Long-running task listening for changes.
         _ = Task.Factory.StartNew(async static state =>
         {
-            var broadcaster = Unsafe.As<NexusBroadcastClient>(state)!;
+            var broadcaster = Unsafe.As<NexusBroadcastClient<TUnion>>(state)!;
             var clientState = broadcaster._client;
             if (clientState == null)
                 return;
 
-            var reader = new NexusChannelReader<INexusCollectionUnion<>>(clientState.Pipe);
+            var reader = new NexusChannelReader<TUnion>(clientState.Pipe);
             try
             {
                 // Read through all the messages received until complete.
@@ -153,8 +154,8 @@ internal abstract class NexusBroadcastClient : INexusCollectionConnector
         return new SemaphoreSlimDisposable(_operationSemaphore);
     }
     
-    protected abstract NexusBroadcastMessageProcessor.ProcessResult OnProcess(INexusCollectionUnion<> message,
-        INexusBroadcastSession? sourceClient,
+    protected abstract BroadcastMessageProcessResult OnProcess(TUnion message,
+        INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
     
     protected void InitializationCompleted()

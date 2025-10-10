@@ -11,7 +11,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections.Lists;
 
-internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
+internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
 
@@ -27,37 +27,8 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
         _itemList = new(1024, logger);
     }
 
-    protected override IEnumerable<INexusCollectionUnion<>> ResetValuesEnumerator()
-    {
-        var state = _itemList.State;
-
-        // Send the reset start message even if we don't have any data.
-        var reset = NexusCollectionListResetStartMessage.Rent();
-        reset.Version = state.Version;
-        reset.TotalValues = state.List.Count;
-
-        yield return reset;
-
-        if (state.List.Count == 0)
-            yield break;
-
-        var bufferSize = Math.Min(state.List.Count, 40);
-
-        reset.Return();
-
-        foreach (var item in state.List.MemoryChunk(bufferSize))
-        {
-            var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = MemoryPackSerializer.Serialize(item);
-            yield return message;
-        }
-
-        var resetComplete = NexusCollectionListResetCompleteMessage.Rent();
-        yield return resetComplete;
-    }
-
-    protected override ProcessResult OnProcess(INexusCollectionUnion<> message,
-        INexusBroadcastSession? sourceClient,
+    protected override ProcessResult OnProcess(INexusCollectionListMessage message,
+        INexusBroadcastSession<INexusCollectionListMessage>? sourceClient,
         CancellationToken ct)
     {
         // These are not allowed to be sent by the client to the server.
@@ -231,4 +202,44 @@ internal class NexusListServer<T> : NexusBroadcastServer, INexusList<T>
     {
         return _itemList.State.List.GetEnumerator();
     }
+
+    protected override void OnConnected(NexusBroadcastSession<INexusCollectionListMessage> client)
+    {
+        client.BufferTryWrite(NexusCollectionListResetStartMessage.Rent().Wrap());
+        foreach (var values in ResetValuesEnumerator())
+        {
+            client.BufferTryWrite(values);
+        }
+            
+        client.BufferTryWrite(NexusCollectionListResetCompleteMessage.Rent().Wrap());
+    }
+    private IEnumerable<INexusCollectionBroadcasterMessageWrapper<INexusCollectionListMessage>> ResetValuesEnumerator()
+    {
+        var state = _itemList.State;
+
+        // Send the reset start message even if we don't have any data.
+        var reset = NexusCollectionListResetStartMessage.Rent();
+        reset.Version = state.Version;
+        reset.TotalValues = state.List.Count;
+
+        yield return reset.Wrap();
+
+        if (state.List.Count == 0)
+            yield break;
+
+        var bufferSize = Math.Min(state.List.Count, 40);
+
+        reset.Return();
+
+        foreach (var item in state.List.MemoryChunk(bufferSize))
+        {
+            var message = NexusCollectionListResetValuesMessage.Rent();
+            message.Values = MemoryPackSerializer.Serialize(item);
+            yield return message.Wrap();
+        }
+
+        var resetComplete = NexusCollectionListResetCompleteMessage.Rent();
+        yield return resetComplete.Wrap();
+    }
+    
 }
