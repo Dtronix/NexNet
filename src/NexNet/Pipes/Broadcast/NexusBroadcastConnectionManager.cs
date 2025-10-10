@@ -44,6 +44,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
         // Add in the completion removal for execution later.
         _logger?.LogTrace($"S{client.Id} Starting collection message writer.");
         
+        /*
         // Start the client reader for handling of messages the client sends.
         Task.Factory.StartNew(static async state =>
         {
@@ -90,7 +91,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
                 }
             }
 
-        }, client, TaskCreationOptions.DenyChildAttach);
+        }, client, TaskCreationOptions.DenyChildAttach);*/
         
         // Start the internal broadcast listener for this client to handle sending updates to the client.
         Task.Factory.StartNew(static async state =>
@@ -108,6 +109,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
 
                     if (message == null)
                         throw new Exception("Message is null.");
+                    
+                    client.Logger?.LogTrace($"Sending {message.GetType().Name} to client.");
 
                     if (!await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false))
                     {
@@ -182,6 +185,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
                             broadcastMessage.SignalSent();
                             continue;
                         }
+                        
+                        broadcaster._logger?.LogTrace($"Broadcasting {broadcastMessage.GetType()}");
 
                         foreach (var client in broadcaster._connectedClients)
                         {

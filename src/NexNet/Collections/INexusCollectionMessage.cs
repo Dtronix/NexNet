@@ -10,9 +10,6 @@ internal interface INexusCollectionUnion<TUnion>
 {
     public NexusCollectionMessageFlags Flags { get; set; }
     
-    [MemoryPackIgnore]
-    int Remaining { get; set; }
-    
     void Return();
 
     void CompleteBroadcast();

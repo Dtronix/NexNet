@@ -33,7 +33,7 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     {
         Id = id;
         Mode = mode;
-        Logger = logger?.CreateLogger($"BRS{id}");
+        Logger = logger?.CreateLogger($"BR{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _connectionManager = new NexusBroadcastConnectionManager<TUnion>(Logger);
         _processor = new NexusBroadcastMessageProcessor<TUnion>(Logger, ProcessMessage);

@@ -18,6 +18,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
 {
     private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
     private readonly ushort _id;
+    private ushort _pipeId;
     private readonly NexusCollectionMode _mode;
     private readonly INexusLogger? _logger;
     protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
@@ -40,6 +41,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         _logger = logger?.CreateLogger($"BRC{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _processor = new NexusBroadcastMessageProcessor<TUnion>(_logger, OnProcess);
+        _processor.Run(CancellationToken.None);
     }
 
     public async ValueTask DisableAsync()
@@ -78,6 +80,8 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
 
         await pipe.ReadyTask.ConfigureAwait(false);
 
+        _pipeId = pipe.Id;
+        
         _ = pipe.CompleteTask.ContinueWith((s, state) => 
             Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
         
@@ -94,8 +98,13 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         {
             var broadcaster = Unsafe.As<NexusBroadcastClient<TUnion>>(state)!;
             var clientState = broadcaster._client;
+            var logger = broadcaster._logger;
+            
             if (clientState == null)
                 return;
+            
+            if(logger != null)
+                logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster._id}";
 
             var reader = new NexusChannelReader<TUnion>(clientState.Pipe);
             try
@@ -103,12 +112,13 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
                 // Read through all the messages received until complete.
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
+                    logger?.LogTrace($"Received {message.GetType()} message.");
                     await broadcaster._processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
                 }
             }
             catch (Exception e)
             {
-                clientState.Session.Logger?.LogInfo(e, "Error while reading session collection message.");
+                logger?.LogInfo(e, "Error while reading session collection message.");
                 // Ignore and disconnect.
             }
 

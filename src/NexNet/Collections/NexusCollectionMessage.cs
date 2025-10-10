@@ -44,12 +44,5 @@ internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollect
     {
         return NexusCollectionBroadcasterMessageWrapper<TUnion>.Rent((TMessage)this, client);
     }
-
-    [MemoryPackIgnore]
-    public int Remaining
-    {
-        get => _remaining;
-        set => _remaining = value;
-    }
 }
     

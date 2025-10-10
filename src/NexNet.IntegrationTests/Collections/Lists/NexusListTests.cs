@@ -20,7 +20,8 @@ internal class NexusListTests : NexusCollectionBaseTests
     {
         var (server, client, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
-        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        var result = await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        Assert.That(result, Is.True);
         await client.Proxy.IntListBi.AddAsync(1).Timeout(1);
         await client.Proxy.IntListBi.AddAsync(2).Timeout(1);
         await client.Proxy.IntListBi.AddAsync(3).Timeout(1);

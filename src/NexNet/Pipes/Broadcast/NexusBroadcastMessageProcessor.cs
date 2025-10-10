@@ -64,7 +64,12 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                         bool success = false;
                         try
                         {
+                            processor.Logger?.LogTrace($"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
+                            
                             (success, var disconnect) = processor._process(messageWrapper.Message, messageWrapper.Client, ct);
+                            
+                            if(disconnect)
+                                processor.Logger?.LogTrace($"Source Client S{messageWrapper.Client?.Id}: Processing disconnected pipe. Process Success result: {success}.");
 
                             if (disconnect && messageWrapper.Client != null)
                                 await messageWrapper.Client.CompletePipe().ConfigureAwait(false);
@@ -133,9 +138,4 @@ internal class NexusBroadcastMessageProcessor<TUnion>
 }
 
 
-/// <summary>
-/// Result of processing a broadcast message.
-/// </summary>
-/// <param name="Success">Indicates if the message was processed successfully.</param>
-/// <param name="Disconnect">Indicates if the client should be disconnected.</param>
 public record struct BroadcastMessageProcessResult(bool Success, bool Disconnect);
