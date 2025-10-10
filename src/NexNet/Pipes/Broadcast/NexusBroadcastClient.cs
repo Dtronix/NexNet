@@ -29,6 +29,8 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
+    
+    private CancellationTokenSource? _stopCts;
 
     protected NexusBroadcastSession<TUnion> Client => _client;
 
@@ -41,7 +43,6 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         _logger = logger?.CreateLogger($"BRC{id}");
         CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _processor = new NexusBroadcastMessageProcessor<TUnion>(_logger, OnProcess);
-        _processor.Run(CancellationToken.None);
     }
 
     public async ValueTask DisableAsync()
@@ -61,6 +62,9 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         
         if(_session == null)
             throw new InvalidOperationException("Session not connected");
+
+        _stopCts = new CancellationTokenSource();
+        _processor.Run(_stopCts.Token);
         
         var pipe = _session!.PipeManager.RentPipe();
 
@@ -133,7 +137,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         // Check to see if we have connected or have just been disconnected.
         var isDisconnected = _client!.Pipe.CompleteTask.IsCompleted;
         _initializedTcs = null;
-
+        
         return !isDisconnected;
     }
 
@@ -154,7 +158,12 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         CoreChangedEvent.Raise(eventArgsOwner.Value);
         _client = null;
 
+        // ReSharper disable once MethodHasAsyncOverload
+        _stopCts?.Cancel();
+        _stopCts = null;
+        
         _disconnectTcs?.TrySetResult();
+        _disconnectTcs = null;
     }
     protected abstract void OnDisconnected();
     
