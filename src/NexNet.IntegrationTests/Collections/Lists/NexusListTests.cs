@@ -528,19 +528,19 @@ internal class NexusListTests : NexusCollectionBaseTests
 
         Assert.That(client.Proxy.IntListBi.IsReadOnly, Is.False);
     }
-    
+
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task IsReadOnly_IsTrueOnServerToClient(Type type)
+    public async Task IsReadOnly_IsFalseOnServerToClient(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
         await client.Proxy.IntListRelay.EnableAsync().Timeout(1);
 
-        Assert.That(client.Proxy.IntListRelay.IsReadOnly, Is.True);
+        Assert.That(client.Proxy.IntListRelay.IsReadOnly, Is.False);
     }
     
     [TestCase(Type.Quic)]

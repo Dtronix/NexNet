@@ -49,10 +49,13 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
     {
         if (_client == null)
             return;
+
+        var disconnectedTask = _disconnectTcs!.Task.ConfigureAwait(false);
         // Complete the pipe and everything closes.
         await _client!.CompletePipe().ConfigureAwait(false);
         
-        await _disconnectTcs!.Task.ConfigureAwait(false);
+        await disconnectedTask;
+        await _processor.StoppedTask.ConfigureAwait(false);
     }
     
     public async ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)

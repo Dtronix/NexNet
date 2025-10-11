@@ -16,11 +16,15 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     protected readonly INexusLogger? Logger;
     private readonly Channel<ProcessRequestWrapper> _processorChannel;
     private bool _isRunning;
+    private readonly PooledResettableValueTaskCompletionSource<bool> _stoppedTcs;
+    
+    public ValueTask<bool> StoppedTask => _stoppedTcs.Task;
     
     public NexusBroadcastMessageProcessor(INexusLogger? logger, OnProcessDelegate process)
     {
         _process = process;
         Logger = logger?.CreateLogger("Processor");
+        _stoppedTcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
         
         _processorChannel = Channel.CreateBounded<ProcessRequestWrapper>(new BoundedChannelOptions(50)
         {
@@ -48,6 +52,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
             throw new InvalidOperationException("Broadcaster is already running.");
         
         _isRunning = true;
+        _stoppedTcs.Reset();
         
         Task.Factory.StartNew(async static args =>
         {
@@ -59,27 +64,33 @@ internal class NexusBroadcastMessageProcessor<TUnion>
             {
                 try
                 {
-                    await foreach (var messageWrapper in processor._processorChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                    await foreach (var messageWrapper in processor._processorChannel.Reader.ReadAllAsync(ct)
+                                       .ConfigureAwait(false))
                     {
                         bool success = false;
                         try
                         {
-                            processor.Logger?.LogTrace($"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
-                            
-                            (success, var disconnect) = processor._process(messageWrapper.Message, messageWrapper.Client, ct);
-                            
-                            if(disconnect)
-                                processor.Logger?.LogTrace($"Source Client S{messageWrapper.Client?.Id}: Processing disconnected pipe. Process Success result: {success}.");
+                            processor.Logger?.LogTrace(
+                                $"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
+
+                            (success, var disconnect) =
+                                processor._process(messageWrapper.Message, messageWrapper.Client, ct);
+
+                            if (disconnect)
+                                processor.Logger?.LogTrace(
+                                    $"Source Client S{messageWrapper.Client?.Id}: Processing disconnected pipe. Process Success result: {success}.");
 
                             if (disconnect && messageWrapper.Client != null)
+                            {
                                 await messageWrapper.Client.CompletePipe().ConfigureAwait(false);
+                            }
                         }
                         catch (Exception e)
                         {
                             processor.Logger?.LogInfo(e,
                                 $"S{messageWrapper.Client?.Id} Exception while processing collection.");
-                            
-                            if(messageWrapper.Client != null)
+
+                            if (messageWrapper.Client != null)
                                 await messageWrapper.Client.CompletePipe().ConfigureAwait(false)!;
                         }
                         finally
@@ -88,11 +99,21 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                             messageWrapper.Return();
                         }
                     }
+                    
                     processor.Logger?.LogDebug("Exited broadcast reading loop.");
+                }
+                catch (OperationCanceledException)
+                {
+                    processor.Logger?.LogDebug("Broadcast loop cancelled.");
                 }
                 catch (Exception e)
                 {
-                    processor.Logger?.LogError(e, "Exception in broadcast loop");
+                    processor.Logger?.LogError(e, "Exception in broadcast loop.");
+                }
+                finally
+                {
+                    processor._isRunning = false;
+                    processor._stoppedTcs.TrySetResult(true);
                 }
             }
             
