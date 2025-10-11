@@ -186,7 +186,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
                             continue;
                         }
                         
-                        broadcaster._logger?.LogTrace($"Broadcasting {broadcastMessage.GetType()}");
+                        broadcaster._logger?.LogTrace($"Broadcasting {broadcastMessage.Message?.GetType()}");
 
                         foreach (var client in broadcaster._connectedClients)
                         {
@@ -205,7 +205,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
                                 else
                                 {
                                     broadcaster._logger?.LogTrace(
-                                        $"S{client.Id} Sent to client collection");
+                                        $"S{client.Id} Sent {broadcastMessage.Message?.GetType()} to client collection");
                                 }
                             }
                             catch (Exception e)

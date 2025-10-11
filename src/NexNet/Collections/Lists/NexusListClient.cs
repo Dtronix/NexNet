@@ -20,7 +20,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     private List<T>? _resettingList = null;
     private List<INexusCollectionListMessage>? _resettingMessageBuffer = null;
     private int _resettingListVersion;
-    private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource = new ();
+    private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource;
     
     public int Count => _itemList.Count;
     public bool IsReadOnly { get; } = false;
@@ -32,6 +32,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         : base(id, mode, logger)
     {
         _itemList = new(1024, logger);
+        _operationCompletionSource = PooledResettableValueTaskCompletionSource<bool>.Rent();
     }
 
     protected override void OnDisconnected()
@@ -102,13 +103,12 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
         var result = _itemList.ApplyOperation(op, version);
         
-        if (result != ListProcessResult.DiscardOperation && result == ListProcessResult.Successful)
+        if (result != ListProcessResult.DiscardOperation && result != ListProcessResult.Successful)
         {
             Client.Logger?.LogWarning($"Processing {message} message failed with {result}");
             if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
             {
                 _operationCompletionSource.TrySetResult(false);
-                _operationCompletionSource.Reset();
             }
             return new BroadcastMessageProcessResult(false, true);
         }
@@ -121,7 +121,6 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
         {
             _operationCompletionSource.TrySetResult(true);
-            _operationCompletionSource.Reset();
         }
 
         op.Return();
@@ -130,7 +129,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     }
     private bool ProcessClientResetCompleted(CancellationToken ct = default)
     {
-        if (_resettingList != null)
+        if (_resettingList == null)
         {
             Client.Logger?.LogWarning("Received values message while not resetting.");
             return false;
@@ -174,15 +173,10 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     {
         if(Client == null)
             throw new InvalidOperationException("Client not connected");
-
-        try
-        {
-            await Client.SendAsync(message, CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception e)
-        {
-            throw;
-        }
+        
+        _operationCompletionSource.Reset();
+        
+        await Client.SendAsync(message, CancellationToken.None).ConfigureAwait(false);
         message.Return();
         
         return await _operationCompletionSource.Task.ConfigureAwait(false);
@@ -202,6 +196,9 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
         var message = NexusCollectionListRemoveMessage.Rent();
         using var _ = await OperationLock().ConfigureAwait(false);
+        
+        
+        
         message.Version = version;
         message.Index = index;
 
