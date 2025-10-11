@@ -89,7 +89,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         _ = pipe.CompleteTask.ContinueWith((s, state) => 
             Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
         
-        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<INexusCollectionUnion<TUnion>>(pipe) : null;
+        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe) : null;
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

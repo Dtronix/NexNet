@@ -28,7 +28,7 @@ public partial interface IClientNexus
 
 public partial interface IServerNexus
 {
-    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> IntListBi { get; }
     
     [NexusCollection(NexusCollectionMode.Relay)]

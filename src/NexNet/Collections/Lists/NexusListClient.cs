@@ -60,7 +60,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                 return new BroadcastMessageProcessResult(true, false);
             
             case NexusCollectionListResetCompleteMessage:
-                if (_resettingList != null)
+                if (_resettingList == null)
                 {
                     Client.Logger?.LogWarning("Received values message while not resetting.");
                     return new BroadcastMessageProcessResult(false, true);
@@ -71,7 +71,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                 return new BroadcastMessageProcessResult(false, !completeResult);
 
             case NexusCollectionListResetValuesMessage valuesMessage:
-                if (_resettingList != null)
+                if (_resettingList == null)
                 {
                     Client.Logger?.LogWarning("Received values message while not resetting.");
                     return new BroadcastMessageProcessResult(false, true);
@@ -174,8 +174,15 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     {
         if(Client == null)
             throw new InvalidOperationException("Client not connected");
-        
-        await Client.SendAsync(message, CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            await Client.SendAsync(message, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            throw;
+        }
         message.Return();
         
         return await _operationCompletionSource.Task.ConfigureAwait(false);
