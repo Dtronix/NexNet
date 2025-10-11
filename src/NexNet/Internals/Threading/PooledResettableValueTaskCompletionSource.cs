@@ -23,6 +23,7 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
     private PooledResettableValueTaskCompletionSource()
     {
         _core.RunContinuationsAsynchronously = true;
+        _isRented = true;
     }
 
     /// <summary>
@@ -48,7 +49,6 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
             throw new InvalidOperationException("Cannot return an operation that wasn't rented");
 
         _isRented = false;
-        _isCompleted = false;
         Reset();
         _pool.Add(this);
     }
@@ -62,7 +62,7 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
     /// <summary>
     /// Get the ValueTask for this operation
     /// </summary>
-    public ValueTask<T> Task => new ValueTask<T>(this, _core.Version);
+    public ValueTask<T> Task => new(this, _core.Version);
 
     /// <summary>
     /// Signal successful completion
