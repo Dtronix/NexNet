@@ -210,7 +210,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
         reset.TotalValues = state.List.Count;
-        client.BufferTryWrite(NexusCollectionListResetStartMessage.Rent().Wrap());
+        client.BufferTryWrite(reset.Wrap());
         
         foreach (var values in ResetValuesEnumerator(state))
         {

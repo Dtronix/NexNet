@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Internals;
+using NexNet.Internals.Threading;
 using NexNet.Invocation;
 using NexNet.Logging;
 
@@ -17,6 +18,7 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
     private CancellationTokenSource? _stopCts;
     private bool _isRunning;
+    private SemaphoreSlim? _operationSemaphore;
     
     protected readonly ushort Id;
     protected readonly NexusCollectionMode Mode;
@@ -103,7 +105,8 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     {
         if (_isRunning)
             return;
-        
+
+        _operationSemaphore = new SemaphoreSlim(1, 1);
         _stopCts = new CancellationTokenSource();
         _connectionManager.Run(_stopCts.Token);
         _processor.Run(_stopCts.Token);
@@ -112,6 +115,8 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
 
     public void Stop()
     {
+        _operationSemaphore?.Dispose();
+        _operationSemaphore = null;
         _isRunning = false;
         _stopCts?.Cancel();
     }
@@ -137,6 +142,14 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     protected ValueTask<bool> ProcessMessage(TUnion message)
     {
         return _processor.EnqueueWaitForResult(message, null);
+    }
+    
+    protected async ValueTask<IDisposable> OperationLock()
+    {
+        if(_operationSemaphore == null)
+            throw new InvalidOperationException("Server has not started.");
+        await _operationSemaphore.WaitAsync().ConfigureAwait(false);
+        return new SemaphoreSlimDisposable(_operationSemaphore);
     }
 }
 

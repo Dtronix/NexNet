@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Internals;
+using NexNet.Internals.Threading;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -25,7 +26,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     private NexusBroadcastSession<TUnion>? _client;
-    private readonly SemaphoreSlim _operationSemaphore = new SemaphoreSlim(1, 1);
+    private SemaphoreSlim? _operationSemaphore;
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
@@ -66,6 +67,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         if(_session == null)
             throw new InvalidOperationException("Session not connected");
 
+        _operationSemaphore = new SemaphoreSlim(1, 1);
         _stopCts = new CancellationTokenSource();
         _processor.Run(_stopCts.Token);
         
@@ -156,9 +158,14 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
             _logger?.LogError(e, "Error while disconnecting client.");
         }
         
-        using var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset);
-        
-        CoreChangedEvent.Raise(eventArgsOwner.Value);
+        _operationSemaphore?.Dispose();
+        _operationSemaphore = null;
+
+        using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
+        {
+            CoreChangedEvent.Raise(eventArgsOwner.Value);
+        }
+
         _client = null;
 
         // ReSharper disable once MethodHasAsyncOverload
@@ -172,6 +179,9 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
     
     protected async ValueTask<IDisposable> OperationLock()
     {
+        if(_operationSemaphore == null)
+            throw new InvalidOperationException("Client is not connected.");
+        
         await _operationSemaphore.WaitAsync().ConfigureAwait(false);
         return new SemaphoreSlimDisposable(_operationSemaphore);
     }
@@ -182,6 +192,10 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
     
     protected void InitializationCompleted()
     {
+        using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
+        {
+            CoreChangedEvent.Raise(eventArgsOwner.Value);
+        }
         _initializedTcs?.TrySetResult();
     }
     
@@ -190,14 +204,4 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         _invoker = invoker ?? throw new ArgumentNullException(nameof(invoker));
         _session = session ?? throw new ArgumentNullException(nameof(session));
     }
-    
-    private readonly struct SemaphoreSlimDisposable(SemaphoreSlim semaphore) : IDisposable
-    { 
-        public void Dispose()
-        {
-            semaphore.Release();
-        }
-    }
-
-
 }

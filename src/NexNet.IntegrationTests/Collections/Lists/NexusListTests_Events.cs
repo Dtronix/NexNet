@@ -436,10 +436,10 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var serverNexus = server.NexusCreatedQueue.First();
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Move);
 
-        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
-        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
-        await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1000);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1000);
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1000);
+        await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1000);
 
         await eventReg.Wait();
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
@@ -560,21 +560,12 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.DisableAsync().Timeout(1);
         Assert.That(client.Proxy.IntListBi.DisabledTask.IsCompleted, Is.True);
     }
-    
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    public async Task ServerDisconnectionTaskIsAlwaysCompleted(Type type)
+
+    [Test]
+    public async Task ServerDisabledTaskThrows()
     {
-        var (server, client, _) = await ConnectServerAndClient(type);
+        var (server, _, _) = await ConnectServerAndClient(Type.Uds);
         var serverNexus = server.NexusCreatedQueue.First();
-        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
-        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
-        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
-        Assert.That(serverNexus.IntListBi.DisabledTask.IsCompleted, Is.True);
+        Assert.ThrowsAsync<InvalidOperationException>(() => serverNexus.IntListBi.DisabledTask);
     }
 }

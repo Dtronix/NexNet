@@ -38,6 +38,9 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     protected override void OnDisconnected()
     {
         _itemList.Reset();
+        
+        // Ensure any ongoing operations fail.
+        _operationCompletionSource.TrySetResult(false);
     }
 
     protected override BroadcastMessageProcessResult OnProcess(
