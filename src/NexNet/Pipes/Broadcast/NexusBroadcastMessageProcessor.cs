@@ -9,6 +9,10 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
+/// <summary>
+/// Processes broadcast messages sequentially using a bounded channel to prevent flooding.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types that can be processed.</typeparam>
 internal class NexusBroadcastMessageProcessor<TUnion>
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
@@ -155,8 +159,19 @@ internal class NexusBroadcastMessageProcessor<TUnion>
 
 
 
+    /// <summary>
+    /// Delegate for processing broadcast messages.
+    /// </summary>
+    /// <param name="process">The message to process.</param>
+    /// <param name="sourceClient">The client that sent the message, or null for server-originated messages.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The result of processing the message.</returns>
     public delegate BroadcastMessageProcessResult OnProcessDelegate(TUnion process, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct);
 }
 
-
+/// <summary>
+/// Result of processing a broadcast message.
+/// </summary>
+/// <param name="Success">True if the message was processed successfully.</param>
+/// <param name="Disconnect">True if the client should be disconnected after processing.</param>
 public record struct BroadcastMessageProcessResult(bool Success, bool Disconnect);

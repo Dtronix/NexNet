@@ -11,19 +11,11 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
-internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector, INexusBroadcastServerTestModifier
+internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion>, INexusBroadcastConnector, INexusBroadcastServerTestModifier
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
     private readonly NexusBroadcastConnectionManager<TUnion> _connectionManager;
-    private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
-    private CancellationTokenSource? _stopCts;
     private bool _isRunning;
-    private SemaphoreSlim? _operationSemaphore;
-    
-    protected readonly ushort Id;
-    protected readonly NexusCollectionMode Mode;
-    protected readonly INexusLogger? Logger;
-    protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
 
     bool INexusBroadcastServerTestModifier.DoNotSendAck
     {
@@ -32,13 +24,9 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     }
 
     protected NexusBroadcastServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+        : base(id, mode, logger, "BR")
     {
-        Id = id;
-        Mode = mode;
-        Logger = logger?.CreateLogger($"BR{id}");
-        CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
         _connectionManager = new NexusBroadcastConnectionManager<TUnion>(Logger);
-        _processor = new NexusBroadcastMessageProcessor<TUnion>(Logger, ProcessMessage);
     }
     
     public async ValueTask ServerStartCollectionConnection(INexusDuplexPipe pipe, INexusSession session)
@@ -86,7 +74,7 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
                     // flood the processor with messages from one client.  Each client gets one item processed 
                     // at a time.  This allows also using the backpressure mechanism on pipes to deal with flooding.
                     //Logger?.LogTrace($"Received message. {message.GetType()}");
-                    await _processor.EnqueueWaitForResult(message, client).ConfigureAwait(false);
+                    await Processor.EnqueueWaitForResult(message, client).ConfigureAwait(false);
                 }
             }
             catch (Exception e)
@@ -96,7 +84,7 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
             }
 
         }
-        
+
         //Ensure we await here because as soon as we exit this method, the pipe closes.
         await pipe.CompleteTask.ConfigureAwait(false);
     }
@@ -106,28 +94,29 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
         if (_isRunning)
             return;
 
-        _operationSemaphore = new SemaphoreSlim(1, 1);
-        _stopCts = new CancellationTokenSource();
-        _connectionManager.Run(_stopCts.Token);
-        _processor.Run(_stopCts.Token);
+        OperationSemaphore = new SemaphoreSlim(1, 1);
+        StopCts = new CancellationTokenSource();
+        _connectionManager.Run(StopCts.Token);
+        Processor.Run(StopCts.Token);
         _isRunning = true;
     }
 
     public void Stop()
     {
-        _operationSemaphore?.Dispose();
-        _operationSemaphore = null;
+        OperationSemaphore?.Dispose();
+        OperationSemaphore = null;
         _isRunning = false;
-        _stopCts?.Cancel();
+        StopCts?.Cancel();
     }
     
     protected abstract void OnConnected(NexusBroadcastSession<TUnion> client);
     protected abstract ProcessResult OnProcess(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
-    
-    
-    private BroadcastMessageProcessResult ProcessMessage(TUnion message, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct)
+
+    protected override BroadcastMessageProcessResult OnProcessCore(TUnion message,
+        INexusBroadcastSession<TUnion>? sourceClient,
+        CancellationToken ct)
     {
         var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
@@ -138,18 +127,10 @@ internal abstract class NexusBroadcastServer<TUnion> : INexusBroadcastConnector,
     }
 
     public record struct ProcessResult(TUnion? BroadcastMessage, bool Disconnect);
-    
+
     protected ValueTask<bool> ProcessMessage(TUnion message)
     {
-        return _processor.EnqueueWaitForResult(message, null);
-    }
-    
-    protected async ValueTask<IDisposable> OperationLock()
-    {
-        if(_operationSemaphore == null)
-            throw new InvalidOperationException("Server has not started.");
-        await _operationSemaphore.WaitAsync().ConfigureAwait(false);
-        return new SemaphoreSlimDisposable(_operationSemaphore);
+        return Processor.EnqueueWaitForResult(message, null);
     }
 }
 

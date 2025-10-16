@@ -9,10 +9,12 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
-
+/// <summary>
+/// Manages connected clients and broadcasts messages to all active sessions.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types that can be broadcast.</typeparam>
 internal class NexusBroadcastConnectionManager<TUnion>
     where TUnion : class, INexusCollectionUnion<TUnion>
-
 {
     private readonly SnapshotList<INexusBroadcastSession<TUnion>> _connectedClients;
     private readonly INexusLogger? _logger;
@@ -249,9 +251,12 @@ internal class NexusBroadcastConnectionManager<TUnion>
     }
 }
 
+/// <summary>
+/// Wraps a broadcast message with metadata for tracking delivery to multiple clients.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types that can be wrapped.</typeparam>
 internal class NexusCollectionBroadcasterMessageWrapper<TUnion> : INexusCollectionBroadcasterMessageWrapper<TUnion>
     where TUnion : class, INexusCollectionUnion<TUnion>
-
 {    
     private static readonly ConcurrentBag<NexusCollectionBroadcasterMessageWrapper<TUnion>> _pool = new ();
     private int _completedCount;
@@ -306,19 +311,36 @@ internal class NexusCollectionBroadcasterMessageWrapper<TUnion> : INexusCollecti
     }
 }
 
+/// <summary>
+/// Interface for wrapping broadcast messages with delivery tracking metadata.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types.</typeparam>
 internal interface INexusCollectionBroadcasterMessageWrapper<TUnion>
     where TUnion : INexusCollectionUnion<TUnion>
 {
+    /// <summary>
+    /// Gets the client that originated the message, or null for server-originated messages.
+    /// </summary>
     INexusBroadcastSession<TUnion>? SourceClient { get; }
 
     /// <summary>
-    /// Message for the source client. Usually includes as Ack.
+    /// Gets the acknowledgment message sent to the source client, or null if no acknowledgment is needed.
     /// </summary>
     TUnion? MessageToSource { get; }
 
+    /// <summary>
+    /// Gets the message to broadcast to all clients.
+    /// </summary>
     TUnion? Message { get; }
-    
+
+    /// <summary>
+    /// Gets or sets the number of clients that will receive this message.
+    /// </summary>
     public int ClientCount { get; set; }
+
+    /// <summary>
+    /// Signals that the message was sent to one client. Releases resources when all clients have received it.
+    /// </summary>
     void SignalSent();
 }
 

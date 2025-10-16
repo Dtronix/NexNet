@@ -14,36 +14,24 @@ using NexNet.Messages;
 namespace NexNet.Pipes.Broadcast;
 
 
-internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
+internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion>, INexusCollectionConnector
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private readonly NexusBroadcastMessageProcessor<TUnion> _processor;
-    private readonly ushort _id;
     private ushort _pipeId;
-    private readonly NexusCollectionMode _mode;
-    private readonly INexusLogger? _logger;
-    protected readonly SubscriptionEvent<NexusCollectionChangedEventArgs> CoreChangedEvent;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     private NexusBroadcastSession<TUnion>? _client;
-    private SemaphoreSlim? _operationSemaphore;
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
-    
-    private CancellationTokenSource? _stopCts;
 
     protected NexusBroadcastSession<TUnion> Client => _client;
 
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
     protected NexusBroadcastClient(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+        : base(id, mode, logger, "BRC")
     {
-        _id = id;
-        _mode = mode;
-        _logger = logger?.CreateLogger($"BRC{id}");
-        CoreChangedEvent =  new SubscriptionEvent<NexusCollectionChangedEventArgs>();
-        _processor = new NexusBroadcastMessageProcessor<TUnion>(_logger, OnProcess);
     }
 
     public async ValueTask DisableAsync()
@@ -56,20 +44,20 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         await _client!.CompletePipe().ConfigureAwait(false);
         
         await disconnectedTask;
-        await _processor.StoppedTask.ConfigureAwait(false);
+        await Processor.StoppedTask.ConfigureAwait(false);
     }
-    
+
     public async ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)
     {
         if (_client != null)
             return true;
-        
+
         if(_session == null)
             throw new InvalidOperationException("Session not connected");
 
-        _operationSemaphore = new SemaphoreSlim(1, 1);
-        _stopCts = new CancellationTokenSource();
-        _processor.Run(_stopCts.Token);
+        OperationSemaphore = new SemaphoreSlim(1, 1);
+        StopCts = new CancellationTokenSource();
+        Processor.Run(StopCts.Token);
         
         var pipe = _session!.PipeManager.RentPipe();
 
@@ -83,18 +71,18 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
                 : NexusLogLevel.Debug,
             null,
             null,
-            $"Connecting Proxy Collection[{_id}];");
-        await _invoker.ProxyInvokeMethodCore(_id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
+            $"Connecting Proxy Collection[{Id}];");
+        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
             InvocationFlags.DuplexPipe).ConfigureAwait(false);
 
         await pipe.ReadyTask.ConfigureAwait(false);
 
         _pipeId = pipe.Id;
-        
-        _ = pipe.CompleteTask.ContinueWith((s, state) => 
+
+        _ = pipe.CompleteTask.ContinueWith((s, state) =>
             Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
-        
-        var writer = _mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe) : null;
+
+        var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe) : null;
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -107,13 +95,13 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         {
             var broadcaster = Unsafe.As<NexusBroadcastClient<TUnion>>(state)!;
             var clientState = broadcaster._client;
-            var logger = broadcaster._logger;
-            
+            var logger = broadcaster.Logger;
+
             if (clientState == null)
                 return;
-            
+
             if(logger != null)
-                logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster._id}";
+                logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster.Id}";
 
             var reader = new NexusChannelReader<TUnion>(clientState.Pipe);
             try
@@ -122,7 +110,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
                     logger?.LogTrace($"Received {message.GetType()} message.");
-                    await broadcaster._processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
+                    await broadcaster.Processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
                 }
             }
             catch (Exception e)
@@ -133,7 +121,7 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
 
             // Ensure the pipe is completed if the reading loop exited.
             await clientState.CompletePipe().ConfigureAwait(false);
-            
+
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Wait for either the complete task fires or the client is actually connected.
@@ -155,11 +143,11 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         }
         catch (Exception e)
         {
-            _logger?.LogError(e, "Error while disconnecting client.");
+            Logger?.LogError(e, "Error while disconnecting client.");
         }
-        
-        _operationSemaphore?.Dispose();
-        _operationSemaphore = null;
+
+        OperationSemaphore?.Dispose();
+        OperationSemaphore = null;
 
         using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
         {
@@ -169,23 +157,21 @@ internal abstract class NexusBroadcastClient<TUnion> : INexusCollectionConnector
         _client = null;
 
         // ReSharper disable once MethodHasAsyncOverload
-        _stopCts?.Cancel();
-        _stopCts = null;
-        
+        StopCts?.Cancel();
+        StopCts = null;
+
         _disconnectTcs?.TrySetResult();
         _disconnectTcs = null;
     }
     protected abstract void OnDisconnected();
-    
-    protected async ValueTask<IDisposable> OperationLock()
+
+    protected override BroadcastMessageProcessResult OnProcessCore(TUnion message,
+        INexusBroadcastSession<TUnion>? sourceClient,
+        CancellationToken ct)
     {
-        if(_operationSemaphore == null)
-            throw new InvalidOperationException("Client is not connected.");
-        
-        await _operationSemaphore.WaitAsync().ConfigureAwait(false);
-        return new SemaphoreSlimDisposable(_operationSemaphore);
+        return OnProcess(message, sourceClient, ct);
     }
-    
+
     protected abstract BroadcastMessageProcessResult OnProcess(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);

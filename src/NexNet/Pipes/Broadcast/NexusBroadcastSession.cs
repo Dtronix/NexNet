@@ -9,28 +9,61 @@ using NexNet.Logging;
 
 namespace NexNet.Pipes.Broadcast;
 
+/// <summary>
+/// Interface representing a broadcast session for bidirectional communication with a client.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types that can be sent.</typeparam>
 internal interface INexusBroadcastSession<TUnion>
     where TUnion : INexusCollectionUnion<TUnion>
 {
+    /// <summary>
+    /// Gets the unique session identifier.
+    /// </summary>
     public long Id { get; }
-    
+
+    /// <summary>
+    /// Gets the cancellation token that is canceled when the session completes.
+    /// </summary>
     public CancellationToken CompletionToken { get; }
-    
+
+    /// <summary>
+    /// Gets the logger for this session.
+    /// </summary>
     public INexusLogger? Logger { get; }
 
+    /// <summary>
+    /// Completes the underlying pipe, ending the session.
+    /// </summary>
+    /// <returns>A task that completes when the pipe is closed.</returns>
     public ValueTask CompletePipe();
 
     /// <summary>
-    /// Sends the message over the wire to the client.
+    /// Sends a message over the wire to the client.
     /// </summary>
-    /// <param name="message">Message to send</param>
+    /// <param name="message">Message to send.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>True upon success, false otherwise.</returns>
     public ValueTask<bool> SendAsync(TUnion message, CancellationToken ct = default);
+
+    /// <summary>
+    /// Attempts to write a message to the session's message buffer.
+    /// </summary>
+    /// <param name="message">The message wrapper to write.</param>
+    /// <returns>True if the message was written; false if the buffer is full.</returns>
     public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TUnion> message);
+
+    /// <summary>
+    /// Reads messages from the session's message buffer asynchronously.
+    /// </summary>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>An async enumerable of message wrappers.</returns>
     public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TUnion>> BufferRead(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Represents a broadcast session managing the connection and message flow between server and client.
+/// </summary>
+/// <typeparam name="TUnion">The union type representing all message types that can be broadcast.</typeparam>
 internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
