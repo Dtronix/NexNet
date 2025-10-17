@@ -25,7 +25,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
 
-    protected NexusBroadcastSession<TUnion> Client => _client;
+    protected NexusBroadcastSession<TUnion>? Client => _client;
 
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 

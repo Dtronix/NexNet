@@ -4,9 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Threading.Tasks.Sources;
 using MemoryPack;
-using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Internals.Threading;
 using NexNet.Logging;
@@ -17,8 +15,8 @@ namespace NexNet.Collections.Lists;
 internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMessage>, INexusList<T>
 {
     private readonly VersionedList<T> _itemList;
-    private List<T>? _resettingList = null;
-    private List<INexusCollectionListMessage>? _resettingMessageBuffer = null;
+    private List<T>? _resettingList;
+    private List<INexusCollectionListMessage>? _resettingMessageBuffer;
     private int _resettingListVersion;
     private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource;
     
@@ -48,13 +46,12 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         INexusBroadcastSession<INexusCollectionListMessage>? sourceClient,
         CancellationToken ct)
     {
-
         switch (message)
         {
             case NexusCollectionListResetStartMessage startMessage:
                 if (_resettingList != null)
                 {
-                    Client.Logger?.LogWarning("Received start message while already resetting.");
+                    Client?.Logger?.LogWarning("Received start message while already resetting.");
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 
@@ -66,7 +63,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
             case NexusCollectionListResetCompleteMessage:
                 if (_resettingList == null)
                 {
-                    Client.Logger?.LogWarning("Received values message while not resetting.");
+                    Client?.Logger?.LogWarning("Received values message while not resetting.");
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 var completeResult = ProcessClientResetCompleted();
@@ -77,7 +74,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
             case NexusCollectionListResetValuesMessage valuesMessage:
                 if (_resettingList == null)
                 {
-                    Client.Logger?.LogWarning("Received values message while not resetting.");
+                    Client?.Logger?.LogWarning("Received values message while not resetting.");
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 
@@ -100,7 +97,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         // Unknown operation
         if (op == null)
         {
-            Client.Logger?.LogWarning($"{message} did not match any known operations.");
+            Client?.Logger?.LogWarning($"{message} did not match any known operations.");
             return new BroadcastMessageProcessResult(false, true);
         }
 
@@ -108,7 +105,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         
         if (result != ListProcessResult.DiscardOperation && result != ListProcessResult.Successful)
         {
-            Client.Logger?.LogWarning($"Processing {message} message failed with {result}");
+            Client?.Logger?.LogWarning($"Processing {message} message failed with {result}");
             if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
             {
                 _operationCompletionSource.TrySetResult(false);
@@ -134,9 +131,13 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
     {
         if (_resettingList == null)
         {
-            Client.Logger?.LogWarning("Received values message while not resetting.");
+            Client?.Logger?.LogWarning("Received values message while not resetting.");
             return false;
         }
+
+        var messageBuffer = _resettingMessageBuffer;
+        if(messageBuffer == null)
+            throw new InvalidOperationException("Message buffer was not set while resetting.");
         
         var list = ImmutableList<T>.Empty.AddRange(_resettingList!);
 
@@ -148,10 +149,10 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         _resettingList = null;
         _resettingListVersion = -1;
 
-        var bufferedCount = _resettingMessageBuffer?.Count ?? 0;
+        var bufferedCount = messageBuffer.Count;
         if (bufferedCount > 0)
         {
-            Client.Logger?.LogDebug($"Processing {bufferedCount} buffered messages.");
+            Client?.Logger?.LogDebug($"Processing {bufferedCount} buffered messages.");
             // Process any buffered Messages.
             foreach (var bufferedMessage in _resettingMessageBuffer!)
             {
@@ -159,14 +160,14 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
                 if (result.Disconnect)
                 {
-                    Client.Logger?.LogDebug($"Processing {bufferedMessage} buffered message failed and disconnected.");
+                    Client?.Logger?.LogDebug($"Processing {bufferedMessage} buffered message failed and disconnected.");
                     return false;
                 }
             }
         }
 
-        _resettingMessageBuffer.Clear();
-        _resettingMessageBuffer.Capacity = 0;
+        messageBuffer.Clear();
+        messageBuffer.Capacity = 0;
         _resettingMessageBuffer = null;
         
         return true;

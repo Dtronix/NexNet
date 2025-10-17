@@ -12,7 +12,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
 {
 
     [SetUp]
-    public virtual void SetUp()
+    public override void SetUp()
     {
         LoggerMode = BasePipeTests.LogMode.OnTestFail;
         base.SetUp();
@@ -269,7 +269,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         public int ReturnedToCacheCount;
         public NexusCollectionMessageFlags Flags { get; set; }
         public int Remaining { get; set; }
-        public string Value { get; set; }
+        public string? Value { get; set; }
 
         private TaskCompletionSource _returnedToCacheTaskTcs = new();
         public Task ReturnedToCacheTask => _returnedToCacheTaskTcs.Task;

@@ -50,11 +50,13 @@ internal interface ISessionMessenger
     ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Disconnects the client for with the specified reason.  Notifies the other side of the session upon calling.
+    /// Disconnects the session with the specified reason.
     /// </summary>
-    /// <param name="reason">Reason for disconnect.</param>
+    /// <param name="reason">The reason for disconnection.</param>
+    /// <param name="filePath">Source file path where disconnect was initiated.</param>
+    /// <param name="lineNumber">Source line number where disconnect was initiated.</param>
     /// <returns>Task which completes upon disconnection.</returns>
-    Task DisconnectAsync(DisconnectReason reason , 
-        [CallerFilePath]string? filePath = null, 
+    Task DisconnectAsync(DisconnectReason reason ,
+        [CallerFilePath]string? filePath = null,
         [CallerLineNumber] int? lineNumber = null);
 }

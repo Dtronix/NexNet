@@ -14,6 +14,7 @@ namespace NexNet.Logging;
 /// categorizing log events, and enabling or disabling logging. 
 /// It also provides the ability to create new instances of the logger with specific categories and session details.
 /// </summary>
+/// <typeparam name="TLogger">Implemented logger reference</typeparam>
 public abstract class CoreLogger<TLogger> : INexusLogger
     where TLogger : CoreLogger<TLogger>
 {
@@ -29,7 +30,7 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     /// Represents the base logger used in the CoreLogger class.
     /// It is used to manage the minimum log level and to provide a reference for the logger's own instance.
     /// </summary>
-    protected readonly TLogger? ParentLogger;
+    protected readonly TLogger ParentLogger;
 
     /// <summary>
     /// The path node representing this logger's position in the hierarchy.
@@ -107,19 +108,19 @@ public abstract class CoreLogger<TLogger> : INexusLogger
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="TLogger"/> class with a path segment.
+    /// Initializes a new instance of the class with a path segment.
     /// </summary>
     protected CoreLogger(TLogger? parentLogger = null, string? pathSegment = null)
     {
-        ParentLogger = parentLogger;
-        if (ParentLogger == null)
+        if (parentLogger == null)
         {
             ParentLogger = (TLogger)this;
             Sw = Stopwatch.StartNew();
         }
         else
         {
-            Sw = ParentLogger.Sw;
+            Sw = parentLogger.Sw;
+            ParentLogger = parentLogger;
         }
         
         // Create a new path node with the parent's path node as the parent

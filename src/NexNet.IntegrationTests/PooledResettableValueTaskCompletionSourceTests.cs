@@ -78,7 +78,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
     }
 
     [Test]
-    public async Task TrySetException_CompletesTask_WithException()
+    public void TrySetException_CompletesTask_WithException()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         var task = source.Task;

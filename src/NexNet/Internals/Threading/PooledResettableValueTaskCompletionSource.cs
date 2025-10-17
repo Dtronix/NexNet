@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
 
 /// <summary>
-/// A reusable, poolable async operation that implements IValueTaskSource<T>
+/// A reusable, poolable async operation that implements IValueTaskSource&lt;T&gt;
 /// </summary>
 internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskSource<T>
 {

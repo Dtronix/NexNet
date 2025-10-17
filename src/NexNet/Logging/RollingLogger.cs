@@ -25,7 +25,12 @@ public class RollingLogger : CoreLogger<RollingLogger>
         get => _totalLinesWritten;
     }
 
- 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="RollingLogger"/> class with a rolling buffer for log lines.
+    /// </summary>
+    /// <param name="maxLines">Maximum number of log lines to keep in the buffer before rolling.</param>
+    /// <param name="parentLogger">Parent logger for creating a logger hierarchy.</param>
+    /// <param name="pathSegment">Path segment to append to the logger's category path.</param>
     public RollingLogger(int maxLines = 200, RollingLogger? parentLogger = null, string? pathSegment = null)
         : base(parentLogger, pathSegment)
     {
