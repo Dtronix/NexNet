@@ -19,9 +19,15 @@ internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollect
     public static TMessage Rent()
     {
         if (!_cache.TryTake(out var message))
+        {
             message = new TMessage();
+        }
+        else
+        {
+            // Reset any flags on cached items.
+            message.Flags = NexusCollectionMessageFlags.Unset;
+        }
 
-        message.Flags = NexusCollectionMessageFlags.Ack;
         return message;
     }
 

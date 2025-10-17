@@ -46,55 +46,6 @@ internal class NexusBroadcastConnectionManager<TUnion>
         // Add in the completion removal for execution later.
         _logger?.LogTrace($"S{client.Id} Starting collection message writer.");
         
-        /*
-        // Start the client reader for handling of messages the client sends.
-        Task.Factory.StartNew(static async state =>
-        {
-            var client = (INexusBroadcastSession<TUnion>)(state!);
-            INexusCollectionBroadcasterMessageWrapper<TUnion>? wrapper = null;
-            await foreach (var messageWrapper in client.BufferRead(client.CompletionToken).ConfigureAwait(false))
-            {
-                try
-                {
-                    wrapper = messageWrapper;
-                    var message = messageWrapper.SourceClient == client
-                        ? messageWrapper.MessageToSource ?? throw new Exception("Message to source client is null.")
-                        : messageWrapper.Message;
-
-                    if (message == null)
-                        throw new Exception("Message is null.");
-
-                    if (!await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false))
-                    {
-                        client.Logger?.LogInfo("Cound not send client message.");
-                        await client.CompletePipe().ConfigureAwait(false);
-                        return;
-                    }
-                }
-                catch (Exception e)
-                {
-                    client.Logger?.LogInfo(e, "Could not send collection broadcast message to session.");
-                    // Ignore and disconnect.
-                    try
-                    {
-                        await client.CompletePipe().ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        client.Logger?.LogInfo(ex, "Exception while completing pipe.");
-                    }
-
-                    return;
-
-                }
-                finally
-                {
-                    wrapper?.SignalSent();
-                }
-            }
-
-        }, client, TaskCreationOptions.DenyChildAttach);*/
-        
         // Start the internal broadcast listener for this client to handle sending updates to the client.
         Task.Factory.StartNew(static async state =>
         {
@@ -185,6 +136,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
                             // Force the client count to 1 and signal a return. 
                             broadcastMessage.ClientCount = 1;
                             broadcastMessage.SignalSent();
+                            broadcaster._logger?.LogTrace($"Broadcasting skipping {broadcastMessage.Message?.GetType()} due to no client connections.");
                             continue;
                         }
                         
