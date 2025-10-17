@@ -61,8 +61,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
+            var result = await pipe.Input.ReadAtLeastAsync(largeData.Length).Timeout(1);
             pipe.Input.AdvanceTo(result.Buffer.End);
+            await pipe.CompleteAsync();
 
             if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
