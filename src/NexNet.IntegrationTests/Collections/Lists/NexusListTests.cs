@@ -802,6 +802,7 @@ internal class NexusListTests : NexusCollectionBaseTests
     }
     
     [Test]
+    [Repeat(10000)]
     public async Task ClientDisconnectsAndReconnects()
     {
         var (_, client, _) = await ConnectServerAndClient(Type.Uds);

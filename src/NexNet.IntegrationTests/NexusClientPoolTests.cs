@@ -264,12 +264,12 @@ internal class NexusClientPoolTests : BaseTests
     {
         // Arrange
         var (server, _, _) = CreateServerClient(
-            CreateServerConfig(Type.Uds, BasePipeTests.LogMode.Always),
-            CreateClientConfig(Type.Uds, BasePipeTests.LogMode.Always));
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
 
         await server.StartAsync().Timeout(1);
 
-        var clientConfig = CreateClientConfig(Type.Uds, BasePipeTests.LogMode.Always);
+        var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 10 };
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
 
