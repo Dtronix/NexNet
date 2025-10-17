@@ -141,9 +141,9 @@ internal class NexusPipeManager
             return pipe.WriteFromUpstream(data);
         }
 
-        _logger?.LogInfo($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
+        _logger?.LogWarning($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
         throw new InvalidOperationException($"No pipe exists for id: {id}.");
-        return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+        //return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
     public DisconnectReason UpdateState(ushort id, State state)
