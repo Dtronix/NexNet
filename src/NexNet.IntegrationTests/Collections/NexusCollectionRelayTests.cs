@@ -64,8 +64,12 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSv = await CreateRelayCollectionClientServers(true);
 
-        await clSv.Client2.ConnectAsync();
-        var relayList = clSv.Client2.Proxy.IntListRelay; 
+        // Wait for the server-side relay to be connected to Server1 before proceeding
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var relayList = clSv.Client2.Proxy.IntListRelay;
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
 
         await relayList.ConnectAsync().Timeout(1);
@@ -95,13 +99,17 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     public async Task ManyAddedParentItemsAreRelayedToChildCollection()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
-        
+
+        // Wait for the server-side relay to be connected to Server1 before proceeding
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
-        
+
         await clSv.Client2.ConnectAsync().Timeout(1);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.ConnectAsync().Timeout(1);
-        
+
         await relayList.ReadyTask.Timeout(1);
         var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
 
@@ -326,6 +334,10 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     public async Task ConcurrentModifications_AcrossRelayHierarchy()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
+
+        // Wait for the server-side relay to be connected to Server1 before proceeding
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
