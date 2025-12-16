@@ -1266,8 +1266,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // Verify some adds completed before the stop
         Assert.That(addsCompleted, Is.GreaterThan(0),
             "Some adds should have completed before the server stopped");
-
-        Console.WriteLine($"Completed {addsCompleted} adds, cancelled: {addsCancelled}");
     }
 
     /// <summary>
