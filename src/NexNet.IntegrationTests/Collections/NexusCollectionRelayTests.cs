@@ -1219,7 +1219,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Start a task that will rapidly add many items - more than the channel can hold
         // This will cause WriteAsync to block waiting for channel space
-        var addsCancelled = false;
         var addsCompleted = 0;
         var addTask = Task.Run(async () =>
         {
@@ -1232,21 +1231,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
                     Interlocked.Increment(ref addsCompleted);
                 }
             }
-            catch (OperationCanceledException)
-            {
-                addsCancelled = true;
-            }
-            catch (Exception ex) when (ex.Message.Contains("cancel") ||
-                                        ex.Message.Contains("disconnect") ||
-                                        ex.Message.Contains("stopped") ||
-                                        ex.InnerException is OperationCanceledException)
-            {
-                // Various cancellation-related exceptions are acceptable
-                addsCancelled = true;
-            }
             catch
             {
-                // Other exceptions during shutdown are also acceptable
+                // Exceptions during shutdown are acceptable
                 // The key is that the operation doesn't hang
             }
         });
