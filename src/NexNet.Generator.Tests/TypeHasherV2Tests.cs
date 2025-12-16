@@ -1038,7 +1038,7 @@ public class TypeHasherV2Tests
             minDiagnostic: DiagnosticSeverity.Info);
 
         var failures = diagnostics.Where(d => d.Id.StartsWith("TESTV2_FAIL")).ToArray();
-        Assert.That(failures, Is.Empty, string.Join('\n', failures.Select(d => d.GetMessage())));
+        Assert.That(failures, Is.Empty, string.Join("\n", failures.Select(d => d.GetMessage())));
     }
 
     private const string GenerateStructureHashV2Attribute
