@@ -606,7 +606,7 @@ public class TypeHasherTests
         var diagnostic = CSharpGeneratorRunner.RunTypeWalkerGenerator(code + GenerateStructureHashAttribute, minDiagnostic: DiagnosticSeverity.Info);
 
         var first = diagnostic.Where(d => d.Id.StartsWith("TEST_FAIL")).ToArray();
-        Assert.That(first, Is.Empty, string.Join('\n', first));
+        Assert.That(first, Is.Empty, string.Join("\n", first));
     }
 
     private const string GenerateStructureHashAttribute
