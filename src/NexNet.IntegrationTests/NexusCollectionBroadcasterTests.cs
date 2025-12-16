@@ -51,7 +51,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         var client1 = CreateTestClient();
         bl.ConnectionManager.AddClientAsync(client1);
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? client1 : null);
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? client1 : null);
 
         await message.ReturnedToCacheTask.Timeout(1);
 
@@ -75,7 +75,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         }
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await message.ReturnedToCacheTask.Timeout(1);
 
@@ -84,7 +84,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         if(hasSource)
             Assert.That(message.SourceClientClone.ReturnedToCacheCount, Is.EqualTo(1));
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastMessagesAllClients(bool hasSource)
@@ -98,13 +98,13 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         var clientComplete = clients.Select(c => c.EventCount(ClientEvent.SendAsync, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
-        
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+
         await Task.WhenAll(clientComplete).Timeout(1);
 
         Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.BufferWrites.Count == 1));
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastMessagesSetsFlags(bool hasSource)
@@ -118,8 +118,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         var clientComplete = clients.Select(c => c.EventCount(ClientEvent.SendAsync, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
-        
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+
         await Task.WhenAll(clientComplete).Timeout(1);
 
         if (hasSource)
@@ -134,7 +134,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
                 c => c.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
         }
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastCompletesPipeOnFullBuffer(bool hasSource)
@@ -153,13 +153,13 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
-        
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+
         await Task.WhenAll(clientComplete).Timeout(1);
 
         Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastCompletesPipeOnSendException(bool hasSource)
@@ -178,13 +178,13 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
-        
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+
         await Task.WhenAll(clientComplete).Timeout(1);
 
         Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task BroadcastCompletesPipeOnFailedSend(bool hasSource)
@@ -203,13 +203,13 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
             c => c.EventCount(ClientEvent.CompletePipe, 1).Complete).ToArray();
 
         var message = new NexusCollectionMessageTest();
-        bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
-        
+        await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
+
         await Task.WhenAll(clientComplete).Timeout(1);
 
         Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
     }
-    
+
     [Test]
     public async Task FiringRunCancellationTokenClosesConnections()
     {

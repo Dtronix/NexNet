@@ -1091,6 +1091,247 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
 
+    /// <summary>
+    /// Tests that broadcast backpressure works correctly when items are added faster than
+    /// the broadcast channel capacity (50). Previously, this would cause message drops
+    /// when using TryWrite, leading to version mismatches and "BadOperation" errors.
+    /// With WriteAsync backpressure, all messages should be delivered reliably.
+    /// </summary>
+    [Test]
+    public async Task BroadcastBackpressure_AllMessagesDeliveredWhenExceedingChannelCapacity()
+    {
+        var clSv = await CreateRelayCollectionClientServers(true);
+
+        // Wait for the server-side relay to be connected to Server1 before proceeding
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var relayList = clSv.Client2.Proxy.IntListRelay;
+        var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
+
+        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ReadyTask.Timeout(1);
+
+        // Add significantly more items than the broadcast channel capacity (50)
+        // to ensure backpressure is properly applied
+        const int itemCount = 200;
+        var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, itemCount);
+
+        for (int i = 0; i < itemCount; i++)
+        {
+            await sourceList.AddAsync(i);
+        }
+
+        try
+        {
+            await addWait.Wait(30);
+        }
+        catch (Exception)
+        {
+            Console.WriteLine($"Received {addWait.Counter}/{itemCount} events");
+            throw;
+        }
+
+        // Verify all items were delivered without any drops
+        Assert.That(relayList.Count, Is.EqualTo(itemCount),
+            $"Expected {itemCount} items but got {relayList.Count}. This indicates message drops.");
+        Assert.That(sourceList, Is.EquivalentTo(relayList));
+
+        // Verify ordering is preserved
+        for (int i = 0; i < itemCount; i++)
+        {
+            Assert.That(relayList[i], Is.EqualTo(i),
+                $"Item at index {i} should be {i} but was {relayList[i]}. Ordering not preserved.");
+        }
+    }
+
+    /// <summary>
+    /// Tests that concurrent rapid additions from multiple sources don't cause message drops
+    /// when the broadcast channel is under heavy load.
+    /// </summary>
+    [Test]
+    public async Task BroadcastBackpressure_ConcurrentRapidAdditions()
+    {
+        var clSv = await CreateRelayCollectionClientServers(true);
+
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var relayList = clSv.Client2.Proxy.IntListRelay;
+        var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
+
+        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ReadyTask.Timeout(1);
+
+        // Multiple concurrent tasks adding items rapidly
+        const int tasksCount = 5;
+        const int itemsPerTask = 50;
+        const int totalItems = tasksCount * itemsPerTask;
+
+        var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, totalItems);
+
+        var tasks = new List<Task>();
+        for (int t = 0; t < tasksCount; t++)
+        {
+            int taskId = t;
+            tasks.Add(Task.Run(async () =>
+            {
+                for (int i = 0; i < itemsPerTask; i++)
+                {
+                    await sourceList.AddAsync(taskId * 1000 + i);
+                }
+            }));
+        }
+
+        await Task.WhenAll(tasks);
+
+        try
+        {
+            await addWait.Wait(30);
+        }
+        catch (Exception)
+        {
+            Console.WriteLine($"Received {addWait.Counter}/{totalItems} events");
+            throw;
+        }
+
+        Assert.That(relayList.Count, Is.EqualTo(totalItems),
+            $"Expected {totalItems} items but got {relayList.Count}. Concurrent additions caused message drops.");
+        Assert.That(sourceList, Is.EquivalentTo(relayList));
+    }
+
+    /// <summary>
+    /// Tests that when the broadcast channel is full and a disconnect occurs,
+    /// pending WriteAsync operations are cancelled rather than hanging indefinitely.
+    /// This verifies the cancellation token is properly propagated through the async chain.
+    /// </summary>
+    [Test]
+    public async Task BroadcastBackpressure_PendingOperationsCancelledOnDisconnect()
+    {
+        var clSv = await CreateRelayCollectionClientServers(true);
+
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
+        var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
+
+        // Start a task that will rapidly add many items - more than the channel can hold
+        // This will cause WriteAsync to block waiting for channel space
+        var addsCancelled = false;
+        var addsCompleted = 0;
+        var addTask = Task.Run(async () =>
+        {
+            try
+            {
+                // Add many more items than the channel capacity (50) to ensure blocking
+                for (int i = 0; i < 500; i++)
+                {
+                    await sourceList.AddAsync(i);
+                    Interlocked.Increment(ref addsCompleted);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                addsCancelled = true;
+            }
+            catch (Exception ex) when (ex.Message.Contains("cancel") ||
+                                        ex.Message.Contains("disconnect") ||
+                                        ex.Message.Contains("stopped") ||
+                                        ex.InnerException is OperationCanceledException)
+            {
+                // Various cancellation-related exceptions are acceptable
+                addsCancelled = true;
+            }
+            catch
+            {
+                // Other exceptions during shutdown are also acceptable
+                // The key is that the operation doesn't hang
+            }
+        });
+
+        // Give some time for adds to start and potentially fill the channel
+        await Task.Delay(50);
+
+        // Stop the server while operations may be pending
+        await clSv.Server1.StopAsync();
+
+        // The add task should complete within a reasonable time (not hang)
+        var completedTask = await Task.WhenAny(addTask, Task.Delay(5000));
+
+        Assert.That(completedTask, Is.EqualTo(addTask),
+            "Add task should complete (via cancellation) when server stops, not hang indefinitely");
+
+        // Verify some adds completed before the stop
+        Assert.That(addsCompleted, Is.GreaterThan(0),
+            "Some adds should have completed before the server stopped");
+
+        Console.WriteLine($"Completed {addsCompleted} adds, cancelled: {addsCancelled}");
+    }
+
+    /// <summary>
+    /// Tests that stopping a relay server during high-volume operations doesn't hang
+    /// due to blocked WriteAsync calls in the broadcast channel.
+    /// </summary>
+    [Test]
+    public async Task BroadcastBackpressure_RelayStopDoesNotHangDuringHighVolume()
+    {
+        var clSv = await CreateRelayCollectionClientServers(true);
+
+        var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(1);
+
+        await clSv.Client2.ConnectAsync().Timeout(1);
+        var clientRelay = clSv.Client2.Proxy.IntListRelay;
+        await clientRelay.ConnectAsync().Timeout(1);
+        await clientRelay.ReadyTask.Timeout(1);
+
+        var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
+
+        // Start continuous high-volume additions
+        var cts = new CancellationTokenSource();
+        var addTask = Task.Run(async () =>
+        {
+            int i = 0;
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    await sourceList.AddAsync(i++);
+                }
+                catch
+                {
+                    // Expected during shutdown
+                    break;
+                }
+            }
+            return i;
+        });
+
+        // Let operations run for a bit to fill up channels
+        await Task.Delay(100);
+
+        // Stop the relay server (Server2) during high-volume operations
+        var stopTask = clSv.Server2.StopAsync();
+        var stopCompleted = await Task.WhenAny(stopTask, Task.Delay(5000));
+
+        Assert.That(stopCompleted, Is.EqualTo(stopTask),
+            "Server2 stop should complete within timeout, not hang due to blocked broadcasts");
+
+        // Cancel the add loop
+        cts.Cancel();
+
+        // Stop Server1
+        var stop1Task = clSv.Server1.StopAsync();
+        var stop1Completed = await Task.WhenAny(stop1Task, Task.Delay(5000));
+
+        Assert.That(stop1Completed, Is.EqualTo(stop1Task),
+            "Server1 stop should complete within timeout");
+
+        await addTask;
+    }
+
     #endregion
 
     #region State Consistency

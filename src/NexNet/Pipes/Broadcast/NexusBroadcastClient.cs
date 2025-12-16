@@ -177,11 +177,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     }
     protected abstract void OnDisconnected();
 
-    protected override BroadcastMessageProcessResult OnProcessCore(TUnion message,
+    protected override ValueTask<BroadcastMessageProcessResult> OnProcessCore(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
-        return OnProcess(message, sourceClient, ct);
+        return new ValueTask<BroadcastMessageProcessResult>(OnProcess(message, sourceClient, ct));
     }
 
     protected abstract BroadcastMessageProcessResult OnProcess(TUnion message,

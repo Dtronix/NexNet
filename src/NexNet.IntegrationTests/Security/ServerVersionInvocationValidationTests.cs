@@ -580,7 +580,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         await validClient.AssertReceiveMessageAsync<ServerGreetingMessage>();
         
         // Server should still be responsive to valid clients
-        Assert.Pass("Server maintained performance and responsiveness under high volume invalid access");
+        Assert.Pass();
     }
     
     private async Task InvokeMethod(RawTcpClient client, ushort methodId)

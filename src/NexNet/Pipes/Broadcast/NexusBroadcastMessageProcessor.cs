@@ -78,7 +78,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                                 $"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
 
                             (success, var disconnect) =
-                                processor._process(messageWrapper.Message, messageWrapper.Client, ct);
+                                await processor._process(messageWrapper.Message, messageWrapper.Client, ct).ConfigureAwait(false);
 
                             if (disconnect)
                                 processor.Logger?.LogTrace(
@@ -166,7 +166,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     /// <param name="sourceClient">The client that sent the message, or null for server-originated messages.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The result of processing the message.</returns>
-    public delegate BroadcastMessageProcessResult OnProcessDelegate(TUnion process, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct);
+    public delegate ValueTask<BroadcastMessageProcessResult> OnProcessDelegate(TUnion process, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct);
 }
 
 /// <summary>

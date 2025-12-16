@@ -87,7 +87,7 @@ internal abstract class NexusBroadcastBase<TUnion>
     /// <param name="sourceClient">The client that sent the message, or null for server-originated messages.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The result of processing, including whether to acknowledge and disconnect.</returns>
-    protected abstract BroadcastMessageProcessResult OnProcessCore(
+    protected abstract ValueTask<BroadcastMessageProcessResult> OnProcessCore(
         TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);

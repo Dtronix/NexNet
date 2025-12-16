@@ -114,7 +114,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
 
-    protected override BroadcastMessageProcessResult OnProcessCore(TUnion message,
+    protected override async ValueTask<BroadcastMessageProcessResult> OnProcessCore(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
@@ -122,7 +122,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         if (broadcastMessage == null)
             return new BroadcastMessageProcessResult(false, disconnect);
 
-        _connectionManager.BroadcastAsync(broadcastMessage, sourceClient);
+        await _connectionManager.BroadcastAsync(broadcastMessage, sourceClient, ct).ConfigureAwait(false);
         return new BroadcastMessageProcessResult(true, disconnect);
     }
 

@@ -99,13 +99,11 @@ internal class NexusBroadcastConnectionManager<TUnion>
         _connectedClients.Add(client);
     }
 
-    public void BroadcastAsync(TUnion message, INexusBroadcastSession<TUnion>? sourceClient)
+    public async ValueTask BroadcastAsync(TUnion message, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct = default)
     {
         // DoNotSendAck is for testing logic only and not used in any production.
-        if (!_messageBroadcastChannel.Writer.TryWrite(message.Wrap(DoNotSendAck ? null : sourceClient)))
-        {
-            _logger?.LogCritical("Could not write to Broadcast channel.");
-        }
+        // Using WriteAsync provides backpressure - if the channel is full, we wait instead of dropping messages.
+        await _messageBroadcastChannel.Writer.WriteAsync(message.Wrap(DoNotSendAck ? null : sourceClient), ct).ConfigureAwait(false);
     }
 
     public void Run(CancellationToken token)
