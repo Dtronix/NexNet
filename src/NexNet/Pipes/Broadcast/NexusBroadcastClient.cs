@@ -24,10 +24,21 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
+    private TaskCompletionSource? _readyTcs;
 
     protected NexusBroadcastSession<TUnion>? Client => _client;
 
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Gets a task that completes when the collection is ready (connected and synchronized).
+    /// </summary>
+    public Task ReadyTask => _readyTcs?.Task ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Gets a task that completes when the collection becomes disconnected.
+    /// </summary>
+    public Task DisconnectedTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
     protected NexusBroadcastClient(ushort id, NexusCollectionMode mode, INexusLogger? logger)
         : base(id, mode, logger, "BRC")
@@ -87,7 +98,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        //_disconnectedTask = _disconnectTcs.Task;
+        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         
 
         // Long-running task listening for changes.
@@ -162,6 +173,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         _disconnectTcs?.TrySetResult();
         _disconnectTcs = null;
+        _readyTcs = null;
     }
     protected abstract void OnDisconnected();
 
@@ -178,11 +190,12 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     
     protected void InitializationCompleted()
     {
-        using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
+        using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Ready))
         {
             CoreChangedEvent.Raise(eventArgsOwner.Value);
         }
         _initializedTcs?.TrySetResult();
+        _readyTcs?.TrySetResult();
     }
     
     void INexusCollectionConnector.TryConfigureProxyCollection(IProxyInvoker invoker, INexusSession session)

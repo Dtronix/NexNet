@@ -89,6 +89,7 @@ internal abstract class BaseTests
     public virtual void SetUp()
     {
         _logger = new RollingLogger();
+        NexusServer<ServerNexus, ServerNexus.ClientProxy>.ResetIdCounter();
     }
 
     [TearDown]

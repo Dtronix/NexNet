@@ -78,10 +78,10 @@ partial class DataObject {
     public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=743394637)]
-partial interface IServerNexus { 
+[NexusVersion(Version = "v2", HashLock=1729262913)]
+partial interface IServerNexus {
     [NexusMethod(100)]
-    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); 
+    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2);
 }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
@@ -109,12 +109,12 @@ internal partial class Message2 {
     [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -1599061262)]
-partial interface IServerNexus { 
+[NexusVersion(Version = "v1", HashLock = -823364119)]
+partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(Message data);
 }
-[NexusVersion(Version = "v1", HashLock = -1740650374)]
+[NexusVersion(Version = "v1", HashLock = -911867615)]
 partial interface IServerNexus2 {
     [NexusMethod(100)]
     void Update(Message2 data);
@@ -198,10 +198,10 @@ internal partial class ValueObjects {
     [MemoryPackOrder(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = 1592512029)]
-partial interface IServerNexus { 
+[NexusVersion(Version = "v1", HashLock = 49619989)]
+partial interface IServerNexus {
     [NexusMethod(100)]
-    void Update(ValueTuple<Message> data); 
+    void Update(ValueTuple<Message> data);
 }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
@@ -235,7 +235,7 @@ partial class ServerNexus : IServerNexus {
 """, minDiagnostic: DiagnosticSeverity.Error);
         Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id), Is.True);
     }
-    
+
     [Test]
     public void HashLockFailsOnNextedMemberChange()
     {

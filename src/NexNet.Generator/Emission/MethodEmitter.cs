@@ -1,72 +1,75 @@
-﻿using System.Text;
+using System.Text;
+using NexNet.Generator.Models;
 
-namespace NexNet.Generator.MetaGenerator;
+namespace NexNet.Generator.Emission;
 
-
-partial class MethodMeta
+/// <summary>
+/// Emits method invocation code.
+/// Works entirely with cached data records - no semantic model access.
+/// </summary>
+internal static class MethodEmitter
 {
     /// <summary>
-    /// Emit the code for the the nexus.
+    /// Emit the code for the nexus method invocation (receiving calls).
     /// </summary>
-    /// <param name="sb"></param>
-    /// <param name="proxyImplementation"></param>
-    /// <param name="nexus"></param>
-    public void EmitNexusInvocation(StringBuilder sb, InvocationInterfaceMeta proxyImplementation, NexusMeta nexus)
+    public static void EmitNexusInvocation(
+        StringBuilder sb,
+        MethodData method,
+        InvocationInterfaceData proxyImplementation)
     {
         // Create the cancellation token parameter.
-        if (CancellationTokenParameter != null)
+        if (method.CancellationTokenParameter != null)
         {
-            //sb.AppendLine($"                        var methodInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IMethodInvoker<{nexus.Namespace}.{nexus.TypeName}.{proxyImplementation.ProxyImplName}>>(this);");
             sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
         }
 
         // Deserialize the arguments.
-        if (SerializedParameters > 0)
+        if (method.SerializedParameterCount > 0)
         {
             sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
-            for (var i = 0; i < Parameters.Length; i++)
+            for (var i = 0; i < method.Parameters.Length; i++)
             {
-                if (Parameters[i].SerializedType == null)
+                if (method.Parameters[i].SerializedType == null)
                     continue;
 
-                sb.Append(Parameters[i].SerializedType).Append(", ");
+                sb.Append(method.Parameters[i].SerializedType).Append(", ");
             }
-            sb.Remove(sb.Length - 2, 2);
 
+            sb.Remove(sb.Length - 2, 2);
             sb.AppendLine(">>();");
         }
 
         // Register the duplex pipe if we have one.
-        if (UtilizesPipes)
+        if (method.UtilizesPipes)
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item");
-            sb.Append(DuplexPipeParameter!.SerializedId);
+            sb.Append(method.DuplexPipeParameter!.SerializedId);
             sb.AppendLine(").ConfigureAwait(false);");
         }
 
         sb.Append("                        this.Context.Logger?.NexusLog(\"");
-        EmitNexusMethodInvocation(sb, true);
+        EmitNexusMethodInvocation(sb, method, true);
         sb.AppendLine("\");");
         sb.Append("                        ");
-        
+
         // Ignore the return value if we are a void method or a duplex pipe method
-        if (IsReturnVoid)
+        if (method.IsReturnVoid)
         {
-            EmitNexusMethodInvocation(sb, false);
+            EmitNexusMethodInvocation(sb, method, false);
         }
-        else if (IsAsync)
+        else if (method.IsAsync)
         {
             // If we are async, we need to await the method invocation and then serialize the return value otherwise
             // we can just invoke the method and serialize the return value
-            if (IsAsync && ReturnType == null)
+            if (method.IsAsync && method.ReturnType == null)
             {
                 sb.Append("await ");
-                EmitNexusMethodInvocation(sb, false);
+                EmitNexusMethodInvocation(sb, method, false);
             }
             else
             {
                 sb.Append("var result = await ");
-                EmitNexusMethodInvocation(sb, false);
+                EmitNexusMethodInvocation(sb, method, false);
                 sb.AppendLine("""
                         if (returnBuffer != null)
                             global::MemoryPack.MemoryPackSerializer.Serialize(returnBuffer, result);
@@ -78,25 +81,25 @@ partial class MethodMeta
     /// <summary>
     /// Emits the invocation of the method on the nexus.
     /// </summary>
-    /// <param name="sb"></param>
+    /// <param name="sb">StringBuilder to append to.</param>
+    /// <param name="method">Method data.</param>
     /// <param name="forLog">Change the output to write the output params. Used for logging.</param>
-    public void EmitNexusMethodInvocation(StringBuilder sb, bool forLog)
+    private static void EmitNexusMethodInvocation(StringBuilder sb, MethodData method, bool forLog)
     {
-        sb.Append(this.Name).Append("(");
+        sb.Append(method.Name).Append("(");
 
-        
         bool addedParam = false;
-        foreach (var methodParameterMeta in Parameters)
+        foreach (var param in method.Parameters)
         {
             // If we have a duplex pipe, we need to pass it in the correct parameter position,
             // otherwise we need to pass the serialized value.
-            if (methodParameterMeta.IsDuplexPipe)
+            if (param.IsDuplexPipe)
             {
                 if (forLog)
                 {
-                    sb.Append(methodParameterMeta.Name)
+                    sb.Append(param.Name)
                         .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
+                        .Append(method.DuplexPipeParameter!.SerializedId)
                         .Append("}, ");
                 }
                 else
@@ -106,65 +109,65 @@ partial class MethodMeta
 
                 addedParam = true;
             }
-            else if (methodParameterMeta.IsDuplexUnmanagedChannel)
+            else if (param.IsDuplexUnmanagedChannel)
             {
                 if (forLog)
                 {
-                    sb.Append(methodParameterMeta.Name)
+                    sb.Append(param.Name)
                         .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
+                        .Append(method.DuplexPipeParameter!.SerializedId)
                         .Append("}, ");
                 }
                 else
                 {
                     sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetUnmanagedChannel<");
-                    sb.Append(methodParameterMeta.ChannelType);
+                    sb.Append(param.ChannelType);
                     sb.Append(">(duplexPipe), ");
                 }
 
                 addedParam = true;
             }
-            else if (methodParameterMeta.IsDuplexChannel)
+            else if (param.IsDuplexChannel)
             {
                 if (forLog)
                 {
-                    sb.Append(methodParameterMeta.Name)
+                    sb.Append(param.Name)
                         .Append(" = {arguments.Item")
-                        .Append(DuplexPipeParameter!.SerializedId)
+                        .Append(method.DuplexPipeParameter!.SerializedId)
                         .Append("}, ");
                 }
                 else
                 {
                     sb.Append("global::NexNet.Pipes.NexusDuplexPipeExtensions.GetChannel<");
-                    sb.Append(methodParameterMeta.ChannelType);
+                    sb.Append(param.ChannelType);
                     sb.Append(">(duplexPipe), ");
                 }
 
                 addedParam = true;
             }
-            else if (methodParameterMeta.SerializedValue != null)
+            else if (param.SerializedValue != null)
             {
                 if (forLog)
                 {
-                    sb.Append(methodParameterMeta.Name)
+                    sb.Append(param.Name)
                         .Append(" = {arguments.Item")
-                        .Append(methodParameterMeta.SerializedId)
+                        .Append(param.SerializedId)
                         .Append("}, ");
                 }
                 else
                 {
-                    sb.Append("arguments.Item").Append(methodParameterMeta.SerializedId).Append(", ");
+                    sb.Append("arguments.Item").Append(param.SerializedId).Append(", ");
                 }
 
                 addedParam = true;
             }
         }
 
-        if (CancellationTokenParameter != null)
+        if (method.CancellationTokenParameter != null)
         {
             if (forLog)
             {
-                sb.Append(CancellationTokenParameter.Name).Append(" = ct");
+                sb.Append(method.CancellationTokenParameter.Name).Append(" = ct");
             }
             else
             {
@@ -173,30 +176,33 @@ partial class MethodMeta
         }
         else
         {
-            if(addedParam)
+            if (addedParam)
                 sb.Remove(sb.Length - 2, 2);
         }
-        
+
         // Configure the await if the method is not a void return type.
-        sb.Append(")").Append((this.IsReturnVoid || forLog) ? ";" : ".ConfigureAwait(false);");
+        sb.Append(")").Append((method.IsReturnVoid || forLog) ? ";" : ".ConfigureAwait(false);");
 
         if (!forLog)
             sb.AppendLine();
     }
 
-    public void EmitProxyMethodInvocation(StringBuilder sb)
+    /// <summary>
+    /// Emits the proxy method implementation (making calls).
+    /// </summary>
+    public static void EmitProxyMethodInvocation(StringBuilder sb, MethodData method)
     {
         sb.Append("             public ");
 
-        if (this.IsReturnVoid)
+        if (method.IsReturnVoid)
         {
             sb.Append("void ");
         }
-        else if (this.IsAsync)
+        else if (method.IsAsync)
         {
-            if (this.ReturnType != null)
+            if (method.ReturnType != null)
             {
-                sb.Append("global::System.Threading.Tasks.ValueTask<").Append(this.ReturnType).Append("> ");
+                sb.Append("global::System.Threading.Tasks.ValueTask<").Append(method.ReturnType).Append("> ");
             }
             else
             {
@@ -204,27 +210,27 @@ partial class MethodMeta
             }
         }
 
-        sb.Append(this.Name).Append("(");
+        sb.Append(method.Name).Append("(");
 
-        foreach (var parameter in Parameters)
+        foreach (var parameter in method.Parameters)
         {
-            sb.Append(parameter.ParamType).Append(" ").Append(parameter.Name).Append(", ");
+            sb.Append(parameter.Type).Append(" ").Append(parameter.Name).Append(", ");
         }
 
-        if(Parameters.Length > 0)
+        if (method.Parameters.Length > 0)
             sb.Remove(sb.Length - 2, 2);
-        
+
         sb.AppendLine(")");
         sb.AppendLine("             {");
         sb.AppendLine("                 var __proxyInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this);");
-        if (SerializedParameters > 0)
+
+        if (method.SerializedParameterCount > 0)
         {
             sb.Append("                 var __proxyInvocationArguments = new global::System.ValueTuple<");
-            
-            
-            foreach (var p in Parameters)
+
+            foreach (var p in method.Parameters)
             {
-                if(p.SerializedType == null)
+                if (p.SerializedType == null)
                     continue;
 
                 sb.Append(p.SerializedType).Append(", ");
@@ -233,7 +239,7 @@ partial class MethodMeta
             sb.Remove(sb.Length - 2, 2);
 
             sb.Append(">(");
-            foreach (var p in Parameters)
+            foreach (var p in method.Parameters)
             {
                 if (p.SerializedValue == null)
                     continue;
@@ -248,87 +254,90 @@ partial class MethodMeta
 
         // Logging
         sb.Append("                 __proxyInvoker.Logger?.ProxyLog($\"Proxy Invoking Method: ");
-        sb.Append(this.Name).Append("(");
-        for (var i = 0; i < Parameters.Length; i++)
+        sb.Append(method.Name).Append("(");
+        for (var i = 0; i < method.Parameters.Length; i++)
         {
-            if (Parameters[i].IsCancellationToken)
+            if (method.Parameters[i].IsCancellationToken)
             {
-                sb.Append(Parameters[i].Name)
-                    .Append(", ");
+                sb.Append(method.Parameters[i].Name).Append(", ");
             }
             else
             {
-                sb.Append(Parameters[i].Name)
+                sb.Append(method.Parameters[i].Name)
                     .Append(" = ")
                     .Append("{__proxyInvocationArguments.Item").Append(i + 1)
                     .Append("}, ");
             }
         }
 
-        if (Parameters.Length > 0) 
+        if (method.Parameters.Length > 0)
             sb.Remove(sb.Length - 2, 2);
-        
+
         sb.AppendLine(");\");");
         sb.Append("                 ");
 
-
-        if (this.IsReturnVoid || this.DuplexPipeParameter != null)
+        if (method.IsReturnVoid || method.DuplexPipeParameter != null)
         {
             // If we are a void method, we need to invoke the method and then ignore the return
             // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
-            sb.Append(this.DuplexPipeParameter == null ? "_ = " : "return ");
+            sb.Append(method.DuplexPipeParameter == null ? "_ = " : "return ");
 
-            sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(this.Id).Append(", ");
-            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, ");
+            sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(method.Id).Append(", ");
+            sb.Append(method.SerializedParameterCount > 0 ? "__proxyInvocationArguments, " : "null, ");
 
             // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
-            sb.Append("global::NexNet.Messages.InvocationFlags.").Append(this.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
+            sb.Append("global::NexNet.Messages.InvocationFlags.")
+                .Append(method.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
         }
-        else if (this.IsAsync)
+        else if (method.IsAsync)
         {
             sb.Append("return __proxyInvoker.ProxyInvokeAndWaitForResultCore");
-            if (this.ReturnType != null)
+            if (method.ReturnType != null)
             {
-                sb.Append("<").Append(this.ReturnType).Append(">");
+                sb.Append("<").Append(method.ReturnType).Append(">");
             }
 
-            sb.Append("(").Append(this.Id).Append(", "); // methodId
-            sb.Append(SerializedParameters > 0 ? "__proxyInvocationArguments, " : "null, "); // arguments
-            sb.Append(CancellationTokenParameter != null ? CancellationTokenParameter.Name : "null").AppendLine(");");
+            sb.Append("(").Append(method.Id).Append(", "); // methodId
+            sb.Append(method.SerializedParameterCount > 0 ? "__proxyInvocationArguments, " : "null, "); // arguments
+            sb.Append(method.CancellationTokenParameter != null ? method.CancellationTokenParameter.Name : "null")
+                .AppendLine(");");
         }
 
         sb.AppendLine("             }");
     }
-    
-    public override string ToString()
+
+    /// <summary>
+    /// Gets a string representation of the method for comments.
+    /// </summary>
+    public static string ToStringRepresentation(MethodData method)
     {
         var sb = SymbolUtilities.GetStringBuilder();
 
-        if (IsReturnVoid)
+        if (method.IsReturnVoid)
         {
             sb.Append("void");
         }
-        else if (IsAsync)
+        else if (method.IsAsync)
         {
             sb.Append("ValueTask");
 
-            if (this.ReturnArity > 0)
+            if (method.ReturnArity > 0)
             {
-                sb.Append("<").Append(this.ReturnTypeSource).Append(">");
+                sb.Append("<").Append(method.ReturnTypeSource).Append(">");
             }
         }
 
         sb.Append(" ");
-        sb.Append(this.Name).Append("(");
+        sb.Append(method.Name).Append("(");
 
-        var paramsLength = this.Parameters.Length;
+        var paramsLength = method.Parameters.Length;
         if (paramsLength > 0)
         {
             for (int i = 0; i < paramsLength; i++)
             {
-                sb.Append(Parameters[i].ParamTypeSource);
+                sb.Append(method.Parameters[i].TypeSource);
                 sb.Append(" ");
-                sb.Append(Parameters[i].Name);
+                sb.Append(method.Parameters[i].Name);
 
                 if (i + 1 < paramsLength)
                 {

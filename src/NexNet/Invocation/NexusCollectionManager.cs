@@ -28,10 +28,16 @@ internal class NexusCollectionManager : IConfigureCollectionManager
 
     public INexusList<T> GetList<T>(ushort id)
     {
-        if(_isServer)
-         return (NexusListServer<T>)_collections![id];
-        
-        return (NexusListClient<T>)_collections![id];
+        var collection = _collections![id];
+
+        // Handle relay type
+        if (collection is NexusListRelay<T> relay)
+            return relay;
+
+        if (_isServer)
+            return (NexusListServer<T>)collection;
+
+        return (NexusListClient<T>)collection;
     }
     
     public ValueTask  StartServerCollectionConnection(ushort id, INexusDuplexPipe pipe, INexusSession context)
@@ -44,13 +50,22 @@ internal class NexusCollectionManager : IConfigureCollectionManager
     {
         if(_collectionBuilder == null)
             throw new InvalidOperationException("CollectionManager is already configured.  Can't add any new collections.");
-        
+
         INexusCollection list;
         if (_isServer)
         {
-            var server = new NexusListServer<T>(id, mode, _logger);
-            server.Start();
-            list = server;
+            if (mode == NexusCollectionMode.Relay)
+            {
+                var relay = new NexusListRelay<T>(id, mode, _logger);
+                relay.Start();
+                list = relay;
+            }
+            else
+            {
+                var server = new NexusListServer<T>(id, mode, _logger);
+                server.Start();
+                list = server;
+            }
         }
         else
         {
@@ -81,39 +96,45 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         if (_collections == null)
             return;
 
+        // Stop relay connections first
+        foreach (var collection in _collections!)
+        {
+            if (collection.Value is INexusListRelay relay)
+            {
+                relay.StopRelay();
+            }
+        }
+
         foreach (var collection in _collections!)
         {
             ((INexusBroadcastConnector)collection.Value).Stop();
         }
-
-        //foreach (var nexusCollection in _collections)
-        //{
-        //    ((NexusCollection)nexusCollection.Value).StopRelay();
-        //}
     }
 
     public void Start()
     {
         if (_collections == null)
             return;
-        
+
         foreach (var collection in _collections!)
         {
             ((INexusBroadcastConnector)collection.Value).Start();
         }
 
-        
+        // Start relay connections
         foreach (var nexusCollection in _collections)
         {
-            //try
-            //{
-            //    ((NexusCollection)nexusCollection.Value).StartRelay();
-            //}
-            //catch (Exception e)
-            //{
-            //    _logger?.LogError(e, $"Could not start relay for nexus collection with ID {nexusCollection.Key}");
-            //}
-
+            try
+            {
+                if (nexusCollection.Value is INexusListRelay relay)
+                {
+                    relay.StartRelay();
+                }
+            }
+            catch (Exception e)
+            {
+                _logger?.LogError(e, $"Could not start relay for nexus collection with ID {nexusCollection.Key}");
+            }
         }
     }
 }

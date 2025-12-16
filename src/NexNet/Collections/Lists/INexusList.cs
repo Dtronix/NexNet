@@ -122,5 +122,38 @@ public interface INexusList<T> : INexusCollection, IEnumerable<T>
     /// Gets a task that completes when the collection is disabled.
     /// </summary>
     public Task DisabledTask { get; }
-    
+
+    /// <summary>
+    /// Gets a task that completes when the collection is ready (connected and synchronized).
+    /// For server-side collections, this completes immediately.
+    /// For client-side collections, this completes after the initial sync from the server.
+    /// For relay collections, this completes after connecting to the parent collection.
+    /// </summary>
+    public Task ReadyTask => Task.CompletedTask;
+
+    /// <summary>
+    /// Gets a task that completes when the collection becomes disconnected.
+    /// </summary>
+    public Task DisconnectedTask => Task.CompletedTask;
+
+    /// <summary>
+    /// Configures the collection as a relay that receives data from a parent collection.
+    /// Only valid for collections marked with NexusCollectionMode.Relay.
+    /// </summary>
+    /// <param name="connector">The connector to the parent collection.</param>
+    /// <exception cref="InvalidOperationException">Thrown if the collection is not a relay.</exception>
+    public void ConfigureRelay(INexusCollectionClientConnector connector)
+    {
+        throw new InvalidOperationException("This collection is not configured as a relay. ConfigureRelay is only valid for relay collections.");
+    }
+
+    /// <summary>
+    /// Asynchronously connects to the collection and waits for it to be ready.
+    /// </summary>
+    /// <returns>A task that completes when the collection is connected and ready.</returns>
+    public async ValueTask ConnectAsync()
+    {
+        await EnableAsync().ConfigureAwait(false);
+        await ReadyTask.ConfigureAwait(false);
+    }
 }

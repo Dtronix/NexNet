@@ -68,6 +68,12 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                 }
                 var completeResult = ProcessClientResetCompleted();
 
+                // Raise Reset event to indicate the collection has been synchronized
+                using (var args = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
+                {
+                    CoreChangedEvent.Raise(args.Value);
+                }
+
                 InitializationCompleted();
                 return new BroadcastMessageProcessResult(false, !completeResult);
 

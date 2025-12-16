@@ -18,11 +18,18 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServerNexus, TClientProxy> 
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServerNexus, TClientProxy>
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
-    private long _id = 0;
+    // ReSharper disable once StaticMemberInGenericType
+    private static long _idCounter = 0;
+
+    /// <summary>
+    /// Resets the server ID counter. For testing purposes only.
+    /// </summary>
+    internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
+
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
     private ServerConfig? _config;
@@ -103,7 +110,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         _config = config;
         _nexusFactory = nexusFactory;
-        var id = Interlocked.Increment(ref _id);
+        var id = Interlocked.Increment(ref _idCounter);
         _logger = config.Logger?.CreateLogger($"SV{id}");
         
         // Set the collection manager and configure for this nexus.

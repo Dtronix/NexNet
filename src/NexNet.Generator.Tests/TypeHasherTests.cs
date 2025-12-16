@@ -500,6 +500,107 @@ public class TypeHasherTests
             """);
     }
 
+    [Test]
+    public void WalkString_SimpleType()
+    {
+        // Test the walk string format - flat list with newlines
+        Run("""
+            using System;
+            [GenerateStructureHash(
+                ExpectedWalkString = "SimpleMessage\nInt32\nString\nBoolean")]
+            class SimpleMessage {
+                public int Value1;
+                public string Value2;
+                public bool Value3;
+            }
+            """);
+    }
+
+    [Test]
+    public void WalkString_WithNestedType()
+    {
+        // Walk string shows flat list order
+        Run("""
+            using System;
+            [GenerateStructureHash(
+                ExpectedWalkString = "Message\nNestedType\nInt32")]
+            class Message {
+                public NestedType Data;
+            }
+            class NestedType {
+                public int Value;
+            }
+            """);
+    }
+
+    [Test]
+    public void WalkString_WithEnum()
+    {
+        // Enums show as Name+Value strings
+        Run("""
+            using System;
+            [GenerateStructureHash(
+                ExpectedWalkString = "Message\nStatus\nPending0\nRunning1\nComplete2")]
+            class Message {
+                public Status Status;
+            }
+            enum Status { Pending, Running, Complete }
+            """);
+    }
+
+    [Test]
+    public void WalkString_WithArray()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(
+                ExpectedWalkString = "Message\nInt32[]")]
+            class Message {
+                public int[] Values;
+            }
+            """);
+    }
+
+    [Test]
+    public void WalkString_WithNullableArray()
+    {
+        Run("""
+            using System;
+            [GenerateStructureHash(
+                ExpectedWalkString = "Message\nInt32?[]\nInt32[]?\nInt32?[]?")]
+            class Message {
+                public int?[] Value1;
+                public int[]? Value2;
+                public int?[]? Value3;
+            }
+            """);
+    }
+
+    [Test]
+    public void WalkString_MemoryPackUnion()
+    {
+        // Stack-based walk processes MessageB before MessageA
+        Run("""
+            using System;
+            using MemoryPack;
+            [GenerateStructureHash(
+                ExpectedWalkString = "IMessage\nMPUID0\nMessageA\nMPUID1\nMessageB\nString\nInt32")]
+            [MemoryPackable]
+            [MemoryPackUnion(0, typeof(MessageA))]
+            [MemoryPackUnion(1, typeof(MessageB))]
+            partial interface IMessage { }
+
+            [MemoryPackable]
+            partial class MessageA : IMessage {
+                public int Value;
+            }
+            [MemoryPackable]
+            partial class MessageB : IMessage {
+                public string Text;
+            }
+            """);
+    }
+
     private void Run(string code)
     {
         var diagnostic = CSharpGeneratorRunner.RunTypeWalkerGenerator(code + GenerateStructureHashAttribute, minDiagnostic: DiagnosticSeverity.Info);
@@ -507,13 +608,14 @@ public class TypeHasherTests
         var first = diagnostic.Where(d => d.Id.StartsWith("TEST_FAIL")).ToArray();
         Assert.That(first, Is.Empty, string.Join('\n', first));
     }
-    
+
     private const string GenerateStructureHashAttribute
         = """
           public class GenerateStructureHashAttribute : Attribute
           {
               public int Hash { get; set; }
               public string[] Properties { get; set; }
+              public string ExpectedWalkString { get; set; }
           }
           """;
 }
