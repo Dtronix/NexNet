@@ -33,7 +33,7 @@ jobs:
         NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
 
     - name: Build
-      run: dotnet build src -c Release
+      run: dotnet build src -c Release --maxcpucount:1
       
     - name: Execute integration tests
       run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
@@ -42,16 +42,16 @@ jobs:
       run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
       
     - name: Pack NexNet
-      run: dotnet pack src/NexNet -c Release -o ./artifacts
+      run: dotnet pack src/NexNet -c Release -o ./artifacts --maxcpucount:1
 
     - name: Pack NexNet.Quic
-      run: dotnet pack src/NexNet.Quic -c Release -o ./artifacts
+      run: dotnet pack src/NexNet.Quic -c Release -o ./artifacts --maxcpucount:1
 
     - name: Pack NexNet.Asp
-      run: dotnet pack src/NexNet.Asp -c Release -o ./artifacts
+      run: dotnet pack src/NexNet.Asp -c Release -o ./artifacts --maxcpucount:1
       
     - name: Pack NexNet.Generator
-      run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts
+      run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts --maxcpucount:1
       
     - name: Export artifacts
       uses: actions/upload-artifact@v4
