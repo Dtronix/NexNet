@@ -12,6 +12,8 @@ Extract session management, group management, and invocation routing from tightl
 - Three **internal** local implementations: `LocalSessionRegistry`, `LocalGroupRegistry`, `LocalInvocationRouter`
 - Shared state via **internal** `LocalSessionContext` class
 
+---
+
 ## Design Decisions
 
 | Decision | Choice |
@@ -28,9 +30,79 @@ Extract session management, group management, and invocation routing from tightl
 
 ---
 
-## 1. Interface Definitions
+## Phased Implementation Plan
 
-### 1.1 ISessionRegistry
+### Overview
+
+| Phase | Description | Risk | Breaking Changes |
+|-------|-------------|------|------------------|
+| 1 | Interface & Core Types Foundation | Low | None |
+| 2 | Local Implementations | Low | None |
+| 3 | Infrastructure Wiring | Medium | Internal only |
+| 4 | Invocation Routing Migration | Medium | Internal only |
+| 5 | GroupManager Async Migration | **High** | **Public API** |
+| 6 | Cleanup & Old Code Removal | Low | None |
+| 7 | Testing | Low | None |
+
+**Recommended PR Strategy:**
+- **Phases 1-2**: Can be merged independently without affecting existing code
+- **Phases 3-4**: Should be done together in a single PR (interdependencies)
+- **Phase 5**: Separate PR with clear breaking change communication
+- **Phases 6-7**: Can follow as cleanup PRs
+
+### Phase Dependency Graph
+
+```
+Phase 1 (Interfaces)
+    │
+    ▼
+Phase 2 (Local Implementations)
+    │
+    ├─────────────────┐
+    ▼                 ▼
+Phase 3 (Wiring) ──► Phase 4 (Routing)
+    │                 │
+    └────────┬────────┘
+             ▼
+      Phase 5 (GroupManager Async)
+             │
+             ▼
+      Phase 6 (Cleanup)
+             │
+             ▼
+      Phase 7 (Testing)
+```
+
+---
+
+## Phase 1: Interface & Core Types Foundation
+
+*No breaking changes - purely additive*
+
+**Goal:** Establish the interface contracts and shared types without touching existing code.
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Invocation/ISessionRegistry.cs` | Session registry interface |
+| `Invocation/IGroupRegistry.cs` | Group registry interface |
+| `Invocation/IInvocationRouter.cs` | Invocation routing interface |
+| `Invocation/IServerSessionManager.cs` | Combined non-generic interface |
+| `Invocation/ServerSessionManager.cs` | Abstract generic base class |
+| `Invocation/LocalSessionContext.cs` | Shared state container |
+| `Invocation/LocalSessionGroup.cs` | Group data structure |
+
+### Deliverables
+
+- [ ] All interface files created with XML documentation
+- [ ] Abstract base class with generic type constraints
+- [ ] Shared context and group classes
+- [ ] Code compiles with no changes to existing functionality
+
+---
+
+### 1.1 ISessionRegistry.cs
 
 Manages session registration and lookup.
 
@@ -98,7 +170,9 @@ public interface ISessionRegistry
 }
 ```
 
-### 1.2 IGroupRegistry
+---
+
+### 1.2 IGroupRegistry.cs
 
 Manages group membership for sessions.
 
@@ -167,7 +241,9 @@ public interface IGroupRegistry
 }
 ```
 
-### 1.3 IInvocationRouter
+---
+
+### 1.3 IInvocationRouter.cs
 
 Routes invocations to appropriate sessions. This is the key interface that handles message delivery.
 
@@ -247,13 +323,9 @@ public interface IInvocationRouter
 
 ---
 
-## 2. Abstract Generic Base Class
+### 1.4 IServerSessionManager.cs
 
-An abstract generic base class that holds the three implementations with type constraints. Concrete implementations extend this class.
-
-### 2.1 Non-Generic Base Interface
-
-For use in `ServerConfig` where we don't want to expose generic type parameters:
+Non-generic base interface for use in `ServerConfig` where we don't want to expose generic type parameters.
 
 ```csharp
 namespace NexNet.Invocation;
@@ -291,7 +363,11 @@ public interface IServerSessionManager
 }
 ```
 
-### 2.2 Abstract Generic Base Class
+---
+
+### 1.5 ServerSessionManager.cs
+
+Abstract generic base class that holds the three implementations with type constraints. Concrete implementations extend this class.
 
 ```csharp
 namespace NexNet.Invocation;
@@ -366,86 +442,11 @@ public abstract class ServerSessionManager<TSessionRegistry, TGroupRegistry, TIn
 }
 ```
 
-### 2.3 Default Local Implementation (Internal)
-
-The default implementation is **internal**. It is only instantiated by `NexusServer` when `ServerConfig.SessionManager` is null.
-
-```csharp
-namespace NexNet.Invocation;
-
-/// <summary>
-/// Default local (single-server) implementation of ServerSessionManager.
-/// Internal - only instantiated by NexusServer when SessionManager is null.
-/// </summary>
-internal sealed class LocalServerSessionManager
-    : ServerSessionManager<LocalSessionRegistry, LocalGroupRegistry, LocalInvocationRouter>
-{
-    private readonly LocalSessionContext _context;
-
-    /// <summary>
-    /// Creates a new LocalServerSessionManager with a fresh context.
-    /// </summary>
-    public LocalServerSessionManager()
-        : this(new LocalSessionContext())
-    {
-    }
-
-    private LocalServerSessionManager(LocalSessionContext context)
-        : base(
-            new LocalSessionRegistry(context),
-            new LocalGroupRegistry(context),
-            new LocalInvocationRouter(context))
-    {
-        _context = context;
-    }
-
-    /// <summary>
-    /// Shuts down and clears all state.
-    /// </summary>
-    public override async ValueTask ShutdownAsync(CancellationToken cancellationToken = default)
-    {
-        await base.ShutdownAsync(cancellationToken).ConfigureAwait(false);
-        _context.Clear();
-    }
-}
-```
-
-### Usage Examples
-
-```csharp
-// Default usage - local single-server (most common)
-// SessionManager is null, so LocalServerSessionManager is created internally
-var config = new TcpServerConfig(...);
-
-// Custom backplane implementation
-var config = new TcpServerConfig(...)
-{
-    SessionManager = new GarnetServerSessionManager(connectionString)
-};
-
-// Custom implementation by user
-public class MyCustomSessionManager
-    : ServerSessionManager<MySessionRegistry, MyGroupRegistry, MyInvocationRouter>
-{
-    public MyCustomSessionManager()
-        : base(new MySessionRegistry(), new MyGroupRegistry(), new MyInvocationRouter())
-    {
-    }
-}
-
-var config = new TcpServerConfig(...)
-{
-    SessionManager = new MyCustomSessionManager()
-};
-```
-
 ---
 
-## 3. Local Implementation Components (All Internal)
+### 1.6 LocalSessionContext.cs
 
-The local implementation consists of **internal** classes sharing state via `LocalSessionContext`. These are only used when `ServerConfig.SessionManager` is null.
-
-### 3.1 Shared Context
+Shared state for local session manager implementations.
 
 ```csharp
 namespace NexNet.Invocation;
@@ -470,6 +471,16 @@ internal sealed class LocalSessionContext
         GroupIdDictionary.Clear();
     }
 }
+```
+
+---
+
+### 1.7 LocalSessionGroup.cs
+
+A group of sessions.
+
+```csharp
+namespace NexNet.Invocation;
 
 /// <summary>
 /// A group of sessions.
@@ -493,7 +504,32 @@ internal sealed class LocalSessionGroup
 }
 ```
 
-### 3.2 LocalSessionRegistry
+---
+
+## Phase 2: Local Implementations
+
+*No breaking changes - internal classes only*
+
+**Goal:** Build the local (single-server) implementations that mirror current behavior.
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Invocation/LocalSessionRegistry.cs` | ISessionRegistry implementation |
+| `Invocation/LocalGroupRegistry.cs` | IGroupRegistry implementation |
+| `Invocation/LocalInvocationRouter.cs` | IInvocationRouter implementation |
+| `Invocation/LocalServerSessionManager.cs` | Composite implementation |
+
+### Deliverables
+
+- [ ] All local implementation classes created (internal visibility)
+- [ ] Implementations match current SessionManager behavior
+- [ ] Code compiles with no changes to existing functionality
+
+---
+
+### 2.1 LocalSessionRegistry.cs
 
 ```csharp
 namespace NexNet.Invocation;
@@ -558,7 +594,9 @@ internal sealed class LocalSessionRegistry : ISessionRegistry
 }
 ```
 
-### 3.3 LocalGroupRegistry
+---
+
+### 2.2 LocalGroupRegistry.cs
 
 ```csharp
 namespace NexNet.Invocation;
@@ -686,7 +724,9 @@ internal sealed class LocalGroupRegistry : IGroupRegistry
 }
 ```
 
-### 3.4 LocalInvocationRouter
+---
+
+### 2.3 LocalInvocationRouter.cs
 
 ```csharp
 namespace NexNet.Invocation;
@@ -822,14 +862,425 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 }
 ```
 
+---
+
+### 2.4 LocalServerSessionManager.cs
+
+The default implementation is **internal**. It is only instantiated by `NexusServer` when `ServerConfig.SessionManager` is null.
+
+```csharp
+namespace NexNet.Invocation;
+
+/// <summary>
+/// Default local (single-server) implementation of ServerSessionManager.
+/// Internal - only instantiated by NexusServer when SessionManager is null.
+/// </summary>
+internal sealed class LocalServerSessionManager
+    : ServerSessionManager<LocalSessionRegistry, LocalGroupRegistry, LocalInvocationRouter>
+{
+    private readonly LocalSessionContext _context;
+
+    /// <summary>
+    /// Creates a new LocalServerSessionManager with a fresh context.
+    /// </summary>
+    public LocalServerSessionManager()
+        : this(new LocalSessionContext())
+    {
+    }
+
+    private LocalServerSessionManager(LocalSessionContext context)
+        : base(
+            new LocalSessionRegistry(context),
+            new LocalGroupRegistry(context),
+            new LocalInvocationRouter(context))
+    {
+        _context = context;
+    }
+
+    /// <summary>
+    /// Shuts down and clears all state.
+    /// </summary>
+    public override async ValueTask ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        await base.ShutdownAsync(cancellationToken).ConfigureAwait(false);
+        _context.Clear();
+    }
+}
+```
 
 ---
 
-## 4. Testing Strategy
+### 2.5 Usage Examples
+
+```csharp
+// Default usage - local single-server (most common)
+// SessionManager is null, so LocalServerSessionManager is created internally
+var config = new TcpServerConfig(...);
+
+// Custom backplane implementation
+var config = new TcpServerConfig(...)
+{
+    SessionManager = new GarnetServerSessionManager(connectionString)
+};
+
+// Custom implementation by user
+public class MyCustomSessionManager
+    : ServerSessionManager<MySessionRegistry, MyGroupRegistry, MyInvocationRouter>
+{
+    public MyCustomSessionManager()
+        : base(new MySessionRegistry(), new MyGroupRegistry(), new MyInvocationRouter())
+    {
+    }
+}
+
+var config = new TcpServerConfig(...)
+{
+    SessionManager = new MyCustomSessionManager()
+};
+```
+
+---
+
+## Phase 3: Infrastructure Wiring
+
+*Breaking changes to internal APIs only*
+
+**Goal:** Connect the new session manager to the server infrastructure.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `Transports/ServerConfig.cs` | Add `SessionManager` property, add `GetSessionManager()` helper |
+| `NexusServer.cs` | Use `IServerSessionManager`, call `InitializeAsync()`/`ShutdownAsync()` |
+| `Internals/INexusSession.cs` | Change `SessionManager?` → `IServerSessionManager?` |
+| `Invocation/ServerSessionContext.cs` | Pass `IServerSessionManager` to GroupManager |
+| `Invocation/ServerNexusContext.cs` | Use `IServerSessionManager` |
+| `Invocation/ServerNexusContextProvider.cs` | Use `IServerSessionManager` |
+
+### Deliverables
+
+- [ ] ServerConfig accepts custom IServerSessionManager
+- [ ] NexusServer creates LocalServerSessionManager when config.SessionManager is null
+- [ ] Initialize/Shutdown lifecycle properly wired
+- [ ] All internal references updated to use interfaces
+
+---
+
+### 3.1 ServerConfig.cs Changes
+
+Add the session manager to `ServerConfig`:
+
+```csharp
+// In ServerConfig.cs
+public abstract class ServerConfig : ConfigBase
+{
+    // ... existing properties ...
+
+    /// <summary>
+    /// The session manager implementation to use.
+    /// Defaults to LocalServerSessionManager if not specified.
+    /// </summary>
+    public IServerSessionManager? SessionManager { get; set; }
+
+    // Internal getter that provides default
+    internal IServerSessionManager GetSessionManager()
+    {
+        return SessionManager ?? new LocalServerSessionManager();
+    }
+}
+```
+
+---
+
+### 3.2 NexusServer.cs Changes
+
+Modify `NexusServer` to use the configured session manager:
+
+```csharp
+// In NexusServer.cs
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>
+{
+    // Replace:
+    // private readonly SessionManager _sessionManager = new();
+
+    // With:
+    private IServerSessionManager _sessionManager = null!;
+
+    // In Configure():
+    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
+    {
+        // ... existing code ...
+        _sessionManager = config.GetSessionManager();
+    }
+
+    // In StartAsync():
+    public async Task StartAsync(CancellationToken cancellationToken = default)
+    {
+        // ... existing code ...
+        await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        // ... rest of method ...
+    }
+
+    // In StopAsync():
+    public async Task StopAsync()
+    {
+        // ... existing shutdown code ...
+        await _sessionManager.ShutdownAsync().ConfigureAwait(false);
+    }
+}
+```
+
+---
+
+## Phase 4: Invocation Routing Migration
+
+*Breaking changes to internal APIs only*
+
+**Goal:** Route all invocations through `IInvocationRouter` instead of direct session iteration.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `Invocation/IProxyInvoker.cs` | Update `Configure` signature to use `IServerSessionManager` |
+| `Invocation/ProxyInvocationBase.cs` | Use `IInvocationRouter` for all routing modes |
+| `Cache/CachedProxy.cs` | Update `Rent` method signature |
+
+### Deliverables
+
+- [ ] All proxy invocation modes delegate to IInvocationRouter
+- [ ] Invocation ID assignment handled internally by router
+- [ ] No direct session iteration in ProxyInvocationBase
+
+---
+
+### 4.1 ProxyInvocationBase.cs Changes
+
+Modify `ProxyInvocationBase` to use `IInvocationRouter`:
+
+```csharp
+// In ProxyInvocationBase.cs
+
+// Add field:
+private IInvocationRouter? _invocationRouter;
+
+// Modify Configure():
+void IProxyInvoker.Configure(
+    INexusSession? session,
+    IServerSessionManager? sessionManager,  // Changed from SessionManager
+    ProxyInvocationMode mode,
+    object? modeArguments)
+{
+    _session = session;
+    _invocationRouter = sessionManager?.Router;
+    // ... rest of method ...
+}
+
+// Simplify ProxyInvokeMethodCore() - delegate to router:
+async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
+{
+    // ... message creation code stays the same ...
+
+    switch (_mode)
+    {
+        case ProxyInvocationMode.Caller:
+            await _session!.SendMessage(message).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.All:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            // Invocation ID assignment handled internally by router
+            await _invocationRouter!.InvokeAllAsync(message).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.Others:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            await _invocationRouter!.InvokeAllExceptAsync(message, _session!.Id).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.Client:
+            await _invocationRouter!.InvokeClientAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.Clients:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            await _invocationRouter!.InvokeClientsAsync(message, _modeClientArguments!).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.AllExcept:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            await _invocationRouter!.InvokeAllExceptAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.Groups:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            await _invocationRouter!.InvokeGroupsAsync(message, _modeGroupArguments!, null).ConfigureAwait(false);
+            break;
+
+        case ProxyInvocationMode.GroupsExceptCaller:
+            if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+            await _invocationRouter!.InvokeGroupsAsync(message, _modeGroupArguments!, _session?.Id).ConfigureAwait(false);
+            break;
+
+        default:
+            throw new ArgumentOutOfRangeException();
+    }
+
+    message.Dispose();
+}
+```
+
+---
+
+## Phase 5: GroupManager Async Migration
+
+*Public breaking change - requires user code updates*
+
+**Goal:** Make GroupManager async-ready for backplane support.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `Invocation/GroupManager.cs` | Remove sync methods, add async methods |
+
+### Deliverables
+
+- [ ] All sync methods removed from GroupManager
+- [ ] Async methods implemented delegating to IGroupRegistry
+- [ ] Breaking change documented in release notes
+
+---
+
+### 5.1 Breaking Changes
+
+```csharp
+// Before (sync)                      // After (async)
+Context.Groups.Add("group");          await Context.Groups.AddAsync("group");
+Context.Groups.Add(groupNames);       await Context.Groups.AddAsync(groupNames);
+Context.Groups.Remove("group");       await Context.Groups.RemoveAsync("group");
+var names = Context.Groups.GetNames(); var names = await Context.Groups.GetNamesAsync();
+```
+
+---
+
+### 5.2 GroupManager.cs
+
+The public `GroupManager` API changes to async. **Sync methods are removed entirely** (no backward compatibility period).
+
+```csharp
+namespace NexNet.Invocation;
+
+/// <summary>
+/// Manager for a session's groups.
+/// </summary>
+public class GroupManager
+{
+    private readonly INexusSession _session;
+    private readonly IGroupRegistry _groupRegistry;
+
+    internal GroupManager(INexusSession session, IGroupRegistry groupRegistry)
+    {
+        _session = session;
+        _groupRegistry = groupRegistry;
+    }
+
+    /// <summary>
+    /// Adds the current session to a group.
+    /// </summary>
+    /// <param name="groupName">Group to add this session to.</param>
+    public ValueTask AddAsync(string groupName)
+    {
+        return _groupRegistry.AddToGroupAsync(groupName, _session);
+    }
+
+    /// <summary>
+    /// Adds the current session to multiple groups.
+    /// </summary>
+    /// <param name="groupNames">Groups to add this session to.</param>
+    public ValueTask AddAsync(string[] groupNames)
+    {
+        return _groupRegistry.AddToGroupsAsync(groupNames, _session);
+    }
+
+    /// <summary>
+    /// Removes the current session from a group.
+    /// </summary>
+    /// <param name="groupName">Group to remove this session from.</param>
+    public ValueTask RemoveAsync(string groupName)
+    {
+        return _groupRegistry.RemoveFromGroupAsync(groupName, _session);
+    }
+
+    /// <summary>
+    /// Gets all group names.
+    /// </summary>
+    /// <returns>Collection of group names.</returns>
+    public ValueTask<IReadOnlyCollection<string>> GetNamesAsync()
+    {
+        return _groupRegistry.GetGroupNamesAsync();
+    }
+}
+```
+
+---
+
+## Phase 6: Cleanup & Old Code Removal
+
+*Cleanup - no breaking changes*
+
+**Goal:** Remove deprecated code paths and old implementations.
+
+### Files to Modify/Delete
+
+| File | Action |
+|------|--------|
+| `Invocation/SessionManager.cs` | Delete (functionality moved to LocalServerSessionManager) |
+| Any backward-compatibility shims | Remove |
+
+### Deliverables
+
+- [ ] Old SessionManager class removed
+- [ ] No dead code remaining
+- [ ] All references point to new implementations
+
+---
+
+## Phase 7: Testing
+
+*Validation*
+
+**Goal:** Comprehensive test coverage for new implementations.
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `Tests/MockNexusSession.cs` | Test helper class |
+| `Tests/LocalSessionRegistryTests.cs` | Unit tests for session registry |
+| `Tests/LocalGroupRegistryTests.cs` | Unit tests for group registry |
+| `Tests/LocalInvocationRouterTests.cs` | Unit tests for invocation router |
+| `Tests/LocalServerSessionManagerTests.cs` | Integration tests |
+
+### Deliverables
+
+- [ ] Unit tests for all Local* implementations
+- [ ] Integration tests for full workflow
+- [ ] All existing tests updated and passing
+- [ ] MockNexusSession helper available for future tests
+
+---
+
+### 7.1 MockNexusSession.cs
 
 Since internals are visible to the test project, the local implementations can be tested directly.
-
-### 4.1 Mock Session for Testing
 
 ```csharp
 /// <summary>
@@ -870,7 +1321,9 @@ internal class MockNexusSession : INexusSession
 }
 ```
 
-### 4.2 LocalSessionRegistry Tests
+---
+
+### 7.2 LocalSessionRegistryTests.cs
 
 ```csharp
 public class LocalSessionRegistryTests
@@ -965,7 +1418,9 @@ public class LocalSessionRegistryTests
 }
 ```
 
-### 4.3 LocalGroupRegistry Tests
+---
+
+### 7.3 LocalGroupRegistryTests.cs
 
 ```csharp
 public class LocalGroupRegistryTests
@@ -1078,7 +1533,9 @@ public class LocalGroupRegistryTests
 }
 ```
 
-### 4.4 LocalInvocationRouter Tests
+---
+
+### 7.4 LocalInvocationRouterTests.cs
 
 ```csharp
 public class LocalInvocationRouterTests
@@ -1232,7 +1689,9 @@ public class LocalInvocationRouterTests
 }
 ```
 
-### 4.5 LocalServerSessionManager Integration Tests
+---
+
+### 7.5 LocalServerSessionManagerTests.cs
 
 ```csharp
 public class LocalServerSessionManagerTests
@@ -1319,248 +1778,21 @@ public class LocalServerSessionManagerTests
 
 ---
 
-## 5. Configuration Changes
+### 7.6 Existing Tests to Update
 
-### 4.1 ServerConfig Modification
-
-Add the session manager to `ServerConfig`:
+All tests using GroupManager sync methods must be updated:
 
 ```csharp
-// In ServerConfig.cs
-public abstract class ServerConfig : ConfigBase
-{
-    // ... existing properties ...
+// Before
+Context.Groups.Add("group");
 
-    /// <summary>
-    /// The session manager implementation to use.
-    /// Defaults to LocalServerSessionManager if not specified.
-    /// </summary>
-    public IServerSessionManager? SessionManager { get; set; }
-
-    // Internal getter that provides default
-    internal IServerSessionManager GetSessionManager()
-    {
-        return SessionManager ?? new LocalServerSessionManager();
-    }
-}
-```
-
-### 4.2 NexusServer Changes
-
-Modify `NexusServer` to use the configured session manager:
-
-```csharp
-// In NexusServer.cs
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy>
-{
-    // Replace:
-    // private readonly SessionManager _sessionManager = new();
-
-    // With:
-    private IServerSessionManager _sessionManager = null!;
-
-    // In Configure():
-    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
-    {
-        // ... existing code ...
-        _sessionManager = config.GetSessionManager();
-    }
-
-    // In StartAsync():
-    public async Task StartAsync(CancellationToken cancellationToken = default)
-    {
-        // ... existing code ...
-        await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
-        // ... rest of method ...
-    }
-
-    // In StopAsync():
-    public async Task StopAsync()
-    {
-        // ... existing shutdown code ...
-        await _sessionManager.ShutdownAsync().ConfigureAwait(false);
-    }
-}
+// After
+await Context.Groups.AddAsync("group");
 ```
 
 ---
 
-## 5. GroupManager Changes
-
-The public `GroupManager` API changes to async. **Sync methods are removed entirely** (no backward compatibility period).
-
-```csharp
-namespace NexNet.Invocation;
-
-/// <summary>
-/// Manager for a session's groups.
-/// </summary>
-public class GroupManager
-{
-    private readonly INexusSession _session;
-    private readonly IGroupRegistry _groupRegistry;
-
-    internal GroupManager(INexusSession session, IGroupRegistry groupRegistry)
-    {
-        _session = session;
-        _groupRegistry = groupRegistry;
-    }
-
-    /// <summary>
-    /// Adds the current session to a group.
-    /// </summary>
-    /// <param name="groupName">Group to add this session to.</param>
-    public ValueTask AddAsync(string groupName)
-    {
-        return _groupRegistry.AddToGroupAsync(groupName, _session);
-    }
-
-    /// <summary>
-    /// Adds the current session to multiple groups.
-    /// </summary>
-    /// <param name="groupNames">Groups to add this session to.</param>
-    public ValueTask AddAsync(string[] groupNames)
-    {
-        return _groupRegistry.AddToGroupsAsync(groupNames, _session);
-    }
-
-    /// <summary>
-    /// Removes the current session from a group.
-    /// </summary>
-    /// <param name="groupName">Group to remove this session from.</param>
-    public ValueTask RemoveAsync(string groupName)
-    {
-        return _groupRegistry.RemoveFromGroupAsync(groupName, _session);
-    }
-
-    /// <summary>
-    /// Gets all group names.
-    /// </summary>
-    /// <returns>Collection of group names.</returns>
-    public ValueTask<IReadOnlyCollection<string>> GetNamesAsync()
-    {
-        return _groupRegistry.GetGroupNamesAsync();
-    }
-}
-```
-
----
-
-## 6. ProxyInvocationBase Changes
-
-Modify `ProxyInvocationBase` to use `IInvocationRouter`:
-
-```csharp
-// In ProxyInvocationBase.cs
-
-// Add field:
-private IInvocationRouter? _invocationRouter;
-
-// Modify Configure():
-void IProxyInvoker.Configure(
-    INexusSession? session,
-    IServerSessionManager? sessionManager,  // Changed from SessionManager
-    ProxyInvocationMode mode,
-    object? modeArguments)
-{
-    _session = session;
-    _invocationRouter = sessionManager;  // IServerSessionManager implements IInvocationRouter
-    // ... rest of method ...
-}
-
-// Simplify ProxyInvokeMethodCore() - delegate to router:
-async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
-{
-    // ... message creation code stays the same ...
-
-    switch (_mode)
-    {
-        case ProxyInvocationMode.Caller:
-            await _session!.SendMessage(message).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.All:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            // Invocation ID assignment handled internally by router
-            await _invocationRouter!.InvokeAllAsync(message).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.Others:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            await _invocationRouter!.InvokeAllExceptAsync(message, _session!.Id).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.Client:
-            await _invocationRouter!.InvokeClientAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.Clients:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            await _invocationRouter!.InvokeClientsAsync(message, _modeClientArguments!).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.AllExcept:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            await _invocationRouter!.InvokeAllExceptAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.Groups:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            await _invocationRouter!.InvokeGroupsAsync(message, _modeGroupArguments!, null).ConfigureAwait(false);
-            break;
-
-        case ProxyInvocationMode.GroupsExceptCaller:
-            if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
-            await _invocationRouter!.InvokeGroupsAsync(message, _modeGroupArguments!, _session?.Id).ConfigureAwait(false);
-            break;
-
-        default:
-            throw new ArgumentOutOfRangeException();
-    }
-
-    message.Dispose();
-}
-```
-
----
-
-## 7. Files to Modify
-
-| File | Changes |
-|------|---------|
-| `Invocation/SessionManager.cs` | Rename to `LocalServerSessionManager.cs`, implement `IServerSessionManager` |
-| `Invocation/GroupManager.cs` | Change methods to async, use `IGroupRegistry` |
-| `Invocation/ProxyInvocationBase.cs` | Use `IInvocationRouter` instead of direct `SessionManager` |
-| `Invocation/IProxyInvoker.cs` | Update `Configure` signature |
-| `Transports/ServerConfig.cs` | Add `SessionManager` property |
-| `NexusServer.cs` | Use configured `IServerSessionManager` |
-| `Invocation/ServerSessionContext.cs` | Pass `IServerSessionManager` to `GroupManager` |
-| `Invocation/ServerNexusContext.cs` | Use `IServerSessionManager` |
-| `Invocation/ServerNexusContextProvider.cs` | Use `IServerSessionManager` |
-| `Cache/CachedProxy.cs` | Update `Rent` signature |
-| `Internals/INexusSession.cs` | Change `SessionManager?` to `IServerSessionManager?` |
-
----
-
-## 8. New Files to Create
-
-| File | Purpose |
-|------|---------|
-| `Invocation/ISessionRegistry.cs` | Session registry interface |
-| `Invocation/IGroupRegistry.cs` | Group registry interface |
-| `Invocation/IInvocationRouter.cs` | Invocation routing interface |
-| `Invocation/IServerSessionManager.cs` | Combined interface |
-| `Invocation/LocalServerSessionManager.cs` | Default local implementation |
-
----
-
-## 9. Breaking Changes
+## Breaking Changes Summary
 
 ### Public API Changes
 
@@ -1591,46 +1823,7 @@ async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arg
 
 ---
 
-## 10. Migration Path
-
-### Step 1: Create interfaces and local implementation
-- Create `ISessionRegistry.cs`, `IGroupRegistry.cs`, `IInvocationRouter.cs`, `IServerSessionManager.cs`
-- Create `LocalServerSessionManager.cs` based on current `SessionManager`
-
-### Step 2: Update ServerConfig
-- Add `SessionManager` property of type `IServerSessionManager?`
-- Add internal `GetSessionManager()` helper that returns default if null
-
-### Step 3: Update NexusServer
-- Replace `SessionManager` field with `IServerSessionManager`
-- Call `InitializeAsync()` in `StartAsync()`
-- Call `ShutdownAsync()` in `StopAsync()`
-
-### Step 4: Update GroupManager
-- Remove all sync methods (`Add`, `Remove`, `GetNames`)
-- Add async methods (`AddAsync`, `RemoveAsync`, `GetNamesAsync`)
-- Change constructor to accept `IGroupRegistry`
-
-### Step 5: Update ProxyInvocationBase
-- Change `_sessionManager` field type to `IServerSessionManager?`
-- Use `IInvocationRouter` methods for all routing
-- Remove direct session iteration logic
-
-### Step 6: Update remaining references
-- `ServerSessionContext` - pass `IServerSessionManager` to `GroupManager`
-- `ServerNexusContext` - use `IServerSessionManager`
-- `ServerNexusContextProvider` - use `IServerSessionManager`
-- `CachedProxy.Rent()` - update signature
-- `INexusSession.SessionManager` - change type
-
-### Step 7: Update tests
-- Change all `Context.Groups.Add()` to `await Context.Groups.AddAsync()`
-- Change all `Context.Groups.Remove()` to `await Context.Groups.RemoveAsync()`
-- Change all `Context.Groups.GetNames()` to `await Context.Groups.GetNamesAsync()`
-
----
-
-## 11. Future Backplane Implementation
+## Future Backplane Implementation
 
 With these interfaces in place, a future Garnet backplane would:
 
