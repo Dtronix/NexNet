@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Description>ASP.NET Core middleware for NexNet servers.</Description>
     <Nullable>enable</Nullable>
-    <Version>0.11.0</Version>
+    <Version>0.12.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
