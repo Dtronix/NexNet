@@ -45,7 +45,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         _session = session;
         
         // Sets all the proxy session required configurations for all clients.
-        session?.CollectionManager.SetClientProxySession(this, session);
+        if(_session?.IsServer == false)
+            session?.CollectionManager.SetClientProxySession(this, session);
 
         // If the sessionManager is null, this is a client session.
         _sessionManager = sessionManager;

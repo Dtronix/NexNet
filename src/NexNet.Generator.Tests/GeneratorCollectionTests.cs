@@ -16,7 +16,7 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional, 1)]
 INexusList<int> NumberList { get; }
 }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -40,7 +40,7 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional)]
 INexusList<int> NumberList { get; }
 }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -64,11 +64,11 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional)]
 INexusList<int> NumberList { get; }
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional)]
 INexusList<int> NumberList2 { get; }
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional)]
 INexusList<int> NumberList3 { get; }
 }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -92,7 +92,7 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional)]
 List<int> NumberList { get; }
 }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -140,9 +140,9 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional, 1)]
 INexusList<int> NumberList { get; }
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional, 1)]
 INexusList<int> NumberList { get; }
 }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -166,7 +166,7 @@ using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus { }
 partial interface IServerNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional, 1)]
 INexusList<int> NumberList { get; }
 [NexusMethod(1)] void Update1();
 }
@@ -213,7 +213,7 @@ using NexNet.Collections.Lists;
 using NexNet.Collections;
 namespace NexNetDemo;
 partial interface IClientNexus {
-[NexusCollectionAttribute(NexusCollectionMode.BiDrirectional, 1)]
+[NexusCollectionAttribute(NexusCollectionMode.BiDirectional, 1)]
 INexusList<int> NumberList { get; }
 }
 partial interface IServerNexus { }

@@ -17,11 +17,12 @@ namespace NexNet;
 /// Main client class which facilitates the communication with a matching NexNet server.
 /// </summary>
 /// <typeparam name="TClientNexus">Nexus used by this client for incoming invocation handling.</typeparam>
-/// <typeparam name="TServerProxy">Server proxy implementation used for all remote invocations.</typeparam>
+/// <typeparam name="TServerProxy">Server _proxy implementation used for all remote invocations.</typeparam>
 public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
+    private long _id;
     private readonly Timer _pingTimer;
     private readonly ClientConfig _config;
     private readonly SessionCacheManager<TServerProxy> _cacheManager;
@@ -30,6 +31,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
     private readonly NexusCollectionManager _collectionManager;
     private bool _isReconnecting = false;
+    private readonly INexusLogger? _logger;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -46,10 +48,22 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public event EventHandler<ConnectionState>? StateChanged;
 
+
+    private TServerProxy _proxy;
+
     /// <summary>
     /// Proxy used for invoking remote methods on the server.
     /// </summary>
-    public TServerProxy Proxy { get; private set; }
+    public TServerProxy Proxy
+    {
+        get
+        {
+            if(_session == null)
+                throw new InvalidOperationException("Client not connected");
+
+            return _proxy;
+        }
+    }
 
     /// <inheritdoc />
     public ClientConfig Config => _config;
@@ -65,14 +79,17 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);
+        
+        var id = Interlocked.Increment(ref _id);
         _config = config;
+        _logger = config.Logger?.CreateLogger($"CL{id}");
         _cacheManager = new SessionCacheManager<TServerProxy>();
         
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(config);
+        _collectionManager = new NexusCollectionManager(_logger, false);
         TClientNexus.ConfigureCollections(_collectionManager);
 
-        Proxy = new TServerProxy() { CacheManager = _cacheManager };
+        _proxy = new TServerProxy() { CacheManager = _cacheManager };
         _nexus = nexus;
         _pingTimer = new Timer(PingTimer);
     }
@@ -143,7 +160,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             Nexus = _nexus,
             ReadyTaskCompletionSource = readyTaskCompletionSource,
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
-            CollectionManager = _collectionManager
+            CollectionManager = _collectionManager,
+            Logger = _logger
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)
@@ -152,7 +170,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             OnStateChanged = state => StateChanged?.Invoke(this, state)
         };
 
-        Proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
+        _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
         await session.StartAsClient().ConfigureAwait(false);
 

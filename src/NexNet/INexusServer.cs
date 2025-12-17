@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.Transports;
 
@@ -46,11 +47,12 @@ public interface INexusServer : IAsyncDisposable
 }
 
 // ReSharper disable once UnusedTypeParameter
-internal interface INexusServer<TClientProxy> : INexusServer, IAcceptsExternalTransport
-    where TClientProxy : ProxyInvocationBase, IProxyInvoker, new()
+internal interface INexusServer<TServerNexus, TClientProxy> :INexusServer, IAcceptsExternalTransport
+    where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
+where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
     /// <summary>
     /// Provider for nexus contexts which allows for external communication with clients.
     /// </summary>
-    public ServerNexusContextProvider<TClientProxy> ContextProvider { get; }
+    public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; }
 }

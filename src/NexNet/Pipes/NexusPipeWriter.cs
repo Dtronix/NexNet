@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
+using NexNet.Internals.Threading;
 using NexNet.Logging;
 using NexNet.Messages;
 
@@ -22,6 +23,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
     private readonly int _chunkSize;
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
+    private readonly SemaphoreSlim _flushSemaphore = new SemaphoreSlim(1, 1);
     internal bool _pauseWriting;
     private readonly INexusLogger? _logger;
     private readonly ISessionMessenger? _messenger;
@@ -40,7 +42,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             _pauseWriting = value;
             if (value == false)
             {
-                Utilities.TryReleaseSemaphore(_pauseSemaphore);
+                _pauseSemaphore.TryReleaseSemaphore();
             }
         }
     }
@@ -120,6 +122,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
     public override async ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
+        // Ensure no concurrent flushing occurs.
+        using var _ = await _flushSemaphore.WaitDisposableAsync().ConfigureAwait(false);
+        
         if (_isCompleted)
             return new FlushResult(_isCanceled, _isCompleted);
 
@@ -260,5 +265,6 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         _bufferWriter.Dispose();
         _flushCts?.Dispose();
         _pauseSemaphore.Dispose();
+        _flushSemaphore.Dispose();
     }
 }

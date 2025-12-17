@@ -1,46 +1,54 @@
 ﻿using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using MemoryPack;
+using NexNet.Pipes.Broadcast;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionMessage<T> : INexusCollectionMessage
-    where T : NexusCollectionMessage<T>, new()
+
+internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollectionUnion<TUnion>
+    where TMessage : NexusCollectionMessage<TMessage, TUnion>, TUnion, new()
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    public static readonly ConcurrentBag<NexusCollectionMessage<T>> Cache = new();
+    private static readonly ConcurrentBag<TMessage> _cache = [];
     private int _remaining;
-    
-    [MemoryPackOrder(0)]
+
+    [MemoryPackOrder(0)] 
     public NexusCollectionMessageFlags Flags { get; set; }
 
-    public static T Rent()
+    public static TMessage Rent()
     {
-        if(!Cache.TryTake(out var operation))
-            operation = new T();
+        if (!_cache.TryTake(out var message))
+        {
+            message = new TMessage();
+        }
+        else
+        {
+            // Reset any flags on cached items.
+            message.Flags = NexusCollectionMessageFlags.Unset;
+        }
 
-        return Unsafe.As<T>(operation);
+        return message;
     }
 
-    public virtual void ReturnToCache()
+    public virtual void Return()
     {
-        Cache.Add(this);
+        _cache.Add((TMessage)this);
     }
 
     public void CompleteBroadcast()
     {
         if (Interlocked.Decrement(ref _remaining) == 0)
         {
-            ReturnToCache();
+            Return();
         }
     }
 
-    [MemoryPackIgnore]
-    public int Remaining
-    {
-        get => _remaining;
-        set => _remaining = value;
-    }
+    public abstract TUnion Clone();
 
-    public abstract INexusCollectionMessage Clone();
+    public INexusCollectionBroadcasterMessageWrapper<TUnion> Wrap(INexusBroadcastSession<TUnion>? client = null)
+    {
+        return NexusCollectionBroadcasterMessageWrapper<TUnion>.Rent((TMessage)this, client);
+    }
 }
+    

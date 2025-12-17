@@ -164,7 +164,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         }
 
         //Interlocked.Increment(ref _stateId);
-        Utilities.TryReleaseSemaphore(_readSemaphore);
+        Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
 
         return NexusPipeBufferResult.Success;
     }
@@ -176,7 +176,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         if (_stateManager.UpdateState(_writingCompleteFlag))
         {
             var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
-            Utilities.TryReleaseSemaphore(semaphore);
+            Internals.Threading.Utilities.TryReleaseSemaphore(semaphore);
             return _stateManager.NotifyState();
         }
 
@@ -192,7 +192,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     {
         _isCompleted = true;
         var semaphore = Interlocked.Exchange(ref _readSemaphore, null);
-        Utilities.TryReleaseSemaphore(semaphore);
+        Internals.Threading.Utilities.TryReleaseSemaphore(semaphore);
     }
 
 
@@ -271,7 +271,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
             cts = cancellationToken.UnsafeRegister(static argsObj =>
             {
                 var args = Unsafe.As<CancellationRegistrationArgs>(argsObj)!;
-                Utilities.TryReleaseSemaphore(args.Semaphore);
+                Internals.Threading.Utilities.TryReleaseSemaphore(args.Semaphore);
 
             }, _cancelReadingArgs);
         }
@@ -422,7 +422,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     public override void CancelPendingRead()
     {
         _isCanceled = true;
-        Utilities.TryReleaseSemaphore(_readSemaphore);
+        Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
     }
 
     public void Dispose()

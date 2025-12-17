@@ -2,7 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Internals;
+using NexNet.Internals.Threading;
 
 namespace NexNet.Pipes;
 

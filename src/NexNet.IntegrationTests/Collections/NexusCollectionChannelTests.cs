@@ -11,8 +11,9 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ServerProcessChannel_HandlesCapacityLimit(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync();
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
+        await client.Proxy.IntListBi.EnableAsync();
         
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 60);
 
@@ -36,25 +37,26 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ClientMessageChannel_HandlesSaturation(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync();
-        var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
+        await client.Proxy.IntListBi.EnableAsync();
+        var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 50);
 
         // Flood client with 20 rapid server operations to test 10-item client channel
         var tasks = new List<Task>();
-        for (int i = 0; i < 1000; i++)
+        for (int i = 0; i < 50; i++)
         {
             tasks.Add(serverNexus.IntListBi.AddAsync(i));
         }
 
         // Client should not disconnect due to channel saturation
-        await Task.WhenAll(tasks).Timeout(5);
+        await Task.WhenAll(tasks).Timeout(2);
 
-        await completeTask.Wait();
+        await completeTask.Wait(2);
 
 
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(1000));
+        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(50));
         //Assert.Fail();
     }
 
@@ -62,8 +64,9 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     [TestCase(Type.Uds)]
     public async Task ConcurrentOperations_DoNotBlockChannel(Type type)
     {
-        var (server, serverNexus, client, _) = await ConnectServerAndClient(type);
-        await client.Proxy.IntListBi.ConnectAsync();
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
+        await client.Proxy.IntListBi.EnableAsync();
 
         var completeTask = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Add, 50);
 

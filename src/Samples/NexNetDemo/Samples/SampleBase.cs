@@ -51,12 +51,12 @@ public class SampleBase
             ServerConfig = new UdsServerConfig()
             {
                 EndPoint = new UnixDomainSocketEndPoint(path), 
-                Logger = logger?.CreatePrefixedLogger(null, "Server")
+                Logger = logger
             };
             ClientConfig = new UdsClientConfig()
             {
                 EndPoint = new UnixDomainSocketEndPoint(path),
-                Logger = logger?.CreatePrefixedLogger(null, "Client")
+                Logger = logger
             };
         }
         else if (transportMode == TransportMode.Tcp)
@@ -64,12 +64,12 @@ public class SampleBase
             ServerConfig = new TcpServerConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = logger?.CreatePrefixedLogger(null, "Server")
+                Logger = logger
             };
             ClientConfig = new TcpClientConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = logger?.CreatePrefixedLogger(null, "Client")
+                Logger = logger
             };
         }
         else if (transportMode == TransportMode.TlsTcp)
@@ -77,7 +77,7 @@ public class SampleBase
             ServerConfig = new TcpTlsServerConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = logger?.CreatePrefixedLogger(null, "Server"),
+                Logger = logger,
                 SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
                 {
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -90,7 +90,7 @@ public class SampleBase
             ClientConfig = new TcpTlsClientConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 1236),
-                Logger = logger?.CreatePrefixedLogger(null, "Client"),
+                Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
@@ -106,7 +106,7 @@ public class SampleBase
             ServerConfig = new QuicServerConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 6321),
-                Logger = logger?.CreatePrefixedLogger(null, "Server"),
+                Logger = logger,
                 SslServerAuthenticationOptions = new SslServerAuthenticationOptions()
                 {
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
@@ -119,7 +119,7 @@ public class SampleBase
             ClientConfig = new QuicClientConfig()
             {
                 EndPoint = new IPEndPoint(IPAddress.Loopback, 6321),
-                Logger = logger?.CreatePrefixedLogger(null, "Client"),
+                Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
                     EnabledSslProtocols = SslProtocols.Tls13,

@@ -13,7 +13,8 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task IAsyncEnumerable(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         var tcs = new TaskCompletionSource();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -59,7 +60,8 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task StopsOnCompletion(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
@@ -89,7 +91,8 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task CancelsRead(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();
@@ -119,7 +122,8 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task CancelsAndResumesRead(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await pipe.GetUnmanagedChannelWriter<int>();

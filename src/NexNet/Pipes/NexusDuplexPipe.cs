@@ -86,11 +86,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         get => _id;
         set
         {
-            var session = _session;
-            if(Logger != null && session != null)
-                Logger.SessionDetails = $"{session.Id}:P{value:00000}";
-
             _id = value;
+            if (Logger != null)
+                Logger.PathSegment = $"P{_id:00000}";
         }
     }
 
@@ -130,9 +128,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         _completeTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _session = session;
 
-        Logger = session.Logger?.CreateLogger("NexusDuplexPipe", fullId == 0 
-            ? $"{session.Id}:P{localId:000}"
-            : $"{session.Id}:P{fullId:00000}");
+        var id = fullId == 0
+            ? $"{localId:000}"
+            : $"{fullId:00000}";
+        Logger = session.Logger?.CreateLogger($"P{id}");
 
         LocalId = localId;
         _id = fullId;

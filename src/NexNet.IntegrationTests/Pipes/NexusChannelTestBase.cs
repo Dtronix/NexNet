@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
@@ -39,7 +40,9 @@ internal class NexusChannelTestBase
             return OnMessageSent.Invoke(type, messageHeader, body);
         }
 
-        public Task DisconnectAsync(DisconnectReason reason)
+        public Task DisconnectAsync(DisconnectReason reason, 
+            [CallerFilePath]string? filePath = null, 
+            [CallerLineNumber] int? lineNumber = null)
         {
             throw new NotImplementedException();
         }

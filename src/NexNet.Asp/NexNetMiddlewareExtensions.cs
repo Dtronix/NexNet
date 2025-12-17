@@ -30,7 +30,7 @@ public static partial class NexNetMiddlewareExtensions
         services.AddSingleton<NexusServer<TServerNexus, TClientProxy>>();
         
         // Adds the context provider
-        services.AddSingleton<ServerNexusContextProvider<TClientProxy>>(sp =>
+        services.AddSingleton<ServerNexusContextProvider<TServerNexus, TClientProxy>>(sp =>
             sp.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>().ContextProvider);
 
         return services;

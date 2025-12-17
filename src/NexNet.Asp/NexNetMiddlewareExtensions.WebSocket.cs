@@ -80,18 +80,20 @@ public static partial class NexNetMiddlewareExtensions
     }
     
     private record WebSocketReadingState(IWebSocketPipe Pipe, CancellationToken CancellationToken);
-    
+
     /// <summary>
     /// Uses a Nexus with a HttpSocket.
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
     /// <param name="configure">Confirmation action for the nexus server config.</param>
+    /// <param name="configureCollections">Configures any collections upon starting.</param>
     /// <returns>Nexus server</returns>
     /// <typeparam name="TServerNexus">Server to map</typeparam>
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
     public static NexusServer<TServerNexus, TClientProxy> UseWebSocketNexusServerAsync<TServerNexus, TClientProxy>(
         this WebApplication app, 
-        Action<WebSocketConfigure>? configure = null)
+        Action<WebSocketConfigure>? configure = null,
+        Action<TServerNexus>? configureCollections = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
@@ -117,7 +119,7 @@ public static partial class NexNetMiddlewareExtensions
         if(string.IsNullOrWhiteSpace(config.Path))
             throw new InvalidOperationException("Configured path is empty.  Must provide a endpoint for mapping to.");
 
-        server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>());
+        server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>(), configureCollections);
 
         // Enable usage of sockets and register this nexus 
         app.UseWebSockets();
