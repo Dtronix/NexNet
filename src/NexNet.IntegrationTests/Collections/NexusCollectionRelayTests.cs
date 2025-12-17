@@ -545,8 +545,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
 
-    #region Client Connection Scenarios
-
     [Test]
     public async Task MultipleClientsConnectToSameRelay()
     {
@@ -655,10 +653,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList.Count, Is.EqualTo(10));
     }
 
-    #endregion
-
-    #region Empty/Initial State Edge Cases
-
     [Test]
     public async Task RelayHandlesEmptyParentCollection()
     {
@@ -739,10 +733,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList.Count, Is.EqualTo(0));
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
-
-    #endregion
-
-    #region Rapid State Changes
 
     [Test]
     public async Task RapidAddRemoveOperationsAreRelayed()
@@ -836,10 +826,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList.Count, Is.EqualTo(3));
         Assert.That(sourceList, Is.EquivalentTo(relayList));
     }
-
-    #endregion
-
-    #region Reconnection Edge Cases
 
     [Test]
     public async Task RelayReconnectsAfterMultipleDisconnections()
@@ -958,10 +944,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(result, Is.Not.Null);
     }
 
-    #endregion
-
-    #region Error Handling
-
     [Test]
     public async Task UnconfiguredRelayDoesNotCrashOnStart()
     {
@@ -994,12 +976,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             relayList.ConfigureRelay(null!);
         });
 
-        await server.StopAsync();
+        await server.StopAsync().Timeout(1);
     }
-
-    #endregion
-
-    #region Resource Cleanup
 
     [Test]
     public async Task RelayProperlyStopsOnServerStop()
@@ -1038,10 +1016,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         Assert.That(completed, Is.EqualTo(stopTask), "Server stop should not hang");
     }
-
-    #endregion
-
-    #region Large Data Scenarios
 
     [Test]
     public async Task RelayHandlesLargeInitialSync()
@@ -1120,7 +1094,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         for (int i = 0; i < itemCount; i++)
         {
-            await sourceList.AddAsync(i);
+            await sourceList.AddAsync(i).Timeout(1);
         }
 
         try
@@ -1185,7 +1159,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             }));
         }
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).Timeout(5);
 
         try
         {
@@ -1242,7 +1216,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await Task.Delay(50);
 
         // Stop the server while operations may be pending
-        await clSv.Server1.StopAsync();
+        await clSv.Server1.StopAsync().Timeout(1);
 
         // The add task should complete within a reasonable time (not hang)
         var completedTask = await Task.WhenAny(addTask, Task.Delay(5000));
@@ -1314,12 +1288,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(stop1Completed, Is.EqualTo(stop1Task),
             "Server1 stop should complete within timeout");
 
-        await addTask;
+        await addTask.Timeout(1);
     }
-
-    #endregion
-
-    #region State Consistency
 
     [Test]
     public async Task IndexOfWorksCorrectlyOnRelay()
@@ -1401,10 +1371,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList[2], Is.EqualTo(300));
     }
 
-    #endregion
-
-    #region Timing and Ordering
-
     [Test]
     public async Task MoveOperationsPreserveCorrectOrder()
     {
@@ -1465,10 +1431,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(relayList.ToList(), Is.EqualTo(new[] { 1, 999, 3 }));
     }
 
-    #endregion
-
-    #region Multiple Relays from Same Parent
-
     [Test]
     public async Task TwoIndependentRelaysReceiveIdenticalUpdates()
     {
@@ -1525,6 +1487,4 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         Assert.That(clSvs.Child2Relay.Count, Is.EqualTo(10));
         Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
     }
-
-    #endregion
 }

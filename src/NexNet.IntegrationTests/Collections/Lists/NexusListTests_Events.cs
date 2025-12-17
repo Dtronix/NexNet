@@ -7,8 +7,6 @@ namespace NexNet.IntegrationTests.Collections.Lists;
 
 internal class NexusListTests_Events : NexusCollectionBaseTests
 {
-    #region Server Change Notifications
-    
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
@@ -243,10 +241,6 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await eventReg.Wait();
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
     }
-    
-    #endregion
-    
-    #region Client Change Notifications
 
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
@@ -486,11 +480,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await eventReg.Wait();
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
     }
-    
 
-    #endregion
-    
-    
+
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
