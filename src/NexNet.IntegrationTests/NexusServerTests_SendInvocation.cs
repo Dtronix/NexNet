@@ -190,7 +190,13 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
+        
+        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = nexus2 =>
+        {
+            action(nexus2);
+            return ValueTask.CompletedTask;
+        };
 
         await server.StartAsync().Timeout(1);
 
@@ -218,12 +224,6 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
                 // Not an invocationRequest.
             }
 
-        };
-
-        serverNexus.OnConnectedEvent = nexus =>
-        {
-            action(nexus);
-            return ValueTask.CompletedTask;
         };
 
         await client.ConnectAsync().Timeout(1);

@@ -29,17 +29,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
-
-  <ItemGroup>
-    <Compile Remove="MemoryPack\CollectionKind.cs" />
-    <Compile Remove="MemoryPack\CoreEnums.cs" />
-    <Compile Remove="MemoryPack\Extensions.cs" />
-    <Compile Remove="MemoryPack\MemberKind.cs" />
-    <Compile Remove="MemoryPack\MemoryPackMemberMeta.cs" />
-    <Compile Remove="MemoryPack\MemoryPackReferences.cs" />
-    <Compile Remove="MemoryPack\MemoryPackTypeMeta.cs" />
-    <Compile Remove="MemoryPack\TypeCollector.cs" />
-  </ItemGroup>
   <!-- for nuget publish -->
   <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
     <ItemGroup>

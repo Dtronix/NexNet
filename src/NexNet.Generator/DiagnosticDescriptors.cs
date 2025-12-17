@@ -129,7 +129,7 @@ internal static class DiagnosticDescriptors
     public static readonly DiagnosticDescriptor CollectionUnknownMode = new(
         id: "NEXNET016",
         title: "Nexus collection mode type is unsupported",
-        messageFormat: "The collection mode set for '{0}' is unsupported. Use ServerToClient or BiDrirectional.",
+        messageFormat: "The collection mode set for '{0}' is unsupported. Use ServerToClient, Relay or BiDirectional.",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);

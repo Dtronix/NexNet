@@ -1033,5 +1033,154 @@ internal class SnapshotListTests
 
         Assert.DoesNotThrow(() => Task.WaitAll(tasks.ToArray()));
     }
+
+    [Test]
+    public void Clear_OnEmptyList_CountRemainsZero()
+    {
+        var list = new SnapshotList<int>();
+        list.Clear();
+        Assert.That(list.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Clear_OnNonEmptyList_CountBecomesZero()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3 };
+        list.Clear();
+        Assert.That(list.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Clear_OnNonEmptyList_EnumerationReturnsEmpty()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3, 4, 5 };
+        list.Clear();
+        Assert.That(list.Any(), Is.False);
+        Assert.That(list.ToList(), Is.Empty);
+    }
+
+    [Test]
+    public void Clear_ThenAdd_Works()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3 };
+        list.Clear();
+        list.Add(42);
+        Assert.That(list.Count, Is.EqualTo(1));
+        Assert.That(list.ToList(), Is.EqualTo(new[] { 42 }));
+    }
+
+    [Test]
+    public void Clear_ThenInsert_Works()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3 };
+        list.Clear();
+        list.Insert(0, 100);
+        Assert.That(list.Count, Is.EqualTo(1));
+        Assert.That(list.ToList(), Is.EqualTo(new[] { 100 }));
+    }
+
+    [Test]
+    public void Clear_SnapshotBeforeClear_StillHasItems()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3 };
+        var snapshot = list.ToList();
+        list.Clear();
+        Assert.That(snapshot, Is.EqualTo(new[] { 3, 2, 1 }));
+        Assert.That(list.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Clear_EnumeratorBeforeClear_StillHasItems()
+    {
+        var list = new SnapshotList<int> { 1, 2, 3 };
+        using var enumerator = list.GetEnumerator();
+        list.Clear();
+        var result = new List<int>();
+        while (enumerator.MoveNext())
+            result.Add(enumerator.Current);
+        Assert.That(result, Is.Empty);
+    }
+
+    [Test]
+    public void Clear_MultipleTimes_Works()
+    {
+        var list = new SnapshotList<int> { 1, 2 };
+        list.Clear();
+        list.Clear();
+        list.Clear();
+        Assert.That(list.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void Clear_FreesNodesForReuse()
+    {
+        var list = new SnapshotList<int>(4) { 1, 2, 3 };
+        list.Clear();
+        list.Add(4);
+        list.Add(5);
+        list.Add(6);
+        Assert.That(list.Count, Is.EqualTo(3));
+        Assert.That(list.ToList(), Is.EqualTo(new[] { 6, 5, 4 }));
+    }
+
+    [Test]
+    public void ThreadSafety_ConcurrentClear_NoExceptions()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 1000; i++) list.Add(i);
+        Assert.DoesNotThrow(() =>
+        {
+            Parallel.For(0, 10, _ =>
+            {
+                list.Clear();
+            });
+        });
+        Assert.That(list.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ThreadSafety_ConcurrentClearAndAdd_NoExceptions()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 100; i++) list.Add(i);
+        Assert.DoesNotThrow(() =>
+        {
+            Parallel.Invoke(
+                () => list.Clear(),
+                () =>
+                {
+                    for (int i = 0; i < 100; i++) list.Add(i + 1000);
+                }
+            );
+        });
+    }
+
+    [Test]
+    public void ThreadSafety_ConcurrentClearAndEnumeration_NoExceptions()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 100; i++) list.Add(i);
+        Assert.DoesNotThrow(() =>
+        {
+            Parallel.Invoke(
+                () => list.Clear(),
+                () =>
+                {
+                    foreach (var _ in list) { }
+                }
+            );
+        });
+    }
+
+    [Test]
+    public void Clear_LargeList_Works()
+    {
+        var list = new SnapshotList<int>();
+        for (int i = 0; i < 10000; i++) list.Add(i);
+        Assert.That(list.Count, Is.EqualTo(10000));
+        list.Clear();
+        Assert.That(list.Count, Is.EqualTo(0));
+        Assert.That(list.Any(), Is.False);
+    }
 }
 

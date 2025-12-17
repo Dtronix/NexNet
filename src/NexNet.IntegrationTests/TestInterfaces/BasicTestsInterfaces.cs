@@ -28,11 +28,11 @@ public partial interface IClientNexus
 
 public partial interface IServerNexus
 {
-    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> IntListBi { get; }
     
-    [NexusCollection(NexusCollectionMode.ServerToClient)]
-    INexusList<int> IntListSvToCl { get; }
+    [NexusCollection(NexusCollectionMode.Relay)]
+    INexusList<int> IntListRelay { get; }
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

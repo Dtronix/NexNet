@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using NexNet.Pipes;
@@ -30,6 +31,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly ConfigBase _config;
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly SessionManager? _sessionManager;
+    
+    private static int _counter = 0;
+    
+    private int _internalId = Interlocked.Increment(ref _counter);
     
     // NnP(DC4) = NexNetProtocol(Device Control Four)
     // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
@@ -94,10 +99,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             _id = value;
             if (Logger != null)
-                Logger.SessionDetails = value.ToString();
-
-            PipeManager.SetSessionId(value);
-
+                Logger.PathSegment = $"S{value}";
         }
     }
     
@@ -105,7 +107,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public SessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
-    public INexusLogger? Logger { get; }
+    public INexusLogger? Logger { get; private set; }
     CacheManager INexusSession.CacheManager => CacheManager;
 
     public List<int> RegisteredGroups { get; } = new();
@@ -156,7 +158,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
 
-        Logger = _config.Logger?.CreateLogger("NexusSession", Id.ToString());
+        Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
@@ -164,7 +166,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         PipeManager = _cacheManager.PipeManagerCache.Rent(this);
         PipeManager.Setup(this);
 
-        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger);
+        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger, this);
         SessionStore = new SessionStore();
         _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
             _config.MaxConcurrentConnectionInvocations);
@@ -177,9 +179,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         Logger?.LogInfo($"Created session {Id}");
     }
 
-    public Task DisconnectAsync(DisconnectReason reason)
+    public Task DisconnectAsync(
+        DisconnectReason reason, 
+        [CallerFilePath]string? filePath = null, 
+        [CallerLineNumber] int? lineNumber = null)
     {
-        return DisconnectCore(reason, true).AsTask();
+        // ReSharper disable twice ExplicitCallerInfoArgument
+        return DisconnectCore(reason, true, filePath, lineNumber).AsTask();
     }
 
 
@@ -245,7 +251,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         Logger?.LogInfo("Client connected");
     }
 
-    private async ValueTask DisconnectCore(DisconnectReason reason, bool sendDisconnect)
+    private async ValueTask DisconnectCore(
+        DisconnectReason reason,
+        bool sendDisconnect, 
+        [CallerFilePath]string? filePath = null, 
+        [CallerLineNumber] int? lineNumber = null)
     {
         // If we are already disconnecting, don't do anything
         var state = Interlocked.Exchange(ref _state, ConnectionState.Disconnecting);
@@ -259,7 +269,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _registeredDisconnectReason = reason;
 
-        Logger?.LogInfo($"Session disconnected with reason: {reason}");
+        Logger?.LogInfo($"Session disconnected with reason: {reason}; Source: {Path.GetFileName(filePath)}:{lineNumber}");
         
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {

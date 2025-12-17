@@ -7,12 +7,12 @@ namespace NexNet.IntegrationTests.Security;
 public class RollingStreamLogger : IStreamLogger
 {
     private readonly LogLevel _minimumLogLevel;
-    private readonly CoreLogger _logger;
+    private readonly INexusLogger _logger;
 
     public RollingStreamLogger(RollingLogger logger, bool isServer, LogLevel minimumLogLevel)
     {
         _minimumLogLevel = minimumLogLevel;
-        _logger = logger.CreatePrefixedLogger("", isServer ? "SV" : "CL");
+        _logger = logger;
     }
 
     public void Log(LogLevel level, string message)

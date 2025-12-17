@@ -28,7 +28,7 @@ internal class NexusPipeManager
         _usedIds.SetAll(false);
         _isCanceled = false;
         _session = session;
-        _logger = session.Logger?.CreateLogger($"NexusPipeManager", session.Id.ToString());
+        _logger = session.Logger?.CreateLogger("PipeManager");
     }
 
     public IRentedNexusDuplexPipe? RentPipe()
@@ -102,7 +102,7 @@ internal class NexusPipeManager
 
         if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
         {
-            _logger?.LogError($"Cant Remove (P{pipe.Id});");
+            _logger?.LogError($"Can't Remove (P{pipe.Id});");
             return;
         }
 
@@ -141,9 +141,9 @@ internal class NexusPipeManager
             return pipe.WriteFromUpstream(data);
         }
 
-        _logger?.LogInfo($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
-        //throw new InvalidOperationException($"No pipe exists for id: {id}.");
-        return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+        _logger?.LogWarning($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
+        throw new InvalidOperationException($"No pipe exists for id: {id}.");
+        //return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
     public DisconnectReason UpdateState(ushort id, State state)
@@ -202,12 +202,6 @@ internal class NexusPipeManager
         }
 
         _activePipes.Clear();
-    }
-
-    public void SetSessionId(long value)
-    {
-        if(_logger != null)
-            _logger.SessionDetails = value.ToString();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

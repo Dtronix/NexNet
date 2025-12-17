@@ -5,9 +5,9 @@ namespace NexNetSample.Asp.Server;
 
 public class SimpleService : BackgroundService
 {
-    private readonly ServerNexusContextProvider<ServerNexus.ClientProxy> _contextProvider;
+    private readonly ServerNexusContextProvider<ServerNexus, ServerNexus.ClientProxy> _contextProvider;
 
-    public SimpleService(ServerNexusContextProvider<ServerNexus.ClientProxy> contextProvider)
+    public SimpleService(ServerNexusContextProvider<ServerNexus, ServerNexus.ClientProxy> contextProvider)
     {
         _contextProvider = contextProvider;
     }

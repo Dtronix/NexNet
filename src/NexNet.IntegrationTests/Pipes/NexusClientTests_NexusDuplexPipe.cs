@@ -14,7 +14,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         int count = 0;
 
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
@@ -52,15 +53,17 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimesWithLargeData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         int count = 0;
         var largeData = new byte[1024 * 32];
         // TODO: Review adding a test for increased iterations as this has been found to sometimes fail on CI.
         const int iterations = 1000;
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
-            var result = await pipe.Input.ReadAsync().Timeout(1);
+            var result = await pipe.Input.ReadAtLeastAsync(largeData.Length).Timeout(1);
             pipe.Input.AdvanceTo(result.Buffer.End);
+            await pipe.CompleteAsync();
 
             if (Interlocked.Increment(ref count) == iterations)
                 tcs.SetResult();
@@ -86,8 +89,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesData(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -113,8 +116,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterSendsData(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
-
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             await pipe.Output.WriteAsync(Data).Timeout(1);
@@ -137,8 +140,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponPipeCompleteAsync(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -163,7 +166,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponCompleteAsync(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             FlushResult result = default;
@@ -198,8 +202,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponDisconnection(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -226,8 +231,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     public async Task Client_PipeWriterCompletesUponDisconnection(Type type)
     {
         var tcsDisconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             await tcsDisconnected.Task.Timeout(1);
@@ -256,8 +262,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderCompletesUponWriterCompletion(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -284,8 +291,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterCompletesUponWriterCompletion(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
-
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             FlushResult? result = null;
@@ -317,8 +325,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeWriterRemainsOpenUponOtherWriterCompletion(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
-
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
@@ -346,7 +355,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderRemainsOpenUponOtherReaderCompletion(Type type)
     {
-        var (_, sNexus, _, cNexus, tcs) = await Setup(type);
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         var outputComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
@@ -384,8 +395,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenReady(Type type)
     {
-        var (_, sNexus, _, cNexus, _) = await Setup(type);
-
+        var (server, _, cNexus, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             await Task.Delay(10000);
@@ -407,12 +419,12 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReadyCancelsOnDisconnection(Type type)
     {
-        var (server, _, client, _, _) = await Setup(type);
-
+        var (server, client, _, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
         var pipe = client.CreatePipe();
 
         // Pause the receiving to test the cancellation
-        server.Config.InternalOnReceive = async (session, sequence) =>
+        server.Server.Config.InternalOnReceive = async (session, sequence) =>
         {
             await client.DisconnectAsync().Timeout(1);
             await Task.Delay(100000);
@@ -431,12 +443,12 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeCompleteCancelsOnDisconnection(Type type)
     {
-        var (server, _, client, _, _) = await Setup(type);
+        var (server, client, _, _) = await Setup(type);
 
         var pipe = client.CreatePipe();
 
         // Pause the receiving to test the cancellation
-        server.Config.InternalOnReceive = async (session, sequence) =>
+        server.Server.Config.InternalOnReceive = async (session, sequence) =>
         {
             await client.DisconnectAsync().Timeout(1);
             await Task.Delay(100000);
@@ -455,8 +467,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_PipeNotifiesWhenComplete(Type type)
     {
-        var (_, sNexus, client, _, _) = await Setup(type);
-
+        var (server, client, _, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         bool completedInvocation = false;
         sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
@@ -481,8 +494,9 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingPipeFromWrongNexus(Type type)
     {
-        var (_, sNexus, client, _, _) = await Setup(type);
-
+        var (server, client, _, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        
         sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
 
         var pipe = sNexus.Context.CreatePipe();
@@ -500,8 +514,8 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.HttpSocket)]
     public async Task Client_ThrowsWhenPassingUsedPipe(Type type)
     {
-        var (_, sNexus, client, _, _) = await Setup(type);
-
+        var (server, client, _, _) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
 
         sNexus.ServerTaskValueWithDuplexPipeEvent = (nexus, pipe) => ValueTask.CompletedTask;
 

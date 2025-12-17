@@ -19,7 +19,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -45,7 +45,7 @@ internal partial class NexusClientTests : BaseTests
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
@@ -67,7 +67,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task ClientFailsGracefullyWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
-        var (_, _, client, _, _, _) = CreateServerClientWithStoppedServer(
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
             CreateServerConfig(type),
             clientConfig);
 
@@ -85,7 +85,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task ClientTimesOutWithNoServer(Type type)
     {
         var clientConfig = CreateClientConfig(type);
-        var (_, _, client, _, _, _) = CreateServerClientWithStoppedServer(
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
             CreateServerConfig(type),
             clientConfig);
 
@@ -102,7 +102,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ConnectsAndDisconnectsMultipleTimesFromServer(Type type)
     {
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -125,7 +125,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ConnectTimesOutWithNoServer(Type type)
     {
-        var (_, _, client, _, _, _) = CreateServerClientWithStoppedServer(
+        var (_, client, _, _, _) = CreateServerClientWithStoppedServer(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -142,7 +142,7 @@ internal partial class NexusClientTests : BaseTests
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
@@ -178,7 +178,7 @@ internal partial class NexusClientTests : BaseTests
         clientConfig.PingInterval = 20;
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
@@ -204,7 +204,7 @@ internal partial class NexusClientTests : BaseTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
 
@@ -281,7 +281,7 @@ internal partial class NexusClientTests : BaseTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
 
@@ -315,7 +315,7 @@ internal partial class NexusClientTests : BaseTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
-        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientNexus.OnReconnectingEvent = _ =>
         {
@@ -339,7 +339,7 @@ internal partial class NexusClientTests : BaseTests
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
-        var (server, _, client, clientNexus, startAspServer, stopAspServer) = CreateServerClientWithStoppedServer(serverConfig, clientConfig);
+        var (server, client, clientNexus, startAspServer, stopAspServer) = CreateServerClientWithStoppedServer(serverConfig, clientConfig);
 
         clientNexus.OnReconnectingEvent = _ =>
         {
@@ -367,7 +367,7 @@ internal partial class NexusClientTests : BaseTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var clientConfig = CreateClientConfig(type);
         var serverConfig = CreateServerConfig(type);
-        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         clientConfig.ConnectionTimeout = 100;
 
@@ -405,11 +405,11 @@ internal partial class NexusClientTests : BaseTests
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
-
-        serverNexus.ServerTaskValueEvent = async _ =>
+        
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = async _ =>
         {
             await Task.Delay(100000);
             return 12345;
@@ -447,7 +447,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ReadyTaskCompletesUponConnection(Type type)
     {
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -468,19 +468,19 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.Authenticate = true;
         
         bool authCompleted = false;
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             serverConfig,
             CreateClientConfig(type));
-
-        serverHub.OnAuthenticateEvent = hub =>
+        
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub =>
         {
             authCompleted = true;
             return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
         };
 
         await server.StartAsync().Timeout(1);
-
         await client.ConnectAsync().Timeout(1);
+        
         Assert.That(authCompleted, Is.True);
     }
 
@@ -495,11 +495,11 @@ internal partial class NexusClientTests : BaseTests
         var serverConfig = CreateServerConfig(type);
         serverConfig.Authenticate = true;
 
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             serverConfig,
             CreateClientConfig(type));
 
-        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
 
@@ -515,11 +515,11 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task DisconnectTaskCompletesUponDisconnection(Type type)
     {
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
@@ -543,11 +543,11 @@ internal partial class NexusClientTests : BaseTests
         var serverConfig = CreateServerConfig(type);
         serverConfig.Authenticate = true;
 
-        var (server, serverHub, client, clientHub) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             serverConfig,
             CreateClientConfig(type));
 
-        serverHub.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
         await client.TryConnectAsync().Timeout(1);
@@ -567,7 +567,7 @@ internal partial class NexusClientTests : BaseTests
         // Arrange
         var serverConfig = CreateServerConfig(type);
         var clientConfig = CreateClientConfig(type);
-        var (server, serverHub, client, _) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
@@ -597,7 +597,7 @@ internal partial class NexusClientTests : BaseTests
                 tcs.SetResult();
         };
 
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             clientConfig);
 
@@ -617,7 +617,7 @@ internal partial class NexusClientTests : BaseTests
     public async Task FiresOnDisconnectedEvent(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -642,12 +642,12 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ProxyInvocationPropagatesServerException(Type type)
     {
-        var (server, serverNexus, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
         // Server throws
-        serverNexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
@@ -664,7 +664,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public void DisconnectWithoutConnectDoesNotThrow(Type type)
     {
-        var (_, _, client, _) = CreateServerClient(
+        var (_, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
         
@@ -681,7 +681,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task DoubleConnectDoesNotThrow(Type type)
     {
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -701,7 +701,7 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task DoubleDisconnectDoesNotThrow(Type type)
     {
-        var (server, _, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -725,12 +725,12 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ConcurrentProxyInvocations(Type type)
     {
-        var (server, serverNexus, client, _) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
         // Server always returns 42
-        serverNexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42);
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
@@ -761,10 +761,10 @@ internal partial class NexusClientTests : BaseTests
         };
 
         var clientConfig = CreateClientConfig(type);
-        var (server, serverHub, client, clientHub) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
         // Force authentication to fail
-        serverHub.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
         await client.TryConnectAsync().Timeout(1);
@@ -784,12 +784,12 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task ProxyInvocationAfterDisconnectThrows(Type type)
     {
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
         // Server will respond, but we will disconnect before calling
-        serverNexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
 
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
@@ -819,7 +819,7 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        var (server, _, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
 
         var reconnectingFired = false;
         clientNexus.OnReconnectingEvent = _ =>

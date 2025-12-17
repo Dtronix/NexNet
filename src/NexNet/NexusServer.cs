@@ -18,10 +18,18 @@ namespace NexNet;
 /// </summary>
 /// <typeparam name="TServerNexus">The nexus which will be running locally on the server.</typeparam>
 /// <typeparam name="TClientProxy">Proxy used to invoke methods on the remote nexus.</typeparam>
-public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClientProxy> 
+public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServerNexus, TClientProxy>
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
 {
+    // ReSharper disable once StaticMemberInGenericType
+    private static long _idCounter = 0;
+
+    /// <summary>
+    /// Resets the server ID counter. For testing purposes only.
+    /// </summary>
+    internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
+
     private readonly SessionManager _sessionManager = new();
     private readonly Timer _watchdogTimer;
     private ServerConfig? _config;
@@ -36,6 +44,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
     private NexusCollectionManager _collectionManager = null!;
+    //private Func<TServerNexus, ValueTask>? _configureCollections;
 
     /// <inheritdoc />
     public NexusServerState State => _state;
@@ -50,20 +59,21 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     public bool IsConfigured => _config != null;
     
     /// <inheritdoc />
-    public ServerNexusContextProvider<TClientProxy> ContextProvider { get; }
+    public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; private set; } = null!;
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.
     /// </summary>
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
-    public NexusServer(ServerConfig config, Func<TServerNexus> nexusFactory)
+    /// <param name="configureCollections">Function to configure collections.</param>
+    public NexusServer(
+        ServerConfig config, 
+        Func<TServerNexus> nexusFactory, 
+        Action<TServerNexus>? configureCollections = null)
         : this()
     {
-        ArgumentNullException.ThrowIfNull(config);
-        ArgumentNullException.ThrowIfNull(nexusFactory);
-
-        Configure(config, nexusFactory);
+        Configure(config, nexusFactory, configureCollections);
     }
     
     /// <summary>
@@ -76,7 +86,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     {
         _cacheManager = new SessionCacheManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
-        ContextProvider = new ServerNexusContextProvider<TClientProxy>(_sessionManager, _cacheManager);
     }
 
     /// <summary>
@@ -85,23 +94,49 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
     /// </summary>
     /// <param name="config">Server configurations</param>
     /// <param name="nexusFactory">Factory called on each new connection.  Used to pass arguments to the nexus.</param>
+    /// <param name="configureCollections"></param>
     /// <remarks>
     /// Do not use this method.  Instead, use the parameterized constructor.
     /// </remarks>
-    public void Configure(ServerConfig config, Func<TServerNexus> nexusFactory)
+    public void Configure(ServerConfig config,
+        Func<TServerNexus> nexusFactory,
+        Action<TServerNexus>? configureCollections)
     {
         ArgumentNullException.ThrowIfNull(config);
         ArgumentNullException.ThrowIfNull(nexusFactory);
         if(_config != null)
             throw new InvalidOperationException("Server has already been configured.");
         
+
         _config = config;
         _nexusFactory = nexusFactory;
-        _logger = config.Logger?.CreateLogger("NexusServer");
+        var id = Interlocked.Increment(ref _idCounter);
+        _logger = config.Logger?.CreateLogger($"SV{id}");
         
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(config);
+        _collectionManager = new NexusCollectionManager(_logger, true);
         TServerNexus.ConfigureCollections(_collectionManager);
+        
+        ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
+            nexusFactory,
+            _collectionManager, 
+            _sessionManager, 
+            _cacheManager);
+        
+        if (configureCollections != null)
+        {
+            var configNexus = _nexusFactory!.Invoke();
+            // Add a special context used for only configuring collections.  Any other usage of methods throws.
+            configNexus.SessionContext = new ConfigurerSessionContext<TClientProxy>(_collectionManager);
+            try
+            {
+                configureCollections.Invoke(configNexus);
+            }
+            catch (Exception e)
+            {
+                _logger?.LogError(e, "Exception while configuring collections.");
+            }
+        }
     }
 
     /// <inheritdoc />
@@ -146,8 +181,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
                 _ => FireAndForget(ListenForConnectionsAsync()), null);
         }
-
+        
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
+        
+        _collectionManager.Start();
     }
 
     /// <inheritdoc />
@@ -157,6 +194,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             throw new InvalidOperationException("Server is not running");
 
         _logger?.LogInfo("Stopping server");
+
+        _collectionManager.Stop();
 
         // If the server is not listening for connections, we are done.
         if (_config?.ConnectionMode == ServerConnectionMode.Listener)
@@ -236,7 +275,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
             Client = null,
             Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
             Nexus = _nexusFactory!.Invoke(),
-            CollectionManager = _collectionManager
+            CollectionManager = _collectionManager,
+            Logger = _logger
         }, cancellationToken);
     }
 
@@ -352,7 +392,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TClie
                         SessionManager = _sessionManager,
                         Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
                         Nexus = _nexusFactory!.Invoke(),
-                        CollectionManager = _collectionManager
+                        CollectionManager = _collectionManager,
+                        Logger = _logger
                     });
             }
         }

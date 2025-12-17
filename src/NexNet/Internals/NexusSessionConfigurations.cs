@@ -1,6 +1,7 @@
 ﻿using System.Threading.Tasks;
 using NexNet.Cache;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
 
@@ -23,6 +24,7 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     public required long Id { get; init; }
 
     public required TNexus Nexus { get; init; }
+    public required INexusLogger? Logger { get; init; }
 
     public TaskCompletionSource? ReadyTaskCompletionSource { get; init; }
     public TaskCompletionSource<DisconnectReason>? DisconnectedTaskCompletionSource { get; init; }

@@ -51,7 +51,7 @@ internal class Program
         await pipe.CompleteAsync();
 
         // INexusList
-        await client.Proxy.IntegerList.ConnectAsync();
+        await client.Proxy.IntegerList.EnableAsync();
 
         for (int i = 0; i < 10; i++)
         {

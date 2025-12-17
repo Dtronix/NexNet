@@ -15,7 +15,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     public async Task InvokesViaNexusContext(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 #pragma warning disable CS1998
@@ -24,7 +24,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.ContextProvider.Rent();
+        using var context = server.Server.ContextProvider.Rent();
         await context.Proxy.All.ClientTask();
         await tcs.Task.Timeout(1);
     }
@@ -39,7 +39,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
     public async Task InvokesViaNexusContextAndDoesNotBlock(Type type)
     {
         bool completed = false;
-        var (server, serverNexus, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
 
@@ -49,7 +49,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             completed = true;
         };
 
-        serverNexus.OnInitializeEvent = nexus =>
+        server.OnNexusCreated = nexus => nexus.OnInitializeEvent = nexus =>
         {
             nexus.Context.Groups.Add("myGroup");
             return ValueTask.CompletedTask;
@@ -58,11 +58,11 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.ContextProvider.Rent();
+        using var context = server.Server.ContextProvider.Rent();
         await context.Proxy.All.ClientTask();
         await context.Proxy.Clients(context.Proxy.GetIds().ToArray()).ClientTask();
         await context.Proxy.Group("myGroup").ClientTask();
-        await context.Proxy.Groups(new[] { "myGroup" }).ClientTask();
+        await context.Proxy.Groups(["myGroup"]).ClientTask();
         Assert.That(completed, Is.False);
     }
 
@@ -90,7 +90,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 // ReSharper disable once AccessToModifiedClosure
                 await nexus.Context.Clients.Clients(server!.ContextProvider.Rent().Proxy.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
-                await nexus.Context.Clients.Groups(new[] { "myGroup" }).ClientTask();
+                await nexus.Context.Clients.Groups(["myGroup"]).ClientTask();
                 Assert.That(completed, Is.False);
                 tcs1.SetResult();
             };
@@ -140,7 +140,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         //    Logger.LogWarning("Client received: " + string.Join(", ", bytes.ToArray()));
         //};
 
-        var (server, _, client, clientNexus) = CreateServerClient(
+        var (server, client, clientNexus) = CreateServerClient(
             serverConfig,
             clientConfig);
 
@@ -149,7 +149,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        using var context = server.ContextProvider.Rent();
+        using var context = server.Server.ContextProvider.Rent();
 
         var result = await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue();
 

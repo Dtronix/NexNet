@@ -8,12 +8,12 @@ namespace NexNet.Logging;
 /// The RollingLogger class extends the CoreLogger abstract class and provides functionality for logging with a rolling line buffer.
 /// It maintains a buffer of log lines, and when the buffer is full, it discards the oldest log lines to make room for new ones.
 /// </summary>
-public class RollingLogger : CoreLogger
+public class RollingLogger : CoreLogger<RollingLogger>
 {
     private readonly string[]? _lines;
     private int _currentLineIndex = 0;
-    private readonly RollingLogger _baseLogger;
     private int _totalLinesWritten;
+    private readonly RollingLogger _baseLogger;
 
     /// <summary>
     /// Gets the total number of lines that have been written by the logger.
@@ -26,53 +26,52 @@ public class RollingLogger : CoreLogger
     }
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RollingLogger"/> class.
+    /// Initializes a new instance of the <see cref="RollingLogger"/> class with a rolling buffer for log lines.
     /// </summary>
-    /// <param name="maxLines">The maximum number of lines that can be stored in the logger. Default value is 200.</param>
-    public RollingLogger(int maxLines = 200)
+    /// <param name="maxLines">Maximum number of log lines to keep in the buffer before rolling.</param>
+    /// <param name="parentLogger">Parent logger for creating a logger hierarchy.</param>
+    /// <param name="pathSegment">Path segment to append to the logger's category path.</param>
+    public RollingLogger(int maxLines = 200, RollingLogger? parentLogger = null, string? pathSegment = null)
+        : base(parentLogger, pathSegment)
     {
-        _lines = new string[maxLines];
-        _baseLogger = this;
-        SessionDetails = "";
+        if (parentLogger == null)
+        {
+            _baseLogger = this; 
+            _lines = new string[maxLines];
+        }
+        else
+        {
+            // Get the root logger
+            var current = parentLogger;
+
+            while (current != null && current != current.ParentLogger)
+                current = current.ParentLogger;
+
+            _baseLogger = current ?? this;
+        }
     }
 
-    private RollingLogger(RollingLogger baseLogger, string? category, string? prefix = null,
-        string? sessionDetails = null)
-    {
-        _baseLogger = baseLogger;
-        Prefix = prefix;
-        SessionDetails = sessionDetails ?? "";
-        Category = category;
-    }
 
     /// <inheritdoc/>
     public override void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
     {
-        if (!_baseLogger.LogEnabled)
-            return;
+        var log = GetFormattedLogString(logLevel, category, exception, message);
 
-        if (logLevel < MinLogLevel)
+        if (log == null)
             return;
-        var time = _baseLogger.Sw.ElapsedTicks / (double)Stopwatch.Frequency;
-
+        
         lock (_baseLogger._lines!)
         {
-            _baseLogger._lines[_baseLogger._currentLineIndex] = Prefix != null
-                ? $"[{time:0.000000}]{Prefix} [{category}:{SessionDetails}] {message} {exception}"
-                : $"[{time:0.000000}] [{category}:{SessionDetails}] {message} {exception}";
+            _baseLogger._lines[_baseLogger._currentLineIndex] = log;
             _baseLogger._currentLineIndex = (_baseLogger._currentLineIndex + 1) % _baseLogger._lines.Length;
             _baseLogger._totalLinesWritten++;
         }
     }
-    /// <inheritdoc/>
-    public override INexusLogger CreateLogger(string? category, string? sessionDetails = null)
+    
+    /// <inheritdoc />
+    public override INexusLogger CreateLogger(string? pathSegment = null)
     {
-        return new RollingLogger(_baseLogger, category, Prefix, sessionDetails ?? SessionDetails);
-    }
-    /// <inheritdoc/>
-    public override CoreLogger CreatePrefixedLogger(string? category, string prefix, string? sessionDetails = null)
-    {
-        return new RollingLogger(_baseLogger, category, prefix, sessionDetails ?? SessionDetails);
+        return new RollingLogger(parentLogger: this, pathSegment: pathSegment);
     }
 
     /// <summary>
@@ -86,26 +85,29 @@ public class RollingLogger : CoreLogger
     /// </remarks>
     public void Flush(TextWriter writer)
     {
-        if (_baseLogger._totalLinesWritten == 0)
-            return;
-
-        var startIndex = _baseLogger._currentLineIndex;
-        var maxLines = _baseLogger._lines!.Length;
-
-        if (_baseLogger._totalLinesWritten > maxLines)
+        lock (_baseLogger._lines!)
         {
-            writer.WriteLine(
-                $"Truncating Log. Showing only last {maxLines} out of {_baseLogger._totalLinesWritten} total lines written.");
-        }
+            if (_baseLogger._totalLinesWritten == 0)
+                return;
 
-        var readingIndexStart = _baseLogger._totalLinesWritten >= maxLines ? startIndex : 0;
-        var loops = _baseLogger._totalLinesWritten >= maxLines ? maxLines : _baseLogger._totalLinesWritten;
-        for (int i = 0; i < loops; i++)
-        {
-            writer.WriteLine(_baseLogger._lines![(readingIndexStart + i) % maxLines]);
-        }
+            var startIndex = _baseLogger._currentLineIndex;
+            var maxLines = _baseLogger._lines!.Length;
 
-        _baseLogger._currentLineIndex = 0;
-        _baseLogger._totalLinesWritten = 0;
+            if (_baseLogger._totalLinesWritten > maxLines)
+            {
+                writer.WriteLine(
+                    $"Truncating Log. Showing only last {maxLines} out of {_baseLogger._totalLinesWritten} total lines written.");
+            }
+
+            var readingIndexStart = _baseLogger._totalLinesWritten >= maxLines ? startIndex : 0;
+            var loops = _baseLogger._totalLinesWritten >= maxLines ? maxLines : _baseLogger._totalLinesWritten;
+            for (int i = 0; i < loops; i++)
+            {
+                writer.WriteLine(_baseLogger._lines![(readingIndexStart + i) % maxLines]);
+            }
+
+            _baseLogger._currentLineIndex = 0;
+            _baseLogger._totalLinesWritten = 0;
+        }
     }
 }

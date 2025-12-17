@@ -13,7 +13,7 @@ public abstract class ServerConfig : ConfigBase
     /// <summary>
     /// Gets the connection mode that the server is to operate in.
     /// </summary>
-    public ServerConnectionMode ConnectionMode { get; }
+    internal ServerConnectionMode ConnectionMode { get; }
     
     /// <summary>
     /// Option: acceptor backlog size

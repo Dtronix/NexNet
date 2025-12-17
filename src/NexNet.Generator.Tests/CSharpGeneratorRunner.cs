@@ -61,13 +61,13 @@ public static class CSharpGeneratorRunner
     }
     
     public static Diagnostic[] RunTypeWalkerGenerator(
-        string source, 
+        string source,
         string[]? preprocessorSymbols = null,
-        DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error, 
+        DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error,
         AnalyzerConfigOptionsProvider? options = null)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13, preprocessorSymbols: preprocessorSymbols);
-        
+
         var driver = CSharpGeneratorDriver.Create(new TypeHasherTestGenerator()).WithUpdatedParseOptions(parseOptions);
         if (options != null)
         {
@@ -77,7 +77,29 @@ public static class CSharpGeneratorRunner
         var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
-        
+
+        var compilationDiagnostics = newCompilation.GetDiagnostics();
+        return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
+    }
+
+    public static Diagnostic[] RunTypeHasherV2Generator(
+        string source,
+        string[]? preprocessorSymbols = null,
+        DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error,
+        AnalyzerConfigOptionsProvider? options = null)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13, preprocessorSymbols: preprocessorSymbols);
+
+        var driver = CSharpGeneratorDriver.Create(new TypeHasherTestGenerator()).WithUpdatedParseOptions(parseOptions);
+        if (options != null)
+        {
+            driver = (CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);
+        }
+
+        var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));
+
+        driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
+
         var compilationDiagnostics = newCompilation.GetDiagnostics();
         return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
     }

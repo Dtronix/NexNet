@@ -9,6 +9,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Strong Typed Hubs & Clients.
 - Server <-> Client communication
   - Synchronized collections (INexusList)
+  - Collection relay mode for server-to-server data distribution
   - Cancellable Invocations
   - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
   - Streaming classes/structs data via `NexusChannel<T>` and simplified reading with IAsyncEnumerable
@@ -141,15 +142,21 @@ Notes:
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
 ### Synchronized Collection Usage
-The synchronized collections exists on the server nexus and is accessed through the server proxy on the client.  Collections must be decorated with NexusCollectionAttribute, otherwise the Server nexus it will throw.  Synchronized collections are only allowed on the server nexus.  Collections are to be configured as either `BiDrirectional` or `ServerToClient`.
+Synchronized collections exist on the server nexus and are accessed through the server proxy on the client. Collections must be decorated with `NexusCollectionAttribute`, otherwise the server nexus will throw. Synchronized collections are only allowed on the server nexus. Collections can be configured as `ServerToClient`, `BiDirectional`, or `Relay`.
 
-INexusList offers a list-like API but with each mutation routed to the server.  Methods like AddAsync, InsertAsync, RemoveAsync, RemoveAtAsync, ClearAsync, MoveAsync, and ReplaceAsync all return Task, where the completion indicates acceptance or rejection by the server (noop).  All data accessed in the synchronous methods access the current state on the client.
+| Mode | Description |
+|------|-------------|
+| `ServerToClient` | One-way sync from server to clients. Clients receive updates but cannot modify. |
+| `BiDirectional` | Two-way sync. Changes from server or any client propagate to all participants. |
+| `Relay` | Read-only collection that receives from a parent and broadcasts to its own clients. |
+
+`INexusList<T>` offers a list-like API with mutations routed to the server. Methods like `AddAsync`, `InsertAsync`, `RemoveAsync`, `RemoveAtAsync`, `ClearAsync`, `MoveAsync`, and `ReplaceAsync` return `Task<bool>`, where the result indicates acceptance or rejection by the server.
 
 ``` cs
 public partial interface IClientNexus { }
 public partial interface IServerNexus
 {
-    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> IntList { get; }
 }
 
@@ -158,18 +165,55 @@ public partial class ClientNexus { }
 
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus { }
+```
 
-await ServerNexus.CreateServer(..., ...).StartAsync();
+#### Client Connection and Lifecycle
+Collections support explicit lifecycle management through `EnableAsync()` and `DisableAsync()`, with tasks for monitoring state changes.
 
-var client = ClientNexus.CreateClient(..., ...);
+``` cs
+var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
+await server.StartAsync();
+
+var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 await client.ConnectAsync();
 
-// Connect to the list (internally starts a duplex pipe for communication).
-await client.Proxy.IntList.ConnectAsync();
+var list = client.Proxy.IntList;
 
-// Add the value to the synchronized collection. This will return upon acknowledgement by the server of addition.
-await client.Proxy.IntList.AddAsync(12345);
+// Subscribe to change events before enabling
+list.Changed.Subscribe(args =>
+{
+    Console.WriteLine($"Collection changed: {args.ChangedAction}");
+});
+
+// Enable the collection connection (starts duplex pipe internally)
+var enabled = await list.EnableAsync();
+
+// Wait for initial sync to complete
+await list.ReadyTask;
+
+// Perform operations
+await list.AddAsync(12345);
+await list.InsertAsync(0, 99999);
+Console.WriteLine($"Count: {list.Count}, First: {list[0]}");
+
+// Monitor disconnection
+_ = list.DisabledTask.ContinueWith(_ => Console.WriteLine("Collection disconnected"));
+
+// Disable when done
+await list.DisableAsync();
 ```
+
+The convenience method `ConnectAsync()` combines `EnableAsync()` and waiting for `ReadyTask`:
+``` cs
+// Equivalent to: await EnableAsync(); await ReadyTask;
+await client.Proxy.IntList.ConnectAsync();
+```
+
+#### Collection States
+Collections expose a `State` property of type `NexusCollectionState`:
+- `Disconnected` - Not connected to the server
+- `Connecting` - Connection in progress
+- `Connected` - Connected and synchronized
 
 ## Duplex Pipe Usage
 NexNet has a limitation where the total serialized argument's bytes passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
@@ -209,7 +253,125 @@ await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
 ## Lifetimes
 New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
 
+Hubs can be created and disposed temporarily by methods such as NexusServer<>.ContextProvider.  This means no calculations or work should be performed inside the constructor.
+
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
+
+## Collection Relay Mode
+
+Relay collections enable hierarchical data distribution across multiple servers. A relay server connects to a parent collection (on a master server) and broadcasts changes to its own connected clients. This is useful for scaling read-heavy workloads or distributing data across geographic regions.
+
+```
+┌─────────────────┐
+│  Master Server  │
+│  (Source Data)  │
+└────────┬────────┘
+         │ Collection updates
+         ▼
+┌─────────────────┐
+│  Relay Server   │◄──── Clients connect here
+│  (Read-only)    │
+└────────┬────────┘
+         │ Broadcasts to
+         ▼
+┌─────────────────┐
+│     Clients     │
+└─────────────────┘
+```
+
+### Defining a Relay Collection
+
+``` cs
+// Shared interfaces
+public interface IClientNexus { }
+
+public interface IMasterServerNexus
+{
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    INexusList<GameState> GameStates { get; }
+}
+
+public interface IRelayServerNexus
+{
+    [NexusCollection(NexusCollectionMode.Relay)]
+    INexusList<GameState> GameStates { get; }
+}
+```
+
+### Configuring the Relay Server
+
+The relay server uses a `NexusClientPool` to maintain connection to the master server:
+
+``` cs
+// Configuration for connecting to master server
+var masterClientConfig = new TcpClientConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Parse("10.0.0.1"), 5000)
+};
+
+var poolConfig = new NexusClientPoolConfig(masterClientConfig);
+var masterPool = new NexusClientPool<MasterClientNexus, MasterClientNexus.ServerProxy>(poolConfig);
+
+// Create relay server with collection configuration
+var relayServerConfig = new TcpServerConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Any, 5001)
+};
+
+var relayServer = RelayServerNexus.CreateServer(
+    relayServerConfig,
+    () => new RelayServerNexus(),
+    configurer =>
+    {
+        // Configure the relay to connect to the master's collection
+        var connector = masterPool.GetCollectionConnector(proxy => proxy.GameStates);
+        configurer.Context.Collections.GameStates.ConfigureRelay(connector);
+    }
+);
+
+await relayServer.StartAsync();
+```
+
+### Client Connection to Relay
+
+Clients connect to the relay server exactly as they would to a master server:
+
+``` cs
+var client = ClientNexus.CreateClient(relayClientConfig, new ClientNexus());
+await client.ConnectAsync();
+
+// Connect to the collection - data comes from the relay
+await client.Proxy.GameStates.ConnectAsync();
+
+// Read data (synchronized from master via relay)
+foreach (var state in client.Proxy.GameStates)
+{
+    Console.WriteLine($"Game: {state.Name}");
+}
+```
+
+### Relay Characteristics
+
+- **Read-only**: Relay collections reject all client modification attempts
+- **Auto-reconnect**: Automatically reconnects to the parent collection if disconnected
+- **State synchronization**: Maintains full state sync with parent, including initial snapshot and incremental updates
+- **Event propagation**: `Changed` events fire for both local subscribers and connected clients
+
+### Monitoring Relay State
+
+``` cs
+// On the relay server
+var relay = relayServer.Collections.GameStates;
+
+// Wait for connection to master
+await relay.ReadyTask;
+Console.WriteLine("Relay connected to master");
+
+// Monitor disconnection
+relay.DisconnectedTask.ContinueWith(_ =>
+    Console.WriteLine("Lost connection to master, reconnecting...")
+);
+```
 
 ## Versioning
 

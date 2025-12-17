@@ -7,8 +7,9 @@ using MemoryPack;
 
 namespace NexNet.Collections;
 
-internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<T>, INexusCollectionValueMessage
-    where T : NexusCollectionMessage<T>, new()
+internal abstract class NexusCollectionValueMessage<TMessage, TUnion> : NexusCollectionMessage<TMessage, TUnion>
+    where TMessage : NexusCollectionMessage<TMessage, TUnion>, TUnion, new()
+    where TUnion : class, INexusCollectionUnion<TUnion>
 {
     private bool _isArgumentPoolArray;
 
@@ -25,10 +26,10 @@ internal abstract class NexusCollectionValueMessage<T> : NexusCollectionMessage<
         _isArgumentPoolArray = true;
     }
 
-    public override void ReturnToCache()
+    public override void Return()
     {
         ReturnValueToPool();
-        base.ReturnToCache();
+        base.Return();
     }
 
     public void ReturnValueToPool()

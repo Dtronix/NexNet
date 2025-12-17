@@ -20,7 +20,7 @@ public partial interface IServerNexusV3 : IServerNexusV2
 [NexusVersion(Version = "v2")]
 public partial interface IServerNexusV2 : IServerNexus
 {
-    [NexusCollection(NexusCollectionMode.BiDrirectional)]
+    [NexusCollection(NexusCollectionMode.BiDirectional)]
     [NexusMethod(200)]
     INexusList<int> IntegerList { get; }
 }

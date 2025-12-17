@@ -23,5 +23,11 @@ public enum NexusCollectionMode
     /// Changes on either the server or any connected client are propagated
     /// to all other participants.
     /// </summary>
-    BiDrirectional
+    BiDirectional,
+
+
+    /// <summary>
+    /// Collection is configured to be a relay and won't accept any updates.
+    /// </summary>
+    Relay
 }

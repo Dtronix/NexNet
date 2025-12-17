@@ -10,6 +10,7 @@ using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Transports;
 
 namespace NexNet.Invocation;
 
@@ -25,8 +26,20 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
 
     private readonly InvokeMethodCoreDelegate _invokeMethodCoreDelegate;
+    private SessionContext<TProxy>? _sessionContext;
 
-    internal SessionContext<TProxy> SessionContext { get; set; } = null!;
+    internal SessionContext<TProxy> SessionContext
+    {
+        get => _sessionContext ?? throw new Exception("Session context is null");
+        set
+        {
+            // Ensure that this is not accidentally set multiple times.
+            if(_sessionContext != null && value.Session.Config is not ClientConfig)
+                throw  new Exception("Session context is already set");
+            
+            _sessionContext = value;
+        }
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="NexusBase{TProxy}"/> class.
@@ -185,14 +198,14 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         finally
         {
             message.Result = null;
-            message?.Dispose();
+            message.Dispose();
             ReturnArgsToCache(context, requestArgs);
         }
 
         static void ReturnArgsToCache(SessionContext<TProxy> context, InvokeMethodCoreArgs args)
         {
             //args.Message.Arguments = Memory<byte>.Empty;
-            args.Message?.Dispose();
+            args.Message.Dispose();
             InvokeMethodCoreArgs.Return(args);
         }
     }
@@ -218,7 +231,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     
     INexusList<T> ICollectionStore.GetList<T>(ushort id)
     {
-        return SessionContext.Session.CollectionManager.GetList<T>(id);
+        // The hot path should be to 
+        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+        if (SessionContext.Session == null && SessionContext is ConfigurerSessionContext<TProxy> configurer)
+            return configurer.CollectionManager.GetList<T>(id);
+        
+        return SessionContext.Session!.CollectionManager.GetList<T>(id);
     }
 
     ValueTask ICollectionStore.StartCollection(ushort id, INexusDuplexPipe pipe)

@@ -1,7 +1,10 @@
-﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using NexNet.Generator.MetaGenerator;
+using NexNet.Generator.Emission;
+using NexNet.Generator.Extraction;
+using NexNet.Generator.Models;
+using NexNet.Generator.Validation;
 
 namespace NexNet.Generator;
 
@@ -9,167 +12,71 @@ namespace NexNet.Generator;
 internal partial class NexusGenerator : IIncrementalGenerator
 {
     public const string NexusAttributeFullName = "NexNet.NexusAttribute`2";
-    
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // no need RegisterPostInitializationOutput
+        // TRANSFORM PHASE: Extract all data here - this is cached by the incremental pipeline
+        // The transform runs during semantic analysis and extracts all data into equatable records.
+        // When the extracted data hasn't changed, the output phase is skipped entirely.
+        var nexusData = context.SyntaxProvider.ForAttributeWithMetadataName(
+            NexusAttributeFullName,
+            predicate: static (node, _) => node is ClassDeclarationSyntax,
+            transform: static (ctx, ct) => NexusDataExtractor.Extract(ctx, ct))
+            .Where(static data => data is not null)!;
 
-        Register(context);
-    }
+        var parseOptions = context.ParseOptionsProvider.Select(static (opts, _) =>
+            ((CSharpParseOptions)opts).LanguageVersion);
 
-    void Register(IncrementalGeneratorInitializationContext context)
-    {
-        // return dir of info output or null .
-        var typeDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
-                NexusAttributeFullName,
-                predicate: static (node, _) => (node is ClassDeclarationSyntax), // search [NexusAttribute] class
-                transform: static (context, _) => (TypeDeclarationSyntax)context.TargetNode);
+        // Combine with language version only (NOT full compilation)
+        // This is the key change - we no longer depend on CompilationProvider
+        // which changes on every keystroke in any file.
+        var source = nexusData.Combine(parseOptions);
 
-        var parseOptions = context.ParseOptionsProvider.Select((parseOptions, _) =>
+        // OUTPUT PHASE: Use only extracted data - no semantic model access
+        // This phase only runs when the extracted data actually changes.
+        context.RegisterSourceOutput(source, static (ctx, source) =>
         {
-            var csOptions = (CSharpParseOptions)parseOptions;
-            var langVersion = csOptions.LanguageVersion;
-            return langVersion;
-        });
-        
-        var source = typeDeclarations
-            .Combine(context.CompilationProvider)
-            .WithComparer(Comparer.Instance)
-            .Combine(parseOptions);
-
-        context.RegisterSourceOutput(source, static (context, source) =>
-        {
-            var (typeDeclaration, compilation) = source.Left;
-            var langVersion = source.Right;
-
-            Generate(typeDeclaration, compilation, new GeneratorContext(context, langVersion));
+            var (data, langVersion) = source;
+            Generate(data!, langVersion, ctx);
         });
     }
-    
-    internal static void Generate(TypeDeclarationSyntax syntax, Compilation compilation, GeneratorContext context)
+
+    private static void Generate(
+        NexusGenerationData data,
+        LanguageVersion langVersion,
+        SourceProductionContext context)
     {
-        var semanticModel = compilation.GetSemanticModel(syntax.SyntaxTree);
+        // Validate using cached data (no ISymbol references)
+        var diagnostics = NexusValidator.Validate(data, context.CancellationToken);
 
-        var typeSymbol = semanticModel.GetDeclaredSymbol(syntax, context.CancellationToken);
-        if (typeSymbol == null)
+        bool hasBlockingErrors = false;
+        foreach (var diagnostic in diagnostics)
         {
-            return;
+            context.ReportDiagnostic(diagnostic);
+            // HashLock mismatch is an error but shouldn't block generation
+            if (diagnostic.Severity == DiagnosticSeverity.Error &&
+                diagnostic.Id != DiagnosticDescriptors.VersionHashLockMismatch.Id)
+            {
+                hasBlockingErrors = true;
+            }
         }
 
-        // verify is partial
-        if (!IsPartial(syntax))
-        {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.MustBePartial, syntax.Identifier.GetLocation(), typeSymbol.Name));
-            return;
-        }
-
-        // nested is not allowed
-        if (IsNested(syntax))
-        {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
-            return;
-        }
-
-        // nested is not allowed
-        if (IsNested(syntax))
-        {
-            context.ReportDiagnostic(Diagnostic.Create(DiagnosticDescriptors.NestedNotAllow, syntax.Identifier.GetLocation(), typeSymbol.Name));
-            return;
-        }
-        
-        var typeHasher = new TypeHasher();
-
-        var nexusMeta = new NexusMeta(typeSymbol, typeHasher);
-
-        // ReportDiagnostic when validate failed.
-        if (!nexusMeta.Validate(syntax, context))
+        if (hasBlockingErrors)
             return;
 
-        var fullType = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-            .Replace("global::", "")
-            .Replace("<", "_")
-            .Replace(">", "_");
-
+        // Generate code using cached data
         var sb = SymbolUtilities.GetStringBuilder();
 
-        /*
-        // <auto-generated/>
-#nullable enable
-#pragma warning disable CS0108 // hides inherited member
-#pragma warning disable CS0162 // Unreachable code
-#pragma warning disable CS0164 // This label has not been referenced
-#pragma warning disable CS0219 // Variable assigned but never used
-#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type.
-#pragma warning disable CS8601 // Possible null reference assignment
-#pragma warning disable CS8602
-#pragma warning disable CS8604 // Possible null reference argument for parameter
-#pragma warning disable CS8619
-#pragma warning disable CS8620
-#pragma warning disable CS8631 // The type cannot be used as type parameter in the generic type or method
-#pragma warning disable CS8765 // Nullability of type of parameter
-#pragma warning disable CS9074 // The 'scoped' modifier of parameter doesn't match overridden or implemented member
-#pragma warning disable CA1050 // Declare types in namespaces.*/
         sb.AppendLine(@"// <auto-generated/>
 #nullable enable
 ");
 
-        nexusMeta.EmitNexus(sb);
+        var code = NexusEmitter.Emit(data, langVersion);
+        sb.Append(code);
 
-        var code = sb.ToString();
-
+        var finalCode = sb.ToString();
         SymbolUtilities.ReturnStringBuilder(sb);
 
-        context.AddSource($"{fullType}.Nexus.g.cs", code);
-    }
-
-    static bool IsPartial(TypeDeclarationSyntax typeDeclaration)
-    {
-        return typeDeclaration.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword));
-    }
-
-    static bool IsNested(TypeDeclarationSyntax typeDeclaration)
-    {
-        return typeDeclaration.Parent is TypeDeclarationSyntax;
-    }
-
-    class Comparer : IEqualityComparer<(TypeDeclarationSyntax, Compilation)>
-    {
-        public static readonly Comparer Instance = new();
-
-        public bool Equals((TypeDeclarationSyntax, Compilation) x, (TypeDeclarationSyntax, Compilation) y)
-        {
-            return x.Item1.Equals(y.Item1);
-        }
-
-        public int GetHashCode((TypeDeclarationSyntax, Compilation) obj)
-        {
-            return obj.Item1.GetHashCode();
-        }
-    }
-
-    
-    internal class GeneratorContext
-    {
-        readonly SourceProductionContext _context;
-
-        public GeneratorContext(SourceProductionContext context, LanguageVersion languageVersion)
-        {
-            this._context = context;
-            this.LanguageVersion = languageVersion;
-        }
-
-        public CancellationToken CancellationToken => _context.CancellationToken;
-
-        public LanguageVersion LanguageVersion { get; }
-
-        public void AddSource(string hintName, string source)
-        {
-            _context.AddSource(hintName, source);
-        }
-
-        public void ReportDiagnostic(Diagnostic diagnostic)
-        {
-            _context.ReportDiagnostic(diagnostic);
-        }
+        context.AddSource($"{data.FullTypeName}.Nexus.g.cs", finalCode);
     }
 }
