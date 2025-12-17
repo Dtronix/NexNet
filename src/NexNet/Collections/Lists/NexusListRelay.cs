@@ -393,6 +393,9 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
 
     private void OnParentDisconnected()
     {
+        // Track if we were previously connected - used to determine TCS handling
+        var wasConnected = _state == NexusCollectionState.Connected;
+
         _state = NexusCollectionState.Disconnected;
         _itemList.Reset();
         _lastKnownParentState = ImmutableList<T>.Empty;
@@ -405,7 +408,16 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         }
 
         _disconnectedTcs?.TrySetResult();
-        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Only create a new ReadyTask TCS if we were previously connected (reconnect scenario).
+        // For first connection failures, keep the same TCS so that callers waiting on ReadyTask
+        // will be notified when the first successful connection occurs.
+        // This fixes a race condition where the test could read ReadyTask before the async loop
+        // creates a new TCS, causing the test to wait on a TCS that will never complete.
+        if (wasConnected)
+        {
+            _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
     }
 
     #region INexusList<T> - Read Operations
