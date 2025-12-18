@@ -32,10 +32,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly SessionCacheManager<TProxy> _cacheManager;
     private readonly IServerSessionManager? _sessionManager;
     
-    private static int _counter = 0;
-    
-    private int _internalId = Interlocked.Increment(ref _counter);
-    
     // NnP(DC4) = NexNetProtocol(Device Control Four)
     // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
     // ReSharper disable twice StaticMemberInGenericType
@@ -73,8 +69,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     
     private int _versionHash = 0;
 
+    // Security limits
+    private const int MaxAuthenticationTokenSize = 8192; // 8KB max for auth tokens
+    private const int MaxVersionStringLength = 16; // Max length for version strings
+    private const int MaxGreetingAttempts = 3; // Max greeting messages per session
+    private int _greetingAttempts = 0;
+
     /// <summary>
-    /// State of the connection that 
+    /// State of the connection that
     /// </summary>
     [Flags]
     private enum InternalState

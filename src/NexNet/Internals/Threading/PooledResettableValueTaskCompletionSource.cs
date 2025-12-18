@@ -1,6 +1,7 @@
 ﻿namespace NexNet.Internals.Threading;
 using System;
 using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
 
@@ -10,15 +11,21 @@ using System.Threading.Tasks.Sources;
 internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskSource<T>
 {
     private static readonly ConcurrentBag<PooledResettableValueTaskCompletionSource<T>> _pool = new();
-    
+    private static int _poolCount = 0;
+
+    /// <summary>
+    /// Maximum number of operations to keep in the pool.
+    /// </summary>
+    internal const int MaxPoolSize = 128;
+
     private ManualResetValueTaskSourceCore<T> _core;
     private bool _isRented;
     private bool _isCompleted;
-    
+
     /// <summary>
     /// Get the current pool size (for diagnostics)
     /// </summary>
-    public static int PoolCount => _pool.Count;
+    public static int PoolCount => Volatile.Read(ref _poolCount);
 
     private PooledResettableValueTaskCompletionSource()
     {
@@ -31,11 +38,15 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
     /// </summary>
     public static PooledResettableValueTaskCompletionSource<T> Rent()
     {
-        if (!_pool.TryTake(out var operation))
+        if (_pool.TryTake(out var operation))
+        {
+            Interlocked.Decrement(ref _poolCount);
+        }
+        else
         {
             operation = new PooledResettableValueTaskCompletionSource<T>();
         }
-        
+
         operation._isRented = true;
         return operation;
     }
@@ -50,7 +61,17 @@ internal sealed class PooledResettableValueTaskCompletionSource<T> : IValueTaskS
 
         _isRented = false;
         Reset();
-        _pool.Add(this);
+
+        // Only pool if under limit to prevent unbounded growth
+        if (Interlocked.Increment(ref _poolCount) <= MaxPoolSize)
+        {
+            _pool.Add(this);
+        }
+        else
+        {
+            Interlocked.Decrement(ref _poolCount);
+            // Let GC handle it - pool is at capacity
+        }
     }
 
     public void Reset()
