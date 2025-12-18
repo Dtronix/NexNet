@@ -9,12 +9,12 @@ namespace NexNet.Invocation;
 public class GroupManager
 {
     private readonly INexusSession _session;
-    private readonly SessionManager _sessionManager;
+    private readonly IGroupRegistry _groupRegistry;
 
-    internal GroupManager(INexusSession session, SessionManager sessionManager)
+    internal GroupManager(INexusSession session, IGroupRegistry groupRegistry)
     {
         _session = session;
-        _sessionManager = sessionManager;
+        _groupRegistry = groupRegistry;
     }
 
     /// <summary>
@@ -23,7 +23,9 @@ public class GroupManager
     /// <param name="groupName">Group to add this session to.</param>
     public void Add(string groupName)
     {
-        _sessionManager.RegisterSessionGroup(groupName, _session);
+        // Note: For local implementation this is synchronous.
+        // Phase 5 will make this properly async.
+        _ = _groupRegistry.AddToGroupAsync(groupName, _session);
     }
 
 
@@ -33,7 +35,9 @@ public class GroupManager
     /// <param name="groupNames">Groups to add this session to.</param>
     public void Add(string[] groupNames)
     {
-        _sessionManager.RegisterSessionGroup(groupNames, _session);
+        // Note: For local implementation this is synchronous.
+        // Phase 5 will make this properly async.
+        _ = _groupRegistry.AddToGroupsAsync(groupNames, _session);
     }
 
     /// <summary>
@@ -42,7 +46,9 @@ public class GroupManager
     /// <param name="groupName">Group to remove this session from.</param>
     public void Remove(string groupName)
     {
-        _sessionManager.UnregisterSessionGroup(groupName, _session);
+        // Note: For local implementation this is synchronous.
+        // Phase 5 will make this properly async.
+        _ = _groupRegistry.RemoveFromGroupAsync(groupName, _session);
     }
 
     /// <summary>
@@ -51,6 +57,9 @@ public class GroupManager
     /// <returns>Collection of connected client ids.</returns>
     public IEnumerable<string> GetNames()
     {
-        return _sessionManager.Groups.Keys;
+        // Note: For local implementation this is synchronous.
+        // Phase 5 will make this properly async.
+        var task = _groupRegistry.GetGroupNamesAsync();
+        return task.IsCompleted ? task.Result : task.AsTask().GetAwaiter().GetResult();
     }
 }

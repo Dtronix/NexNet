@@ -25,7 +25,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private long[]? _modeClientArguments;
     private string[]? _modeGroupArguments;
     private INexusSession? _session;
-    private SessionManager? _sessionManager;
+    private IServerSessionManager? _sessionManager;
 
     internal CacheManager CacheManager
     {
@@ -38,7 +38,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     void IProxyInvoker.Configure(
         INexusSession? session,
-        SessionManager? sessionManager,
+        IServerSessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments)
     {
@@ -127,7 +127,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     throw new ArgumentNullException(nameof(_sessionManager),
                         SessionManagerNullMessage);
 
-                foreach (var (_, session) in _sessionManager.Sessions)
+                foreach (var session in _sessionManager.Sessions.LocalSessions)
                 {
                     message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
                     try
@@ -152,9 +152,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     throw new ArgumentNullException(nameof(_sessionManager),
                         SessionManagerNullMessage);
 
-                foreach (var (id, session) in _sessionManager.Sessions)
+                foreach (var session in _sessionManager.Sessions.LocalSessions)
                 {
-                    if (id == _session!.Id)
+                    if (session.Id == _session!.Id)
                         continue;
 
                     try
@@ -182,7 +182,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
                 for (int i = 0; i < _modeClientArguments!.Length; i++)
                 {
-                    if (_sessionManager.Sessions.TryGetValue(_modeClientArguments[i], out var session))
+                    var session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments[i]).ConfigureAwait(false);
+                    if (session != null)
                         try
                         {
                             await session.SendMessage(message).ConfigureAwait(false);
@@ -201,7 +202,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     throw new ArgumentNullException(nameof(_sessionManager),
                         SessionManagerNullMessage);
 
-                if (_sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out var session))
+                var session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments![0]).ConfigureAwait(false);
+                if (session != null)
                 {
                     try
                     {
@@ -223,9 +225,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 if (_sessionManager == null)
                     throw new ArgumentNullException(nameof(_sessionManager), SessionManagerNullMessage);
 
-                foreach (var (id, session) in _sessionManager.Sessions)
+                foreach (var session in _sessionManager.Sessions.LocalSessions)
                 {
-                    if (id == _modeClientArguments![0])
+                    if (session.Id == _modeClientArguments![0])
                         continue;
 
                     try
@@ -257,13 +259,23 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                     throw new ArgumentNullException(nameof(_sessionManager),
                         SessionManagerNullMessage);
 
+                var excludeSessionId = _mode == ProxyInvocationMode.GroupsExceptCaller ? _session?.Id : null;
                 for (int i = 0; i < _modeGroupArguments!.Length; i++)
                 {
-                    await _sessionManager.GroupChannelIterator(
-                        _modeGroupArguments[i],
-                        static (session, message) => session.SendMessage(message),
-                        message,
-                        _mode == ProxyInvocationMode.GroupsExceptCaller ? _session?.Id : null).ConfigureAwait(false);
+                    foreach (var session in _sessionManager.Groups.GetLocalGroupMembers(_modeGroupArguments[i]))
+                    {
+                        if (excludeSessionId.HasValue && session.Id == excludeSessionId.Value)
+                            continue;
+
+                        try
+                        {
+                            await session.SendMessage(message).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            // Don't care if we can't invoke on another session here.
+                        }
+                    }
                 }
 
                 break;
@@ -411,7 +423,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             return null;
         }
 
-        var session = _session!;
+        INexusSession? session = _session!;
 
         // Get the specific client if we are invoking on it.
         if (_mode == ProxyInvocationMode.Client)
@@ -420,7 +432,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 throw new ArgumentNullException(nameof(_sessionManager),
                     SessionManagerNullMessage);
 
-            _sessionManager.Sessions.TryGetValue(_modeClientArguments![0], out session);
+            session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments![0]).ConfigureAwait(false);
 
             if (session == null)
                 throw new InvalidOperationException(

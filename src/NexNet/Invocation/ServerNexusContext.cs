@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using NexNet.Cache;
 
 namespace NexNet.Invocation;
@@ -16,7 +17,7 @@ public class ServerNexusContext<TClientProxy>
     public IProxyBase<TClientProxy> Clients { get; }
 
     internal ServerNexusContext(
-        SessionManager sessionManager,
+        IServerSessionManager sessionManager,
         SessionCacheManager<TClientProxy> cache)
     {
         Clients = new ClientProxy(sessionManager, cache);
@@ -25,7 +26,7 @@ public class ServerNexusContext<TClientProxy>
 
     internal sealed class ClientProxy : IProxyBase<TClientProxy>
     {
-        private readonly SessionManager _sessionManager;
+        private readonly IServerSessionManager _sessionManager;
         private readonly SessionCacheManager<TClientProxy> _cacheManager;
         private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
 
@@ -41,7 +42,7 @@ public class ServerNexusContext<TClientProxy>
         }
 
         internal ClientProxy(
-            SessionManager sessionManager,
+            IServerSessionManager sessionManager,
             SessionCacheManager<TClientProxy> cacheManager)
         {
             _sessionManager = sessionManager;
@@ -130,7 +131,7 @@ public class ServerNexusContext<TClientProxy>
 
         public IEnumerable<long> GetIds()
         {
-            return _sessionManager.Sessions.Keys;
+            return _sessionManager.Sessions.LocalSessions.Select(s => s.Id);
         }
 
         public void Reset()

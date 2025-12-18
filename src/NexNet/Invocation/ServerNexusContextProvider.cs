@@ -16,7 +16,7 @@ public sealed class ServerNexusContextProvider<TServerNexus, TClientProxy>
 {
     private readonly Func<TServerNexus> _nexusFactory;
     private readonly NexusCollectionManager _collectionManager;
-    private readonly SessionManager _sessionManager;
+    private readonly IServerSessionManager _sessionManager;
     private readonly SessionCacheManager<TClientProxy> _cache;
     
     /// <summary>
@@ -27,7 +27,7 @@ public sealed class ServerNexusContextProvider<TServerNexus, TClientProxy>
     internal ServerNexusContextProvider(
         Func<TServerNexus> nexusFactory,
         NexusCollectionManager collectionManager,
-        SessionManager sessionManager, 
+        IServerSessionManager sessionManager,
         SessionCacheManager<TClientProxy> cache)
     {
         _nexusFactory = nexusFactory;

@@ -30,7 +30,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     /// </summary>
     internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
 
-    private readonly SessionManager _sessionManager = new();
+    private IServerSessionManager _sessionManager = null!;
     private readonly Timer _watchdogTimer;
     private ServerConfig? _config;
     private Func<TServerNexus>? _nexusFactory;
@@ -112,15 +112,18 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         _nexusFactory = nexusFactory;
         var id = Interlocked.Increment(ref _idCounter);
         _logger = config.Logger?.CreateLogger($"SV{id}");
-        
+
+        // Initialize the session manager
+        _sessionManager = config.GetSessionManager();
+
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(_logger, true);
         TServerNexus.ConfigureCollections(_collectionManager);
-        
+
         ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
             nexusFactory,
-            _collectionManager, 
-            _sessionManager, 
+            _collectionManager,
+            _sessionManager,
             _cacheManager);
         
         if (configureCollections != null)
@@ -183,7 +186,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         }
         
         _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
-        
+
+        // Initialize the session manager
+        await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
+
         _collectionManager.Start();
     }
 
@@ -222,21 +228,24 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             _stoppedTcs?.TrySetResult();
         }
         
-        foreach (var session in _sessionManager.Sessions)
+        foreach (var session in _sessionManager.Sessions.LocalSessions)
         {
             try
             {
-                await session.Value.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
+                await session.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
             }
             catch (Exception e)
             {
                 // Ignore exceptions
-                _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Key} due to server shutdown.");
+                _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Id} due to server shutdown.");
             }
         }
-        
+
+        // Shutdown the session manager
+        await _sessionManager.ShutdownAsync().ConfigureAwait(false);
+
         _cacheManager.Clear();
-        
+
         // Stop the watchdog timer as the server is no longer running.
         _watchdogTimer.Change(-1, -1);
     }
@@ -357,8 +366,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     {
         var timeoutTicks = Environment.TickCount64 - _config!.Timeout;
 
-        foreach (var session in _sessionManager.Sessions)
-            session.Value.DisconnectIfTimeout(timeoutTicks);
+        foreach (var session in _sessionManager.Sessions.LocalSessions)
+            session.DisconnectIfTimeout(timeoutTicks);
     }
     
     private async Task ListenForConnectionsAsync()
