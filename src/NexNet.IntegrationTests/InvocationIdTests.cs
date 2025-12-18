@@ -7,10 +7,6 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-/// <summary>
-/// Tests for Fix 2.1: HashSet for invocation IDs (O(1) lookup)
-/// Tests the SessionInvocationStateManager ID generation behavior.
-/// </summary>
 internal class InvocationIdTests
 {
     private MockNexusSession _mockSession = null!;

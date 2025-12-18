@@ -8,10 +8,6 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Security;
 
-/// <summary>
-/// Tests for Fix 2.7: Rate limiting on greeting messages
-/// Verifies that sending too many greeting messages results in ProtocolError.
-/// </summary>
 internal class RateLimitingTests : BaseTests
 {
     private const int MaxGreetingAttempts = 3; // Must match NexusSession.MaxGreetingAttempts

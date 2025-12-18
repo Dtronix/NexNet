@@ -9,10 +9,6 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Security;
 
-/// <summary>
-/// Tests for Fix 2.3: Authentication token size limit (8KB max)
-/// Verifies that oversized authentication tokens are rejected with ProtocolError.
-/// </summary>
 internal class AuthenticationTokenTests : BaseTests
 {
     private const int MaxAuthenticationTokenSize = 8192; // 8KB max - must match NexusSession.MaxAuthenticationTokenSize

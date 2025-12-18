@@ -6,20 +6,12 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-/// <summary>
-/// Tests for Phase 2 security fixes:
-/// - Fix 2.1: HashSet for invocation IDs (O(1) lookup)
-/// - Fix 2.2: Secure session ID generation
-/// - Fix 2.9: Configuration bounds checking
-/// </summary>
 internal class SecurityTests
 {
     private static TcpServerConfig CreateTestConfig() => new TcpServerConfig()
     {
         EndPoint = new IPEndPoint(IPAddress.Loopback, 0)
     };
-
-    #region Configuration Bounds Tests (Fix 2.9)
 
     [Test]
     public void ConfigBase_Timeout_ValidValues_Succeeds()
@@ -239,10 +231,6 @@ internal class SecurityTests
         Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterCutoff = 50 * 1024);
     }
 
-    #endregion
-
-    #region Session ID Uniqueness Tests (Fix 2.2)
-
     [Test]
     public void SessionId_MultipleGeneration_ProducesUniqueIds()
     {
@@ -279,7 +267,4 @@ internal class SecurityTests
         var uniqueRandomParts = randomParts.Distinct().Count();
         Assert.That(uniqueRandomParts, Is.GreaterThan(990), "Random parts should be mostly unique");
     }
-
-    #endregion
-
 }

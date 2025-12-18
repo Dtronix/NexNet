@@ -8,10 +8,6 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Security;
 
-/// <summary>
-/// Tests for Fix 2.8: Version string length limit (16 chars max)
-/// Verifies that oversized version strings are rejected with ProtocolError.
-/// </summary>
 internal class VersionStringTests : BaseTests
 {
     private const int MaxVersionStringLength = 16; // Must match NexusSession.MaxVersionStringLength

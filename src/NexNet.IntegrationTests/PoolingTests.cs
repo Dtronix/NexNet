@@ -6,12 +6,6 @@ using NUnit.Framework;
 
 namespace NexNet.IntegrationTests;
 
-/// <summary>
-/// Tests for Phase 1 pooling fixes:
-/// - Fix 1.1: ListPool capacity retention (no longer sets Capacity = 0)
-/// - Fix 1.2: SocketConnection buffer pool (multiple buffers instead of single)
-/// - Fix 1.3: Bounded pool growth for ObjectCache, ListPool, PooledResettableValueTaskCompletionSource
-/// </summary>
 internal class PoolingTests
 {
     #region ListPool Tests

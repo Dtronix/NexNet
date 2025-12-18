@@ -455,7 +455,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 */
             case MessageType.ClientGreeting:
             {
-                // Fix 2.7: Rate limiting on greeting messages
+                // Rate limiting on greeting messages
                 if (Interlocked.Increment(ref _greetingAttempts) > MaxGreetingAttempts)
                 {
                     _config.Logger?.LogWarning("Too many greeting attempts, disconnecting");
@@ -479,14 +479,14 @@ internal partial class NexusSession<TNexus, TProxy>
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
 
-                // Fix 2.3: Validate authentication token size
+                // Validate authentication token size
                 if (cGreeting.AuthenticationToken.Length > MaxAuthenticationTokenSize)
                 {
                     _config.Logger?.LogWarning($"Authentication token exceeds maximum size: {cGreeting.AuthenticationToken.Length} > {MaxAuthenticationTokenSize}");
                     return DisconnectReason.ProtocolError;
                 }
 
-                // Fix 2.8: Validate version string length
+                // Validate version string length
                 if (cGreeting.Version != null && cGreeting.Version.Length > MaxVersionStringLength)
                 {
                     _config.Logger?.LogWarning($"Version string exceeds maximum length: {cGreeting.Version.Length} > {MaxVersionStringLength}");
