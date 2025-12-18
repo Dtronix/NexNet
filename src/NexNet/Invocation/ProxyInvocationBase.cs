@@ -26,6 +26,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private string[]? _modeGroupArguments;
     private INexusSession? _session;
     private IServerSessionManager? _sessionManager;
+    private IInvocationRouter? _invocationRouter;
 
     internal CacheManager CacheManager
     {
@@ -43,13 +44,14 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         object? modeArguments)
     {
         _session = session;
-        
+
         // Sets all the proxy session required configurations for all clients.
         if(_session?.IsServer == false)
             session?.CollectionManager.SetClientProxySession(this, session);
 
         // If the sessionManager is null, this is a client session.
         _sessionManager = sessionManager;
+        _invocationRouter = sessionManager?.Router;
         _mode = mode;
 
         switch (mode)
@@ -123,24 +125,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                foreach (var session in _sessionManager.Sessions.LocalSessions)
-                {
-                    message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
-                    try
-                    {
-                        await session.SendMessage(message).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Don't care if we can't invoke on another session here.
-                    }
-
-                }
-
+                await _invocationRouter.InvokeAllAsync(message).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.Others:
@@ -148,73 +136,30 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                foreach (var session in _sessionManager.Sessions.LocalSessions)
-                {
-                    if (session.Id == _session!.Id)
-                        continue;
-
-                    try
-                    {
-                        await session.SendMessage(message).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Don't care if we can't invoke on another session here.
-                    }
-                }
-
+                await _invocationRouter.InvokeAllExceptAsync(message, _session!.Id).ConfigureAwait(false);
                 break;
             }
-
 
             case ProxyInvocationMode.Clients:
             {
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                for (int i = 0; i < _modeClientArguments!.Length; i++)
-                {
-                    var session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments[i]).ConfigureAwait(false);
-                    if (session != null)
-                        try
-                        {
-                            await session.SendMessage(message).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            // Don't care if we can't invoke on another session here.
-                        }
-                }
-
+                await _invocationRouter.InvokeClientsAsync(message, _modeClientArguments!).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.Client:
             {
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                var session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments![0]).ConfigureAwait(false);
-                if (session != null)
-                {
-                    try
-                    {
-                        await session.SendMessage(message).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Don't care if we can't invoke on another session here.
-                    }
-                }
-
+                await _invocationRouter.InvokeClientAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.AllExcept:
@@ -222,62 +167,32 @@ public abstract class ProxyInvocationBase : IProxyInvoker
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager), SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                foreach (var session in _sessionManager.Sessions.LocalSessions)
-                {
-                    if (session.Id == _modeClientArguments![0])
-                        continue;
-
-                    try
-                    {
-                        await session.SendMessage(message).ConfigureAwait(false);
-                    }
-                    catch
-                    {
-                        // Don't care if we can't invoke on another session here.
-                    }
-                }
-
+                await _invocationRouter.InvokeAllExceptAsync(message, _modeClientArguments![0]).ConfigureAwait(false);
                 break;
             }
-            //case ProxyInvocationMode.Group:
-            //    _sessionManager!.GroupChannelIterator(_modeGroupArguments[0], static (channel, message) =>
-            //    {
-            //        channel.SendHeaderWithBody(message);
-            //    }, message);
-            //    break;
             case ProxyInvocationMode.Groups:
+            {
+                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
+
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
+
+                await _invocationRouter.InvokeGroupsAsync(message, _modeGroupArguments!, null).ConfigureAwait(false);
+                break;
+            }
             case ProxyInvocationMode.GroupsExceptCaller:
             {
                 if (flags.HasFlag(InvocationFlags.DuplexPipe))
-                    throw new InvalidOperationException(
-                        $"Can't invoke method with {nameof(INexusDuplexPipe)} on multiple connections");
+                    throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
-                if (_sessionManager == null)
-                    throw new ArgumentNullException(nameof(_sessionManager),
-                        SessionManagerNullMessage);
+                if (_invocationRouter == null)
+                    throw new InvalidOperationException(SessionManagerNullMessage);
 
-                var excludeSessionId = _mode == ProxyInvocationMode.GroupsExceptCaller ? _session?.Id : null;
-                for (int i = 0; i < _modeGroupArguments!.Length; i++)
-                {
-                    foreach (var session in _sessionManager.Groups.GetLocalGroupMembers(_modeGroupArguments[i]))
-                    {
-                        if (excludeSessionId.HasValue && session.Id == excludeSessionId.Value)
-                            continue;
-
-                        try
-                        {
-                            await session.SendMessage(message).ConfigureAwait(false);
-                        }
-                        catch
-                        {
-                            // Don't care if we can't invoke on another session here.
-                        }
-                    }
-                }
-
+                await _invocationRouter.InvokeGroupsAsync(message, _modeGroupArguments!, _session?.Id).ConfigureAwait(false);
                 break;
             }
 

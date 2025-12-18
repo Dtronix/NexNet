@@ -126,14 +126,12 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
 
         var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
-            connectedNexus.OnInitializeEvent = nexus =>
+            connectedNexus.OnInitializeEvent = async nexus =>
             {
                 if (addGroups.Length == 1)
-                    nexus.Context.Groups.Add(addGroups[0]);
+                    await nexus.Context.Groups.AddAsync(addGroups[0]);
                 else
-                    nexus.Context.Groups.Add(addGroups);
-                
-                return ValueTask.CompletedTask;
+                    await nexus.Context.Groups.AddAsync(addGroups);
             };
 
             connectedNexus.ServerTaskEvent = nexusInvocation;
@@ -179,14 +177,12 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
 
         var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.OnTestFail), connectedNexus =>
         {
-            connectedNexus.OnInitializeEvent = nexus =>
+            connectedNexus.OnInitializeEvent = async nexus =>
             {
                 if (addGroups.Length == 1)
-                    nexus.Context.Groups.Add(addGroups[0]);
+                    await nexus.Context.Groups.AddAsync(addGroups[0]);
                 else
-                    nexus.Context.Groups.Add(addGroups);
-                
-                return ValueTask.CompletedTask;
+                    await nexus.Context.Groups.AddAsync(addGroups);
             };
         });
 
