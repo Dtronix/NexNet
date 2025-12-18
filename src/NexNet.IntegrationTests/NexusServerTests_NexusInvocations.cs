@@ -49,10 +49,9 @@ internal class NexusServerTests_NexusInvocations : BaseTests
             completed = true;
         };
 
-        server.OnNexusCreated = nexus => nexus.OnInitializeEvent = nexus =>
+        server.OnNexusCreated = nexus => nexus.OnInitializeEvent = async nexus =>
         {
-            nexus.Context.Groups.Add("myGroup");
-            return ValueTask.CompletedTask;
+            await nexus.Context.Groups.AddAsync("myGroup");
         };
 
         await server.StartAsync().Timeout(1);
@@ -79,10 +78,9 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         NexusServer<ServerNexus, ServerNexus.ClientProxy> server = null!;
         server = CreateServer(CreateServerConfig(type), connectedNexus =>
         {
-            connectedNexus.OnInitializeEvent = nexus =>
+            connectedNexus.OnInitializeEvent = async nexus =>
             {
-                nexus.Context.Groups.Add("myGroup");
-                return ValueTask.CompletedTask;
+                await nexus.Context.Groups.AddAsync("myGroup");
             };
             connectedNexus.OnConnectedEvent = async nexus =>
             {

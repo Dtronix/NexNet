@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Invocation;
 
 namespace NexNet.Transports;
 
@@ -50,4 +51,12 @@ public abstract class ServerConfig : ConfigBase
         return OnCreateServerListener(cancellationToken);
     }
 
+    /// <summary>
+    /// Gets the session manager, creating a default LocalServerSessionManager if none is configured.
+    /// </summary>
+    /// <returns>The session manager instance.</returns>
+    internal IServerSessionManager GetSessionManager()
+    {
+        return new LocalServerSessionManager();
+    }
 }

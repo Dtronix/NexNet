@@ -58,16 +58,11 @@ jobs:
       with:
         path: artifacts/*
         
-    - name: Get tag name
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: olegtarasov/get-tag@v2.1
-      id: tagName
-        
     - name: Create release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        name: "NexNet ${{ steps.tagName.outputs.tag }} Released"
+        name: "NexNet ${{ github.ref_name }} Released"
         files: |
           artifacts/*.nupkg
           artifacts/*.snupkg

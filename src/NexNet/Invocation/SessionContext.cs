@@ -16,7 +16,7 @@ public abstract class SessionContext<TProxy> : ISessionContext
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     internal INexusSession<TProxy> Session { get; }
-    internal SessionManager? SessionManager { get; }
+    internal IServerSessionManager? SessionManager { get; }
     internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
 
     /// <summary>
@@ -34,7 +34,7 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// </summary>
     public long Id => Session.Id;
 
-    internal SessionContext(INexusSession<TProxy> session, SessionManager? sessionManager)
+    internal SessionContext(INexusSession<TProxy> session, IServerSessionManager? sessionManager)
     {
         Session = session;
         SessionManager = sessionManager;

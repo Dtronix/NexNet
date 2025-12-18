@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using NexNet.Internals;
 
 namespace NexNet.Invocation;
@@ -9,48 +10,47 @@ namespace NexNet.Invocation;
 public class GroupManager
 {
     private readonly INexusSession _session;
-    private readonly SessionManager _sessionManager;
+    private readonly IGroupRegistry _groupRegistry;
 
-    internal GroupManager(INexusSession session, SessionManager sessionManager)
+    internal GroupManager(INexusSession session, IGroupRegistry groupRegistry)
     {
         _session = session;
-        _sessionManager = sessionManager;
+        _groupRegistry = groupRegistry;
     }
 
     /// <summary>
-    /// Adds the current session to a group.  Used for grouping invocations.
+    /// Adds the current session to a group. Used for grouping invocations.
     /// </summary>
     /// <param name="groupName">Group to add this session to.</param>
-    public void Add(string groupName)
+    public ValueTask AddAsync(string groupName)
     {
-        _sessionManager.RegisterSessionGroup(groupName, _session);
+        return _groupRegistry.AddToGroupAsync(groupName, _session);
     }
 
-
     /// <summary>
-    /// Adds the current session to multiple groups.  Used for grouping invocations.
+    /// Adds the current session to multiple groups. Used for grouping invocations.
     /// </summary>
     /// <param name="groupNames">Groups to add this session to.</param>
-    public void Add(string[] groupNames)
+    public ValueTask AddAsync(string[] groupNames)
     {
-        _sessionManager.RegisterSessionGroup(groupNames, _session);
+        return _groupRegistry.AddToGroupsAsync(groupNames, _session);
     }
 
     /// <summary>
-    /// Removes the current session from a group.  Used for grouping invocations.
+    /// Removes the current session from a group. Used for grouping invocations.
     /// </summary>
     /// <param name="groupName">Group to remove this session from.</param>
-    public void Remove(string groupName)
+    public ValueTask RemoveAsync(string groupName)
     {
-        _sessionManager.UnregisterSessionGroup(groupName, _session);
+        return _groupRegistry.RemoveFromGroupAsync(groupName, _session);
     }
 
     /// <summary>
-    /// Gets all the connected client ids.
+    /// Gets all group names that have at least one member.
     /// </summary>
-    /// <returns>Collection of connected client ids.</returns>
-    public IEnumerable<string> GetNames()
+    /// <returns>Collection of group names.</returns>
+    public ValueTask<IReadOnlyCollection<string>> GetNamesAsync()
     {
-        return _sessionManager.Groups.Keys;
+        return _groupRegistry.GetGroupNamesAsync();
     }
 }

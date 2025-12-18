@@ -24,7 +24,7 @@ public interface IProxyInvoker
     /// <param name="modeArguments">The arguments for the invocation mode. Can be null.</param>
     internal void Configure(
         INexusSession? session,
-        SessionManager? sessionManager,
+        IServerSessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments);
     

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using NexNet.Cache;
 using NexNet.Internals;
 
@@ -29,11 +30,11 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
     /// </summary>
     public GroupManager Groups { get; }
 
-    internal ServerSessionContext(INexusSession<TClientProxy> session, SessionManager sessionManager)
+    internal ServerSessionContext(INexusSession<TClientProxy> session, IServerSessionManager sessionManager)
         : base(session, sessionManager)
     {
         _proxy = new ClientProxy(session.CacheManager, this);
-        Groups = new GroupManager(session, sessionManager);
+        Groups = new GroupManager(session, sessionManager.Groups);
     }
 
 
@@ -157,7 +158,7 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public IEnumerable<long> GetIds()
         {
-            return _context.SessionManager?.Sessions.Keys ?? Array.Empty<long>();
+            return _context.SessionManager?.Sessions.LocalSessions.Select(s => s.Id) ?? Array.Empty<long>();
         }
 
         public void Reset()

@@ -19,7 +19,7 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
 
     public required SessionCacheManager<TProxy> Cache { get; init; }
 
-    public required SessionManager? SessionManager { get; init; }
+    public required IServerSessionManager? SessionManager { get; init; }
 
     public required long Id { get; init; }
 
