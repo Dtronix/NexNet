@@ -257,6 +257,27 @@ Hubs can be created and disposed temporarily by methods such as NexusServer<>.Co
 
 Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
 
+### Session Groups
+Sessions can be added to named groups for targeted broadcasting. Group membership is managed through the `Context.Groups` API within server nexus methods:
+
+```csharp
+// Add session to groups
+await Context.Groups.AddAsync("room-123");
+await Context.Groups.AddAsync(["lobby", "players"]);
+
+// Remove from group
+await Context.Groups.RemoveAsync("room-123");
+
+// Get all group names
+var groups = await Context.Groups.GetNamesAsync();
+
+// Broadcast to group members
+await Context.Clients.Group("room-123").SendMessage("Hello room!");
+await Context.Clients.Groups(["lobby", "players"]).SendMessage("Hello all!");
+```
+
+Groups are automatically cleaned up when sessions disconnect.
+
 ## Collection Relay Mode
 
 Relay collections enable hierarchical data distribution across multiple servers. A relay server connects to a parent collection (on a master server) and broadcasts changes to its own connected clients. This is useful for scaling read-heavy workloads or distributing data across geographic regions.
