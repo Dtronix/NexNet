@@ -141,7 +141,7 @@ Notes:
 - `CancellationToken`s can't be combined with `NexusDuplexPipe` nor `INexusChannel<T>` due to pipes/channels having built-in cancellation/completion notifications.
 - `CancellationToken` must be at the end of the argument list like standard conventions.
 
-### Synchronized Collection Usage
+## Synchronized Collection Usage
 Synchronized collections exist on the server nexus and are accessed through the server proxy on the client. Collections must be decorated with `NexusCollectionAttribute`, otherwise the server nexus will throw. Synchronized collections are only allowed on the server nexus. Collections can be configured as `ServerToClient`, `BiDirectional`, or `Relay`.
 
 | Mode | Description |
@@ -167,118 +167,7 @@ public partial class ClientNexus { }
 public partial class ServerNexus { }
 ```
 
-#### Client Connection and Lifecycle
-Collections support explicit lifecycle management through `EnableAsync()` and `DisableAsync()`, with tasks for monitoring state changes.
-
-``` cs
-var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
-await server.StartAsync();
-
-var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
-await client.ConnectAsync();
-
-var list = client.Proxy.IntList;
-
-// Subscribe to change events before enabling
-list.Changed.Subscribe(args =>
-{
-    Console.WriteLine($"Collection changed: {args.ChangedAction}");
-});
-
-// Enable the collection connection (starts duplex pipe internally)
-var enabled = await list.EnableAsync();
-
-// Wait for initial sync to complete
-await list.ReadyTask;
-
-// Perform operations
-await list.AddAsync(12345);
-await list.InsertAsync(0, 99999);
-Console.WriteLine($"Count: {list.Count}, First: {list[0]}");
-
-// Monitor disconnection
-_ = list.DisabledTask.ContinueWith(_ => Console.WriteLine("Collection disconnected"));
-
-// Disable when done
-await list.DisableAsync();
-```
-
-The convenience method `ConnectAsync()` combines `EnableAsync()` and waiting for `ReadyTask`:
-``` cs
-// Equivalent to: await EnableAsync(); await ReadyTask;
-await client.Proxy.IntList.ConnectAsync();
-```
-
-#### Collection States
-Collections expose a `State` property of type `NexusCollectionState`:
-- `Disconnected` - Not connected to the server
-- `Connecting` - Connection in progress
-- `Connected` - Connected and synchronized
-
-## Duplex Pipe Usage
-NexNet has a limitation where the total serialized argument's bytes passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
-
-As with System.IO.Pipelines, the `INexusDuplexPipe` is not thread safe.  You are responsible for ensuring member calls to not overlap.
-
-## Channels
-Building upon the Duplex Pipes infrastructure, NexNet provides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
-
-Several extension methods have been provided to allow for ease of reading and writing of entire collections (e.g. selected table rows).
-- `NexusChannelExtensions.WriteAndComplete<T>(...)`: Writing a collection to either a `INexusDuplexChannel<T>` or `INexusChannelWriter<T>` with optional batch sizes for optimized sending.
-- `NexusChannelExtensions.ReadUntilComplete<T>(...)`: Reads from either a `INexusDuplexChannel<T>` or a `INexusChannelReader<T>` with an optional initial collection size to reduce collection resizing.
-
-#### INexusDuplexChannel<T>
-The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be serialized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine-tuned for performance of those simple types
-
-Unlike the `INexusDuplexPipe`, the `INexusDuplexChannel<T>` is thread safe for writing.  Reading should be done on a single thread.
-
-Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
-
-#### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
-The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine-tuned for performance.
-
-Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
-
-#### IAsyncEnumerable Usage
-
-The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
-```csharp
-var writer = await pipe.GetUnmanagedChannelWriter<int>();
-await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
-{
-    // Do something with the message.
-}
-```
-
-## Lifetimes
-New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
-
-Hubs can be created and disposed temporarily by methods such as NexusServer<>.ContextProvider.  This means no calculations or work should be performed inside the constructor.
-
-Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
-
-### Session Groups
-Sessions can be added to named groups for targeted broadcasting. Group membership is managed through the `Context.Groups` API within server nexus methods:
-
-```csharp
-// Add session to groups
-await Context.Groups.AddAsync("room-123");
-await Context.Groups.AddAsync(["lobby", "players"]);
-
-// Remove from group
-await Context.Groups.RemoveAsync("room-123");
-
-// Get all group names
-var groups = await Context.Groups.GetNamesAsync();
-
-// Broadcast to group members
-await Context.Clients.Group("room-123").SendMessage("Hello room!");
-await Context.Clients.Groups(["lobby", "players"]).SendMessage("Hello all!");
-```
-
-Groups are automatically cleaned up when sessions disconnect.
-
-## Collection Relay Mode
+### Collection Relay Mode
 
 Relay collections enable hierarchical data distribution across multiple servers. A relay server connects to a parent collection (on a master server) and broadcasts changes to its own connected clients. This is useful for scaling read-heavy workloads or distributing data across geographic regions.
 
@@ -393,6 +282,117 @@ relay.DisconnectedTask.ContinueWith(_ =>
     Console.WriteLine("Lost connection to master, reconnecting...")
 );
 ```
+
+#### Client Connection and Lifecycle
+Collections support explicit lifecycle management through `EnableAsync()` and `DisableAsync()`, with tasks for monitoring state changes.
+
+``` cs
+var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
+await server.StartAsync();
+
+var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
+await client.ConnectAsync();
+
+var list = client.Proxy.IntList;
+
+// Subscribe to change events before enabling
+list.Changed.Subscribe(args =>
+{
+    Console.WriteLine($"Collection changed: {args.ChangedAction}");
+});
+
+// Enable the collection connection (starts duplex pipe internally)
+var enabled = await list.EnableAsync();
+
+// Wait for initial sync to complete
+await list.ReadyTask;
+
+// Perform operations
+await list.AddAsync(12345);
+await list.InsertAsync(0, 99999);
+Console.WriteLine($"Count: {list.Count}, First: {list[0]}");
+
+// Monitor disconnection
+_ = list.DisabledTask.ContinueWith(_ => Console.WriteLine("Collection disconnected"));
+
+// Disable when done
+await list.DisableAsync();
+```
+
+The convenience method `ConnectAsync()` combines `EnableAsync()` and waiting for `ReadyTask`:
+``` cs
+// Equivalent to: await EnableAsync(); await ReadyTask;
+await client.Proxy.IntList.ConnectAsync();
+```
+
+#### Collection States
+Collections expose a `State` property of type `NexusCollectionState`:
+- `Disconnected` - Not connected to the server
+- `Connecting` - Connection in progress
+- `Connected` - Connected and synchronized
+
+## Duplex Pipe Usage
+NexNet has a limitation where the total serialized argument's bytes passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
+
+As with System.IO.Pipelines, the `INexusDuplexPipe` is not thread safe.  You are responsible for ensuring member calls to not overlap.
+
+## Channels
+Building upon the Duplex Pipes infrastructure, NexNet provides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
+
+Several extension methods have been provided to allow for ease of reading and writing of entire collections (e.g. selected table rows).
+- `NexusChannelExtensions.WriteAndComplete<T>(...)`: Writing a collection to either a `INexusDuplexChannel<T>` or `INexusChannelWriter<T>` with optional batch sizes for optimized sending.
+- `NexusChannelExtensions.ReadUntilComplete<T>(...)`: Reads from either a `INexusDuplexChannel<T>` or a `INexusChannelReader<T>` with an optional initial collection size to reduce collection resizing.
+
+#### INexusDuplexChannel<T>
+The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be serialized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine-tuned for performance of those simple types
+
+Unlike the `INexusDuplexPipe`, the `INexusDuplexChannel<T>` is thread safe for writing.  Reading should be done on a single thread.
+
+Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
+
+#### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
+The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine-tuned for performance.
+
+Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
+
+#### IAsyncEnumerable Usage
+
+The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
+```csharp
+var writer = await pipe.GetUnmanagedChannelWriter<int>();
+await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
+{
+    // Do something with the message.
+}
+```
+
+## Lifetimes
+New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
+
+Hubs can be created and disposed temporarily by methods such as NexusServer<>.ContextProvider.  This means no calculations or work should be performed inside the constructor.
+
+Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
+
+### Session Groups
+Sessions can be added to named groups for targeted broadcasting. Group membership is managed through the `Context.Groups` API within server nexus methods:
+
+```csharp
+// Add session to groups
+await Context.Groups.AddAsync("room-123");
+await Context.Groups.AddAsync(["lobby", "players"]);
+
+// Remove from group
+await Context.Groups.RemoveAsync("room-123");
+
+// Get all group names
+var groups = await Context.Groups.GetNamesAsync();
+
+// Broadcast to group members
+await Context.Clients.Group("room-123").SendMessage("Hello room!");
+await Context.Clients.Groups(["lobby", "players"]).SendMessage("Hello all!");
+```
+
+Groups are automatically cleaned up when sessions disconnect.
 
 ## Versioning
 
