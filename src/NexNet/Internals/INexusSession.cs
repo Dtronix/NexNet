@@ -31,7 +31,7 @@ internal interface INexusSession : ISessionMessenger
     /// <summary>
     /// Manages all the sessions connection on the server. Null if this is not a server session.
     /// </summary>
-    SessionManager? SessionManager { get; }
+    IServerSessionManager? SessionManager { get; }
 
     /// <summary>
     ///  Store for maintaining data between invocations on the nexus.
@@ -41,7 +41,7 @@ internal interface INexusSession : ISessionMessenger
     /// <summary>
     /// Manages all the invocations for this session.
     /// </summary>
-    SessionInvocationStateManager SessionInvocationStateManager { get; }
+    ISessionInvocationStateManager SessionInvocationStateManager { get; }
 
     /// <summary>
     /// Last tick that this session received a message.

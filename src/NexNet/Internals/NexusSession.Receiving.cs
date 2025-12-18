@@ -530,8 +530,8 @@ internal partial class NexusSession<TNexus, TProxy>
                 
                 EnumUtilities<InternalState>.SetFlag(
                     ref _internalState, InternalState.NexusCompletedConnection);
-                
-                _sessionManager!.RegisterSession(this);
+
+                await _sessionManager!.Sessions.RegisterSessionAsync(this).ConfigureAwait(false);
                 
                 await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
 

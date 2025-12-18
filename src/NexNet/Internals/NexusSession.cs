@@ -30,7 +30,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly TNexus _nexus;
     private readonly ConfigBase _config;
     private readonly SessionCacheManager<TProxy> _cacheManager;
-    private readonly SessionManager? _sessionManager;
+    private readonly IServerSessionManager? _sessionManager;
     
     private static int _counter = 0;
     
@@ -103,8 +103,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         }
     }
     
-    public SessionManager? SessionManager => _sessionManager;
-    public SessionInvocationStateManager SessionInvocationStateManager { get; }
+    public IServerSessionManager? SessionManager => _sessionManager;
+    public ISessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
     public INexusLogger? Logger { get; private set; }
@@ -172,7 +172,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             _config.MaxConcurrentConnectionInvocations);
 
         // Register the session if there is a manager.
-        _sessionManager?.RegisterSession(this);
+        // Note: For local implementation this is synchronous. For backplane implementations,
+        // this may need to be handled differently (e.g., in InitializeConnection).
+        if (_sessionManager != null)
+            _ = _sessionManager.Sessions.RegisterSessionAsync(this);
 
         _config.InternalOnSessionSetup?.Invoke(this);
 
@@ -366,7 +369,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         _nexus.SessionContext.Reset();
 
-        _sessionManager?.UnregisterSession(this);
+        // Unregister from groups and session registry
+        if (_sessionManager != null)
+        {
+            await _sessionManager.Groups.RemoveFromAllGroupsAsync(this).ConfigureAwait(false);
+            await _sessionManager.Sessions.UnregisterSessionAsync(this).ConfigureAwait(false);
+        }
         ((IDisposable)SessionStore).Dispose();
         _invocationTaskArgumentsPool.Clear();
 

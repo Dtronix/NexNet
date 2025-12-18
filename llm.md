@@ -76,9 +76,8 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? to
 }
 
 // Server only - called after OnAuthenticate, before OnConnected
-protected override ValueTask OnNexusInitialize() {
-    Context.Groups.Add("default-room");  // good for group registration
-    return ValueTask.CompletedTask;
+protected override async ValueTask OnNexusInitialize() {
+    await Context.Groups.AddAsync("default-room");  // good for group registration
 }
 ```
 
@@ -286,11 +285,11 @@ await Context.Clients.GroupExceptCaller("room").Method();      // group minus ca
 await Context.Clients.GroupsExceptCaller(["a", "b"]).Method(); // groups minus caller
 var allIds = Context.Clients.GetIds();              // all connected session IDs
 
-// Group management
-Context.Groups.Add("room");
-Context.Groups.Add(["room1", "room2"]);             // multiple groups
-Context.Groups.Remove("room");
-var myGroups = Context.Groups.GetNames();           // groups this session is in
+// Group management (async)
+await Context.Groups.AddAsync("room");
+await Context.Groups.AddAsync(["room1", "room2"]);             // multiple groups
+await Context.Groups.RemoveAsync("room");
+var myGroups = await Context.Groups.GetNamesAsync();           // groups this session is in
 ```
 
 ## Session Context (Server)
@@ -327,10 +326,10 @@ public async ValueTask SomeMethod() {
     // Disconnect current session
     await Context.DisconnectAsync();
 
-    // Group management
-    Context.Groups.Add("room");
-    Context.Groups.Remove("room");
-    var groups = Context.Groups.GetNames();
+    // Group management (async)
+    await Context.Groups.AddAsync("room");
+    await Context.Groups.RemoveAsync("room");
+    var groups = await Context.Groups.GetNamesAsync();
 }
 ```
 

@@ -11,7 +11,7 @@ using NexNet.Messages;
 
 namespace NexNet.Invocation;
 
-internal class SessionInvocationStateManager
+internal class SessionInvocationStateManager : ISessionInvocationStateManager
 {
     private readonly CacheManager _cacheManager;
     private readonly INexusLogger? _logger;

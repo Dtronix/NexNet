@@ -20,7 +20,7 @@ internal class CachedProxy<TProxy>
     /// <returns></returns>
     public TProxy Rent(
         INexusSession<TProxy>? session,
-        SessionManager? sessionManager,
+        IServerSessionManager? sessionManager,
         SessionCacheManager<TProxy> sessionCache,
         ProxyInvocationMode mode,
         object? modeArguments)
