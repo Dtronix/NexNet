@@ -104,7 +104,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
     
     public IServerSessionManager? SessionManager => _sessionManager;
-    public SessionInvocationStateManager SessionInvocationStateManager { get; }
+    public ISessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 
     public INexusLogger? Logger { get; private set; }

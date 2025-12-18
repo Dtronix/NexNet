@@ -41,7 +41,7 @@ internal interface INexusSession : ISessionMessenger
     /// <summary>
     /// Manages all the invocations for this session.
     /// </summary>
-    SessionInvocationStateManager SessionInvocationStateManager { get; }
+    ISessionInvocationStateManager SessionInvocationStateManager { get; }
 
     /// <summary>
     /// Last tick that this session received a message.
