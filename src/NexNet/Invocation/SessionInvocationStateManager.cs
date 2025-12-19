@@ -17,7 +17,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
     private readonly INexusLogger? _logger;
     private readonly INexusSession _nexusSession;
     private ushort _invocationId = 0;
-    private readonly List<ushort> _currentInvocations = new List<ushort>();
+    private readonly HashSet<ushort> _currentInvocations = new HashSet<ushort>();
     private readonly Lock _currentInvocationsLock = new Lock();
 
     private static int _counter = 0;
@@ -57,8 +57,16 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
             if(!addToCurrentInvocations)
                 return _invocationId;
 
+            // Handle wraparound - find next available ID with O(1) HashSet lookup
+            int attempts = 0;
             while (_currentInvocations.Contains(_invocationId))
+            {
                 _invocationId++;
+                if (++attempts > ushort.MaxValue)
+                {
+                    throw new InvalidOperationException("All invocation IDs exhausted");
+                }
+            }
 
             _currentInvocations.Add(_invocationId);
 
