@@ -1,5 +1,6 @@
 ﻿#nullable disable
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -465,13 +466,28 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
 
     private readonly PipeOptions _receiveOptions, _sendOptions;
 
-    private static List<ArraySegment<byte>> _spareBuffer;
+    private static readonly ConcurrentBag<List<ArraySegment<byte>>> _spareBufferPool = new();
+    private static int _pooledBufferCount = 0;
+
+    /// <summary>
+    /// Maximum number of spare buffers to keep in the pool.
+    /// </summary>
+    private const int MaxPooledBuffers = 32;
+
+    /// <summary>
+    /// Get the current pool size (for diagnostics).
+    /// </summary>
+    internal static int SpareBufferPoolCount => Volatile.Read(ref _pooledBufferCount);
 
     private static List<ArraySegment<byte>> GetSpareBuffer()
     {
-        var existing = Interlocked.Exchange(ref _spareBuffer, null);
-        existing?.Clear();
-        return existing;
+        if (_spareBufferPool.TryTake(out var buffer))
+        {
+            Interlocked.Decrement(ref _pooledBufferCount);
+            buffer.Clear();
+            return buffer;
+        }
+        return null;
     }
 
     private static void RecycleSpareBuffer(SocketAwaitableEventArgs args)
@@ -480,7 +496,17 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
         if (args?.BufferList is List<ArraySegment<byte>> list)
         {
             args.BufferList = null; // see #26 - don't want it being reused by the next piece of IO
-            Interlocked.Exchange(ref _spareBuffer, list);
+
+            // Only pool if under limit to prevent unbounded growth
+            if (Interlocked.Increment(ref _pooledBufferCount) <= MaxPooledBuffers)
+            {
+                _spareBufferPool.Add(list);
+            }
+            else
+            {
+                Interlocked.Decrement(ref _pooledBufferCount);
+                // Let GC handle it - pool is at capacity
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Threading;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -282,7 +283,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             Configs = _config,
             SessionManager = _sessionManager,
             Client = null,
-            Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
+            Id = GenerateSecureSessionId(baseSessionId),
             Nexus = _nexusFactory!.Invoke(),
             CollectionManager = _collectionManager,
             Logger = _logger
@@ -399,7 +400,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         Cache = _cacheManager,
                         Configs = _config,
                         SessionManager = _sessionManager,
-                        Id = (long)baseSessionId << 32 | (uint)Random.Shared.Next(),
+                        Id = GenerateSecureSessionId(baseSessionId),
                         Nexus = _nexusFactory!.Invoke(),
                         CollectionManager = _collectionManager,
                         Logger = _logger
@@ -421,5 +422,16 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);
     }
 
-
+    /// <summary>
+    /// Generates a secure session ID by combining an incrementing counter with cryptographically random bytes.
+    /// The upper 32 bits contain the sequential counter (for uniqueness), and the lower 32 bits contain
+    /// cryptographically random data (for unpredictability).
+    /// </summary>
+    private static long GenerateSecureSessionId(int baseSessionId)
+    {
+        Span<byte> randomBytes = stackalloc byte[4];
+        RandomNumberGenerator.Fill(randomBytes);
+        uint randomPart = BitConverter.ToUInt32(randomBytes);
+        return (long)baseSessionId << 32 | randomPart;
+    }
 }

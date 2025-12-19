@@ -24,8 +24,11 @@ internal class NexusPipeManager
 
     public void Setup(INexusSession session)
     {
-        _currentId = 0;
-        _usedIds.SetAll(false);
+        lock (_usedIdsLock)
+        {
+            _currentId = 0;
+            _usedIds.SetAll(false);
+        }
         _isCanceled = false;
         _session = session;
         _logger = session.Logger?.CreateLogger("PipeManager");

@@ -78,10 +78,16 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     /// <exception cref="ObjectDisposedException">Thrown if the pool has been disposed.</exception>
     public async Task<IRentedNexusClient<TServerProxy>> RentClientAsync(CancellationToken cancellationToken = default)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(NexusClientPool<TClientNexus, TServerProxy>));
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        // Double-check after acquiring semaphore to handle TOCTOU race
+        if (_disposed)
+        {
+            _semaphore.Release();
+            throw new ObjectDisposedException(nameof(NexusClientPool<TClientNexus, TServerProxy>));
+        }
 
         try
         {

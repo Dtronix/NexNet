@@ -92,8 +92,20 @@ internal partial class NexusSession<TNexus, TProxy>
                 _pipeInput?.AdvanceTo(processResult.Position, result.Buffer.End);
             }
         }
-        catch (NullReferenceException) { }
-        catch (ObjectDisposedException) { }
+        catch (NullReferenceException ex)
+        {
+            // Log NullReferenceException as it may indicate a bug
+            if (State != ConnectionState.Disconnecting)
+            {
+                Logger?.LogError(ex, "Unexpected NullReferenceException during receive processing");
+                await DisconnectCore(DisconnectReason.ProtocolError, false).ConfigureAwait(false);
+            }
+        }
+        catch (ObjectDisposedException ex)
+        {
+            // Log ObjectDisposedException for debugging
+            Logger?.LogDebug(ex, "Session disposed during receive processing");
+        }
         catch (Exception ex)
         {
             if (State != ConnectionState.Disconnecting)
@@ -443,6 +455,13 @@ internal partial class NexusSession<TNexus, TProxy>
                 */
             case MessageType.ClientGreeting:
             {
+                // Rate limiting on greeting messages
+                if (Interlocked.Increment(ref _greetingAttempts) > MaxGreetingAttempts)
+                {
+                    _config.Logger?.LogWarning("Too many greeting attempts, disconnecting");
+                    return DisconnectReason.ProtocolError;
+                }
+
                 // Set the initial flag for the greeting and
                 // ensure we are not re-connecting with a simple ClientGreeting.
                 if ((EnumUtilities<InternalState>.SetFlag(
@@ -451,20 +470,34 @@ internal partial class NexusSession<TNexus, TProxy>
                     _config.Logger?.LogError("Client attempted to connect with another ClientGreeting rather than the required ClientGreetingReconnection message.");
                     return DisconnectReason.ProtocolError;
                 }
-                
+
                 IClientGreetingMessageBase cGreeting = messageType == MessageType.ClientGreeting
                     ? message.As<ClientGreetingMessage>()
                     : message.As<ClientGreetingReconnectionMessage>();
-                        
+
                 // Verify that this is the server
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
-                
+
+                // Validate authentication token size
+                if (cGreeting.AuthenticationToken.Length > MaxAuthenticationTokenSize)
+                {
+                    _config.Logger?.LogWarning($"Authentication token exceeds maximum size: {cGreeting.AuthenticationToken.Length} > {MaxAuthenticationTokenSize}");
+                    return DisconnectReason.ProtocolError;
+                }
+
+                // Validate version string length
+                if (cGreeting.Version != null && cGreeting.Version.Length > MaxVersionStringLength)
+                {
+                    _config.Logger?.LogWarning($"Version string exceeds maximum length: {cGreeting.Version.Length} > {MaxVersionStringLength}");
+                    return DisconnectReason.ProtocolError;
+                }
+
                 if (cGreeting.ClientNexusHash != TProxy.MethodHash)
                 {
                     return DisconnectReason.ClientMismatch;
                 }
-                
+
                 var requestedVersion = cGreeting.Version;
                 
                 // If we have no versions, ensure that the requested version is null.
