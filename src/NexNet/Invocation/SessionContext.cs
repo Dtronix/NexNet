@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks;
 using System;
-using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Pools;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNet.Logging;
@@ -17,7 +17,7 @@ public abstract class SessionContext<TProxy> : ISessionContext
 {
     internal INexusSession<TProxy> Session { get; }
     internal IServerSessionManager? SessionManager { get; }
-    internal SessionCacheManager<TProxy> CacheManager => Session.CacheManager;
+    internal SessionPoolManager<TProxy> PoolManager => Session.PoolManager;
 
     /// <summary>
     /// Logger.

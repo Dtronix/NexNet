@@ -2,8 +2,8 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Cache;
 using NexNet.Collections.Lists;
+using NexNet.Pools;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -20,7 +20,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private const string CanNotInvokeDuplexPipeMessage = $"Can not invoke method with {nameof(INexusDuplexPipe)} on multiple connections";
     private const string SessionManagerNullMessage = "Session manager is null where it should not be.  Usually an indication that a server invocation is being attempted on the client.";
 
-    private CacheManager _cacheManager = null!;
+    private PoolManager _poolManager = null!;
     private ProxyInvocationMode _mode;
     private long[]? _modeClientArguments;
     private string[]? _modeGroupArguments;
@@ -28,10 +28,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     private IServerSessionManager? _sessionManager;
     private IInvocationRouter? _invocationRouter;
 
-    internal CacheManager CacheManager
+    internal PoolManager PoolManager
     {
-        get => _cacheManager;
-        set => _cacheManager = value;
+        get => _poolManager;
+        set => _poolManager = value;
     }
 
     /// <inheritdoc />
@@ -101,7 +101,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
         
-        var message = _cacheManager.Rent<InvocationMessage>();
+        var message = _poolManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
         message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
@@ -315,7 +315,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         state.Result?.Dispose();
 
         state.Result = null;
-        _cacheManager.RegisteredInvocationStateCache.Return(state);
+        _poolManager.RegisteredInvocationStatePool.Return(state);
     }
 
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
@@ -376,7 +376,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             {
                 if (state.NotifyConnection)
                 {
-                    using var message = CacheManager.Rent<InvocationCancellationMessage>();
+                    using var message = PoolManager.Rent<InvocationCancellationMessage>();
                     message.InvocationId = state.InvocationId;
                     await session.SendMessage(message).ConfigureAwait(false);
                 }

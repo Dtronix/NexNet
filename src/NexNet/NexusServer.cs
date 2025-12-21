@@ -4,8 +4,8 @@ using System.Security.Cryptography;
 using System.Threading;
 using NexNet.Messages;
 using NexNet.Transports;
-using NexNet.Cache;
 using NexNet.Invocation;
+using NexNet.Pools;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -35,7 +35,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private readonly Timer _watchdogTimer;
     private ServerConfig? _config;
     private Func<TServerNexus>? _nexusFactory;
-    private readonly SessionCacheManager<TClientProxy> _cacheManager;
+    private readonly SessionPoolManager<TClientProxy> _poolManager;
     private ITransportListener? _listener;
     private TaskCompletionSource? _stoppedTcs;
     private NexusServerState _state = NexusServerState.Stopped;
@@ -85,7 +85,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     /// </summary>
     public NexusServer()
     {
-        _cacheManager = new SessionCacheManager<TClientProxy>();
+        _poolManager = new SessionPoolManager<TClientProxy>();
         _watchdogTimer = new Timer(ConnectionWatchdog);
     }
 
@@ -125,7 +125,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             nexusFactory,
             _collectionManager,
             _sessionManager,
-            _cacheManager);
+            _poolManager);
         
         if (configureCollections != null)
         {
@@ -245,7 +245,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         // Shutdown the session manager
         await _sessionManager.ShutdownAsync().ConfigureAwait(false);
 
-        _cacheManager.Clear();
+        _poolManager.Clear();
 
         // Stop the watchdog timer as the server is no longer running.
         _watchdogTimer.Change(-1, -1);
@@ -279,7 +279,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         {
             ConnectionState = ConnectionState.Connecting,
             Transport = transport,
-            Cache = _cacheManager,
+            Pool = _poolManager,
             Configs = _config,
             SessionManager = _sessionManager,
             Client = null,
@@ -397,7 +397,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                     {
                         ConnectionState = ConnectionState.Connecting,
                         Transport = clientTransport,
-                        Cache = _cacheManager,
+                        Pool = _poolManager,
                         Configs = _config,
                         SessionManager = _sessionManager,
                         Id = GenerateSecureSessionId(baseSessionId),

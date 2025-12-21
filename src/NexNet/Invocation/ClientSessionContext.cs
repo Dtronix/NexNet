@@ -17,10 +17,10 @@ public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>
     /// </summary>
     public TProxy Proxy
     {
-        get => _proxy ??= CacheManager.ProxyCache.Rent(
+        get => _proxy ??= PoolManager.ProxyPool.Rent(
             Session,
             SessionManager,
-            Session.CacheManager,
+            Session.PoolManager,
             ProxyInvocationMode.Caller,
             null);
     }
@@ -36,7 +36,7 @@ public sealed class ClientSessionContext<TProxy> : SessionContext<TProxy>
     {
         if (_proxy != null)
         {
-            CacheManager.ProxyCache.Return(_proxy);
+            PoolManager.ProxyPool.Return(_proxy);
             _proxy = null;
         }
 

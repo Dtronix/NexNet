@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Concurrent;
-using NexNet.Cache;
 using NexNet.Collections;
+using NexNet.Pools;
 
 namespace NexNet.Invocation;
 
@@ -17,23 +17,23 @@ public sealed class ServerNexusContextProvider<TServerNexus, TClientProxy>
     private readonly Func<TServerNexus> _nexusFactory;
     private readonly NexusCollectionManager _collectionManager;
     private readonly IServerSessionManager _sessionManager;
-    private readonly SessionCacheManager<TClientProxy> _cache;
-    
+    private readonly SessionPoolManager<TClientProxy> _pool;
+
     /// <summary>
     /// Cache for all the server nexus contexts.
     /// </summary>
     internal readonly ConcurrentBag<ServerNexusContext<TClientProxy>> ServerNexusContextCache = new();
-    
+
     internal ServerNexusContextProvider(
         Func<TServerNexus> nexusFactory,
         NexusCollectionManager collectionManager,
         IServerSessionManager sessionManager,
-        SessionCacheManager<TClientProxy> cache)
+        SessionPoolManager<TClientProxy> pool)
     {
         _nexusFactory = nexusFactory;
         _collectionManager = collectionManager;
         _sessionManager = sessionManager;
-        _cache = cache;
+        _pool = pool;
     }
 
     /// <summary>
@@ -49,8 +49,8 @@ public sealed class ServerNexusContextProvider<TServerNexus, TClientProxy>
     public ServerNexusContextOwner<TServerNexus, TClientProxy> Rent()
     {
         if(!ServerNexusContextCache.TryTake(out var context))
-            context = new ServerNexusContext<TClientProxy>(_sessionManager, _cache);
-        
+            context = new ServerNexusContext<TClientProxy>(_sessionManager, _pool);
+
         return new ServerNexusContextOwner<TServerNexus, TClientProxy>(_nexusFactory, _collectionManager, this, context);
     }
 }
