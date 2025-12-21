@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
-using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Pipes;
+using NexNet.Pools;
 using NexNet.Transports;
 
 namespace NexNet.Internals;
@@ -51,9 +51,9 @@ internal interface INexusSession : ISessionMessenger
     INexusLogger? Logger { get; }
 
     /// <summary>
-    /// Contains 
+    /// Pool manager for the session.
     /// </summary>
-    internal CacheManager CacheManager { get; }
+    internal PoolManager PoolManager { get; }
     
     /// <summary>
     /// Manager for all the shared collections.
@@ -85,8 +85,8 @@ internal interface INexusSession<TProxy> : INexusSession
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     /// <summary>
-    /// Contains 
+    /// Pool manager for the session.
     /// </summary>
-    internal new SessionCacheManager<TProxy> CacheManager { get; }
+    internal new SessionPoolManager<TProxy> PoolManager { get; }
 }
 

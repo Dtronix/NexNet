@@ -4,8 +4,8 @@ using System.Threading.Tasks;
 using NexNet.Messages;
 using System.Threading;
 using NexNet.Transports;
-using NexNet.Cache;
 using NexNet.Collections;
+using NexNet.Pools;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -25,7 +25,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private long _id;
     private readonly Timer _pingTimer;
     private readonly ClientConfig _config;
-    private readonly SessionCacheManager<TServerProxy> _cacheManager;
+    private readonly SessionPoolManager<TServerProxy> _poolManager;
     private readonly TClientNexus _nexus;
     private NexusSession<TClientNexus, TServerProxy>? _session;
     private TaskCompletionSource<DisconnectReason>? _disconnectedTaskCompletionSource;
@@ -83,13 +83,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         var id = Interlocked.Increment(ref _id);
         _config = config;
         _logger = config.Logger?.CreateLogger($"CL{id}");
-        _cacheManager = new SessionCacheManager<TServerProxy>();
-        
+        _poolManager = new SessionPoolManager<TServerProxy>();
+
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(_logger, false);
         TClientNexus.ConfigureCollections(_collectionManager);
 
-        _proxy = new TServerProxy() { CacheManager = _cacheManager };
+        _proxy = new TServerProxy() { PoolManager = _poolManager };
         _nexus = nexus;
         _pingTimer = new Timer(PingTimer);
     }
@@ -153,7 +153,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             ConnectionState = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting, 
             Configs = _config,
             Transport = transport,
-            Cache = _cacheManager,
+            Pool = _poolManager,
             SessionManager = null,
             Client = this,
             Id = 0, // Initial value.  Not set by the client.

@@ -1,7 +1,7 @@
 ﻿using System.Buffers;
 using System.Threading;
 using MemoryPack;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -17,11 +17,11 @@ internal partial class InvocationResultMessage : IMessageBase
 
     public static MessageType Type { get; } = MessageType.InvocationResult;
 
-    private ICachedMessage? _messageCache = null!;
+    private IPooledMessage? _messageCache = null!;
     private ReadOnlySequence<byte>? _result;
 
     [MemoryPackIgnore]
-    public ICachedMessage? MessageCache
+    public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }

@@ -1,6 +1,6 @@
 ﻿using System.Threading;
 using MemoryPack;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -9,10 +9,10 @@ internal partial class InvocationCancellationMessage : IMessageBase
 {
     public static MessageType Type { get; } = MessageType.InvocationCancellation;
 
-    internal ICachedMessage? _messageCache = null!;
+    internal IPooledMessage? _messageCache = null!;
 
     [MemoryPackIgnore]
-    public ICachedMessage? MessageCache
+    public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }

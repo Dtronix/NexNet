@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -107,7 +107,7 @@ internal class ModifyOperation<T> : Operation<T>, IEquatable<ModifyOperation<T>>
     }
 
     
-    public static ModifyOperation<T> Rent() => ObjectCache<ModifyOperation<T>>.Rent();
-    public override void Return() => ObjectCache<ModifyOperation<T>>.Return(this);
+    public static ModifyOperation<T> Rent() => StaticObjectPool<ModifyOperation<T>>.Rent();
+    public override void Return() => StaticObjectPool<ModifyOperation<T>>.Return(this);
 
 }

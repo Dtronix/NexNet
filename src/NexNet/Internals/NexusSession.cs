@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using NexNet.Messages;
-using NexNet.Cache;
+using NexNet.Pools;
 using NexNet.Transports;
 using NexNet.Invocation;
 using System.IO.Pipelines;
@@ -29,7 +29,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly TNexus _nexus;
     private readonly ConfigBase _config;
-    private readonly SessionCacheManager<TProxy> _cacheManager;
+    private readonly SessionPoolManager<TProxy> _poolManager;
     private readonly IServerSessionManager? _sessionManager;
     
     // NnP(DC4) = NexNetProtocol(Device Control Four)
@@ -110,13 +110,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     public long LastReceived { get; private set; }
 
     public INexusLogger? Logger { get; private set; }
-    CacheManager INexusSession.CacheManager => CacheManager;
+    PoolManager INexusSession.PoolManager => PoolManager;
 
     public List<int> RegisteredGroups { get; } = new();
     
     public Lock RegisteredGroupsLock { get; } = new();
 
-    public SessionCacheManager<TProxy> CacheManager => _cacheManager;
+    public SessionPoolManager<TProxy> PoolManager => _poolManager;
     public SessionStore SessionStore { get; }
     
     public NexusCollectionManager CollectionManager { get; }
@@ -149,7 +149,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         Config = _config = configurations.Configs;
         _readyTaskCompletionSource = configurations.ReadyTaskCompletionSource;
         _disconnectedTaskCompletionSource = configurations.DisconnectedTaskCompletionSource;
-        _cacheManager = configurations.Cache;
+        _poolManager = configurations.Pool;
         _sessionManager = configurations.SessionManager;
         IsServer = configurations.Client == null;
         _client = configurations.Client;
@@ -165,10 +165,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
         
-        PipeManager = _cacheManager.PipeManagerCache.Rent(this);
+        PipeManager = _poolManager.PipeManagerPool.Rent(this);
         PipeManager.Setup(this);
 
-        SessionInvocationStateManager = new SessionInvocationStateManager(_cacheManager, _config.Logger, this);
+        SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
         SessionStore = new SessionStore();
         _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
             _config.MaxConcurrentConnectionInvocations);
@@ -224,8 +224,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         var isReconnecting = _state == ConnectionState.Reconnecting;
         using IClientGreetingMessageBase greetingMessage = isReconnecting
-            ? _cacheManager.Rent<ClientGreetingReconnectionMessage>()
-            : _cacheManager.Rent<ClientGreetingMessage>();
+            ? _poolManager.Rent<ClientGreetingReconnectionMessage>()
+            : _poolManager.Rent<ClientGreetingMessage>();
 
         // Get the latest version of the 
         var latestVersion = TProxy.VersionHashTable.Keys.LastOrDefault();
@@ -364,7 +364,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         // Cancel all pipes and return pipe manager to the cache.
         PipeManager.CancelAll();
-        _cacheManager.PipeManagerCache.Return(PipeManager);
+        _poolManager.PipeManagerPool.Return(PipeManager);
 
         _nexus.Disconnected(reason);
         OnDisconnected?.Invoke();

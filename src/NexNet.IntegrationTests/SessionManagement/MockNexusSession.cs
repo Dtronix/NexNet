@@ -1,11 +1,11 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using NexNet.Cache;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Pools;
 using NexNet.Transports;
 
 namespace NexNet.IntegrationTests.SessionManagement;
@@ -71,7 +71,7 @@ internal class MockNexusSession : INexusSession
     public IServerSessionManager? SessionManager { get; set; }
     public SessionStore SessionStore { get; } = new();
     public long LastReceived { get; set; }
-    public CacheManager CacheManager { get; set; } = null!;
+    public PoolManager PoolManager { get; set; } = null!;
     public NexusCollectionManager CollectionManager { get; set; } = null!;
     public ConfigBase Config { get; set; } = null!;
     public bool IsServer { get; set; } = true;

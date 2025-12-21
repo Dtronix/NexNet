@@ -1,6 +1,6 @@
-using NexNet.Cache;
 using NexNet.IntegrationTests.SessionManagement;
 using NexNet.Invocation;
+using NexNet.Pools;
 using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
@@ -10,19 +10,19 @@ namespace NexNet.IntegrationTests;
 internal class InvocationIdTests
 {
     private MockNexusSession _mockSession = null!;
-    private CacheManager _cacheManager = null!;
+    private PoolManager _poolManager = null!;
 
     [SetUp]
     public void SetUp()
     {
         _mockSession = new MockNexusSession();
-        _cacheManager = new CacheManager();
+        _poolManager = new PoolManager();
     }
 
     [Test]
     public void GetNextId_SequentialGeneration_ReturnsUniqueIds()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         var ids = new HashSet<ushort>();
         for (int i = 0; i < 1000; i++)
@@ -35,7 +35,7 @@ internal class InvocationIdTests
     [Test]
     public void GetNextId_WithoutAddingToInvocations_DoesNotTrack()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Get IDs without tracking
         var id1 = manager.GetNextId(false);
@@ -52,7 +52,7 @@ internal class InvocationIdTests
     [Test]
     public void GetNextId_WithWraparound_HandlesCorrectly()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Generate IDs near the wraparound point
         var ids = new List<ushort>();
@@ -68,7 +68,7 @@ internal class InvocationIdTests
     [Test]
     public async Task GetNextId_ConcurrentAccess_ThreadSafe()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
         var ids = new System.Collections.Concurrent.ConcurrentBag<ushort>();
         var tasks = new List<Task>();
 
@@ -94,7 +94,7 @@ internal class InvocationIdTests
     [Test]
     public void GetNextId_AfterRemoval_CanReuseId()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Get some IDs
         var id1 = manager.GetNextId(true);
@@ -121,7 +121,7 @@ internal class InvocationIdTests
     {
         // This test verifies that the lookup is O(1) by testing performance
         // with many active invocations
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Fill up with many active invocations
         for (int i = 0; i < 10000; i++)
@@ -146,7 +146,7 @@ internal class InvocationIdTests
     [Test]
     public void CancelAll_ClearsAllTrackedInvocations()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Get many IDs
         var originalIds = new List<ushort>();
@@ -173,7 +173,7 @@ internal class InvocationIdTests
     [Test]
     public void GetNextId_NonTracked_DoesNotAffectTrackedIds()
     {
-        var manager = new SessionInvocationStateManager(_cacheManager, null, _mockSession);
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
 
         // Get a tracked ID
         var trackedId1 = manager.GetNextId(true);

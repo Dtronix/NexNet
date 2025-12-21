@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Internals.Collections.Versioned;
 
@@ -102,6 +102,6 @@ internal class RemoveOperation<T> : Operation<T>, IEquatable<RemoveOperation<T>>
     }
 
     
-    public static RemoveOperation<T> Rent() => ObjectCache<RemoveOperation<T>>.Rent();
-    public override void Return() => ObjectCache<RemoveOperation<T>>.Return(this);
+    public static RemoveOperation<T> Rent() => StaticObjectPool<RemoveOperation<T>>.Rent();
+    public override void Return() => StaticObjectPool<RemoveOperation<T>>.Return(this);
 }
