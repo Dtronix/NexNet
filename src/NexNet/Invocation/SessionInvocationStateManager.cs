@@ -4,8 +4,8 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Pools;
 using NexNet.Logging;
 using NexNet.Messages;
 
@@ -13,7 +13,7 @@ namespace NexNet.Invocation;
 
 internal class SessionInvocationStateManager : ISessionInvocationStateManager
 {
-    private readonly CacheManager _cacheManager;
+    private readonly PoolManager _poolManager;
     private readonly INexusLogger? _logger;
     private readonly INexusSession _nexusSession;
     private ushort _invocationId = 0;
@@ -27,11 +27,11 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
     //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
 
-    public SessionInvocationStateManager(CacheManager cacheManager, INexusLogger? logger, INexusSession nexusSession)
+    public SessionInvocationStateManager(PoolManager poolManager, INexusLogger? logger, INexusSession nexusSession)
     {
         _invocationStates = new ConcurrentDictionary<int, RegisteredInvocationState>();
         //_waitingPipes = new ConcurrentDictionary<int, RegisteredNexusPipe>();
-        _cacheManager = cacheManager;
+        _poolManager = poolManager;
         _logger = logger;
         _nexusSession = nexusSession;
     }
@@ -116,7 +116,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (cancellationToken?.IsCancellationRequested == true)
             return null;
 
-        using var message = _cacheManager.Rent<InvocationMessage>();
+        using var message = _poolManager.Rent<InvocationMessage>();
 
         message.InvocationId = GetNextId(true);
         message.MethodId = methodId;
@@ -128,7 +128,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
             throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
         }
 
-        var state = _cacheManager.RegisteredInvocationStateCache.Rent();
+        var state = _poolManager.RegisteredInvocationStatePool.Rent();
 
         state.InvocationId = message.InvocationId;
         // Reset state information for this invocation.
@@ -156,7 +156,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         }
         else
         {
-            _cacheManager.RegisteredInvocationStateCache.Return(state);
+            _poolManager.RegisteredInvocationStatePool.Return(state);
             return null;
         }
 

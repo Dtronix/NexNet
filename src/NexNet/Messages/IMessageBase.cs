@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -15,7 +15,7 @@ internal interface IMessageBase : IDisposable
     /// </summary>
     public static abstract MessageType Type { get; }
 
-    public ICachedMessage? MessageCache { set; }
+    public IPooledMessage? MessageCache { set; }
 
     ///// <summary>
     ///// Resets the message to its default state for reuse.

@@ -301,18 +301,18 @@ internal partial class NexusSession<TNexus, TProxy>
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState:
                         // TODO: Review transitioning this to a simple message instead of a full message.
-                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
                     case MessageType.Invocation:
                         // Special case for invocation result, as it is passed to the method and handled/disposed there.
                         disposeMessage = false;
-                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
                     case MessageType.InvocationResult:
                         disposeMessage = false;
-                        messageBody = _cacheManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
                         break;
 
                     case MessageType.DuplexPipeWrite:
@@ -568,7 +568,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 
                 await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
 
-                using var serverGreeting = _cacheManager.Rent<ServerGreetingMessage>();
+                using var serverGreeting = _poolManager.Rent<ServerGreetingMessage>();
                 serverGreeting.Version = TProxy.MethodHash;
                 serverGreeting.ClientId = Id;
 

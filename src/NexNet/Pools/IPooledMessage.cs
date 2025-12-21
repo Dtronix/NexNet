@@ -1,15 +1,15 @@
-﻿using System.Buffers;
+using System.Buffers;
 using NexNet.Messages;
 
-namespace NexNet.Cache;
+namespace NexNet.Pools;
 
 /// <summary>
-/// Defines the operations for a cache that stores and manages messages.
+/// Defines the operations for a pool that stores and manages messages.
 /// </summary>
-internal interface ICachedMessage
+internal interface IPooledMessage
 {
     /// <summary>
-    /// Clears all the messages from the cache.
+    /// Clears all the messages from the pool.
     /// </summary>
     void Clear();
 
@@ -20,10 +20,9 @@ internal interface ICachedMessage
     /// <returns>The deserialized message.</returns>
     IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence);
 
-
     /// <summary>
-    /// Returns the specified message item back to the cache.
+    /// Returns the specified message item back to the pool.
     /// </summary>
-    /// <param name="item">The message item to be returned to the cache.</param>
+    /// <param name="item">The message item to be returned to the pool.</param>
     void Return(IMessageBase item);
 }

@@ -2,7 +2,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading;
 using MemoryPack;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -18,10 +18,10 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     private bool _isArgumentPoolArray;
     public static MessageType Type { get; } = MessageType.Invocation;
 
-    private ICachedMessage? _messageCache = null!;
+    private IPooledMessage? _messageCache = null!;
 
     [MemoryPackIgnore]
-    public ICachedMessage? MessageCache
+    public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }

@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Immutable;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Internals.Collections.Versioned;
 

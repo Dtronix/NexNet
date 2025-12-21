@@ -60,7 +60,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 
     CancellationTokenSource IMethodInvoker.RegisterCancellationToken(int invocationId)
     {
-        var cts = SessionContext.CacheManager.CancellationTokenSourceCache.Rent();
+        var cts = SessionContext.PoolManager.CancellationTokenSourcePool.Rent();
 
         _cancellableInvocations.TryAdd(invocationId, cts);
         return cts;
@@ -72,7 +72,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             return;
 
         // Try to reset the cts for another operation.
-        SessionContext.CacheManager.CancellationTokenSourceCache.Return(cts);
+        SessionContext.PoolManager.CancellationTokenSourcePool.Return(cts);
     }
 
     ValueTask<INexusDuplexPipe> IMethodInvoker.RegisterDuplexPipe(byte startId)
@@ -153,12 +153,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             return;
         }
 
-        var message = context.CacheManager.Rent<InvocationResultMessage>();
+        var message = context.PoolManager.Rent<InvocationResultMessage>();
         message.InvocationId = requestArgs.Message.InvocationId;
 
         try
         {
-            var bufferWriterCache = requestArgs.SessionContext.CacheManager.BufferWriterCache;
+            var bufferWriterCache = requestArgs.SessionContext.PoolManager.BufferWriterPool;
             if (!bufferWriterCache.TryTake(out var bufferWriter))
                 bufferWriter = BufferWriter<byte>.Create();
 

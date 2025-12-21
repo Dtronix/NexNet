@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Pipes;
 

@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using NexNet.Cache;
 using NexNet.Internals;
+using NexNet.Pools;
 
 namespace NexNet.Invocation;
 
@@ -33,7 +33,7 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
     internal ServerSessionContext(INexusSession<TClientProxy> session, IServerSessionManager sessionManager)
         : base(session, sessionManager)
     {
-        _proxy = new ClientProxy(session.CacheManager, this);
+        _proxy = new ClientProxy(session.PoolManager, this);
         Groups = new GroupManager(session, sessionManager.Groups);
     }
 
@@ -46,7 +46,7 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
     private sealed class ClientProxy : IProxyClients<TClientProxy>
     {
-        private readonly SessionCacheManager<TClientProxy> _cacheManager;
+        private readonly SessionPoolManager<TClientProxy> _poolManager;
         private readonly ServerSessionContext<TClientProxy> _context;
         private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
 
@@ -54,10 +54,10 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy Caller
         {
-            get => _caller ??= _cacheManager.ProxyCache.Rent(
+            get => _caller ??= _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.Caller,
                 null);
         }
@@ -65,41 +65,41 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
         private TClientProxy? _all;
         public TClientProxy All
         {
-            get => _all ??= _cacheManager.ProxyCache.Rent(
+            get => _all ??= _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
-                ProxyInvocationMode.All, 
+                _context.Session.PoolManager,
+                ProxyInvocationMode.All,
                 null);
         }
 
         private TClientProxy? _others;
         public TClientProxy Others
         {
-            get => _others ??= _cacheManager.ProxyCache.Rent(
+            get => _others ??= _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.Others,
                 null);
         }
 
 
         internal ClientProxy(
-            SessionCacheManager<TClientProxy> cacheManager,
+            SessionPoolManager<TClientProxy> poolManager,
             ServerSessionContext<TClientProxy> context)
         {
-            _cacheManager = cacheManager;
+            _poolManager = poolManager;
             _context = context;
         }
 
 
         public TClientProxy Client(long id)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
@@ -109,10 +109,10 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy Clients(long[] ids)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.Clients,
                 ids);
             _instancedProxies.Push(proxy);
@@ -132,10 +132,10 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy Groups(string[] groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);
@@ -145,10 +145,10 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
 
         public TClientProxy GroupsExceptCaller(string[] groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 _context.Session,
                 _context.SessionManager,
-                _context.Session.CacheManager,
+                _context.Session.PoolManager,
                 ProxyInvocationMode.GroupsExceptCaller,
                 groupName);
             _instancedProxies.Push(proxy);
@@ -165,25 +165,25 @@ public sealed class ServerSessionContext<TClientProxy> : SessionContext<TClientP
         {
             if (_caller != null)
             {
-                _cacheManager.ProxyCache.Return(_caller);
+                _poolManager.ProxyPool.Return(_caller);
                 _caller = null;
             }
 
             if (_all != null)
             {
-                _cacheManager.ProxyCache.Return(_all);
+                _poolManager.ProxyPool.Return(_all);
                 _all = null;
             }
 
             if (_others != null)
             {
-                _cacheManager.ProxyCache.Return(_others);
+                _poolManager.ProxyPool.Return(_others);
                 _others = null;
             }
 
             while (_instancedProxies.TryPop(out var proxy))
             {
-                _cacheManager.ProxyCache.Return(proxy);
+                _poolManager.ProxyPool.Return(proxy);
             }
         }
     }

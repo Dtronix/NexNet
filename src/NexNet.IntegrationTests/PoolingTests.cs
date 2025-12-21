@@ -1,5 +1,4 @@
-using NexNet.Cache;
-using NexNet.Internals.Threading;
+using NexNet.Pools;
 using NUnit.Framework;
 
 #pragma warning disable VSTHRD200
@@ -131,57 +130,58 @@ internal class PoolingTests
     public void ObjectCache_Rent_CreatesNewInstanceWhenPoolEmpty()
     {
         // Clear the pool
-        ObjectCache<TestCacheableObject>.Clear();
+        StaticObjectPool<TestCacheableObject>.Clear();
 
         // Rent should create new instance
-        var obj = ObjectCache<TestCacheableObject>.Rent();
+        var obj = StaticObjectPool<TestCacheableObject>.Rent();
         Assert.That(obj, Is.Not.Null);
     }
 
     [Test]
     public void ObjectCache_Return_AddsToPool()
     {
-        ObjectCache<TestCacheableObject>.Clear();
-        var initialCount = ObjectCache<TestCacheableObject>.PoolCount;
+        StaticObjectPool<TestCacheableObject>.Clear();
+        var initialCount = StaticObjectPool<TestCacheableObject>.PoolCount;
 
-        var obj = ObjectCache<TestCacheableObject>.Rent();
-        ObjectCache<TestCacheableObject>.Return(obj);
+        var obj = StaticObjectPool<TestCacheableObject>.Rent();
+        StaticObjectPool<TestCacheableObject>.Return(obj);
 
-        Assert.That(ObjectCache<TestCacheableObject>.PoolCount, Is.GreaterThan(initialCount));
+        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.GreaterThan(initialCount));
     }
 
     [Test]
-    public void ObjectCache_Return_ThrowsOnNull()
+    public void ObjectCache_Return_NullDoesNotThrow()
     {
-        Assert.Throws<ArgumentNullException>(() => ObjectCache<TestCacheableObject>.Return(null!));
+        // StaticObjectPool now accepts null gracefully (no-op)
+        Assert.DoesNotThrow(() => StaticObjectPool<TestCacheableObject>.Return(null!));
     }
 
     [Test]
     public void ObjectCache_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Clear the pool
-        ObjectCache<TestCacheableObject>.Clear();
+        StaticObjectPool<TestCacheableObject>.Clear();
 
         // Return more items than the max pool size
-        for (int i = 0; i < ObjectCache<TestCacheableObject>.MaxPoolSize + 50; i++)
+        for (int i = 0; i < StaticObjectPool<TestCacheableObject>.MaxPoolSize + 50; i++)
         {
-            ObjectCache<TestCacheableObject>.Return(new TestCacheableObject());
+            StaticObjectPool<TestCacheableObject>.Return(new TestCacheableObject());
         }
 
         // Pool count should not exceed MaxPoolSize
-        Assert.That(ObjectCache<TestCacheableObject>.PoolCount, Is.LessThanOrEqualTo(ObjectCache<TestCacheableObject>.MaxPoolSize));
+        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.LessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize));
     }
 
     [Test]
     public void ObjectCache_RentReturn_ReusesObjects()
     {
-        ObjectCache<TestCacheableObject>.Clear();
+        StaticObjectPool<TestCacheableObject>.Clear();
 
-        var obj1 = ObjectCache<TestCacheableObject>.Rent();
+        var obj1 = StaticObjectPool<TestCacheableObject>.Rent();
         obj1.Value = 42;
-        ObjectCache<TestCacheableObject>.Return(obj1);
+        StaticObjectPool<TestCacheableObject>.Return(obj1);
 
-        var obj2 = ObjectCache<TestCacheableObject>.Rent();
+        var obj2 = StaticObjectPool<TestCacheableObject>.Rent();
         Assert.That(obj2, Is.SameAs(obj1));
         Assert.That(obj2.Value, Is.EqualTo(42)); // State preserved (caller's responsibility to reset)
     }
@@ -190,29 +190,29 @@ internal class PoolingTests
     public void ObjectCache_Clear_ResetsPoolCount()
     {
         // Add some items
-        ObjectCache<TestCacheableObject>.Return(new TestCacheableObject());
-        ObjectCache<TestCacheableObject>.Return(new TestCacheableObject());
-        Assert.That(ObjectCache<TestCacheableObject>.PoolCount, Is.GreaterThan(0));
+        StaticObjectPool<TestCacheableObject>.Return(new TestCacheableObject());
+        StaticObjectPool<TestCacheableObject>.Return(new TestCacheableObject());
+        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.GreaterThan(0));
 
         // Clear
-        ObjectCache<TestCacheableObject>.Clear();
+        StaticObjectPool<TestCacheableObject>.Clear();
 
         // Pool count should be 0
-        Assert.That(ObjectCache<TestCacheableObject>.PoolCount, Is.EqualTo(0));
+        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.EqualTo(0));
     }
 
     #endregion
 
-    #region PooledResettableValueTaskCompletionSource Tests
+    #region PooledValueTaskSource Tests
 
     [Test]
     public void RVTCS_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Create many sources and return them all
-        var sources = new List<PooledResettableValueTaskCompletionSource<int>>();
-        for (int i = 0; i < PooledResettableValueTaskCompletionSource<int>.MaxPoolSize + 50; i++)
+        var sources = new List<PooledValueTaskSource<int>>();
+        for (int i = 0; i < PooledValueTaskSource<int>.MaxPoolSize + 50; i++)
         {
-            var source = PooledResettableValueTaskCompletionSource<int>.Rent();
+            var source = PooledValueTaskSource<int>.Rent();
             source.TrySetResult(i);
             sources.Add(source);
         }
@@ -223,22 +223,22 @@ internal class PoolingTests
         }
 
         // Pool count should not exceed MaxPoolSize
-        Assert.That(PooledResettableValueTaskCompletionSource<int>.PoolCount,
-            Is.LessThanOrEqualTo(PooledResettableValueTaskCompletionSource<int>.MaxPoolSize));
+        Assert.That(PooledValueTaskSource<int>.PoolCount,
+            Is.LessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize));
     }
 
     [Test]
     public void RVTCS_PoolCount_TracksPoolSize()
     {
         // Rent and return to verify tracking works
-        var source1 = PooledResettableValueTaskCompletionSource<string>.Rent();
+        var source1 = PooledValueTaskSource<string>.Rent();
         source1.TrySetResult("test");
-        var countBeforeReturn = PooledResettableValueTaskCompletionSource<string>.PoolCount;
+        var countBeforeReturn = PooledValueTaskSource<string>.PoolCount;
 
         source1.Return();
 
         // Count should have increased after return
-        Assert.That(PooledResettableValueTaskCompletionSource<string>.PoolCount,
+        Assert.That(PooledValueTaskSource<string>.PoolCount,
             Is.GreaterThanOrEqualTo(countBeforeReturn));
     }
 
@@ -252,7 +252,7 @@ internal class PoolingTests
         {
             tasks.Add(Task.Run(async () =>
             {
-                var source = PooledResettableValueTaskCompletionSource<int>.Rent();
+                var source = PooledValueTaskSource<int>.Rent();
                 var task = source.Task;
                 source.TrySetResult(i);
                 await task;
@@ -263,8 +263,8 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should still respect the limit
-        Assert.That(PooledResettableValueTaskCompletionSource<int>.PoolCount,
-            Is.LessThanOrEqualTo(PooledResettableValueTaskCompletionSource<int>.MaxPoolSize));
+        Assert.That(PooledValueTaskSource<int>.PoolCount,
+            Is.LessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize));
     }
 
     #endregion
@@ -299,7 +299,7 @@ internal class PoolingTests
     [Test]
     public async Task ObjectCache_ConcurrentRentReturn_MaintainsIntegrity()
     {
-        ObjectCache<TestCacheableObject>.Clear();
+        StaticObjectPool<TestCacheableObject>.Clear();
         var tasks = new List<Task>();
 
         for (int i = 0; i < 100; i++)
@@ -308,9 +308,9 @@ internal class PoolingTests
             {
                 for (int j = 0; j < 50; j++)
                 {
-                    var obj = ObjectCache<TestCacheableObject>.Rent();
+                    var obj = StaticObjectPool<TestCacheableObject>.Rent();
                     obj.Value = j;
-                    ObjectCache<TestCacheableObject>.Return(obj);
+                    StaticObjectPool<TestCacheableObject>.Return(obj);
                 }
             }));
         }
@@ -318,8 +318,8 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should respect limits even under concurrent access
-        Assert.That(ObjectCache<TestCacheableObject>.PoolCount,
-            Is.LessThanOrEqualTo(ObjectCache<TestCacheableObject>.MaxPoolSize));
+        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount,
+            Is.LessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize));
     }
 
     [Test]

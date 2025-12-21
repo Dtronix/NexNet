@@ -1,7 +1,7 @@
 ﻿using System.Threading;
 using MemoryPack;
-using NexNet.Cache;
 using NexNet.Pipes;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -10,10 +10,10 @@ internal partial class DuplexPipeUpdateStateMessage : IMessageBase
 {
     public static MessageType Type { get; } = MessageType.DuplexPipeUpdateState;
 
-    private ICachedMessage? _messageCache = null!;
+    private IPooledMessage? _messageCache = null!;
 
     [MemoryPackIgnore]
-    public ICachedMessage? MessageCache
+    public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }

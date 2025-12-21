@@ -200,7 +200,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
 
         //_logger?.LogInfo($"Notifying state: {_currentState}");
         var currentState = _currentState;
-        using var message = session.CacheManager.Rent<DuplexPipeUpdateStateMessage>();
+        using var message = session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
         message.PipeId = Id;
         message.State = currentState;
         try

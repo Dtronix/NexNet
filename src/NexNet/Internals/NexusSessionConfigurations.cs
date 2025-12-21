@@ -1,8 +1,8 @@
 ﻿using System.Threading.Tasks;
-using NexNet.Cache;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
+using NexNet.Pools;
 using NexNet.Transports;
 
 namespace NexNet.Internals;
@@ -17,7 +17,7 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
 
     public required ITransport Transport { get; init; }
 
-    public required SessionCacheManager<TProxy> Cache { get; init; }
+    public required SessionPoolManager<TProxy> Pool { get; init; }
 
     public required IServerSessionManager? SessionManager { get; init; }
 

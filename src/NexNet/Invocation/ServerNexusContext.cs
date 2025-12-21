@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Invocation;
 
@@ -18,44 +18,44 @@ public class ServerNexusContext<TClientProxy>
 
     internal ServerNexusContext(
         IServerSessionManager sessionManager,
-        SessionCacheManager<TClientProxy> cache)
+        SessionPoolManager<TClientProxy> pool)
     {
-        Clients = new ClientProxy(sessionManager, cache);
+        Clients = new ClientProxy(sessionManager, pool);
 
     }
 
     internal sealed class ClientProxy : IProxyBase<TClientProxy>
     {
         private readonly IServerSessionManager _sessionManager;
-        private readonly SessionCacheManager<TClientProxy> _cacheManager;
+        private readonly SessionPoolManager<TClientProxy> _poolManager;
         private readonly Stack<TClientProxy> _instancedProxies = new Stack<TClientProxy>();
 
         private TClientProxy? _all;
         public TClientProxy All
         {
-            get => _all ??= _cacheManager.ProxyCache.Rent(
+            get => _all ??= _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.All,
                 null);
         }
 
         internal ClientProxy(
             IServerSessionManager sessionManager,
-            SessionCacheManager<TClientProxy> cacheManager)
+            SessionPoolManager<TClientProxy> poolManager)
         {
             _sessionManager = sessionManager;
-            _cacheManager = cacheManager;
+            _poolManager = poolManager;
         }
 
 
         public TClientProxy Client(long id)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Client,
                 new[] { id });
             _instancedProxies.Push(proxy);
@@ -65,10 +65,10 @@ public class ServerNexusContext<TClientProxy>
 
         public TClientProxy Clients(long[] ids)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Clients,
                 ids);
             _instancedProxies.Push(proxy);
@@ -78,10 +78,10 @@ public class ServerNexusContext<TClientProxy>
 
         public TClientProxy Group(string groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Groups,
                 new[] { groupName });
             _instancedProxies.Push(proxy);
@@ -91,10 +91,10 @@ public class ServerNexusContext<TClientProxy>
 
         public TClientProxy GroupExceptCaller(string groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Groups,
                 new[] { groupName });
             _instancedProxies.Push(proxy);
@@ -105,10 +105,10 @@ public class ServerNexusContext<TClientProxy>
 
         public TClientProxy Groups(string[] groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);
@@ -118,10 +118,10 @@ public class ServerNexusContext<TClientProxy>
 
         public TClientProxy GroupsExceptCaller(string[] groupName)
         {
-            var proxy = _cacheManager.ProxyCache.Rent(
+            var proxy = _poolManager.ProxyPool.Rent(
                 null,
                 _sessionManager,
-                _cacheManager,
+                _poolManager,
                 ProxyInvocationMode.Groups,
                 groupName);
             _instancedProxies.Push(proxy);
@@ -138,13 +138,13 @@ public class ServerNexusContext<TClientProxy>
         {
             if (_all != null)
             {
-                _cacheManager.ProxyCache.Return(_all);
+                _poolManager.ProxyPool.Return(_all);
                 _all = null;
             }
 
             while (_instancedProxies.TryPop(out var proxy))
             {
-                _cacheManager.ProxyCache.Return(proxy);
+                _poolManager.ProxyPool.Return(proxy);
             }
         }
     }

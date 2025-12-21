@@ -1,6 +1,6 @@
 ﻿using System.Threading;
 using MemoryPack;
-using NexNet.Cache;
+using NexNet.Pools;
 
 namespace NexNet.Messages;
 
@@ -9,10 +9,10 @@ internal partial class ServerGreetingMessage : IMessageBase
 {
     public static MessageType Type => MessageType.ServerGreeting;
 
-    private ICachedMessage? _messageCache = null!;
+    private IPooledMessage? _messageCache = null!;
 
     [MemoryPackIgnore]
-    public ICachedMessage? MessageCache
+    public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }

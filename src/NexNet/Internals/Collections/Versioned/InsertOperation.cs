@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using NexNet.Cache;
+using NexNet.Pools;
 using NexNet.Collections;
 
 namespace NexNet.Internals.Collections.Versioned;
@@ -113,6 +113,6 @@ internal class InsertOperation<T> : Operation<T>, IEquatable<InsertOperation<T>>
     }
 
 
-    public static InsertOperation<T> Rent() => ObjectCache<InsertOperation<T>>.Rent();
-    public override void Return() => ObjectCache<InsertOperation<T>>.Return(this);
+    public static InsertOperation<T> Rent() => StaticObjectPool<InsertOperation<T>>.Rent();
+    public override void Return() => StaticObjectPool<InsertOperation<T>>.Return(this);
 }

@@ -1,5 +1,5 @@
-using NexNet.Cache;
 using NexNet.Messages;
+using NexNet.Pools;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 
@@ -15,7 +15,7 @@ internal class MockInvocationMessage : IInvocationMessage, IMessageBase
     public InvocationFlags Flags { get; set; } = InvocationFlags.IgnoreReturn;
     public Memory<byte> Arguments { get; set; } = Memory<byte>.Empty;
 
-    public ICachedMessage? MessageCache { get; set; }
+    public IPooledMessage? MessageCache { get; set; }
 
     public T? DeserializeArguments<T>()
     {
