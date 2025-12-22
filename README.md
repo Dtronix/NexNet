@@ -6,6 +6,7 @@ NexNet is a .NET real-time asynchronous networking library, providing developers
 - Automatic reconnection upon timeout or socket losing connection.
 - High performance Socket and Pipeline usage.
 - Multiple transports and easy extensibility.
+- Connection rate limiting and DoS protection.
 - Strong Typed Hubs & Clients.
 - Server <-> Client communication
   - Synchronized collections (INexusList)
@@ -537,6 +538,37 @@ public class VersioningSample : INexusSample
     }
 }
 ```
+
+## Security
+
+### Connection Rate Limiting
+
+NexNet provides application-level connection rate limiting to protect servers against DoS attacks.
+
+**Capabilities:**
+- Global concurrent connection limits
+- Per-IP connection limits
+- Sliding window rate limiting
+- Automatic temporary banning of repeat offenders
+- IP whitelisting for trusted infrastructure
+
+```csharp
+var serverConfig = new TcpServerConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Any, 5000),
+    RateLimiting = new ConnectionRateLimitConfig
+    {
+        MaxConcurrentConnections = 1000,    // Total connections
+        MaxConnectionsPerIp = 10,           // Per-IP limit
+        ConnectionsPerIpPerWindow = 20,     // Rate limit per IP
+        PerIpWindowSeconds = 60,            // Sliding window
+        BanDurationSeconds = 300,           // 5-min ban for offenders
+        BanThreshold = 5                    // Violations before ban
+    }
+};
+```
+
+Rate limiting works across all transport types (TCP, TLS, UDS, WebSocket, HttpSocket, QUIC). Per-IP limits are automatically skipped for Unix Domain Sockets.
 
 ## Transports Supported
 - Unix Domain Sockets (UDS)
