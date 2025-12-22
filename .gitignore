@@ -4,3 +4,6 @@
 /tools/certgen/*.pfx
 artifacts
 /src/NexNetDemo/Properties/launchSettings.json
+
+# Performance benchmark results
+/src/NexNet.PerformanceBenchmarks/Results/
