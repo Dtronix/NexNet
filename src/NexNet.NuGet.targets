@@ -1,0 +1,29 @@
+<Project>
+  <UsingTask TaskName="StripHtmlImages" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <InputFile ParameterType="System.String" Required="true" />
+      <OutputFile ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var content = File.ReadAllText(InputFile);
+        // Remove HTML img tags only
+        content = Regex.Replace(content, @"<img[^>]*>", "", RegexOptions.IgnoreCase);
+        Directory.CreateDirectory(Path.GetDirectoryName(OutputFile));
+        File.WriteAllText(OutputFile, content);
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="GenerateNuGetReadme" BeforeTargets="_GetPackageFiles" Condition="'$(IsPackable)' != 'false'">
+    <PropertyGroup>
+      <NuGetReadmePath>$(IntermediateOutputPath)README.nuget.md</NuGetReadmePath>
+    </PropertyGroup>
+    <StripHtmlImages InputFile="$(MSBuildThisFileDirectory)../README.md" OutputFile="$(NuGetReadmePath)" />
+    <ItemGroup>
+      <_PackageFiles Include="$(NuGetReadmePath)" PackagePath="/README.md" />
+    </ItemGroup>
+  </Target>
+</Project>
