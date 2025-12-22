@@ -19,5 +19,6 @@
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
   <Project Path="NexNetBenchmarks\NexNetBenchmarks.csproj" />
+  <Project Path="NexNet.PerformanceBenchmarks\NexNet.PerformanceBenchmarks.csproj" />
   <Project Path="NexNet\NexNet.csproj" />
 </Solution>
