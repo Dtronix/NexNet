@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Invocation;
+using NexNet.RateLimiting;
 
 namespace NexNet.Transports;
 
@@ -28,6 +29,11 @@ public abstract class ServerConfig : ConfigBase
     /// Set to true to authenticate teh client connection.
     /// </summary>
     public bool Authenticate { get; set; } = false;
+
+    /// <summary>
+    /// Configuration for connection rate limiting. Null = disabled (default).
+    /// </summary>
+    public ConnectionRateLimitConfig? RateLimiting { get; set; }
 
     /// <summary>
     /// Creates the listener and starts.
