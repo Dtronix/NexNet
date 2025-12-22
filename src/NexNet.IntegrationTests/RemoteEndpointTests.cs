@@ -13,8 +13,6 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class RemoteEndpointTests : BaseTests
 {
-    #region Server-side tests (server sees client's remote endpoint)
-
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
@@ -131,10 +129,6 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(ports[0], Is.Not.EqualTo(ports[1]), "Each client should have a different ephemeral port");
     }
 
-    #endregion
-
-    #region Client-side tests (client sees server's remote endpoint)
-
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
@@ -218,13 +212,9 @@ internal class RemoteEndpointTests : BaseTests
         var (remoteAddress, remotePort) = await tcs.Task.Timeout(1);
 
         // WebSocket/HttpSocket client transports don't provide remote endpoint
-        // This is expected behavior - just verify the test completes without error
-        TestContext.Out.WriteLine($"WebSocket/HttpSocket client RemoteAddress: {remoteAddress ?? "null"}, RemotePort: {remotePort?.ToString() ?? "null"}");
+        Assert.That(remoteAddress, Is.Null);
+        Assert.That(remotePort, Is.Null);
     }
-
-    #endregion
-
-    #region Proxy header tests (ASP.NET transports only)
 
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
@@ -545,10 +535,6 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(expectedClientIp));
     }
 
-    #endregion
-
-    #region Consistency tests
-
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
@@ -592,6 +578,4 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(laterAddress, Is.EqualTo(initialAddress), "RemoteAddress should remain consistent during session");
         Assert.That(laterPort, Is.EqualTo(initialPort), "RemotePort should remain consistent during session");
     }
-
-    #endregion
 }
