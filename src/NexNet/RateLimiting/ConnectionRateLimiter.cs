@@ -65,12 +65,14 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
             }
         }
 
-        // 2. Check global concurrent connection limit
+        // 2. Check global concurrent connection limit (atomic increment-then-check)
         if (_config.MaxConcurrentConnections > 0)
         {
-            var current = Volatile.Read(ref _currentConnectionCount);
-            if (current >= _config.MaxConcurrentConnections)
+            var newCount = Interlocked.Increment(ref _currentConnectionCount);
+            if (newCount > _config.MaxConcurrentConnections)
             {
+                // Over limit - decrement and reject
+                Interlocked.Decrement(ref _currentConnectionCount);
                 RecordViolation(normalizedAddress, now);
                 Interlocked.Increment(ref _totalRejected);
                 return ConnectionRateLimitResult.MaxConcurrentConnectionsExceeded;
@@ -88,6 +90,11 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
 
                 if (_globalConnectionTimes.Count >= _config.GlobalConnectionsPerSecond)
                 {
+                    // Release the global slot we acquired earlier
+                    if (_config.MaxConcurrentConnections > 0)
+                    {
+                        Interlocked.Decrement(ref _currentConnectionCount);
+                    }
                     RecordViolation(normalizedAddress, now);
                     Interlocked.Increment(ref _totalRejected);
                     return ConnectionRateLimitResult.GlobalRateExceeded;
@@ -100,12 +107,19 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
         {
             var ipState = _ipStates.GetOrAdd(normalizedAddress, _ => new IpConnectionState());
 
-            // 4a. Per-IP concurrent limit
+            // 4a. Per-IP concurrent limit (atomic increment-then-check)
             if (_config.MaxConnectionsPerIp > 0)
             {
-                var ipCurrent = Volatile.Read(ref ipState.ConcurrentCount);
-                if (ipCurrent >= _config.MaxConnectionsPerIp)
+                var newIpCount = Interlocked.Increment(ref ipState.ConcurrentCount);
+                if (newIpCount > _config.MaxConnectionsPerIp)
                 {
+                    // Over limit - decrement and reject
+                    Interlocked.Decrement(ref ipState.ConcurrentCount);
+                    // Also release the global slot we acquired earlier
+                    if (_config.MaxConcurrentConnections > 0)
+                    {
+                        Interlocked.Decrement(ref _currentConnectionCount);
+                    }
                     RecordViolation(normalizedAddress, now);
                     Interlocked.Increment(ref _totalRejected);
                     return ConnectionRateLimitResult.PerIpConcurrentLimitExceeded;
@@ -126,6 +140,16 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
 
                     if (ipState.ConnectionTimes.Count >= _config.ConnectionsPerIpPerWindow)
                     {
+                        // Release the per-IP slot we acquired earlier
+                        if (_config.MaxConnectionsPerIp > 0)
+                        {
+                            Interlocked.Decrement(ref ipState.ConcurrentCount);
+                        }
+                        // Release the global slot we acquired earlier
+                        if (_config.MaxConcurrentConnections > 0)
+                        {
+                            Interlocked.Decrement(ref _currentConnectionCount);
+                        }
                         RecordViolation(normalizedAddress, now);
                         Interlocked.Increment(ref _totalRejected);
                         return ConnectionRateLimitResult.PerIpRateExceeded;
@@ -133,8 +157,11 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
                 }
             }
 
-            // Acquire per-IP slot
-            Interlocked.Increment(ref ipState.ConcurrentCount);
+            // Acquire per-IP slot (only if not already acquired by concurrent limit check)
+            if (_config.MaxConnectionsPerIp == 0)
+            {
+                Interlocked.Increment(ref ipState.ConcurrentCount);
+            }
 
             if (_config.ConnectionsPerIpPerWindow > 0)
             {
@@ -145,8 +172,11 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
             }
         }
 
-        // Acquire global slot
-        Interlocked.Increment(ref _currentConnectionCount);
+        // Acquire global slot (only if not already acquired by concurrent limit check)
+        if (_config.MaxConcurrentConnections == 0)
+        {
+            Interlocked.Increment(ref _currentConnectionCount);
+        }
 
         if (_config.GlobalConnectionsPerSecond > 0)
         {
