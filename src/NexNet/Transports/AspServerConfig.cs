@@ -24,11 +24,22 @@ public abstract class AspServerConfig : ServerConfig
     public string? AspAuthenticationScheme { get; set; } = null;
 
     /// <summary>
+    /// Whether to trust proxy headers (X-Forwarded-For, X-Real-IP, etc.)
+    /// for determining the client's real IP address.
+    /// Default is false.
+    /// </summary>
+    /// <remarks>
+    /// Only enable this if your server is behind a trusted reverse proxy.
+    /// Enabling this on a directly exposed server allows clients to spoof their IP.
+    /// </remarks>
+    public bool TrustProxyHeaders { get; set; } = false;
+
+    /// <summary>
     /// Sets the server mode.
     /// </summary>
     protected AspServerConfig()
         : base(ServerConnectionMode.Receiver)
     {
-        
+
     }
 }

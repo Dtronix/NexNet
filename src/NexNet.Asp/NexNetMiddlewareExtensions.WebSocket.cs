@@ -69,8 +69,13 @@ public static partial class NexNetMiddlewareExtensions
                     var state = Unsafe.As<WebSocketReadingState>(obj)!;
                     await state.Pipe.RunAsync(state.CancellationToken).ConfigureAwait(false);
                 }, new WebSocketReadingState(pipe, cts.Token), cts.Token, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
-                
-                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new WebSocketTransport(pipe), cts.Token).ConfigureAwait(false);
+
+                // Extract remote endpoint info (with proxy header support)
+                var (remoteAddress, remotePort) = ProxyHeaderResolver.GetRemoteEndPoint(
+                    context,
+                    config.TrustProxyHeaders);
+
+                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new WebSocketTransport(pipe, remoteAddress, remotePort), cts.Token).ConfigureAwait(false);
             }
             else
             {

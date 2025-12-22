@@ -127,6 +127,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public Action? OnSent { get; set; }
 
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
+
     public ConnectionState State
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -159,6 +162,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _nexus.SessionContext = IsServer
             ? new ServerSessionContext<TProxy>(this, _sessionManager!)
             : new ClientSessionContext<TProxy>(this);
+
+        // Store remote endpoint info from transport
+        RemoteAddress = configurations.Transport.RemoteAddress;
+        RemotePort = configurations.Transport.RemotePort;
 
         Logger = configurations.Logger?.CreateLogger($"S{Id}");
         

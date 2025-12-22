@@ -76,6 +76,8 @@ internal class MockNexusSession : INexusSession
     public ConfigBase Config { get; set; } = null!;
     public bool IsServer { get; set; } = true;
     public NexusPipeManager PipeManager { get; set; } = null!;
+    public string? RemoteAddress { get; set; } = "127.0.0.1";
+    public int? RemotePort { get; set; } = 12345;
 
     // Mock SessionInvocationStateManager
     private MockSessionInvocationStateManager? _sessionInvocationStateManager;

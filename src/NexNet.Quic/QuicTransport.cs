@@ -15,11 +15,13 @@ internal class QuicTransport : ITransport
 {
 
     private readonly QuicConnection _quicConnection;
- 
+
     private readonly QuicStream _quicStream;
 
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
 
     private QuicTransport(QuicConnection quicConnection, QuicStream stream)
     {
@@ -27,6 +29,18 @@ internal class QuicTransport : ITransport
         _quicStream = stream;
         Input = PipeReader.Create(stream);
         Output = PipeWriter.Create(stream);
+
+        // Extract from QUIC connection's RemoteEndPoint
+        if (quicConnection.RemoteEndPoint is System.Net.IPEndPoint ipEndPoint)
+        {
+            RemoteAddress = ipEndPoint.Address.ToString();
+            RemotePort = ipEndPoint.Port;
+        }
+        else
+        {
+            RemoteAddress = quicConnection.RemoteEndPoint?.ToString();
+            RemotePort = null;
+        }
     }
 
     public ValueTask CloseAsync(bool linger)
