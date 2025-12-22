@@ -13,15 +13,19 @@ internal class SocketTransport : ITransport
     private readonly SocketConnection _socketConnection;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
 
     private readonly Socket _socket;
 
-    private SocketTransport(SocketConnection socketConnection)
+    private SocketTransport(SocketConnection socketConnection, string? remoteAddress, int? remotePort)
     {
         _socketConnection = socketConnection;
         _socket = socketConnection.Socket;
         Input = socketConnection.Input;
         Output = socketConnection.Output;
+        RemoteAddress = remoteAddress;
+        RemotePort = remotePort;
     }
     
     public ValueTask CloseAsync(bool linger)
@@ -44,7 +48,7 @@ internal class SocketTransport : ITransport
     }
 
     /// <summary>
-    /// Open a new or existing socket as a client
+    /// Open a new or existing socket as a server accepting a client connection
     /// </summary>
     public static ValueTask<ITransport> CreateFromSocket(Socket socket, ServerConfig config)
     {
@@ -54,7 +58,10 @@ internal class SocketTransport : ITransport
             config.ReceiveSessionPipeOptions,
             SocketConnectionOptions.InlineConnect | SocketConnectionOptions.InlineReads | SocketConnectionOptions.InlineWrites);
 
-        return ValueTask.FromResult((ITransport)new SocketTransport(pipe));
+        // Extract remote endpoint information
+        var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
+
+        return ValueTask.FromResult((ITransport)new SocketTransport(pipe, remoteAddress, remotePort));
     }
 
     /// <summary>
@@ -125,7 +132,10 @@ internal class SocketTransport : ITransport
             clientConfig.ReceiveSessionPipeOptions,
             connectionOptions);
 
-        return new SocketTransport(connection);
+        // For client connections, extract the remote endpoint (the server we connected to)
+        var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
+
+        return new SocketTransport(connection, remoteAddress, remotePort);
     }
 
 }

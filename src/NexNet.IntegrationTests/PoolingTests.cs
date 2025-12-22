@@ -7,8 +7,6 @@ namespace NexNet.IntegrationTests;
 
 internal class PoolingTests
 {
-    #region ListPool Tests
-
     [Test]
     public void ListPool_Return_RetainsCapacity()
     {
@@ -117,10 +115,6 @@ internal class PoolingTests
         Assert.That(ListPool<double>.PoolCount, Is.EqualTo(0));
     }
 
-    #endregion
-
-    #region ObjectCache Tests
-
     private class TestCacheableObject
     {
         public int Value { get; set; }
@@ -201,10 +195,6 @@ internal class PoolingTests
         Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.EqualTo(0));
     }
 
-    #endregion
-
-    #region PooledValueTaskSource Tests
-
     [Test]
     public void RVTCS_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
@@ -266,10 +256,6 @@ internal class PoolingTests
         Assert.That(PooledValueTaskSource<int>.PoolCount,
             Is.LessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize));
     }
-
-    #endregion
-
-    #region Stress Tests
 
     [Test]
     public async Task ListPool_ConcurrentRentReturn_MaintainsIntegrity()
@@ -352,6 +338,4 @@ internal class PoolingTests
                 "Capacity should not change - no reallocation needed");
         }
     }
-
-    #endregion
 }
