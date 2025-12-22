@@ -95,7 +95,7 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
         {
             _history.Clear();
             op.Apply(ref State);
-            _history.Add(op);
+            _history.Add(op.Clone());
             result = ListProcessResult.Successful;
             return cleOp;
         }
@@ -116,8 +116,8 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
         }
 
         op.Apply(ref State);
-        _history.Add(op);
-        
+        _history.Add(op.Clone());
+
         result = ListProcessResult.Successful;
         return op;
     }
