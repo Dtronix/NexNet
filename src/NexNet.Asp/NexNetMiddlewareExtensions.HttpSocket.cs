@@ -66,8 +66,13 @@ public static partial class NexNetMiddlewareExtensions
                 var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopped, lifetime.ApplicationStopping, context.RequestAborted);
                 var pipe = await httpSocket.AcceptAsync().ConfigureAwait(false);
-                    
-                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new HttpSocketTransport(pipe), cts.Token).ConfigureAwait(false);
+
+                // Extract remote endpoint info (with proxy header support)
+                var (remoteAddress, remotePort) = ProxyHeaderResolver.GetRemoteEndPoint(
+                    context,
+                    config.TrustProxyHeaders);
+
+                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new HttpSocketTransport(pipe, remoteAddress, remotePort), cts.Token).ConfigureAwait(false);
                 return;
             }
             

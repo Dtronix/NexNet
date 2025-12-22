@@ -34,6 +34,20 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// </summary>
     public long Id => Session.Id;
 
+    /// <summary>
+    /// The remote address of the connected client.
+    /// For IP-based transports, this is the IP address.
+    /// For Unix Domain Sockets, this may be null or the socket path.
+    /// When behind a proxy with TrustProxyHeaders enabled, this is the original client IP.
+    /// </summary>
+    public string? RemoteAddress => Session.RemoteAddress;
+
+    /// <summary>
+    /// The remote port of the connected client.
+    /// Null for transports that don't use ports (e.g., Unix Domain Sockets).
+    /// </summary>
+    public int? RemotePort => Session.RemotePort;
+
     internal SessionContext(INexusSession<TProxy> session, IServerSessionManager? sessionManager)
     {
         Session = session;
