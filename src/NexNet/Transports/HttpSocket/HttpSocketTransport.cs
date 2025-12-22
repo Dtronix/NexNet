@@ -13,12 +13,16 @@ internal class HttpSocketTransport : ITransport
     private readonly HttpSocketDuplexPipe _pipe;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
 
-    public HttpSocketTransport(HttpSocketDuplexPipe pipe)
+    public HttpSocketTransport(HttpSocketDuplexPipe pipe, string? remoteAddress = null, int? remotePort = null)
     {
         _pipe = pipe;
         Input = pipe.Input;
         Output = pipe.Output;
+        RemoteAddress = remoteAddress;
+        RemotePort = remotePort;
     }
     
     public ValueTask CloseAsync(bool linger)

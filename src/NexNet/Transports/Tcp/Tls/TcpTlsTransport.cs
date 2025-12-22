@@ -16,14 +16,19 @@ internal class TcpTlsTransport : ITransport
     private readonly Socket _socket;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
 
-    private TcpTlsTransport(Socket socket, NetworkStream networkStream, SslStream sslStream)
+    private TcpTlsTransport(Socket socket, NetworkStream networkStream, SslStream sslStream,
+        string? remoteAddress, int? remotePort)
     {
         _networkStream = networkStream;
         _sslStream = sslStream;
         _socket = socket;
         Input = PipeReader.Create(sslStream);
         Output = PipeWriter.Create(sslStream);
+        RemoteAddress = remoteAddress;
+        RemotePort = remotePort;
     }
 
     public ValueTask CloseAsync(bool linger)
@@ -42,7 +47,7 @@ internal class TcpTlsTransport : ITransport
     }
 
     /// <summary>
-    /// Open a new or existing socket as a client
+    /// Open a new or existing socket as a server accepting a client
     /// </summary>
     public static async ValueTask<ITransport> CreateFromSocket(Socket socket, TcpTlsServerConfig config)
     {
@@ -51,11 +56,14 @@ internal class TcpTlsTransport : ITransport
 
         var sslTimeout = new CancellationTokenSource(config.SslConnectionTimeout);
 
- 
+
         await sslStream.AuthenticateAsServerAsync(config.SslServerAuthenticationOptions, sslTimeout.Token)
             .ConfigureAwait(false);
 
-        return new TcpTlsTransport(socket, networkStream, sslStream);
+        // Extract remote endpoint
+        var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
+
+        return new TcpTlsTransport(socket, networkStream, sslStream, remoteAddress, remotePort);
     }
 
     /// <summary>
@@ -84,7 +92,9 @@ internal class TcpTlsTransport : ITransport
             await sslStream.AuthenticateAsClientAsync(clientConfig.SslClientAuthenticationOptions, sslTimeout.Token)
                 .ConfigureAwait(false);
 
-            return new TcpTlsTransport(socket, networkStream, sslStream);
+            var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
+
+            return new TcpTlsTransport(socket, networkStream, sslStream, remoteAddress, remotePort);
         }
         catch (SocketException e)
         {

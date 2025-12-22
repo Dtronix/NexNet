@@ -14,12 +14,16 @@ internal class WebSocketTransport : ITransport
     private readonly ClientWebSocket? _client;
     public PipeReader Input { get; }
     public PipeWriter Output { get; }
+    public string? RemoteAddress { get; }
+    public int? RemotePort { get; }
 
-    public WebSocketTransport(IWebSocketPipe pipe)
+    public WebSocketTransport(IWebSocketPipe pipe, string? remoteAddress = null, int? remotePort = null)
     {
         _pipe = pipe;
         Input = pipe.Input;
         Output = pipe.Output;
+        RemoteAddress = remoteAddress;
+        RemotePort = remotePort;
     }
 
     private WebSocketTransport(IWebSocketPipe pipe, ClientWebSocket client)
@@ -28,6 +32,9 @@ internal class WebSocketTransport : ITransport
         Input = pipe.Input;
         Output = pipe.Output;
         _client = client;
+        // Client side - remote is the server we connected to (from URL)
+        RemoteAddress = null;
+        RemotePort = null;
     }
 
     public async ValueTask CloseAsync(bool linger)
@@ -102,9 +109,10 @@ internal class WebSocketTransport : ITransport
         }
     }
 
-    public static ITransport CreateFromConnection(IWebSocketPipe webSocketPipe)
+    public static ITransport CreateFromConnection(IWebSocketPipe webSocketPipe,
+        string? remoteAddress = null, int? remotePort = null)
     {
-        return new WebSocketTransport(webSocketPipe);
+        return new WebSocketTransport(webSocketPipe, remoteAddress, remotePort);
     }
 
     private static TransportError GetTransportError(WebSocketError error)

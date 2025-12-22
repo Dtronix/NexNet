@@ -70,6 +70,16 @@ internal interface INexusSession : ISessionMessenger
     NexusPipeManager PipeManager { get; }
 
     /// <summary>
+    /// The remote address of the connected client.
+    /// </summary>
+    string? RemoteAddress { get; }
+
+    /// <summary>
+    /// The remote port of the connected client.
+    /// </summary>
+    int? RemotePort { get; }
+
+    /// <summary>
     /// Disconnects the session if the last received time is less than the timeout ticks.
     /// </summary>
     /// <param name="timeoutTicks">Normally use Environment.TickCount64 - Timeout</param>
