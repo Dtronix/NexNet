@@ -73,7 +73,12 @@ public enum MessageType : byte
     /// The socket was closed while attempting to write. No body.
     /// </summary>
     DisconnectSocketClosedWhenWriting = 32,
-    
+
+    /// <summary>
+    /// Connection was rejected due to rate limiting. No body.
+    /// </summary>
+    DisconnectRateLimited = 33,
+
     // Reserved through -39
 
     /// <summary>

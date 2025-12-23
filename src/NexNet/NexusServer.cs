@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Internals;
 using NexNet.Logging;
+using NexNet.RateLimiting;
 
 namespace NexNet;
 
@@ -45,6 +46,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private static int _sessionIdIncrementer;
     private INexusLogger? _logger;
     private NexusCollectionManager _collectionManager = null!;
+    private IConnectionRateLimiter? _rateLimiter;
     //private Func<TServerNexus, ValueTask>? _configureCollections;
 
     /// <inheritdoc />
@@ -140,6 +142,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             {
                 _logger?.LogError(e, "Exception while configuring collections.");
             }
+        }
+
+        // Initialize rate limiter if configured
+        if (config.RateLimiting?.IsEnabled == true)
+        {
+            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting);
         }
     }
 
@@ -245,6 +253,10 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         // Shutdown the session manager
         await _sessionManager.ShutdownAsync().ConfigureAwait(false);
 
+        // Dispose rate limiter
+        _rateLimiter?.Dispose();
+        _rateLimiter = null;
+
         _poolManager.Clear();
 
         // Stop the watchdog timer as the server is no longer running.
@@ -267,14 +279,30 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         // If the server is not running, don't accept connections.
         if(_state != NexusServerState.Running)
             return ValueTask.CompletedTask;
-        
+
         if (_config == null)
             throw new InvalidOperationException(
                 "Can't accept new transport before server configuration has been completed.");
+
+        // Rate limit check for external transports
+        string? remoteAddress = null;
+        if (_rateLimiter != null)
+        {
+            remoteAddress = transport.RemoteAddress;
+            var result = _rateLimiter.TryAcquire(remoteAddress);
+
+            if (result != ConnectionRateLimitResult.Allowed)
+            {
+                _logger?.LogDebug($"External transport rejected: {result} from {remoteAddress ?? "unknown"}");
+                _ = transport.CloseAsync(false);
+                return ValueTask.CompletedTask;
+            }
+        }
+
         var baseSessionId = _sessionIdIncrementer++;
-        
+
         _config!.InternalOnConnect?.Invoke();
-        
+
         return RunSessionAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
         {
             ConnectionState = ConnectionState.Connecting,
@@ -286,7 +314,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             Id = GenerateSecureSessionId(baseSessionId),
             Nexus = _nexusFactory!.Invoke(),
             CollectionManager = _collectionManager,
-            Logger = _logger
+            Logger = _logger,
+            RateLimiterAddress = remoteAddress,
+            RateLimiter = _rateLimiter
         }, cancellationToken);
     }
 
@@ -383,6 +413,25 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 if(clientTransport == null)
                     continue;
 
+                // Rate limit check using ITransport.RemoteAddress
+                string? remoteAddress = null;
+                if (_rateLimiter != null)
+                {
+                    remoteAddress = clientTransport.RemoteAddress;
+                    var result = _rateLimiter.TryAcquire(remoteAddress);
+
+                    if (result != ConnectionRateLimitResult.Allowed)
+                    {
+                        _logger?.LogDebug($"Connection rejected: {result} from {remoteAddress ?? "unknown"}");
+                        try
+                        {
+                            await clientTransport.CloseAsync(false).ConfigureAwait(false);
+                        }
+                        catch { /* ignore close errors */ }
+                        continue;
+                    }
+                }
+
                 _config!.InternalOnConnect?.Invoke();
 
                 // Create a composite ID of the current ticks along with the current ticks.
@@ -403,7 +452,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         Id = GenerateSecureSessionId(baseSessionId),
                         Nexus = _nexusFactory!.Invoke(),
                         CollectionManager = _collectionManager,
-                        Logger = _logger
+                        Logger = _logger,
+                        RateLimiterAddress = remoteAddress,
+                        RateLimiter = _rateLimiter
                     });
             }
         }
