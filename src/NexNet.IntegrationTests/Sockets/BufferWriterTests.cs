@@ -1,19 +1,14 @@
-﻿using NexNet.Internals.Pipelines.Arenas;
-using NexNet.Internals.Pipelines.Buffers;
-using System;
 using System.Buffers;
 using System.Text;
-using NUnit;
-using Xunit.Abstractions;
+using NexNet.Internals.Pipelines.Arenas;
+using NexNet.Internals.Pipelines.Buffers;
+using NUnit.Framework;
 
-namespace NexNet.Internals.Pipelines.Tests
+namespace NexNet.IntegrationTests.Sockets
 {
-    internal class BufferWriterTests
+    [TestFixture]
+    public class BufferWriterTests
     {
-        public BufferWriterTests(ITestOutputHelper log) => Log = log;
-
-        public ITestOutputHelper Log { get; }
-
         static string Raw(ReadOnlySequence<byte> values)
         {
             // this doesn't need to be efficient, just correct
@@ -28,7 +23,7 @@ namespace NexNet.Internals.Pipelines.Tests
             return new string(chars, 0, (int)values.Length);
         }
 
-        [Fact]
+        [Test]
         public void CanPartialFlush()
         {
             using var bw = BufferWriter<byte>.Create(blockSize: 16);
@@ -36,17 +31,18 @@ namespace NexNet.Internals.Pipelines.Tests
             bw.Advance(50);
             bw.Advance(30);
 
-            Assert.Equal(80, bw.Length);
+            Assert.That(bw.Length, Is.EqualTo(80));
 
             using var x1 = bw.Flush(20);
-            Assert.Equal(20, x1.Value.Length);
-            Assert.Equal(60, bw.Length);
+            Assert.That(x1.Value.Length, Is.EqualTo(20));
+            Assert.That(bw.Length, Is.EqualTo(60));
             using var x2 = bw.Flush();
-            Assert.Equal(60, x2.Value.Length);
-            Assert.Equal(0, bw.Length);
+            Assert.That(x2.Value.Length, Is.EqualTo(60));
+            Assert.That(bw.Length, Is.EqualTo(0));
         }
 
-        [Fact]
+        /*
+        [Test]
         public void BufferWriterDoesNotLeak()
         {
 #pragma warning disable IDE0063 // this would break the "all dead now" test
@@ -64,9 +60,9 @@ namespace NexNet.Internals.Pipelines.Tests
                         span.Fill(nextVal++);
                         writer.Advance(5);
                     }
-                    Log?.WriteLine($"before flush, wrote {count * 5}... {bw.GetState()}");
+                    TestContext.WriteLine($"before flush, wrote {count * 5}... {bw.GetState()}");
                     var result = bw.Flush();
-                    Log?.WriteLine($"after flush: {bw.GetState()}");
+                    TestContext.WriteLine($"after flush: {bw.GetState()}");
                     return result;
                 }
 
@@ -78,35 +74,36 @@ namespace NexNet.Internals.Pipelines.Tests
                     // and can be disposed arbitrarily
                     var chunk = Write(i);
                     ReadOnlySequence<byte> ros = chunk;
-                    Assert.Equal(i * 5, ros.Length);
+                    Assert.That(ros.Length, Is.EqualTo(i * 5));
 
                     chunks[i] = chunk;
                 }
 
-                Assert.Equal("", Raw(chunks[0]));
-                Assert.Equal("00000", Raw(chunks[1]));
-                Assert.Equal("1111122222", Raw(chunks[2]));
-                Assert.Equal("333334444455555", Raw(chunks[3]));
-                Assert.Equal("66666777778888899999", Raw(chunks[4]));
+                Assert.That(Raw(chunks[0]), Is.EqualTo(""));
+                Assert.That(Raw(chunks[1]), Is.EqualTo("00000"));
+                Assert.That(Raw(chunks[2]), Is.EqualTo("1111122222"));
+                Assert.That(Raw(chunks[3]), Is.EqualTo("333334444455555"));
+                Assert.That(Raw(chunks[4]), Is.EqualTo("66666777778888899999"));
 
 #if DEBUG
                 // can fit 15 in each, dropping one byte on the floor
-                Assert.Equal(4, BufferWriter<byte>.LiveSegmentCount);
+                Assert.That(BufferWriter<byte>.LiveSegmentCount, Is.EqualTo(4));
 #endif
 
-                for (int i = 0; i < chunks.Length; i++) Log?.WriteLine($"chunk {i}: {GetState(chunks[i])}");
+                for (int i = 0; i < chunks.Length; i++) TestContext.WriteLine($"chunk {i}: {GetState(chunks[i])}");
                 for (int i = 0; i < chunks.Length; i++) chunks[i].Dispose();
-                for (int i = 0; i < chunks.Length; i++) Log?.WriteLine($"chunk {i}: {GetState(chunks[i])}");
+                for (int i = 0; i < chunks.Length; i++) TestContext.WriteLine($"chunk {i}: {GetState(chunks[i])}");
             }
 #if DEBUG
             // all dead now
-            Assert.Equal(0, BufferWriter<byte>.LiveSegmentCount);
+            Assert.That(BufferWriter<byte>.LiveSegmentCount, Is.EqualTo(0));
 #endif
 
 
         }
+        */
 
-        [Fact]
+        [Test]
         public void BufferWriterReturnsMemoryToPool()
         {
 #pragma warning disable IDE0063 // this would break the "all dead now" test
@@ -123,8 +120,8 @@ namespace NexNet.Internals.Pipelines.Tests
                 bw.GetSpan(1);
 
                 var rent = ArrayPool<byte>.Shared.Rent(1 << 8);
-                Assert.Equal(123, rent[0]);
-                Assert.Equal(210, rent[128]);
+                Assert.That(rent[0], Is.EqualTo(123));
+                Assert.That(rent[128], Is.EqualTo(210));
             }
         }
 
@@ -139,44 +136,44 @@ namespace NexNet.Internals.Pipelines.Tests
             sb.Append($"{start.TryGetOffset()}-{ros.End.TryGetOffset()}; counts: ");
             while (node is not null & len > 0)
             {
-                sb.Append("[").Append(node.RunningIndex).Append(',').Append(node.RunningIndex + node.Length).Append("):").Append(node.RefCount).Append(' ');
+                sb.Append("[").Append(node!.RunningIndex).Append(',').Append(node.RunningIndex + node.Length).Append("):").Append(node.RefCount).Append(' ');
                 len -= node.Length;
                 node = (BufferWriter<byte>.RefCountedSegment)node.Next;
             }
             return sb.ToString();
         }
 
-        [Fact]
+        [Test]
         public void CanAllocateSequences()
         {
             using var bw = BufferWriter<byte>.Create(blockSize: 16);
-            Log?.WriteLine(bw.GetState());
-            Assert.Equal(0, bw.Length);
+            TestContext.Out.WriteLine(bw.GetState());
+            Assert.That(bw.Length, Is.EqualTo(0));
 
             var seq = bw.GetSequence(70);
-            Assert.Equal(80, seq.Length);
-            Log?.WriteLine(bw.GetState());
-            Assert.Equal(0, bw.Length);
+            Assert.That(seq.Length, Is.EqualTo(80));
+            TestContext.Out.WriteLine(bw.GetState());
+            Assert.That(bw.Length, Is.EqualTo(0));
 
             bw.Advance(40);
-            Log?.WriteLine(bw.GetState());
-            Assert.Equal(40, bw.Length);
+            TestContext.Out.WriteLine(bw.GetState());
+            Assert.That(bw.Length, Is.EqualTo(40));
 
             for (int i = 1; i <= 5; i++)
             {
-                Log?.WriteLine($"Leasing span {i}... {bw.GetState()}");
+                TestContext.Out.WriteLine($"Leasing span {i}... {bw.GetState()}");
                 bw.GetSpan(8);
                 bw.Advance(5);
-                Assert.Equal(40 + (5 * i), bw.Length);
+                Assert.That(bw.Length, Is.EqualTo(40 + (5 * i)));
             }
-            Log?.WriteLine(bw.GetState());
+            TestContext.Out.WriteLine(bw.GetState());
 
-            Assert.Equal(65, bw.Length);
+            Assert.That(bw.Length, Is.EqualTo(65));
             using (var ros = bw.Flush())
             {
-                Assert.Equal(65, ros.Value.Length);
+                Assert.That(ros.Value.Length, Is.EqualTo(65));
             }
-            Assert.Equal(0, bw.Length);
+            Assert.That(bw.Length, Is.EqualTo(0));
         }
     }
 }

@@ -1,23 +1,22 @@
-﻿using NexNet.Internals.Pipelines.Arenas;
-using System;
-using System.Linq;
-using NUnit;
+using NexNet.Internals.Pipelines.Arenas;
+using NUnit.Framework;
 
-namespace NexNet.Internals.Pipelines.Tests
+namespace NexNet.IntegrationTests.Sockets
 {
-    internal class ReferenceTests
+    [TestFixture]
+    public class ReferenceTests
     {
-        [Fact]
+        [Test]
         public void ArrayReferenceWorks()
         {
             var arr = "abcde".ToArray();
             var r = new Reference<char>(arr, 2);
 
-            Assert.Equal('c', r.Value);
-            Assert.Equal('c', (char)r);
+            Assert.That(r.Value, Is.EqualTo('c'));
+            Assert.That((char)r, Is.EqualTo('c'));
             r.Value = 'q';
-            Assert.Equal('q', arr[2]);
-            Assert.Equal("abqde", new string(arr));
+            Assert.That(arr[2], Is.EqualTo('q'));
+            Assert.That(new string(arr), Is.EqualTo("abqde"));
         }
     }
 }

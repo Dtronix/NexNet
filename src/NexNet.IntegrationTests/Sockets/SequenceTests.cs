@@ -1,59 +1,55 @@
-﻿using NexNet.Internals.Pipelines.Arenas;
-using System;
 using System.Buffers;
-using System.Linq;
-using NUnit;
+using NexNet.Internals.Pipelines.Arenas;
 using NUnit.Framework;
 
-namespace NexNet.Internals.Pipelines.Tests
+namespace NexNet.IntegrationTests.Sockets
 {
-    internal class SequenceTests
+    [TestFixture]
+    public class SequenceTests
     {
-        [Fact]
+        [Test]
         public void CheckDefaultSequence()
         {
             Sequence<int> seq = default;
-            Assert.False(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, 0);
         }
 
-        [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(42)]
-        [InlineData(1024)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(42)]
+        [TestCase(1024)]
         public void CheckArray(int length)
         {
             Sequence<int> seq = new Sequence<int>(new int[length]);
-            Assert.True(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.True);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, length);
         }
 
-        [Fact]
+        [Test]
         public void CheckDefaultMemory()
         {
             Memory<int> memory = default;
             Sequence<int> seq = new Sequence<int>(memory);
-            Assert.True(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.True);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, 0);
         }
 
-        [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(42)]
-        [InlineData(1024)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(42)]
+        [TestCase(1024)]
         public void CheckArrayBackedMemory(int length)
         {
             Memory<int> memory = new int[length];
             Sequence<int> seq = new Sequence<int>(memory);
-            Assert.True(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.True);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, length);
         }
 
@@ -72,30 +68,29 @@ namespace NexNet.Internals.Pipelines.Tests
             protected override void Dispose(bool disposing) { }
         }
 
-        [Fact]
+        [Test]
         public void CheckDefaultCustomManager()
         {
             Memory<int> memory = default;
             using var owner = new MyManager(memory);
             Sequence<int> seq = new Sequence<int>(owner.Memory);
-            Assert.False(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, 0);
         }
 
-        [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(42)]
-        [InlineData(1024)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(42)]
+        [TestCase(1024)]
         public void CheckArrayBackedCustomManager(int length)
         {
             Memory<int> memory = new int[length];
             using var owner = new MyManager(memory);
             Sequence<int> seq = new Sequence<int>(owner.Memory);
-            Assert.False(seq.IsArray);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, length);
         }
 
@@ -117,20 +112,19 @@ namespace NexNet.Internals.Pipelines.Tests
             protected override void Dispose(bool disposing) { }
         }
 
-        [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(42)]
-        [InlineData(1024)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(42)]
+        [TestCase(1024)]
         public unsafe void CheckUnsafeCustomManager(int length)
         {
             int* ptr = stackalloc int[length];
             using var owner = new MyUnsafeManager(ptr, length);
             Sequence<int> seq = new Sequence<int>(owner.Memory);
-            Assert.False(seq.IsArray);
-            Assert.False(seq.IsPinned);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.False);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, length);
         }
 
@@ -143,20 +137,19 @@ namespace NexNet.Internals.Pipelines.Tests
             public int Length => _length;
         }
 
-        [Theory]
-        [InlineData(0)]
-        [InlineData(1)]
-        [InlineData(2)]
-        [InlineData(42)]
-        [InlineData(1024)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(42)]
+        [TestCase(1024)]
         public unsafe void CheckUnsafePinnedCustomManager(int length)
         {
             int* ptr = stackalloc int[length + 1]; // extra to ensure never nil
             using var owner = new MyUnsafePinnedManager(ptr, length);
             Sequence<int> seq = new Sequence<int>(owner.Memory);
-            Assert.False(seq.IsArray);
-            Assert.True(seq.IsPinned);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.True);
+            Assert.That(seq.IsSingleSegment, Is.True);
             TestEveryWhichWay(seq, length);
         }
 
@@ -164,48 +157,47 @@ namespace NexNet.Internals.Pipelines.Tests
         {
             public void* Origin { get; }
 #pragma warning disable RCS1231 // Make parameter ref read-only.
-            public MySegment(Memory<int> memory, MySegment previous = null) : base(memory, previous) { }
+            public MySegment(Memory<int> memory, MySegment? previous = null) : base(memory, previous) { }
 #pragma warning restore RCS1231 // Make parameter ref read-only.
-            public MySegment(IMemoryOwner<int> owner, MySegment previous = null) : base(owner.Memory, previous)
+            public MySegment(IMemoryOwner<int> owner, MySegment? previous = null) : base(owner.Memory, previous)
             {
                 if (owner is IPinnedMemoryOwner<int> pinned) Origin = pinned.Origin;
             }
         }
 
-        [Fact]
+        [Test]
         public void CheckDefaultSegments()
         {
             var first = new MySegment(memory: default);
             var seq = new Sequence<int>(first, first, 0, 0);
-            Assert.False(seq.IsArray);
-            Assert.False(seq.IsPinned);
-            Assert.True(seq.IsSingleSegment);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.False);
+            Assert.That(seq.IsSingleSegment, Is.True);
 
             TestEveryWhichWay(seq, 0);
         }
 
-        [Theory]
-        [InlineData(new int[] { 0 }, true)]
-        [InlineData(new int[] { 1 }, true)]
-        [InlineData(new int[] { 2 }, true)]
-        [InlineData(new int[] { 42 }, true)]
-        [InlineData(new int[] { 1024 }, true)]
+        [TestCase(new int[] { 0 }, true)]
+        [TestCase(new int[] { 1 }, true)]
+        [TestCase(new int[] { 2 }, true)]
+        [TestCase(new int[] { 42 }, true)]
+        [TestCase(new int[] { 1024 }, true)]
         // test roll forward
-        [InlineData(new int[] { 0, 0 }, true)]
-        [InlineData(new int[] { 0, 1 }, true)]
-        [InlineData(new int[] { 0, 2 }, true)]
-        [InlineData(new int[] { 0, 42 }, true)]
-        [InlineData(new int[] { 0, 1024 }, true)]
+        [TestCase(new int[] { 0, 0 }, true)]
+        [TestCase(new int[] { 0, 1 }, true)]
+        [TestCase(new int[] { 0, 2 }, true)]
+        [TestCase(new int[] { 0, 42 }, true)]
+        [TestCase(new int[] { 0, 1024 }, true)]
         // test roll backward
-        [InlineData(new int[] { 1, 0 }, true)]
-        [InlineData(new int[] { 2, 0 }, true)]
-        [InlineData(new int[] { 42, 0 }, true)]
-        [InlineData(new int[] { 1024, 0 }, true)]
+        [TestCase(new int[] { 1, 0 }, true)]
+        [TestCase(new int[] { 2, 0 }, true)]
+        [TestCase(new int[] { 42, 0 }, true)]
+        [TestCase(new int[] { 1024, 0 }, true)]
         // test non-trivial
-        [InlineData(new int[] { 128, 128, 64 }, false)]
-        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
-        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
-        [InlineData(new int[] { 0, 128, 0 }, true)]
+        [TestCase(new int[] { 128, 128, 64 }, false)]
+        [TestCase(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [TestCase(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [TestCase(new int[] { 0, 128, 0 }, true)]
 
         public void CheckArrayBackedSegments(int[] sizes, bool isSingleSegment)
         {
@@ -221,35 +213,34 @@ namespace NexNet.Internals.Pipelines.Tests
                 last = new MySegment(Create(sizes[i]), last);
             }
             Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
-            Assert.False(seq.IsArray);
-            Assert.False(seq.IsPinned);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.False);
 
-            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            Assert.That(seq.IsSingleSegment, Is.EqualTo(isSingleSegment));
             TestEveryWhichWay(seq, length);
         }
 
-        [Theory]
-        [InlineData(new int[] { 0 }, true)]
-        [InlineData(new int[] { 1 }, true)]
-        [InlineData(new int[] { 2 }, true)]
-        [InlineData(new int[] { 42 }, true)]
-        [InlineData(new int[] { 1024 }, true)]
+        [TestCase(new int[] { 0 }, true)]
+        [TestCase(new int[] { 1 }, true)]
+        [TestCase(new int[] { 2 }, true)]
+        [TestCase(new int[] { 42 }, true)]
+        [TestCase(new int[] { 1024 }, true)]
         // test roll forward
-        [InlineData(new int[] { 0, 0 }, true)]
-        [InlineData(new int[] { 0, 1 }, true)]
-        [InlineData(new int[] { 0, 2 }, true)]
-        [InlineData(new int[] { 0, 42 }, true)]
-        [InlineData(new int[] { 0, 1024 }, true)]
+        [TestCase(new int[] { 0, 0 }, true)]
+        [TestCase(new int[] { 0, 1 }, true)]
+        [TestCase(new int[] { 0, 2 }, true)]
+        [TestCase(new int[] { 0, 42 }, true)]
+        [TestCase(new int[] { 0, 1024 }, true)]
         // test roll backward
-        [InlineData(new int[] { 1, 0 }, true)]
-        [InlineData(new int[] { 2, 0 }, true)]
-        [InlineData(new int[] { 42, 0 }, true)]
-        [InlineData(new int[] { 1024, 0 }, true)]
+        [TestCase(new int[] { 1, 0 }, true)]
+        [TestCase(new int[] { 2, 0 }, true)]
+        [TestCase(new int[] { 42, 0 }, true)]
+        [TestCase(new int[] { 1024, 0 }, true)]
         // test non-trivial
-        [InlineData(new int[] { 128, 128, 64 }, false)]
-        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
-        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
-        [InlineData(new int[] { 0, 128, 0 }, true)]
+        [TestCase(new int[] { 128, 128, 64 }, false)]
+        [TestCase(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [TestCase(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [TestCase(new int[] { 0, 128, 0 }, true)]
         public unsafe void CheckUnsafeBackedSegments(int[] sizes, bool isSingleSegment)
         {
             int length = sizes.Sum();
@@ -269,35 +260,34 @@ namespace NexNet.Internals.Pipelines.Tests
                 last = new MySegment(Create(sizes[i]), last);
             }
             Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
-            Assert.False(seq.IsArray);
-            Assert.False(seq.IsPinned);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.False);
 
-            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            Assert.That(seq.IsSingleSegment, Is.EqualTo(isSingleSegment));
             TestEveryWhichWay(seq, length);
         }
 
-        [Theory]
-        [InlineData(new int[] { 0 }, true)]
-        [InlineData(new int[] { 1 }, true)]
-        [InlineData(new int[] { 2 }, true)]
-        [InlineData(new int[] { 42 }, true)]
-        [InlineData(new int[] { 1024 }, true)]
+        [TestCase(new int[] { 0 }, true)]
+        [TestCase(new int[] { 1 }, true)]
+        [TestCase(new int[] { 2 }, true)]
+        [TestCase(new int[] { 42 }, true)]
+        [TestCase(new int[] { 1024 }, true)]
         // test roll forward
-        [InlineData(new int[] { 0, 0 }, true)]
-        [InlineData(new int[] { 0, 1 }, true)]
-        [InlineData(new int[] { 0, 2 }, true)]
-        [InlineData(new int[] { 0, 42 }, true)]
-        [InlineData(new int[] { 0, 1024 }, true)]
+        [TestCase(new int[] { 0, 0 }, true)]
+        [TestCase(new int[] { 0, 1 }, true)]
+        [TestCase(new int[] { 0, 2 }, true)]
+        [TestCase(new int[] { 0, 42 }, true)]
+        [TestCase(new int[] { 0, 1024 }, true)]
         // test roll backward
-        [InlineData(new int[] { 1, 0 }, true)]
-        [InlineData(new int[] { 2, 0 }, true)]
-        [InlineData(new int[] { 42, 0 }, true)]
-        [InlineData(new int[] { 1024, 0 }, true)]
+        [TestCase(new int[] { 1, 0 }, true)]
+        [TestCase(new int[] { 2, 0 }, true)]
+        [TestCase(new int[] { 42, 0 }, true)]
+        [TestCase(new int[] { 1024, 0 }, true)]
         //test non-trivial
-        [InlineData(new int[] { 128, 128, 64 }, false)]
-        [InlineData(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
-        [InlineData(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
-        [InlineData(new int[] { 0, 128, 0 }, true)]
+        [TestCase(new int[] { 128, 128, 64 }, false)]
+        [TestCase(new int[] { 128, 0, 64, 0, 12 }, false)] // zero length blocks in the middle
+        [TestCase(new int[] { 0, 128, 0, 64, 0 }, false)] // zero length blocks at the ends
+        [TestCase(new int[] { 0, 128, 0 }, true)]
         public unsafe void CheckUnsafePinnedBackedSegments(int[] sizes, bool isSingleSegment)
         {
             int length = sizes.Sum();
@@ -317,20 +307,20 @@ namespace NexNet.Internals.Pipelines.Tests
                 last = new MySegment(Create(sizes[i]), last);
             }
             Sequence<int> seq = new Sequence<int>(first, last, 0, last.Length);
-            Assert.False(seq.IsArray);
-            Assert.True(seq.IsPinned);
+            Assert.That(seq.IsArray, Is.False);
+            Assert.That(seq.IsPinned, Is.True);
 
-            Assert.Equal(isSingleSegment, seq.IsSingleSegment);
+            Assert.That(seq.IsSingleSegment, Is.EqualTo(isSingleSegment));
             TestEveryWhichWay(seq, length);
         }
 
         private void TestEveryWhichWay(Sequence<int> sequence, int count)
         {
-            Random rand = null; //int _nextRandom = 0;
-            int GetNextRandom() => rand.Next(0, 100); //_nextRandom++; 
+            Random? rand = null; //int _nextRandom = 0;
+            int GetNextRandom() => rand!.Next(0, 100); //_nextRandom++;
             void ResetRandom() => rand = new Random(12345); // _nextRandom = 0;
 
-            Assert.Equal(count, sequence.Length);
+            Assert.That(sequence.Length, Is.EqualTo(count));
             if (!sequence.IsEmpty)
             {
                 ResetRandom();
@@ -346,12 +336,12 @@ namespace NexNet.Internals.Pipelines.Tests
             {
                 c++;
                 total += item;
-                Assert.Equal(GetNextRandom(), item);
+                Assert.That(item, Is.EqualTo(GetNextRandom()));
             }
-            Assert.Equal(count, c);
+            Assert.That(c, Is.EqualTo(count));
 
-            if (count == 0) Assert.True(sequence.IsEmpty);
-            else Assert.False(sequence.IsEmpty);
+            if (count == 0) Assert.That(sequence.IsEmpty, Is.True);
+            else Assert.That(sequence.IsEmpty, Is.False);
 
             // count/sum via the span iterator
             t = 0;
@@ -365,14 +355,14 @@ namespace NexNet.Internals.Pipelines.Tests
                 {
                     c++;
                     t += item;
-                    Assert.Equal(GetNextRandom(), item);
+                    Assert.That(item, Is.EqualTo(GetNextRandom()));
                 }
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
-            if (spanCount <= 1) Assert.True(sequence.IsSingleSegment);
-            else Assert.False(sequence.IsSingleSegment);
+            if (spanCount <= 1) Assert.That(sequence.IsSingleSegment, Is.True);
+            else Assert.That(sequence.IsSingleSegment, Is.False);
 
             // count/sum via the segment iterator
             t = 0;
@@ -386,12 +376,12 @@ namespace NexNet.Internals.Pipelines.Tests
                 {
                     c++;
                     t += item;
-                    Assert.Equal(GetNextRandom(), item);
+                    Assert.That(item, Is.EqualTo(GetNextRandom()));
                 }
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
-            Assert.Equal(spanCount, memoryCount);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
+            Assert.That(memoryCount, Is.EqualTo(spanCount));
 
             // count/sum via reference iterator
             ResetRandom();
@@ -402,10 +392,10 @@ namespace NexNet.Internals.Pipelines.Tests
             {
                 c++;
                 t += iter.Current;
-                Assert.Equal(GetNextRandom(), iter.Current);
+                Assert.That(iter.Current, Is.EqualTo(GetNextRandom()));
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // count/sum via GetNext();
             ResetRandom();
@@ -417,7 +407,7 @@ namespace NexNet.Internals.Pipelines.Tests
                 c++;
                 var n = iter.GetNext();
                 t += n;
-                Assert.Equal(GetNextRandom(), n);
+                Assert.That(n, Is.EqualTo(GetNextRandom()));
             }
             try
             {
@@ -425,8 +415,8 @@ namespace NexNet.Internals.Pipelines.Tests
                 Assert.Throws<IndexOutOfRangeException>(() => { });
             }
             catch (IndexOutOfRangeException) { }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // count/sum via indexer
             t = 0;
@@ -436,12 +426,12 @@ namespace NexNet.Internals.Pipelines.Tests
             {
                 c++;
                 t += sequence[index];
-                Assert.Equal(GetNextRandom(), sequence[index]);
+                Assert.That(sequence[index], Is.EqualTo(GetNextRandom()));
             }
-            Assert.Throws<IndexOutOfRangeException>(() => sequence[-1]);
-            Assert.Throws<IndexOutOfRangeException>(() => sequence[c]);
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = sequence[-1]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = sequence[c]; });
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // count/sum via Reference<T>
             t = 0;
@@ -452,12 +442,12 @@ namespace NexNet.Internals.Pipelines.Tests
                 c++;
                 var r = sequence.GetReference(index);
                 t += r.Value;
-                Assert.Equal(GetNextRandom(), (int)r);
+                Assert.That((int)r, Is.EqualTo(GetNextRandom()));
             }
-            Assert.Throws<IndexOutOfRangeException>(() => sequence[-1]);
-            Assert.Throws<IndexOutOfRangeException>(() => sequence[c]);
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = sequence[-1]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = sequence[c]; });
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // count/sum via list using struct iterator
             t = 0;
@@ -468,10 +458,10 @@ namespace NexNet.Internals.Pipelines.Tests
             {
                 c++;
                 t += item;
-                Assert.Equal(GetNextRandom(), item);
+                Assert.That(item, Is.EqualTo(GetNextRandom()));
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // count/sum via list using object iterator
             t = 0;
@@ -481,21 +471,21 @@ namespace NexNet.Internals.Pipelines.Tests
             {
                 c++;
                 t += item;
-                Assert.Equal(GetNextRandom(), item);
+                Assert.That(item, Is.EqualTo(GetNextRandom()));
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
 
             // check by list index
-            Assert.Equal(c, list.Count);
+            Assert.That(list.Count, Is.EqualTo(c));
             ResetRandom();
             for (int i = 0; i < count; i++)
             {
-                Assert.Equal(sequence[i], list[i]);
-                Assert.Equal(GetNextRandom(), list[i]);
+                Assert.That(list[i], Is.EqualTo(sequence[i]));
+                Assert.That(list[i], Is.EqualTo(GetNextRandom()));
             }
-            Assert.Throws<IndexOutOfRangeException>(() => list[-1]);
-            Assert.Throws<IndexOutOfRangeException>(() => list[c]);
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = list[-1]; });
+            Assert.Throws<IndexOutOfRangeException>(() => { var _ = list[c]; });
 
             // count/sum via list using GetReference
             t = 0;
@@ -505,8 +495,8 @@ namespace NexNet.Internals.Pipelines.Tests
                 c++;
                 t += sequence.GetReference(index);
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetReference(-1));
             Assert.Throws<IndexOutOfRangeException>(() => sequence.GetReference(c));
 
@@ -522,24 +512,24 @@ namespace NexNet.Internals.Pipelines.Tests
             // as positions are only meaningful inside the context in which they
             // are obtained - we can check the slice contents one at a time, though
             var ros = sequence.AsReadOnly();
-            Assert.Equal(c, ros.Length);
+            Assert.That(ros.Length, Is.EqualTo(c));
             for (int i = 0; i <= count; i++)
             {
                 var roSlice = ros.Slice(i, 0);
                 var slice = sequence.Slice(i, 0);
-                Assert.Equal(roSlice.Length, slice.Length);
+                Assert.That(slice.Length, Is.EqualTo(roSlice.Length));
             }
             for (int i = 0; i < count; i++)
             {
                 var roSlice = ros.Slice(i, 1);
                 var slice = sequence.Slice(i, 1);
-                Assert.Equal(roSlice.Length, slice.Length);
-                Assert.Equal(roSlice.First.Span[0], slice[0]);
+                Assert.That(slice.Length, Is.EqualTo(roSlice.Length));
+                Assert.That(slice[0], Is.EqualTo(roSlice.First.Span[0]));
             }
 
             // and get back again
-            Assert.True(Sequence<int>.TryGetSequence(ros, out var andBackAgain));
-            Assert.Equal(sequence, andBackAgain);
+            Assert.That(Sequence<int>.TryGetSequence(ros, out var andBackAgain), Is.True);
+            Assert.That(andBackAgain, Is.EqualTo(sequence));
 
             // count/sum via list using ROS
             t = 0;
@@ -554,18 +544,18 @@ namespace NexNet.Internals.Pipelines.Tests
                     t += item;
                 }
             }
-            Assert.Equal(total, t);
-            Assert.Equal(count, c);
-            Assert.Equal(spanCount, roSpanCount);
+            Assert.That(t, Is.EqualTo(total));
+            Assert.That(c, Is.EqualTo(count));
+            Assert.That(roSpanCount, Is.EqualTo(spanCount));
 
             static void AssertEqualExceptMSB(in SequencePosition expected, in SequencePosition actual)
             {
-                object eo = expected.GetObject(), ao = actual.GetObject();
+                object? eo = expected.GetObject(), ao = actual.GetObject();
                 int ei = expected.GetInteger() & ~Sequence.IsArrayFlag,
                     ai = actual.GetInteger() & ~Sequence.IsArrayFlag;
 
-                Assert.Equal(ei, ai);
-                Assert.Equal(eo, ao);
+                Assert.That(ai, Is.EqualTo(ei));
+                Assert.That(ao, Is.EqualTo(eo));
             }
 
             // slice everything
@@ -577,44 +567,44 @@ namespace NexNet.Internals.Pipelines.Tests
                 var pos = sequence.GetPosition(i);
                 var slice = sequence.Slice(i, 0);
 
-                Assert.True(slice.IsEmpty);
+                Assert.That(slice.IsEmpty, Is.True);
                 AssertEqualExceptMSB(pos, slice.Start);
                 AssertEqualExceptMSB(slice.Start, slice.End);
 
                 slice = sequence.Slice(i);
-                Assert.Equal(count - i, slice.Length);
+                Assert.That(slice.Length, Is.EqualTo(count - i));
                 AssertEqualExceptMSB(pos, slice.Start);
-                Assert.Equal(sequence.End, slice.End);
+                Assert.That(slice.End, Is.EqualTo(sequence.End));
 
                 slice = sequence.Slice(0, i);
-                Assert.Equal(i, slice.Length);
-                Assert.Equal(sequence.Start, slice.Start);
+                Assert.That(slice.Length, Is.EqualTo(i));
+                Assert.That(slice.Start, Is.EqualTo(sequence.Start));
                 AssertEqualExceptMSB(pos, slice.End);
 
                 slice = sequence.Slice(i, 1);
-                Assert.Equal(1, slice.Length);
+                Assert.That(slice.Length, Is.EqualTo(1));
                 AssertEqualExceptMSB(pos, slice.Start);
                 AssertEqualExceptMSB(sequence.GetPosition(i + 1), slice.End);
 
                 t += slice[0];
                 c += (int)slice.Length; // 1
-                Assert.Equal(GetNextRandom(), slice[0]);
+                Assert.That(slice[0], Is.EqualTo(GetNextRandom()));
             }
-            Assert.Equal(count, c);
-            Assert.Equal(total, t);
+            Assert.That(c, Is.EqualTo(count));
+            Assert.That(t, Is.EqualTo(total));
 
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(-1, 0));
             Assert.Throws<ArgumentOutOfRangeException>(() => sequence.Slice(c, 1));
 
             var end = sequence.Slice(0, 0);
-            Assert.True(end.IsEmpty);
-            Assert.Equal(sequence.Start, end.Start);
+            Assert.That(end.IsEmpty, Is.True);
+            Assert.That(end.Start, Is.EqualTo(sequence.Start));
             AssertEqualExceptMSB(sequence.Start, end.End);
 
             end = sequence.Slice(c, 0);
-            Assert.True(end.IsEmpty);
+            Assert.That(end.IsEmpty, Is.True);
             AssertEqualExceptMSB(sequence.End, end.Start);
-            Assert.Equal(sequence.End, end.End);
+            Assert.That(end.End, Is.EqualTo(sequence.End));
         }
     }
 }

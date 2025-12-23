@@ -1,30 +1,33 @@
-﻿using NexNet.Internals.Pipelines.Threading;
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using NUnit;
-using Xunit.Abstractions;
+using NexNet.Internals.Pipelines.Threading;
+using NUnit.Framework;
 using static NexNet.Internals.Pipelines.Threading.MutexSlim;
 
-#pragma warning disable xUnit1030, xUnit1031 // ConfigureAwait and blocking, very intentional here
-
-namespace NexNet.Internals.Pipelines.Tests
+namespace NexNet.IntegrationTests.Sockets
 {
+    [TestFixture]
     internal class MutexSlimTests
     {
-        public MutexSlimTests(ITestOutputHelper log)
+        [SetUp]
+        public void SetUp()
         {
-            _log = log;
 #if DEBUG
             _timeoutMux.Logged += Log;
 #endif
         }
-        private readonly ITestOutputHelper _log;
+
+        [TearDown]
+        public void TearDown()
+        {
+#if DEBUG
+            _timeoutMux.Logged -= Log;
+#endif
+        }
+
         private void Log(string message)
         {
-            if (_log is not null)
+            lock (this)
             {
-                lock (_log) _log.WriteLine(message);
+                TestContext.Out.WriteLine(message);
             }
         }
 
@@ -38,10 +41,10 @@ namespace NexNet.Internals.Pipelines.Tests
 
             public static bool Is(Guid id) => Current is DummySyncContext dsc && dsc.Id == id;
 
-            public override void Post(SendOrPostCallback d, object state)
+            public override void Post(SendOrPostCallback d, object? state)
                 => ThreadPool.QueueUserWorkItem(_ => Send(d, state), null);
 
-            public override void Send(SendOrPostCallback d, object state)
+            public override void Send(SendOrPostCallback d, object? state)
             {
                 var original = Current;
                 try
@@ -56,7 +59,7 @@ namespace NexNet.Internals.Pipelines.Tests
             }
         }
 
-        [Fact]
+        [Test]
         public void CanObtain()
         {
             // can obtain when not contested (outer)
@@ -64,55 +67,55 @@ namespace NexNet.Internals.Pipelines.Tests
             // can obtain after released (loop)
             for (int i = 0; i < 2; i++)
             {
-                Assert.True(_zeroTimeoutMux.IsAvailable);
+                Assert.That(_zeroTimeoutMux.IsAvailable, Is.True);
                 using var outer = _zeroTimeoutMux.TryWait();
-                Assert.True(outer.Success);
+                Assert.That(outer.Success, Is.True);
                 Log(outer.ToString());
-                Assert.False(_zeroTimeoutMux.IsAvailable);
+                Assert.That(_zeroTimeoutMux.IsAvailable, Is.False);
                 using var inner = _zeroTimeoutMux.TryWait();
                 Log(inner.ToString());
-                Assert.False(inner.Success);
+                Assert.That(inner.Success, Is.False);
             }
-            Assert.True(_zeroTimeoutMux.IsAvailable);
+            Assert.That(_zeroTimeoutMux.IsAvailable, Is.True);
 
             for (int i = 0; i < 2; i++)
             {
                 using var outer = _timeoutMux.TryWait();
-                Assert.True(outer.Success);
+                Assert.That(outer.Success, Is.True);
             }
         }
 
-        [Fact]
+        [Test]
         public void ChangeStatePreservesCounter()
         {
-            Assert.Equal(0xAAA8, LockState.ChangeState(0xAAAA, LockState.Timeout));
-            Assert.Equal(0xAAA9, LockState.ChangeState(0xAAAA, LockState.Pending));
-            Assert.Equal(0xAAAA, LockState.ChangeState(0xAAAA, LockState.Success));
-            Assert.Equal(0xAAAB, LockState.ChangeState(0xAAAA, LockState.Canceled));
+            Assert.That(LockState.ChangeState(0xAAAA, LockState.Timeout), Is.EqualTo(0xAAA8));
+            Assert.That(LockState.ChangeState(0xAAAA, LockState.Pending), Is.EqualTo(0xAAA9));
+            Assert.That(LockState.ChangeState(0xAAAA, LockState.Success), Is.EqualTo(0xAAAA));
+            Assert.That(LockState.ChangeState(0xAAAA, LockState.Canceled), Is.EqualTo(0xAAAB));
         }
-        [Fact]
+        [Test]
         public void NextTokenIncrementsCorrectly()
         {
             // GetNextToken should always reset the 2 LSB (we'll test it with all 4 inputs), and increment the others
             int token = 0;
             token = LockState.GetNextToken(LockState.ChangeState(token, LockState.Timeout));
-            Assert.Equal(6, token); // 000110
+            Assert.That(token, Is.EqualTo(6)); // 000110
             token = LockState.GetNextToken(LockState.ChangeState(token, LockState.Pending));
-            Assert.Equal(10, token); // 001010
+            Assert.That(token, Is.EqualTo(10)); // 001010
             token = LockState.GetNextToken(LockState.ChangeState(token, LockState.Success));
-            Assert.Equal(14, token); // 001110
+            Assert.That(token, Is.EqualTo(14)); // 001110
             token = LockState.GetNextToken(LockState.ChangeState(token, LockState.Canceled));
-            Assert.Equal(18, token); // 010010
+            Assert.That(token, Is.EqualTo(18)); // 010010
 
             // and at wraparound, we expect zero again
             token = -1; // anecdotally: a cancelation, but that doesn't matter
             token = LockState.GetNextToken(token);
-            Assert.Equal(2, token); // 000010
+            Assert.That(token, Is.EqualTo(2)); // 000010
             token = LockState.GetNextToken(token);
-            Assert.Equal(6, token); // 000110
+            Assert.That(token, Is.EqualTo(6)); // 000110
         }
 
-        [Fact]
+        [Test]
         public async Task CanObtainAsyncWithoutTimeout()
         {
             // can obtain when not contested (outer)
@@ -124,40 +127,40 @@ namespace NexNet.Internals.Pipelines.Tests
             for (int i = 0; i < 2; i++)
             {
                 var awaitable1 = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable1.IsCompleted, nameof(awaitable1.IsCompleted));
-                //Assert.True(awaitable1.CompletedSynchronously, nameof(awaitable1.CompletedSynchronously));
+                Assert.That(awaitable1.IsCompleted, Is.True, nameof(awaitable1.IsCompleted));
+                //Assert.That(awaitable1.CompletedSynchronously, Is.True, nameof(awaitable1.CompletedSynchronously));
                 using var outer = await awaitable1;
-                Assert.True(outer.Success, nameof(outer.Success));
+                Assert.That(outer.Success, Is.True, nameof(outer.Success));
 
                 var awaitable2 = _zeroTimeoutMux.TryWaitAsync();
-                Assert.True(awaitable2.IsCompleted, nameof(awaitable2.IsCompleted) + " inner");
-                //Assert.True(awaitable2.CompletedSynchronously, nameof(awaitable2.CompletedSynchronously) + " inner");
+                Assert.That(awaitable2.IsCompleted, Is.True, nameof(awaitable2.IsCompleted) + " inner");
+                //Assert.That(awaitable2.CompletedSynchronously, Is.True, nameof(awaitable2.CompletedSynchronously) + " inner");
                 using var inner = await awaitable2;
-                Assert.False(inner.Success, nameof(inner.Success) + " inner");
+                Assert.That(inner.Success, Is.False, nameof(inner.Success) + " inner");
             }
         }
 
-        [Fact]
+        [Test]
         public async Task CanObtainAsyncWithTimeout()
         {
             for (int i = 0; i < 2; i++)
             {
                 var awaitable = _timeoutMux.TryWaitAsync();
-                Assert.True(awaitable.IsCompleted, nameof(awaitable.IsCompleted));
-                //Assert.True(awaitable.CompletedSynchronously, nameof(awaitable.CompletedSynchronously));
+                Assert.That(awaitable.IsCompleted, Is.True, nameof(awaitable.IsCompleted));
+                //Assert.That(awaitable.CompletedSynchronously, Is.True, nameof(awaitable.CompletedSynchronously));
                 using var outer = await awaitable;
-                Assert.True(outer.Success);
+                Assert.That(outer.Success, Is.True);
             }
         }
 
-        [Fact]
+        [Test]
         public void Timeout()
         {
             object allReady = new object(), allDone = new object();
             const int COMPETITORS = 5;
             int active = 0, complete = 0, success = 0;
 
-            Assert.NotEqual(0, _timeoutMux.TimeoutMilliseconds);
+            Assert.That(_timeoutMux.TimeoutMilliseconds, Is.Not.EqualTo(0));
             lock (allDone)
             {
                 using (var token = _timeoutMux.TryWait())
@@ -187,14 +190,13 @@ namespace NexNet.Internals.Pipelines.Tests
                     Thread.Sleep(_timeoutMux.TimeoutMilliseconds * 2);
                 }
                 Monitor.Wait(allDone);
-                Assert.Equal(COMPETITORS, complete);
-                Assert.Equal(0, success);
+                Assert.That(complete, Is.EqualTo(COMPETITORS));
+                Assert.That(success, Is.EqualTo(0));
             }
         }
 
-        [Theory]
-        [InlineData(WaitOptions.None)]
-        [InlineData(WaitOptions.DisableAsyncContext)]
+        [TestCase(WaitOptions.None)]
+        [TestCase(WaitOptions.DisableAsyncContext)]
         public void CompetingCallerAllExecute(WaitOptions waitOptions)
         {
             object allReady = new object(), allDone = new object();
@@ -229,14 +231,13 @@ namespace NexNet.Internals.Pipelines.Tests
                     Thread.Sleep(100);
                 }
                 Monitor.Wait(allDone);
-                Assert.Equal(COMPETITORS, complete);
-                Assert.Equal(COMPETITORS, success);
+                Assert.That(complete, Is.EqualTo(COMPETITORS));
+                Assert.That(success, Is.EqualTo(COMPETITORS));
             }
         }
 
-        [Theory]
-        [InlineData(WaitOptions.None)]
-        [InlineData(WaitOptions.DisableAsyncContext)]
+        [TestCase(WaitOptions.None)]
+        [TestCase(WaitOptions.DisableAsyncContext)]
         public async Task CompetingCallerAllExecuteAsync(WaitOptions waitOptions)
         {
             object allReady = new object(), allDone = new object();
@@ -291,17 +292,17 @@ namespace NexNet.Internals.Pipelines.Tests
             Log("outer lock released");
             for (int i = 0; i < tasks.Length; i++)
             {   // deliberately not an await - we want a simple timeout here
-                Assert.True(tasks[i].Wait(_timeoutMux.TimeoutMilliseconds), $"task {i} completes after {_timeoutMux.TimeoutMilliseconds}ms");
+                Assert.That(tasks[i].Wait(_timeoutMux.TimeoutMilliseconds), Is.True, $"task {i} completes after {_timeoutMux.TimeoutMilliseconds}ms");
             }
 
             lock (allDone)
             {
-                Assert.True(COMPETITORS == success, "COMPETITORS == success");
-                Assert.True(COMPETITORS == asyncOps, "COMPETITORS == asyncOps");
+                Assert.That(success, Is.EqualTo(COMPETITORS), "COMPETITORS == success");
+                Assert.That(asyncOps, Is.EqualTo(COMPETITORS), "COMPETITORS == asyncOps");
             }
         }
 
-        [Fact]
+        [Test]
         public async Task TimeoutAsync()
         {
             object allReady = new object(), allDone = new object();
@@ -342,34 +343,34 @@ namespace NexNet.Internals.Pipelines.Tests
             }
             for (int i = 0; i < tasks.Length; i++)
             {   // deliberately not an await - we want a simple timeout here
-                Assert.True(tasks[i].Wait(_timeoutMux.TimeoutMilliseconds));
+                Assert.That(tasks[i].Wait(_timeoutMux.TimeoutMilliseconds), Is.True);
             }
 
             lock (allDone)
             {
-                Assert.Equal(0, success);
-                Assert.Equal(COMPETITORS, asyncOps);
+                Assert.That(success, Is.EqualTo(0));
+                Assert.That(asyncOps, Is.EqualTo(COMPETITORS));
             }
         }
 
-        [Fact]
-        public async Task PreCanceledReportsCorrectly()
+        [Test]
+        public void PreCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
 
             var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted));
+            Assert.That(ct.IsCanceled, Is.True, nameof(ct.IsCanceled));
+            Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
-        [Fact]
-        public async Task DuringCanceledReportsCorrectly()
+        [Test]
+        public void DuringCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
 
@@ -378,25 +379,25 @@ namespace NexNet.Internals.Pipelines.Tests
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
             {
-                Assert.True(token.Success);
+                Assert.That(token.Success, Is.True);
 
                 ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                Assert.That(ct.IsCompleted, Is.False, nameof(ct.IsCompleted));
+                Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled));
+                Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
                 cancel.Cancel(); // cancel it *before* release; should be respected
             }
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted));
+            Assert.That(ct.IsCanceled, Is.True, nameof(ct.IsCanceled));
+            Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
-        [Fact]
+        [Test]
         public async Task PostCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
@@ -405,99 +406,98 @@ namespace NexNet.Internals.Pipelines.Tests
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
             {
-                Assert.True(token.Success);
+                Assert.That(token.Success, Is.True);
 
                 ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted) + ":1");
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":1");
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":1");
+                Assert.That(ct.IsCompleted, Is.False, nameof(ct.IsCompleted) + ":1");
+                Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled) + ":1");
+                Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully) + ":1");
             }
             // cancel it *after* release - should be ignored
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted) + ":2");
-            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled) + ":2");
-            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully) + ":2");
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted) + ":2");
+            Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled) + ":2");
+            Assert.That(ct.IsCompletedSuccessfully, Is.True, nameof(ct.IsCompletedSuccessfully) + ":2");
 
             var result = await ct;
-            Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
         }
 
-        [Fact]
-        public async Task ManualCanceledReportsCorrectly()
+        [Test]
+        public void ManualCanceledReportsCorrectly()
         {
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
             using (var cancel = new CancellationTokenSource())
             {
-                Assert.True(token.Success);
+                Assert.That(token.Success, Is.True);
 
                 ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                Assert.That(ct.IsCompleted, Is.False, nameof(ct.IsCompleted));
+                Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled));
+                Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
                 cancel.Cancel();
-                //Assert.True(ct.TryCancel());
-                //Assert.True(ct.TryCancel());
+                //Assert.That(ct.TryCancel(), Is.True);
+                //Assert.That(ct.TryCancel(), Is.True);
             }
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted));
+            Assert.That(ct.IsCanceled, Is.True, nameof(ct.IsCanceled));
+            Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
-        [Fact]
+        [Test]
         public async Task ManualCancelAfterAcquisitionDoesNothing()
         {
             using var cancel = new CancellationTokenSource();
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
             {
-                Assert.True(token.Success);
+                Assert.That(token.Success, Is.True);
 
                 ct = _timeoutMux.TryWaitAsync(cancel.Token);
-                Assert.False(ct.IsCompleted, nameof(ct.IsCompleted));
-                Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-                Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+                Assert.That(ct.IsCompleted, Is.False, nameof(ct.IsCompleted));
+                Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled));
+                Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
             }
             cancel.Cancel();
-            //Assert.False(ct.TryCancel());
-            //Assert.False(ct.TryCancel());
+            //Assert.That(ct.TryCancel(), Is.False);
+            //Assert.That(ct.TryCancel(), Is.False);
 
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.False(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.True(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted));
+            Assert.That(ct.IsCanceled, Is.False, nameof(ct.IsCanceled));
+            Assert.That(ct.IsCompletedSuccessfully, Is.True, nameof(ct.IsCompletedSuccessfully));
 
             var result = await ct;
-            Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
         }
 
-        [Fact]
-        public async Task ManualCancelOnPreCanceledDoesNothing()
+        [Test]
+        public void ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
 
             var ct = _timeoutMux.TryWaitAsync(cancel.Token);
-            Assert.True(ct.IsCompleted, nameof(ct.IsCompleted));
-            Assert.True(ct.IsCanceled, nameof(ct.IsCanceled));
-            Assert.False(ct.IsCompletedSuccessfully, nameof(ct.IsCompletedSuccessfully));
+            Assert.That(ct.IsCompleted, Is.True, nameof(ct.IsCompleted));
+            Assert.That(ct.IsCanceled, Is.True, nameof(ct.IsCanceled));
+            Assert.That(ct.IsCompletedSuccessfully, Is.False, nameof(ct.IsCompletedSuccessfully));
 
-            //Assert.True(ct.TryCancel());
-            //Assert.True(ct.TryCancel());
+            //Assert.That(ct.TryCancel(), Is.True);
+            //Assert.That(ct.TryCancel(), Is.True);
 
-            Assert.Throws<TaskCanceledException>(() => ct.Result);
+            Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct).ConfigureAwait(false);
+            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
-        [Theory]
-        [InlineData(1, 50000000)] // uncontested
-        [InlineData(2, 25000000)] // duel
-        [InlineData(10, 100000)] // battle royale
+        [TestCase(1, 50000000)] // uncontested
+        [TestCase(2, 25000000)] // duel
+        [TestCase(10, 100000)] // battle royale
         public void DuelingThreadsShouldNotStall(int workerCount, int perWorker)
         {
 #if DEBUG
@@ -526,15 +526,15 @@ namespace NexNet.Internals.Pipelines.Tests
             work(); // we are the final worker
             for (int i = 0; i < workers.Length; i++)
             {
-                Assert.True(workers[i].Join(10000), "failure to join worker " + i);
+                Assert.That(workers[i].Join(10000), Is.True, "failure to join worker " + i);
             }
 
             int failCount = Volatile.Read(ref _failCount);
             int successCount = Volatile.Read(ref _successCount);
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
-            Assert.Equal(0, failCount);
-            Assert.Equal(workerCount * perWorker, successCount);
+            Assert.That(failCount, Is.EqualTo(0));
+            Assert.That(successCount, Is.EqualTo(workerCount * perWorker));
             int endBucket;
             for(endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
@@ -546,10 +546,9 @@ namespace NexNet.Internals.Pipelines.Tests
             }
         }
 
-        [Theory]
-        [InlineData(1, 30000000)] // uncontested
-        [InlineData(2, 1500000)] // duel
-        [InlineData(10, 150000)] // battle royale
+        [TestCase(1, 30000000)] // uncontested
+        [TestCase(2, 1500000)] // duel
+        [TestCase(10, 150000)] // battle royale
         public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
         {
 #if DEBUG
@@ -567,15 +566,15 @@ namespace NexNet.Internals.Pipelines.Tests
                 workers[i] = Task.Run(work);
             }
             var allDone = Task.WhenAll(workers);
-            Assert.True(allDone.Wait(20000), "failure to join");
+            Assert.That(allDone.Wait(20000), Is.True, "failure to join");
             await allDone;
 
             int failCount = Volatile.Read(ref _failCount);
             int successCount = Volatile.Read(ref _successCount);
             int maxTaken = Volatile.Read(ref _maxGetLock);
             Log($"success: {successCount}, failure: {failCount}, max get lock: {_maxGetLock}");
-            Assert.Equal(0, failCount);
-            Assert.Equal(workerCount * perWorker, successCount);
+            Assert.That(failCount, Is.EqualTo(0));
+            Assert.That(successCount, Is.EqualTo(workerCount * perWorker));
             int endBucket;
             for (endBucket = _buckets.Length - 1; endBucket >= 0; endBucket--)
             {
@@ -610,7 +609,7 @@ namespace NexNet.Internals.Pipelines.Tests
                 else
                 {
                     var nowAttempt = Volatile.Read(ref _attempts);
-                    _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    TestContext.Out.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
                     Interlocked.Increment(ref _failCount);
                     return; // give up promptly if we start failing
                 }
@@ -637,7 +636,7 @@ namespace NexNet.Internals.Pipelines.Tests
                 else
                 {
                     var nowAttempt = Volatile.Read(ref _attempts);
-                    _log.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    TestContext.Out.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
                     Interlocked.Increment(ref _failCount);
                     return; // give up promptly if we start failing
                 }

@@ -1,12 +1,13 @@
-﻿using System.IO.Pipelines;
-using System.Threading.Tasks;
-using NUnit;
+using System.IO.Pipelines;
+using NexNet.Internals.Pipelines;
+using NUnit.Framework;
 
-namespace NexNet.Internals.Pipelines.Tests
+namespace NexNet.IntegrationTests.Sockets
 {
-    internal class PipeTests
+    [TestFixture]
+    public class PipeTests
     {
-        [Fact]
+        [Test]
         public async Task PipeLengthWorks()
         {
             var pipe = new Pipe();
@@ -16,14 +17,14 @@ namespace NexNet.Internals.Pipelines.Tests
             pipe.Writer.Advance(42);
             await pipe.Writer.FlushAsync(); // this is what changes the length
 
-            Assert.Equal(42, SocketConnection.Counters.GetPipeLength(pipe));
+            Assert.That(SocketConnection.Counters.GetPipeLength(pipe), Is.EqualTo(42));
 
-            Assert.True(pipe.Reader.TryRead(out var result));
-            Assert.Equal(42, result.Buffer.Length);
-            Assert.Equal(42, SocketConnection.Counters.GetPipeLength(pipe));
+            Assert.That(pipe.Reader.TryRead(out var result), Is.True);
+            Assert.That(result.Buffer.Length, Is.EqualTo(42));
+            Assert.That(SocketConnection.Counters.GetPipeLength(pipe), Is.EqualTo(42));
 
             pipe.Reader.AdvanceTo(result.Buffer.End);
-            Assert.Equal(0, SocketConnection.Counters.GetPipeLength(pipe));
+            Assert.That(SocketConnection.Counters.GetPipeLength(pipe), Is.EqualTo(0));
         }
     }
 }
