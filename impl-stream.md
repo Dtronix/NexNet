@@ -86,7 +86,7 @@ src/NexNet/Pipes/Stream/
 Test structure mirrors implementation:
 
 ```
-tests/NexNet.Tests/Stream/
+tests/NexNet.IntegrationTests/Stream/
 ├── Frames/
 │   └── *FrameTests.cs (one per frame type)
 ├── NexusStreamFrameWriterTests.cs
