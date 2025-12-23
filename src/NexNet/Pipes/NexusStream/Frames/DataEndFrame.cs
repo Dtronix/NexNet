@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame marking the end of a data sequence.
 /// Wire format: [TotalBytes:4][FinalSequence:4]
 /// </summary>
-public readonly struct DataEndFrame
+public readonly struct DataEndFrame : IWritableFrame
 {
     /// <summary>
     /// The wire size of this frame's payload.

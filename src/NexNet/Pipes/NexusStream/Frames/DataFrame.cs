@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame containing a chunk of binary data.
 /// Wire format: [Sequence:4][Data:N]
 /// </summary>
-public readonly struct DataFrame
+public readonly struct DataFrame : IWritableFrame
 {
     /// <summary>
     /// The size of the fixed portion of the frame (sequence number).

@@ -66,6 +66,11 @@ public enum StreamErrorCode : int
     /// </summary>
     SeekError = 10,
 
+    /// <summary>
+    /// The specified position is invalid (e.g., negative or beyond stream bounds).
+    /// </summary>
+    InvalidPosition = 11,
+
     // =============================================
     // Protocol Errors (100+) - Session Disconnects
     // =============================================

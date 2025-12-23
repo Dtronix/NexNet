@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame indicating the stream should be closed.
 /// Wire format: [Graceful:1]
 /// </summary>
-public readonly struct CloseFrame
+public readonly struct CloseFrame : IWritableFrame
 {
     /// <summary>
     /// The size of the payload in bytes.

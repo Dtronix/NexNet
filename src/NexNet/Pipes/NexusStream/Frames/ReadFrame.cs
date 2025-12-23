@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame requesting to read N bytes from the stream.
 /// Wire format: [Count:4]
 /// </summary>
-public readonly struct ReadFrame
+public readonly struct ReadFrame : IWritableFrame
 {
     /// <summary>
     /// The wire size of this frame's payload.

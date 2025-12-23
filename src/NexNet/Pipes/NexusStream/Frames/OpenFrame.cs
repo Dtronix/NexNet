@@ -7,7 +7,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame requesting to open a stream for a resource.
 /// Wire format: [ResourceId:2+N][Access:1][Share:1][ResumePosition:8]
 /// </summary>
-public readonly struct OpenFrame
+public readonly struct OpenFrame : IWritableFrame
 {
     /// <summary>
     /// The resource identifier (max 2000 characters).

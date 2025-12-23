@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame indicating a stream error occurred.
 /// Wire format: [ErrorCode:4][Position:8][Message:2+N]
 /// </summary>
-public readonly struct ErrorFrame
+public readonly struct ErrorFrame : IWritableFrame
 {
     /// <summary>
     /// The error code indicating what went wrong.

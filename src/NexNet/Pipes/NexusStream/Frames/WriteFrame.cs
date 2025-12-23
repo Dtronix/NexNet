@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame signaling the start of a write operation.
 /// Wire format: [Count:4]
 /// </summary>
-public readonly struct WriteFrame
+public readonly struct WriteFrame : IWritableFrame
 {
     /// <summary>
     /// The wire size of this frame's payload.

@@ -6,7 +6,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// Frame acknowledging write completion.
 /// Wire format: [Success:1][BytesWritten:4][Position:8][ErrorCode:4]
 /// </summary>
-public readonly struct WriteResponseFrame
+public readonly struct WriteResponseFrame : IWritableFrame
 {
     /// <summary>
     /// The wire size of this frame's payload.
