@@ -152,6 +152,35 @@ internal sealed class NexusStreamFrameWriter
     }
 
     /// <summary>
+    /// Writes an OpenResponse frame.
+    /// </summary>
+    public async ValueTask WriteOpenResponseAsync(OpenResponseFrame frame, CancellationToken ct = default)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var payloadSize = frame.GetPayloadSize();
+            var totalSize = FrameHeader.Size + payloadSize;
+
+            var buffer = _output.GetMemory(totalSize);
+
+            // Write header
+            var header = new FrameHeader(FrameType.OpenResponse, payloadSize);
+            header.Write(buffer.Span);
+
+            // Write payload
+            frame.Write(buffer.Span.Slice(FrameHeader.Size));
+
+            _output.Advance(totalSize);
+            await _output.FlushAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
     /// Writes a frame with an empty payload.
     /// </summary>
     public async ValueTask WriteEmptyFrameAsync(FrameType type, CancellationToken ct = default)
