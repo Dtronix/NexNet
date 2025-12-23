@@ -35,9 +35,10 @@ public class NexusStreamFrameWriterTests
     }
 
     [Test]
-    public void MaxPayloadSize_DefaultIs65536()
+    public void MaxPayloadSize_DefaultIs512KB()
     {
-        Assert.That(_writer.MaxPayloadSize, Is.EqualTo(65536));
+        Assert.That(_writer.MaxPayloadSize, Is.EqualTo(NexusStreamFrameWriter.DefaultMaxPayloadSize));
+        Assert.That(_writer.MaxPayloadSize, Is.EqualTo(524288)); // 0.5 MB
     }
 
     [Test]

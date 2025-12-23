@@ -93,5 +93,10 @@ public enum StreamErrorCode : int
     /// <summary>
     /// A frame was received that is not valid for the current state.
     /// </summary>
-    UnexpectedFrame = 104
+    UnexpectedFrame = 104,
+
+    /// <summary>
+    /// A general protocol error occurred.
+    /// </summary>
+    ProtocolError = 105
 }

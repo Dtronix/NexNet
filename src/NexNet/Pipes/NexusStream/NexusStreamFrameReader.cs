@@ -199,6 +199,67 @@ internal sealed class NexusStreamFrameReader
     }
 
     /// <summary>
+    /// Parses a Read frame from a payload sequence.
+    /// </summary>
+    public static ReadFrame ParseRead(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return ReadFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a Write frame from a payload sequence.
+    /// </summary>
+    public static WriteFrame ParseWrite(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return WriteFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a WriteResponse frame from a payload sequence.
+    /// </summary>
+    public static WriteResponseFrame ParseWriteResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return WriteResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a Data frame from a payload sequence, copying data to the provided buffer.
+    /// </summary>
+    /// <param name="payload">The payload sequence.</param>
+    /// <param name="dataBuffer">Buffer to copy data into.</param>
+    /// <returns>The parsed Data frame with data in the provided buffer.</returns>
+    public static DataFrame ParseData(ReadOnlySequence<byte> payload, Memory<byte> dataBuffer)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return DataFrame.Read(buffer.Span, dataBuffer);
+    }
+
+    /// <summary>
+    /// Parses a Data frame header without copying data.
+    /// Use this when you need to validate sequence before copying.
+    /// </summary>
+    /// <param name="payload">The payload sequence.</param>
+    /// <param name="sequence">The sequence number.</param>
+    /// <param name="dataLength">The length of the data.</param>
+    public static void ParseDataHeader(ReadOnlySequence<byte> payload, out uint sequence, out int dataLength)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        DataFrame.ReadHeader(buffer.Span, out sequence, out dataLength);
+    }
+
+    /// <summary>
+    /// Parses a DataEnd frame from a payload sequence.
+    /// </summary>
+    public static DataEndFrame ParseDataEnd(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return DataEndFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
     /// A ref struct that provides a contiguous span from a ReadOnlySequence,
     /// renting from ArrayPool if the sequence has multiple segments.
     /// </summary>
