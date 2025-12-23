@@ -328,6 +328,46 @@ internal sealed class NexusStreamTransport : INexusStreamTransport
         }
     }
 
+    /// <summary>
+    /// Writes a Read frame.
+    /// </summary>
+    internal ValueTask WriteFrameAsync(ReadFrame frame, CancellationToken ct = default)
+    {
+        return _writer.WriteReadAsync(frame, ct);
+    }
+
+    /// <summary>
+    /// Writes a Write frame.
+    /// </summary>
+    internal ValueTask WriteFrameAsync(WriteFrame frame, CancellationToken ct = default)
+    {
+        return _writer.WriteWriteAsync(frame, ct);
+    }
+
+    /// <summary>
+    /// Writes a DataEnd frame.
+    /// </summary>
+    internal ValueTask WriteFrameAsync(DataEndFrame frame, CancellationToken ct = default)
+    {
+        return _writer.WriteDataEndAsync(frame, ct);
+    }
+
+    /// <summary>
+    /// Writes chunked data frames.
+    /// </summary>
+    internal ValueTask WriteDataChunksAsync(ReadOnlyMemory<byte> data, SequenceManager sequenceManager, CancellationToken ct = default)
+    {
+        return _writer.WriteDataChunksUnlockedAsync(data, sequenceManager, ct);
+    }
+
+    /// <summary>
+    /// Reads the next frame from the transport.
+    /// </summary>
+    internal ValueTask<(FrameHeader Header, System.Buffers.ReadOnlySequence<byte> Payload)?> ReadFrameAsync(CancellationToken ct = default)
+    {
+        return _reader.ReadFrameAsync(ct);
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
