@@ -3,6 +3,7 @@ using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pools;
+using NexNet.RateLimiting;
 using NexNet.Transports;
 
 namespace NexNet.Internals;
@@ -30,4 +31,15 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     public TaskCompletionSource<DisconnectReason>? DisconnectedTaskCompletionSource { get; init; }
     public INexusClient? Client { get; init; }
     public NexusCollectionManager CollectionManager { get; init; }
+
+    /// <summary>
+    /// Remote address string for rate limiting release on disconnect.
+    /// This is the same value passed to IConnectionRateLimiter.TryAcquire().
+    /// </summary>
+    public string? RateLimiterAddress { get; init; }
+
+    /// <summary>
+    /// Rate limiter reference for release on disconnect.
+    /// </summary>
+    public IConnectionRateLimiter? RateLimiter { get; init; }
 }

@@ -64,4 +64,9 @@ public enum DisconnectReason : byte
     /// The socket was closed while attempting to write.
     /// </summary>
     SocketClosedWhenWriting = MessageType.DisconnectSocketClosedWhenWriting,
+
+    /// <summary>
+    /// Connection was rejected due to rate limiting.
+    /// </summary>
+    RateLimited = MessageType.DisconnectRateLimited,
 }

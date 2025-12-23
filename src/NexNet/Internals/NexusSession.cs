@@ -15,6 +15,7 @@ using NexNet.Pipes;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Pipelines.Threading;
+using NexNet.RateLimiting;
 
 namespace NexNet.Internals;
 
@@ -74,6 +75,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private const int MaxVersionStringLength = 16; // Max length for version strings
     private const int MaxGreetingAttempts = 3; // Max greeting messages per session
     private int _greetingAttempts = 0;
+
+    // Rate limiting
+    private readonly string? _rateLimiterAddress;
+    private readonly IConnectionRateLimiter? _rateLimiter;
 
     /// <summary>
     /// State of the connection that
@@ -166,6 +171,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Store remote endpoint info from transport
         RemoteAddress = configurations.Transport.RemoteAddress;
         RemotePort = configurations.Transport.RemotePort;
+
+        // Store rate limiter info for release on disconnect
+        _rateLimiterAddress = configurations.RateLimiterAddress;
+        _rateLimiter = configurations.RateLimiter;
 
         Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
@@ -384,6 +393,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             await _sessionManager.Groups.RemoveFromAllGroupsAsync(this).ConfigureAwait(false);
             await _sessionManager.Sessions.UnregisterSessionAsync(this).ConfigureAwait(false);
         }
+
+        // Release rate limiter slot
+        _rateLimiter?.Release(_rateLimiterAddress);
+
         ((IDisposable)SessionStore).Dispose();
         _invocationTaskArgumentsPool.Clear();
 
