@@ -167,22 +167,8 @@ internal sealed class NexusStreamFrameReader
     /// </summary>
     public static OpenFrame ParseOpen(ReadOnlySequence<byte> payload)
     {
-        if (payload.IsSingleSegment)
-        {
-            return OpenFrame.Read(payload.FirstSpan);
-        }
-
-        // Multi-segment: copy to contiguous buffer
-        var buffer = ArrayPool<byte>.Shared.Rent((int)payload.Length);
-        try
-        {
-            payload.CopyTo(buffer);
-            return OpenFrame.Read(buffer.AsSpan(0, (int)payload.Length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using var buffer = new ContiguousBuffer(payload);
+        return OpenFrame.Read(buffer.Span);
     }
 
     /// <summary>
@@ -190,22 +176,8 @@ internal sealed class NexusStreamFrameReader
     /// </summary>
     public static CloseFrame ParseClose(ReadOnlySequence<byte> payload)
     {
-        if (payload.IsSingleSegment)
-        {
-            return CloseFrame.Read(payload.FirstSpan);
-        }
-
-        // Multi-segment: copy to contiguous buffer
-        var buffer = ArrayPool<byte>.Shared.Rent((int)payload.Length);
-        try
-        {
-            payload.CopyTo(buffer);
-            return CloseFrame.Read(buffer.AsSpan(0, (int)payload.Length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using var buffer = new ContiguousBuffer(payload);
+        return CloseFrame.Read(buffer.Span);
     }
 
     /// <summary>
@@ -213,22 +185,51 @@ internal sealed class NexusStreamFrameReader
     /// </summary>
     public static ErrorFrame ParseError(ReadOnlySequence<byte> payload)
     {
-        if (payload.IsSingleSegment)
-        {
-            return ErrorFrame.Read(payload.FirstSpan);
-        }
-
-        // Multi-segment: copy to contiguous buffer
-        var buffer = ArrayPool<byte>.Shared.Rent((int)payload.Length);
-        try
-        {
-            payload.CopyTo(buffer);
-            return ErrorFrame.Read(buffer.AsSpan(0, (int)payload.Length));
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using var buffer = new ContiguousBuffer(payload);
+        return ErrorFrame.Read(buffer.Span);
     }
 
+    /// <summary>
+    /// Parses an OpenResponse frame from a payload sequence.
+    /// </summary>
+    public static OpenResponseFrame ParseOpenResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return OpenResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// A ref struct that provides a contiguous span from a ReadOnlySequence,
+    /// renting from ArrayPool if the sequence has multiple segments.
+    /// </summary>
+    private ref struct ContiguousBuffer
+    {
+        private readonly ReadOnlySpan<byte> _span;
+        private readonly byte[]? _rented;
+
+        public ContiguousBuffer(ReadOnlySequence<byte> sequence)
+        {
+            if (sequence.IsSingleSegment)
+            {
+                _span = sequence.FirstSpan;
+                _rented = null;
+            }
+            else
+            {
+                _rented = ArrayPool<byte>.Shared.Rent((int)sequence.Length);
+                sequence.CopyTo(_rented);
+                _span = _rented.AsSpan(0, (int)sequence.Length);
+            }
+        }
+
+        public ReadOnlySpan<byte> Span => _span;
+
+        public void Dispose()
+        {
+            if (_rented != null)
+            {
+                ArrayPool<byte>.Shared.Return(_rented);
+            }
+        }
+    }
 }
