@@ -319,4 +319,22 @@ internal sealed class NexusStreamFrameWriter
     /// </summary>
     public ValueTask WriteSetLengthResponseAsync(SetLengthResponseFrame frame, CancellationToken ct = default)
         => WriteFrameAsync(FrameType.SetLengthResponse, frame, ct);
+
+    /// <summary>
+    /// Writes a GetMetadata frame.
+    /// </summary>
+    public ValueTask WriteGetMetadataAsync(CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.GetMetadata, new GetMetadataFrame(), ct);
+
+    /// <summary>
+    /// Writes a MetadataResponse frame.
+    /// </summary>
+    public ValueTask WriteMetadataResponseAsync(MetadataResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.MetadataResponse, frame, ct);
+
+    /// <summary>
+    /// Writes a Progress frame.
+    /// </summary>
+    public ValueTask WriteProgressAsync(ProgressFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Progress, frame, ct);
 }

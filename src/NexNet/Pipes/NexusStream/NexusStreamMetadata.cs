@@ -32,6 +32,16 @@ public readonly struct NexusStreamMetadata
     /// </summary>
     public bool CanWrite { get; init; }
 
+    /// <summary>
+    /// When the stream resource was created, or null if unknown.
+    /// </summary>
+    public DateTimeOffset? Created { get; init; }
+
+    /// <summary>
+    /// When the stream resource was last modified, or null if unknown.
+    /// </summary>
+    public DateTimeOffset? Modified { get; init; }
+
     // Flags layout:
     // Bit 0: HasKnownLength
     // Bit 1: CanSeek
@@ -43,9 +53,9 @@ public readonly struct NexusStreamMetadata
     private const byte CanWriteFlag = 0x08;
 
     /// <summary>
-    /// Size of the metadata when serialized: Flags (1) + Length (8) = 9 bytes.
+    /// Size of the metadata when serialized: Flags (1) + Length (8) + Created (8) + Modified (8) = 25 bytes.
     /// </summary>
-    public const int Size = 9;
+    public const int Size = 25;
 
     /// <summary>
     /// Gets the flags byte representing the boolean properties.
@@ -64,10 +74,14 @@ public readonly struct NexusStreamMetadata
     /// Writes the metadata to a buffer.
     /// </summary>
     /// <param name="buffer">Buffer to write to. Must be at least <see cref="Size"/> bytes.</param>
-    public void Write(Span<byte> buffer)
+    /// <returns>Number of bytes written.</returns>
+    public int Write(Span<byte> buffer)
     {
         buffer[0] = GetFlags();
         StreamBinaryHelpers.WriteInt64(buffer.Slice(1), Length);
+        StreamBinaryHelpers.WriteInt64(buffer.Slice(9), Created?.UtcTicks ?? 0);
+        StreamBinaryHelpers.WriteInt64(buffer.Slice(17), Modified?.UtcTicks ?? 0);
+        return Size;
     }
 
     /// <summary>
@@ -79,6 +93,8 @@ public readonly struct NexusStreamMetadata
     {
         var flags = buffer[0];
         var length = StreamBinaryHelpers.ReadInt64(buffer.Slice(1));
+        var createdTicks = StreamBinaryHelpers.ReadInt64(buffer.Slice(9));
+        var modifiedTicks = StreamBinaryHelpers.ReadInt64(buffer.Slice(17));
 
         return new NexusStreamMetadata
         {
@@ -86,13 +102,15 @@ public readonly struct NexusStreamMetadata
             CanSeek = (flags & CanSeekFlag) != 0,
             CanRead = (flags & CanReadFlag) != 0,
             CanWrite = (flags & CanWriteFlag) != 0,
-            Length = length
+            Length = length,
+            Created = createdTicks == 0 ? null : new DateTimeOffset(createdTicks, TimeSpan.Zero),
+            Modified = modifiedTicks == 0 ? null : new DateTimeOffset(modifiedTicks, TimeSpan.Zero)
         };
     }
 
     /// <inheritdoc />
     public override string ToString()
     {
-        return $"Metadata[Length={Length}, HasKnownLength={HasKnownLength}, CanSeek={CanSeek}, CanRead={CanRead}, CanWrite={CanWrite}]";
+        return $"Metadata[Length={Length}, HasKnownLength={HasKnownLength}, CanSeek={CanSeek}, CanRead={CanRead}, CanWrite={CanWrite}, Created={Created}, Modified={Modified}]";
     }
 }

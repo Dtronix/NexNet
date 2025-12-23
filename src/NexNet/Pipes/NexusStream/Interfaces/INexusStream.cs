@@ -91,15 +91,18 @@ public interface INexusStream : IAsyncDisposable
 
     /// <summary>
     /// Gets metadata about the stream.
+    /// By default returns cached metadata from the open response.
     /// </summary>
+    /// <param name="refresh">If true, fetches fresh metadata from the server.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>The stream metadata.</returns>
-    ValueTask<NexusStreamMetadata> GetMetadataAsync(CancellationToken ct = default);
+    ValueTask<NexusStreamMetadata> GetMetadataAsync(bool refresh = false, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets an observable that emits progress updates during transfers.
+    /// Gets or sets the callback for progress updates during transfers.
+    /// Set this before starting read/write operations.
     /// </summary>
-    IObservable<NexusStreamProgress> Progress { get; }
+    Action<NexusStreamProgress>? OnProgress { get; set; }
 
     /// <summary>
     /// Gets a <see cref="System.IO.Stream"/> wrapper for this stream.
