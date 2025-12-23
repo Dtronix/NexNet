@@ -368,6 +368,30 @@ internal sealed class NexusStreamTransport : INexusStreamTransport
         return _reader.ReadFrameAsync(ct);
     }
 
+    /// <summary>
+    /// Writes a Seek frame.
+    /// </summary>
+    internal ValueTask WriteFrameAsync(SeekFrame frame, CancellationToken ct = default)
+    {
+        return _writer.WriteSeekAsync(frame, ct);
+    }
+
+    /// <summary>
+    /// Writes a Flush frame.
+    /// </summary>
+    internal ValueTask WriteFlushAsync(CancellationToken ct = default)
+    {
+        return _writer.WriteFlushAsync(ct);
+    }
+
+    /// <summary>
+    /// Writes a SetLength frame.
+    /// </summary>
+    internal ValueTask WriteFrameAsync(SetLengthFrame frame, CancellationToken ct = default)
+    {
+        return _writer.WriteSetLengthAsync(frame, ct);
+    }
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {

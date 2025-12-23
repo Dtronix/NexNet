@@ -41,6 +41,56 @@ internal sealed class NexusStreamFrameWriter
     public int MaxPayloadSize => _maxPayloadSize;
 
     /// <summary>
+    /// Internal helper that writes a typed frame without locking.
+    /// Caller must hold the write lock.
+    /// </summary>
+    /// <typeparam name="TFrame">The frame type implementing IWritableFrame.</typeparam>
+    /// <param name="type">The frame type enum value.</param>
+    /// <param name="frame">The frame to write.</param>
+    /// <param name="ct">Cancellation token.</param>
+    private async ValueTask WriteFrameUnlockedAsync<TFrame>(FrameType type, TFrame frame, CancellationToken ct)
+        where TFrame : struct, IWritableFrame
+    {
+        var payloadSize = frame.GetPayloadSize();
+        var totalSize = FrameHeader.Size + payloadSize;
+
+        var buffer = _output.GetMemory(totalSize);
+
+        // Write header
+        new FrameHeader(type, payloadSize).Write(buffer.Span);
+
+        // Write payload
+        if (payloadSize > 0)
+        {
+            frame.Write(buffer.Span.Slice(FrameHeader.Size));
+        }
+
+        _output.Advance(totalSize);
+        await _output.FlushAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes a typed frame with locking.
+    /// </summary>
+    /// <typeparam name="TFrame">The frame type implementing IWritableFrame.</typeparam>
+    /// <param name="type">The frame type enum value.</param>
+    /// <param name="frame">The frame to write.</param>
+    /// <param name="ct">Cancellation token.</param>
+    private async ValueTask WriteFrameAsync<TFrame>(FrameType type, TFrame frame, CancellationToken ct)
+        where TFrame : struct, IWritableFrame
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await WriteFrameUnlockedAsync(type, frame, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
     /// Writes a raw frame with the specified type and payload.
     /// </summary>
     /// <param name="type">The frame type.</param>
@@ -74,118 +124,26 @@ internal sealed class NexusStreamFrameWriter
     /// <summary>
     /// Writes an Open frame.
     /// </summary>
-    public async ValueTask WriteOpenAsync(OpenFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Open, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteOpenAsync(OpenFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Open, frame, ct);
 
     /// <summary>
     /// Writes a Close frame.
     /// </summary>
-    public async ValueTask WriteCloseAsync(CloseFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Close, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteCloseAsync(CloseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Close, frame, ct);
 
     /// <summary>
     /// Writes an Error frame.
     /// </summary>
-    public async ValueTask WriteErrorAsync(ErrorFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Error, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteErrorAsync(ErrorFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Error, frame, ct);
 
     /// <summary>
     /// Writes an OpenResponse frame.
     /// </summary>
-    public async ValueTask WriteOpenResponseAsync(OpenResponseFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.OpenResponse, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteOpenResponseAsync(OpenResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.OpenResponse, frame, ct);
 
     /// <summary>
     /// Writes a frame with an empty payload.
@@ -212,147 +170,32 @@ internal sealed class NexusStreamFrameWriter
     /// <summary>
     /// Writes a Read frame.
     /// </summary>
-    public async ValueTask WriteReadAsync(ReadFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Read, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteReadAsync(ReadFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Read, frame, ct);
 
     /// <summary>
     /// Writes a Write frame.
     /// </summary>
-    public async ValueTask WriteWriteAsync(WriteFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Write, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteWriteAsync(WriteFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Write, frame, ct);
 
     /// <summary>
     /// Writes a WriteResponse frame.
     /// </summary>
-    public async ValueTask WriteWriteResponseAsync(WriteResponseFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.WriteResponse, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteWriteResponseAsync(WriteResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.WriteResponse, frame, ct);
 
     /// <summary>
     /// Writes a Data frame.
     /// </summary>
-    public async ValueTask WriteDataAsync(DataFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.Data, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteDataAsync(DataFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Data, frame, ct);
 
     /// <summary>
     /// Writes a DataEnd frame.
     /// </summary>
-    public async ValueTask WriteDataEndAsync(DataEndFrame frame, CancellationToken ct = default)
-    {
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var payloadSize = frame.GetPayloadSize();
-            var totalSize = FrameHeader.Size + payloadSize;
-
-            var buffer = _output.GetMemory(totalSize);
-
-            // Write header
-            var header = new FrameHeader(FrameType.DataEnd, payloadSize);
-            header.Write(buffer.Span);
-
-            // Write payload
-            frame.Write(buffer.Span.Slice(FrameHeader.Size));
-
-            _output.Advance(totalSize);
-            await _output.FlushAsync(ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            _writeLock.Release();
-        }
-    }
+    public ValueTask WriteDataEndAsync(DataEndFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.DataEnd, frame, ct);
 
     /// <summary>
     /// Chunks data into Data frames suitable for transmission.
@@ -440,4 +283,40 @@ internal sealed class NexusStreamFrameWriter
             offset += chunkSize;
         }
     }
+
+    /// <summary>
+    /// Writes a Seek frame.
+    /// </summary>
+    public ValueTask WriteSeekAsync(SeekFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Seek, frame, ct);
+
+    /// <summary>
+    /// Writes a SeekResponse frame.
+    /// </summary>
+    public ValueTask WriteSeekResponseAsync(SeekResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.SeekResponse, frame, ct);
+
+    /// <summary>
+    /// Writes a Flush frame.
+    /// </summary>
+    public ValueTask WriteFlushAsync(CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Flush, new FlushFrame(), ct);
+
+    /// <summary>
+    /// Writes a FlushResponse frame.
+    /// </summary>
+    public ValueTask WriteFlushResponseAsync(FlushResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.FlushResponse, frame, ct);
+
+    /// <summary>
+    /// Writes a SetLength frame.
+    /// </summary>
+    public ValueTask WriteSetLengthAsync(SetLengthFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.SetLength, frame, ct);
+
+    /// <summary>
+    /// Writes a SetLengthResponse frame.
+    /// </summary>
+    public ValueTask WriteSetLengthResponseAsync(SetLengthResponseFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.SetLengthResponse, frame, ct);
 }

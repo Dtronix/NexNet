@@ -9,7 +9,7 @@ namespace NexNet.Pipes.NexusStream.Frames;
 /// - If Success=true: Metadata (9 bytes)
 /// - If Success=false: ErrorCode (4 bytes) + ErrorMessage (2+N bytes)
 /// </summary>
-public readonly struct OpenResponseFrame
+public readonly struct OpenResponseFrame : IWritableFrame
 {
     /// <summary>
     /// Whether the open request succeeded.

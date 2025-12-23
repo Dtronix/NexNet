@@ -260,6 +260,51 @@ internal sealed class NexusStreamFrameReader
     }
 
     /// <summary>
+    /// Parses a Seek frame from a payload sequence.
+    /// </summary>
+    public static SeekFrame ParseSeek(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return SeekFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a SeekResponse frame from a payload sequence.
+    /// </summary>
+    public static SeekResponseFrame ParseSeekResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return SeekResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a FlushResponse frame from a payload sequence.
+    /// </summary>
+    public static FlushResponseFrame ParseFlushResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return FlushResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a SetLength frame from a payload sequence.
+    /// </summary>
+    public static SetLengthFrame ParseSetLength(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return SetLengthFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a SetLengthResponse frame from a payload sequence.
+    /// </summary>
+    public static SetLengthResponseFrame ParseSetLengthResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return SetLengthResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
     /// A ref struct that provides a contiguous span from a ReadOnlySequence,
     /// renting from ArrayPool if the sequence has multiple segments.
     /// </summary>

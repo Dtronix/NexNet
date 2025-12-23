@@ -21,12 +21,15 @@ internal sealed class NexusStream : INexusStream
     private readonly NexusStreamMetadata _metadata;
     private readonly SemaphoreSlim _readLock = new(1, 1);
     private readonly SemaphoreSlim _writeLock = new(1, 1);
+    private readonly SemaphoreSlim _seekLock = new(1, 1);
     private readonly SequenceManager _readSequence = new();
     private readonly SequenceManager _writeSequence = new();
 
     private NexusStreamState _state;
     private Exception? _error;
     private long _position;
+    private long _logicalPosition; // Tracked for progress on non-seekable streams
+    private long _length;
 
     /// <inheritdoc />
     public NexusStreamState State => _state;
@@ -46,7 +49,12 @@ internal sealed class NexusStream : INexusStream
     }
 
     /// <inheritdoc />
-    public long Length => _metadata.Length;
+    public long Length => _length;
+
+    /// <summary>
+    /// Gets the logical position for progress tracking (works for non-seekable streams).
+    /// </summary>
+    internal long LogicalPosition => _logicalPosition;
 
     /// <inheritdoc />
     public bool HasKnownLength => _metadata.HasKnownLength;
@@ -74,6 +82,8 @@ internal sealed class NexusStream : INexusStream
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
         _metadata = metadata;
         _position = initialPosition;
+        _logicalPosition = initialPosition;
+        _length = metadata.Length;
         _state = NexusStreamState.Open;
     }
 
@@ -88,7 +98,17 @@ internal sealed class NexusStream : INexusStream
         if (buffer.Length == 0)
             return 0;
 
-        await _readLock.WaitAsync(ct).ConfigureAwait(false);
+        // Check if a seek is in progress
+        await _seekLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _readLock.WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _seekLock.Release();
+        }
+
         try
         {
             return await ReadInternalAsync(buffer, ct).ConfigureAwait(false);
@@ -161,8 +181,9 @@ internal sealed class NexusStream : INexusStream
                             isProtocolError: true);
                     }
 
-                    // Update position
+                    // Update positions
                     _position += totalReceived;
+                    _logicalPosition += totalReceived;
                     return totalReceived;
 
                 case FrameType.Error:
@@ -189,7 +210,17 @@ internal sealed class NexusStream : INexusStream
         if (data.Length == 0)
             return;
 
-        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        // Check if a seek is in progress
+        await _seekLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _seekLock.Release();
+        }
+
         try
         {
             await WriteInternalAsync(data, ct).ConfigureAwait(false);
@@ -239,7 +270,8 @@ internal sealed class NexusStream : INexusStream
                     throw new NexusStreamException(response.ErrorCode, $"Write failed: {response.ErrorCode}");
                 }
 
-                // Update position from response (authoritative)
+                // Update positions (server position is authoritative, but track logical for progress)
+                _logicalPosition += response.BytesWritten;
                 _position = response.Position;
                 break;
 
@@ -256,28 +288,208 @@ internal sealed class NexusStream : INexusStream
     }
 
     /// <inheritdoc />
-    public ValueTask<long> SeekAsync(long offset, SeekOrigin origin, CancellationToken ct = default)
+    public async ValueTask<long> SeekAsync(long offset, SeekOrigin origin, CancellationToken ct = default)
     {
         ThrowIfNotOpen();
         if (!CanSeek)
             throw new NotSupportedException("Stream does not support seeking.");
-        throw new NotImplementedException("Seek operations not implemented until Phase 4.");
+
+        // Acquire seek lock to block new reads/writes
+        await _seekLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            // Wait for any in-progress read/write to complete
+            await _readLock.WaitAsync(ct).ConfigureAwait(false);
+            await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+
+            try
+            {
+                return await SeekInternalAsync(offset, origin, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _writeLock.Release();
+                _readLock.Release();
+            }
+        }
+        finally
+        {
+            _seekLock.Release();
+        }
+    }
+
+    private async ValueTask<long> SeekInternalAsync(long offset, SeekOrigin origin, CancellationToken ct)
+    {
+        // Send Seek frame
+        var seekFrame = new SeekFrame(offset, origin);
+        await _transport.WriteFrameAsync(seekFrame, ct).ConfigureAwait(false);
+
+        // Wait for SeekResponse
+        var frameResult = await _transport.ReadFrameAsync(ct).ConfigureAwait(false);
+        if (frameResult == null)
+        {
+            throw new InvalidOperationException("Connection closed while waiting for seek response.");
+        }
+
+        var (header, payload) = frameResult.Value;
+
+        switch (header.Type)
+        {
+            case FrameType.SeekResponse:
+                var response = NexusStreamFrameReader.ParseSeekResponse(payload);
+
+                // Always update position from response (authoritative)
+                _position = response.Position;
+
+                if (!response.Success)
+                {
+                    throw new NexusStreamException(response.ErrorCode, $"Seek failed: {response.ErrorCode}");
+                }
+
+                return _position;
+
+            case FrameType.Error:
+                var errorFrame = NexusStreamFrameReader.ParseError(payload);
+                throw new NexusStreamException(errorFrame.ErrorCode, errorFrame.Message, errorFrame.IsProtocolError);
+
+            default:
+                throw new NexusStreamException(
+                    StreamErrorCode.UnexpectedFrame,
+                    $"Expected SeekResponse or Error frame, got {header.Type}.",
+                    isProtocolError: true);
+        }
     }
 
     /// <inheritdoc />
-    public ValueTask FlushAsync(CancellationToken ct = default)
+    public async ValueTask FlushAsync(CancellationToken ct = default)
     {
         ThrowIfNotOpen();
-        throw new NotImplementedException("Flush operations not implemented until Phase 4.");
+
+        // Flush only requires write lock (pending writes)
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await FlushInternalAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private async ValueTask FlushInternalAsync(CancellationToken ct)
+    {
+        // Send Flush frame
+        await _transport.WriteFlushAsync(ct).ConfigureAwait(false);
+
+        // Wait for FlushResponse (waits for in-flight data to be acknowledged)
+        var frameResult = await _transport.ReadFrameAsync(ct).ConfigureAwait(false);
+        if (frameResult == null)
+        {
+            throw new InvalidOperationException("Connection closed while waiting for flush response.");
+        }
+
+        var (header, payload) = frameResult.Value;
+
+        switch (header.Type)
+        {
+            case FrameType.FlushResponse:
+                var response = NexusStreamFrameReader.ParseFlushResponse(payload);
+
+                // Update position from response for resync
+                _position = response.Position;
+
+                if (!response.Success)
+                {
+                    throw new NexusStreamException(response.ErrorCode, $"Flush failed: {response.ErrorCode}");
+                }
+                break;
+
+            case FrameType.Error:
+                var errorFrame = NexusStreamFrameReader.ParseError(payload);
+                throw new NexusStreamException(errorFrame.ErrorCode, errorFrame.Message, errorFrame.IsProtocolError);
+
+            default:
+                throw new NexusStreamException(
+                    StreamErrorCode.UnexpectedFrame,
+                    $"Expected FlushResponse or Error frame, got {header.Type}.",
+                    isProtocolError: true);
+        }
     }
 
     /// <inheritdoc />
-    public ValueTask SetLengthAsync(long length, CancellationToken ct = default)
+    public async ValueTask SetLengthAsync(long length, CancellationToken ct = default)
     {
         ThrowIfNotOpen();
+
         if (!CanWrite)
             throw new NotSupportedException("Stream does not support writing.");
-        throw new NotImplementedException("SetLength operations not implemented until Phase 4.");
+        if (!CanSeek)
+            throw new NotSupportedException("Stream does not support seeking (required for SetLength).");
+
+        // SetLength requires exclusive access like Seek
+        await _seekLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await _readLock.WaitAsync(ct).ConfigureAwait(false);
+            await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+
+            try
+            {
+                await SetLengthInternalAsync(length, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _writeLock.Release();
+                _readLock.Release();
+            }
+        }
+        finally
+        {
+            _seekLock.Release();
+        }
+    }
+
+    private async ValueTask SetLengthInternalAsync(long length, CancellationToken ct)
+    {
+        // Send SetLength frame
+        var setLengthFrame = new SetLengthFrame(length);
+        await _transport.WriteFrameAsync(setLengthFrame, ct).ConfigureAwait(false);
+
+        // Wait for SetLengthResponse
+        var frameResult = await _transport.ReadFrameAsync(ct).ConfigureAwait(false);
+        if (frameResult == null)
+        {
+            throw new InvalidOperationException("Connection closed while waiting for set length response.");
+        }
+
+        var (header, payload) = frameResult.Value;
+
+        switch (header.Type)
+        {
+            case FrameType.SetLengthResponse:
+                var response = NexusStreamFrameReader.ParseSetLengthResponse(payload);
+
+                // Update length and position from response (authoritative)
+                _length = response.NewLength;
+                _position = response.Position;
+
+                if (!response.Success)
+                {
+                    throw new NexusStreamException(response.ErrorCode, $"SetLength failed: {response.ErrorCode}");
+                }
+                break;
+
+            case FrameType.Error:
+                var errorFrame = NexusStreamFrameReader.ParseError(payload);
+                throw new NexusStreamException(errorFrame.ErrorCode, errorFrame.Message, errorFrame.IsProtocolError);
+
+            default:
+                throw new NexusStreamException(
+                    StreamErrorCode.UnexpectedFrame,
+                    $"Expected SetLengthResponse or Error frame, got {header.Type}.",
+                    isProtocolError: true);
+        }
     }
 
     /// <inheritdoc />
@@ -313,6 +525,7 @@ internal sealed class NexusStream : INexusStream
             _state = NexusStreamState.Closed;
             _readLock.Dispose();
             _writeLock.Dispose();
+            _seekLock.Dispose();
         }
     }
 
