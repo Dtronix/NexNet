@@ -305,6 +305,24 @@ internal sealed class NexusStreamFrameReader
     }
 
     /// <summary>
+    /// Parses a MetadataResponse frame from a payload sequence.
+    /// </summary>
+    public static MetadataResponseFrame ParseMetadataResponse(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return MetadataResponseFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
+    /// Parses a Progress frame from a payload sequence.
+    /// </summary>
+    public static ProgressFrame ParseProgress(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return ProgressFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
     /// A ref struct that provides a contiguous span from a ReadOnlySequence,
     /// renting from ArrayPool if the sequence has multiple segments.
     /// </summary>

@@ -8,9 +8,10 @@ namespace NexNet.IntegrationTests.Pipes.NexusStream;
 public class NexusStreamMetadataTests
 {
     [Test]
-    public void Size_Is9()
+    public void Size_Is25()
     {
-        Assert.That(NexusStreamMetadata.Size, Is.EqualTo(9));
+        // 1 (flags) + 8 (length) + 8 (created) + 8 (modified) = 25
+        Assert.That(NexusStreamMetadata.Size, Is.EqualTo(25));
     }
 
     [Test]
@@ -57,6 +58,55 @@ public class NexusStreamMetadataTests
         Assert.That(result.CanSeek, Is.False);
         Assert.That(result.CanRead, Is.False);
         Assert.That(result.CanWrite, Is.False);
+    }
+
+    [Test]
+    public void Roundtrip_WithDateTimes()
+    {
+        var created = new DateTimeOffset(2024, 6, 15, 10, 30, 0, TimeSpan.Zero);
+        var modified = new DateTimeOffset(2024, 12, 20, 15, 45, 30, TimeSpan.Zero);
+
+        var original = new NexusStreamMetadata
+        {
+            Length = 2048,
+            HasKnownLength = true,
+            CanSeek = true,
+            CanRead = true,
+            CanWrite = true,
+            Created = created,
+            Modified = modified
+        };
+
+        Span<byte> buffer = stackalloc byte[NexusStreamMetadata.Size];
+        original.Write(buffer);
+        var result = NexusStreamMetadata.Read(buffer);
+
+        Assert.That(result.Created, Is.Not.Null);
+        Assert.That(result.Created!.Value.UtcTicks, Is.EqualTo(created.UtcTicks));
+        Assert.That(result.Modified, Is.Not.Null);
+        Assert.That(result.Modified!.Value.UtcTicks, Is.EqualTo(modified.UtcTicks));
+    }
+
+    [Test]
+    public void Roundtrip_NullDateTimes()
+    {
+        var original = new NexusStreamMetadata
+        {
+            Length = 512,
+            HasKnownLength = true,
+            CanSeek = true,
+            CanRead = true,
+            CanWrite = false,
+            Created = null,
+            Modified = null
+        };
+
+        Span<byte> buffer = stackalloc byte[NexusStreamMetadata.Size];
+        original.Write(buffer);
+        var result = NexusStreamMetadata.Read(buffer);
+
+        Assert.That(result.Created, Is.Null);
+        Assert.That(result.Modified, Is.Null);
     }
 
     [Test]
@@ -146,7 +196,9 @@ public class NexusStreamMetadataTests
             HasKnownLength = true,
             CanSeek = true,
             CanRead = true,
-            CanWrite = false
+            CanWrite = false,
+            Created = null,
+            Modified = null
         };
 
         var buffer = new byte[NexusStreamMetadata.Size];
@@ -155,7 +207,7 @@ public class NexusStreamMetadataTests
         // Flags: HasKnownLength | CanSeek | CanRead = 0x01 | 0x02 | 0x04 = 0x07
         Assert.That(buffer[0], Is.EqualTo(0x07), "Flags byte");
 
-        // Length in little-endian
+        // Length in little-endian (bytes 1-8)
         Assert.That(buffer[1], Is.EqualTo(0xF0), "Length byte 0");
         Assert.That(buffer[2], Is.EqualTo(0xDE), "Length byte 1");
         Assert.That(buffer[3], Is.EqualTo(0xBC), "Length byte 2");
@@ -164,6 +216,18 @@ public class NexusStreamMetadataTests
         Assert.That(buffer[6], Is.EqualTo(0x56), "Length byte 5");
         Assert.That(buffer[7], Is.EqualTo(0x34), "Length byte 6");
         Assert.That(buffer[8], Is.EqualTo(0x12), "Length byte 7");
+
+        // Created (null = 0) in little-endian (bytes 9-16)
+        for (int i = 9; i < 17; i++)
+        {
+            Assert.That(buffer[i], Is.EqualTo(0), $"Created byte {i - 9}");
+        }
+
+        // Modified (null = 0) in little-endian (bytes 17-24)
+        for (int i = 17; i < 25; i++)
+        {
+            Assert.That(buffer[i], Is.EqualTo(0), $"Modified byte {i - 17}");
+        }
     }
 
     [Test]

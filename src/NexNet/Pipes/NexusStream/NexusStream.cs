@@ -18,18 +18,21 @@ internal sealed class NexusStream : INexusStream
     private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(5);
 
     private readonly NexusStreamTransport _transport;
-    private readonly NexusStreamMetadata _metadata;
     private readonly SemaphoreSlim _readLock = new(1, 1);
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly SemaphoreSlim _seekLock = new(1, 1);
     private readonly SequenceManager _readSequence = new();
     private readonly SequenceManager _writeSequence = new();
+    private readonly ProgressTracker _progressTracker;
 
+    private NexusStreamMetadata _cachedMetadata;
     private NexusStreamState _state;
     private Exception? _error;
     private long _position;
     private long _logicalPosition; // Tracked for progress on non-seekable streams
     private long _length;
+    private long _bytesRead;
+    private long _bytesWritten;
 
     /// <inheritdoc />
     public NexusStreamState State => _state;
@@ -57,19 +60,19 @@ internal sealed class NexusStream : INexusStream
     internal long LogicalPosition => _logicalPosition;
 
     /// <inheritdoc />
-    public bool HasKnownLength => _metadata.HasKnownLength;
+    public bool HasKnownLength => _cachedMetadata.HasKnownLength;
 
     /// <inheritdoc />
-    public bool CanSeek => _metadata.CanSeek;
+    public bool CanSeek => _cachedMetadata.CanSeek;
 
     /// <inheritdoc />
-    public bool CanRead => _metadata.CanRead;
+    public bool CanRead => _cachedMetadata.CanRead;
 
     /// <inheritdoc />
-    public bool CanWrite => _metadata.CanWrite;
+    public bool CanWrite => _cachedMetadata.CanWrite;
 
     /// <inheritdoc />
-    public IObservable<NexusStreamProgress> Progress => throw new NotImplementedException("Progress tracking not implemented until Phase 5.");
+    public Action<NexusStreamProgress>? OnProgress { get; set; }
 
     /// <summary>
     /// Creates a new NexusStream instance.
@@ -77,14 +80,23 @@ internal sealed class NexusStream : INexusStream
     /// <param name="transport">The transport that owns this stream.</param>
     /// <param name="metadata">The stream metadata from the open response.</param>
     /// <param name="initialPosition">The initial position (for resumed streams).</param>
-    internal NexusStream(NexusStreamTransport transport, NexusStreamMetadata metadata, long initialPosition = 0)
+    /// <param name="progressByteThreshold">Minimum bytes transferred before emitting progress (default: 1 MB).</param>
+    /// <param name="progressTimeInterval">Minimum time between progress reports (default: 5 seconds).</param>
+    internal NexusStream(
+        NexusStreamTransport transport,
+        NexusStreamMetadata metadata,
+        long initialPosition = 0,
+        long progressByteThreshold = ProgressTracker.DefaultByteThreshold,
+        TimeSpan? progressTimeInterval = null)
     {
         _transport = transport ?? throw new ArgumentNullException(nameof(transport));
-        _metadata = metadata;
+        _cachedMetadata = metadata;
         _position = initialPosition;
         _logicalPosition = initialPosition;
         _length = metadata.Length;
         _state = NexusStreamState.Open;
+        _progressTracker = new ProgressTracker(progressByteThreshold, progressTimeInterval);
+        _progressTracker.Start();
     }
 
     /// <inheritdoc />
@@ -181,9 +193,14 @@ internal sealed class NexusStream : INexusStream
                             isProtocolError: true);
                     }
 
-                    // Update positions
+                    // Update positions and counters
                     _position += totalReceived;
                     _logicalPosition += totalReceived;
+                    _bytesRead += totalReceived;
+
+                    // Emit progress if needed
+                    EmitProgressIfNeeded(TransferState.Active);
+
                     return totalReceived;
 
                 case FrameType.Error:
@@ -270,9 +287,13 @@ internal sealed class NexusStream : INexusStream
                     throw new NexusStreamException(response.ErrorCode, $"Write failed: {response.ErrorCode}");
                 }
 
-                // Update positions (server position is authoritative, but track logical for progress)
+                // Update positions and counters (server position is authoritative, but track logical for progress)
                 _logicalPosition += response.BytesWritten;
                 _position = response.Position;
+                _bytesWritten += response.BytesWritten;
+
+                // Emit progress if needed
+                EmitProgressIfNeeded(TransferState.Active);
                 break;
 
             case FrameType.Error:
@@ -493,10 +514,45 @@ internal sealed class NexusStream : INexusStream
     }
 
     /// <inheritdoc />
-    public ValueTask<NexusStreamMetadata> GetMetadataAsync(CancellationToken ct = default)
+    public async ValueTask<NexusStreamMetadata> GetMetadataAsync(bool refresh = false, CancellationToken ct = default)
     {
         ThrowIfNotOpen();
-        throw new NotImplementedException("GetMetadata operations not implemented until Phase 5.");
+
+        if (!refresh)
+        {
+            // Return cached metadata
+            return _cachedMetadata;
+        }
+
+        // Request fresh metadata from server
+        await _transport.WriteGetMetadataAsync(ct).ConfigureAwait(false);
+
+        var frameResult = await _transport.ReadFrameAsync(ct).ConfigureAwait(false);
+        if (frameResult == null)
+        {
+            throw new InvalidOperationException("Connection closed while waiting for metadata response.");
+        }
+
+        var (header, payload) = frameResult.Value;
+
+        switch (header.Type)
+        {
+            case FrameType.MetadataResponse:
+                var response = NexusStreamFrameReader.ParseMetadataResponse(payload);
+                _cachedMetadata = response.Metadata;
+                _length = response.Metadata.Length;
+                return _cachedMetadata;
+
+            case FrameType.Error:
+                var errorFrame = NexusStreamFrameReader.ParseError(payload);
+                throw new NexusStreamException(errorFrame.ErrorCode, errorFrame.Message, errorFrame.IsProtocolError);
+
+            default:
+                throw new NexusStreamException(
+                    StreamErrorCode.UnexpectedFrame,
+                    $"Expected MetadataResponse or Error frame, got {header.Type}.",
+                    isProtocolError: true);
+        }
     }
 
     /// <inheritdoc />
@@ -514,6 +570,10 @@ internal sealed class NexusStream : INexusStream
 
         try
         {
+            // Emit final progress on completion
+            _progressTracker.Stop();
+            EmitProgress(TransferState.Complete);
+
             await _transport.CloseStreamAsync(graceful: true).ConfigureAwait(false);
         }
         catch
@@ -602,5 +662,45 @@ internal sealed class NexusStream : INexusStream
         {
             // Ignore errors during drain
         }
+    }
+
+    /// <summary>
+    /// Emits a progress notification if the thresholds are met.
+    /// </summary>
+    /// <param name="state">The current transfer state.</param>
+    private void EmitProgressIfNeeded(TransferState state)
+    {
+        if (OnProgress == null)
+            return;
+
+        if (!_progressTracker.ShouldReport(_bytesRead, _bytesWritten, state))
+            return;
+
+        var progress = new NexusStreamProgress
+        {
+            BytesRead = _bytesRead,
+            BytesWritten = _bytesWritten,
+            TotalReadBytes = HasKnownLength ? _length : -1,
+            TotalWriteBytes = HasKnownLength ? _length : -1,
+            Elapsed = _progressTracker.Elapsed,
+            ReadBytesPerSecond = _progressTracker.CalculateRate(_bytesRead),
+            WriteBytesPerSecond = _progressTracker.CalculateRate(_bytesWritten),
+            State = state
+        };
+
+        OnProgress(progress);
+    }
+
+    /// <summary>
+    /// Forces a progress notification regardless of thresholds.
+    /// </summary>
+    /// <param name="state">The current transfer state.</param>
+    internal void EmitProgress(TransferState state)
+    {
+        if (OnProgress == null)
+            return;
+
+        _progressTracker.ForceNextReport();
+        EmitProgressIfNeeded(state);
     }
 }
