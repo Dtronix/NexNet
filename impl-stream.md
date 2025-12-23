@@ -37,10 +37,10 @@ Based on requirements analysis:
 
 ### File Structure
 
-All implementation in `src/NexNet/Pipes/Stream/`:
+All implementation in `src/NexNet/Pipes/NexusStream/`:
 
 ```
-src/NexNet/Pipes/Stream/
+src/NexNet/Pipes/NexusStream/
 ├── Frames/
 │   ├── FrameType.cs
 │   ├── FrameHeader.cs
@@ -86,7 +86,7 @@ src/NexNet/Pipes/Stream/
 Test structure mirrors implementation:
 
 ```
-tests/NexNet.IntegrationTests/Stream/
+src/NexNet.IntegrationTests/NexusStream/
 ├── Frames/
 │   └── *FrameTests.cs (one per frame type)
 ├── NexusStreamFrameWriterTests.cs
