@@ -323,6 +323,15 @@ internal sealed class NexusStreamFrameReader
     }
 
     /// <summary>
+    /// Parses an Ack frame from a payload sequence.
+    /// </summary>
+    public static AckFrame ParseAck(ReadOnlySequence<byte> payload)
+    {
+        using var buffer = new ContiguousBuffer(payload);
+        return AckFrame.Read(buffer.Span);
+    }
+
+    /// <summary>
     /// A ref struct that provides a contiguous span from a ReadOnlySequence,
     /// renting from ArrayPool if the sequence has multiple segments.
     /// </summary>

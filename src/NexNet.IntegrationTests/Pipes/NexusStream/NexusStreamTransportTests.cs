@@ -89,27 +89,22 @@ public class NexusStreamTransportTests
     }
 
     [Test]
-    public async Task ProvideFileAsync_ThrowsNotImplemented()
+    public void ProvideFileAsync_ThrowsArgumentNullException_WhenPathIsNull()
     {
         var pipe = new MockNexusDuplexPipe();
         var transport = new NexusStreamTransport(pipe);
 
-        Assert.ThrowsAsync<NotImplementedException>(async () =>
-            await transport.ProvideFileAsync("/path/to/file.txt"));
-
-        await pipe.CleanupAsync();
+        Assert.ThrowsAsync<ArgumentNullException>(async () =>
+            await transport.ProvideFileAsync(null!));
     }
 
     [Test]
-    public async Task ProvideStreamAsync_ThrowsNotImplemented()
+    public void ProvideStreamAsync_ThrowsArgumentNullException_WhenStreamIsNull()
     {
         var pipe = new MockNexusDuplexPipe();
         var transport = new NexusStreamTransport(pipe);
-        using var memoryStream = new System.IO.MemoryStream();
 
-        Assert.ThrowsAsync<NotImplementedException>(async () =>
-            await transport.ProvideStreamAsync(memoryStream));
-
-        await pipe.CleanupAsync();
+        Assert.ThrowsAsync<ArgumentNullException>(async () =>
+            await transport.ProvideStreamAsync(null!));
     }
 }

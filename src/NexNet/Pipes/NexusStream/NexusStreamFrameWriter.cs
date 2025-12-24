@@ -337,4 +337,10 @@ internal sealed class NexusStreamFrameWriter
     /// </summary>
     public ValueTask WriteProgressAsync(ProgressFrame frame, CancellationToken ct = default)
         => WriteFrameAsync(FrameType.Progress, frame, ct);
+
+    /// <summary>
+    /// Writes an Ack frame.
+    /// </summary>
+    public ValueTask WriteAckAsync(AckFrame frame, CancellationToken ct = default)
+        => WriteFrameAsync(FrameType.Ack, frame, ct);
 }

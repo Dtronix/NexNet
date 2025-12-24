@@ -559,7 +559,7 @@ internal sealed class NexusStream : INexusStream
     public Stream GetStream()
     {
         ThrowIfNotOpen();
-        throw new NotImplementedException("Stream wrapper not implemented until Phase 6.");
+        return new NexusStreamWrapper(this);
     }
 
     /// <inheritdoc />
