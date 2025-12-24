@@ -26,4 +26,7 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
     <PackageReference Include="System.IO.Pipelines" Version="9.0.7" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Internals\Pipelines\Arenas\Allocator.cs" />
+  </ItemGroup>
 </Project>
