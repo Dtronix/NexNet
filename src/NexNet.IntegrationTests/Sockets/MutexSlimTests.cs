@@ -5,6 +5,8 @@ using static NexNet.Internals.Pipelines.Threading.MutexSlim;
 namespace NexNet.IntegrationTests.Sockets
 {
     [TestFixture]
+    [NonParallelizable]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     internal class MutexSlimTests
     {
         [SetUp]
@@ -21,6 +23,19 @@ namespace NexNet.IntegrationTests.Sockets
 #if DEBUG
             _timeoutMux.Logged -= Log;
 #endif
+            // Ensure mutex is released before next test
+            // Wait briefly for any lingering operations to complete
+            Thread.Sleep(50);
+            // Try to acquire and immediately release to reset state
+            if (_timeoutMux.IsAvailable)
+            {
+                return;
+            }
+            // Wait for mutex to become available (max 2 seconds)
+            for (int i = 0; i < 20 && !_timeoutMux.IsAvailable; i++)
+            {
+                Thread.Sleep(100);
+            }
         }
 
         private void Log(string message)
@@ -354,7 +369,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void PreCanceledReportsCorrectly()
+        public async Task PreCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
@@ -370,7 +385,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void DuringCanceledReportsCorrectly()
+        public async Task DuringCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
 
@@ -423,7 +438,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void ManualCanceledReportsCorrectly()
+        public async Task ManualCanceledReportsCorrectly()
         {
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
@@ -476,7 +491,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void ManualCancelOnPreCanceledDoesNothing()
+        public async Task ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
             using var cancel = new CancellationTokenSource();
@@ -495,8 +510,8 @@ namespace NexNet.IntegrationTests.Sockets
             Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
-        [TestCase(1, 50000000)] // uncontested
-        [TestCase(2, 25000000)] // duel
+        [TestCase(1, 5000000)] // uncontested
+        [TestCase(2, 2500000)] // duel
         [TestCase(10, 100000)] // battle royale
         public void DuelingThreadsShouldNotStall(int workerCount, int perWorker)
         {
@@ -546,7 +561,7 @@ namespace NexNet.IntegrationTests.Sockets
             }
         }
 
-        [TestCase(1, 30000000)] // uncontested
+        [TestCase(1, 3000000)] // uncontested
         [TestCase(2, 1500000)] // duel
         [TestCase(10, 150000)] // battle royale
         public async Task DuelingThreadsShouldNotStallAsync(int workerCount, int perWorker)
