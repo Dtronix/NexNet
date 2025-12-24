@@ -44,8 +44,9 @@ public interface INexusStreamTransport : IAsyncDisposable
     /// Provides a file as the response to an incoming stream request.
     /// </summary>
     /// <param name="path">The path to the file.</param>
+    /// <param name="fileShare">The file sharing mode.</param>
     /// <param name="ct">Cancellation token.</param>
-    ValueTask ProvideFileAsync(string path, CancellationToken ct = default);
+    ValueTask ProvideFileAsync(string path, FileShare fileShare = FileShare.Read, CancellationToken ct = default);
 
     /// <summary>
     /// Provides a stream as the response to an incoming stream request.

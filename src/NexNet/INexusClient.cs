@@ -2,6 +2,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Pipes;
+using NexNet.Pipes.NexusStream;
 using NexNet.Transports;
 
 namespace NexNet;
@@ -79,4 +80,14 @@ public interface INexusClient : IAsyncDisposable
     /// This method creates a channel from a rented pipe and is suitable for any MessagePack data type.
     /// </remarks>
     INexusDuplexChannel<T> CreateChannel<T>();
+
+    /// <summary>
+    /// Creates a stream transport for remote stream operations.
+    /// </summary>
+    /// <returns>A rented stream transport that returns to a pool when disposed.</returns>
+    /// <remarks>
+    /// The returned transport can be used to open streams to remote resources or to receive
+    /// incoming stream requests. Dispose the transport when done to return it to the pool.
+    /// </remarks>
+    IRentedNexusStreamTransport CreateStream();
 }

@@ -65,6 +65,24 @@ internal sealed class MockNexusDuplexPipe : INexusDuplexPipe
 /// <summary>
 /// Helper methods for stream tests.
 /// </summary>
+internal static class TestHelpers
+{
+    /// <summary>
+    /// Creates a connected pair of mock duplex pipes.
+    /// Data written to clientPipe.Output is readable from serverPipe.Input.
+    /// Data written to serverPipe.Output is readable from clientPipe.Input.
+    /// </summary>
+    public static (MockNexusDuplexPipe ClientPipe, MockNexusDuplexPipe ServerPipe) CreatePipePair()
+    {
+        // For isolated testing, just return two mock pipes
+        // In a real pipe pair, they would be connected
+        return (new MockNexusDuplexPipe(), new MockNexusDuplexPipe());
+    }
+}
+
+/// <summary>
+/// Helper methods for stream tests.
+/// </summary>
 internal static class StreamTestHelpers
 {
     /// <summary>

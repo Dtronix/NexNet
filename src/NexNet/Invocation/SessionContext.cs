@@ -4,6 +4,7 @@ using NexNet.Internals;
 using NexNet.Pools;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Pipes.NexusStream;
 using NexNet.Logging;
 
 namespace NexNet.Invocation;
@@ -90,6 +91,21 @@ public abstract class SessionContext<TProxy> : ISessionContext
     public INexusDuplexChannel<T> CreateChannel<T>()
     {
         return CreatePipe().GetChannel<T>();
+    }
+
+    /// <summary>
+    /// Creates a stream transport for remote stream operations.
+    /// </summary>
+    /// <returns>A rented stream transport that returns to a pool when disposed.</returns>
+    /// <remarks>
+    /// The returned transport can be used to open streams to remote resources or to receive
+    /// incoming stream requests. Dispose the transport when done to return it to the pool.
+    /// </remarks>
+    public IRentedNexusStreamTransport CreateStream()
+    {
+        var pipe = CreatePipe();
+        var transport = new NexusStreamTransport(pipe);
+        return new RentedNexusStreamTransport(transport, null);
     }
 
     /// <summary>
