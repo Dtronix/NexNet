@@ -9,6 +9,20 @@ namespace NexNet.IntegrationTests.Sockets
     [TestFixture]
     public class BufferWriterTests
     {
+        private readonly BufferedTestLogger _logger = new();
+
+        [SetUp]
+        public void SetUp()
+        {
+            _logger.Clear();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _logger.FlushOnFailure();
+        }
+
         static string Raw(ReadOnlySequence<byte> values)
         {
             // this doesn't need to be efficient, just correct
@@ -60,9 +74,9 @@ namespace NexNet.IntegrationTests.Sockets
                         span.Fill(nextVal++);
                         writer.Advance(5);
                     }
-                    TestContext.WriteLine($"before flush, wrote {count * 5}... {bw.GetState()}");
+                    _logger.Log($"before flush, wrote {count * 5}... {bw.GetState()}");
                     var result = bw.Flush();
-                    TestContext.WriteLine($"after flush: {bw.GetState()}");
+                    _logger.Log($"after flush: {bw.GetState()}");
                     return result;
                 }
 
@@ -90,9 +104,9 @@ namespace NexNet.IntegrationTests.Sockets
                 Assert.That(BufferWriter<byte>.LiveSegmentCount, Is.EqualTo(4));
 #endif
 
-                for (int i = 0; i < chunks.Length; i++) TestContext.WriteLine($"chunk {i}: {GetState(chunks[i])}");
+                for (int i = 0; i < chunks.Length; i++) _logger.Log($"chunk {i}: {GetState(chunks[i])}");
                 for (int i = 0; i < chunks.Length; i++) chunks[i].Dispose();
-                for (int i = 0; i < chunks.Length; i++) TestContext.WriteLine($"chunk {i}: {GetState(chunks[i])}");
+                for (int i = 0; i < chunks.Length; i++) _logger.Log($"chunk {i}: {GetState(chunks[i])}");
             }
 #if DEBUG
             // all dead now
@@ -147,26 +161,26 @@ namespace NexNet.IntegrationTests.Sockets
         public void CanAllocateSequences()
         {
             using var bw = BufferWriter<byte>.Create(blockSize: 16);
-            TestContext.Out.WriteLine(bw.GetState());
+            _logger.Log(bw.GetState());
             Assert.That(bw.Length, Is.EqualTo(0));
 
             var seq = bw.GetSequence(70);
             Assert.That(seq.Length, Is.EqualTo(80));
-            TestContext.Out.WriteLine(bw.GetState());
+            _logger.Log(bw.GetState());
             Assert.That(bw.Length, Is.EqualTo(0));
 
             bw.Advance(40);
-            TestContext.Out.WriteLine(bw.GetState());
+            _logger.Log(bw.GetState());
             Assert.That(bw.Length, Is.EqualTo(40));
 
             for (int i = 1; i <= 5; i++)
             {
-                TestContext.Out.WriteLine($"Leasing span {i}... {bw.GetState()}");
+                _logger.Log($"Leasing span {i}... {bw.GetState()}");
                 bw.GetSpan(8);
                 bw.Advance(5);
                 Assert.That(bw.Length, Is.EqualTo(40 + (5 * i)));
             }
-            TestContext.Out.WriteLine(bw.GetState());
+            _logger.Log(bw.GetState());
 
             Assert.That(bw.Length, Is.EqualTo(65));
             using (var ros = bw.Flush())

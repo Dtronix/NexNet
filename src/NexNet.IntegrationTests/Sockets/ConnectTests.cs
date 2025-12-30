@@ -11,6 +11,20 @@ namespace NexNet.IntegrationTests.Sockets
     [TestFixture]
     public class ConnectTests
     {
+        private readonly BufferedTestLogger _logger = new();
+
+        [SetUp]
+        public void SetUp()
+        {
+            _logger.Clear();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _logger.FlushOnFailure();
+        }
+
         [Test]
         public void CanCheckDependencies()
         {
@@ -33,7 +47,7 @@ namespace NexNet.IntegrationTests.Sockets
             var endpoint = new IPEndPoint(IPAddress.Loopback, port);
             object waitForRunning = new object();
             Task<string> server;
-            TestContext.Out.WriteLine("Starting server...");
+            _logger.Log("Starting server...");
             lock (waitForRunning)
             {
                 server = Task.Run(() => SyncEchoServer(waitForRunning, endpoint));
@@ -47,45 +61,45 @@ namespace NexNet.IntegrationTests.Sockets
             }
 
             string actual;
-            TestContext.Out.WriteLine("connecting...");
+            _logger.Log("connecting...");
             using var conn = await SocketConnection.ConnectAsync(endpoint,
                 connectionOptions: SocketConnectionOptions.ZeroLengthReads).ConfigureAwait(false);
             var data = Encoding.ASCII.GetBytes("Hello, world!");
-            TestContext.Out.WriteLine("sending message...");
+            _logger.Log("sending message...");
             await conn.Output.WriteAsync(data).ConfigureAwait(false);
 
             Assert.That(conn.Output.CanGetUnflushedBytes, Is.True, "conn.Output.CanGetUnflushedBytes");
 
-            TestContext.Out.WriteLine("completing output");
+            _logger.Log("completing output");
             conn.Output.Complete();
 
-            TestContext.Out.WriteLine("awaiting server...");
+            _logger.Log("awaiting server...");
             actual = await server;
 
             Assert.That(actual, Is.EqualTo("Hello, world!"));
 
             string returned;
-            TestContext.Out.WriteLine("buffering response...");
+            _logger.Log("buffering response...");
             while (true)
             {
                 var result = await conn.Input.ReadAsync().ConfigureAwait(false);
 
                 var buffer = result.Buffer;
-                TestContext.Out.WriteLine($"received {buffer.Length} bytes");
+                _logger.Log($"received {buffer.Length} bytes");
                 if (result.IsCompleted)
                 {
                     returned = Encoding.ASCII.GetString(result.Buffer.ToArray());
-                    TestContext.Out.WriteLine($"received: '{returned}'");
+                    _logger.Log($"received: '{returned}'");
                     break;
                 }
 
-                TestContext.Out.WriteLine("advancing");
+                _logger.Log("advancing");
                 conn.Input.AdvanceTo(buffer.Start, buffer.End);
             }
 
             Assert.That(returned, Is.EqualTo("!dlrow ,olleH"));
 
-            TestContext.Out.WriteLine("disposing");
+            _logger.Log("disposing");
         }
 
         private Task<string> SyncEchoServer(object ready, IPEndPoint endpoint)
@@ -93,23 +107,23 @@ namespace NexNet.IntegrationTests.Sockets
             try
             {
                 var listener = new TcpListener(endpoint);
-                TestContext.Out.WriteLine($"[Server] starting on {endpoint}...");
+                _logger.Log($"[Server] starting on {endpoint}...");
                 listener.Start();
                 lock (ready)
                 {
                     Monitor.PulseAll(ready);
                 }
-                TestContext.Out.WriteLine("[Server] running; waiting for connection...");
+                _logger.Log("[Server] running; waiting for connection...");
                 string s;
                 using (var socket = listener.AcceptSocket())
                 {
-                    TestContext.Out.WriteLine($"[Server] accepted connection");
+                    _logger.Log($"[Server] accepted connection");
                     using var ns = new NetworkStream(socket);
                     using (var reader = new StreamReader(ns, Encoding.ASCII, false, 1024, true))
                     using (var writer = new StreamWriter(ns, Encoding.ASCII, 1024, true))
                     {
                         s = reader.ReadToEnd();
-                        TestContext.Out.WriteLine($"[Server] received '{s}'; replying in reverse...");
+                        _logger.Log($"[Server] received '{s}'; replying in reverse...");
                         char[] chars = s.ToCharArray();
                         Array.Reverse(chars);
                         var t = new string(chars);
@@ -118,13 +132,13 @@ namespace NexNet.IntegrationTests.Sockets
                     socket.Shutdown(SocketShutdown.Both);
                     socket.Close();
                 }
-                TestContext.Out.WriteLine($"[Server] shutting down");
+                _logger.Log($"[Server] shutting down");
                 listener.Stop();
                 return Task.FromResult(s);
             }
             catch (Exception ex)
             {
-                TestContext.Out.WriteLine($"[Server] faulted: {ex.Message}");
+                _logger.Log($"[Server] faulted: {ex.Message}");
                 lock (ready)
                 {
                     Monitor.PulseAll(ready);
