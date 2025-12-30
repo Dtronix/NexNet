@@ -3,7 +3,7 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>A real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.</Description>
-    <Version>0.13.0</Version>
+    <Version>0.14.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
