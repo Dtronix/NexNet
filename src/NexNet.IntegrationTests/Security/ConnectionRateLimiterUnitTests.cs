@@ -145,8 +145,23 @@ internal class ConnectionRateLimiterUnitTests
     [Test]
     public void IsEnabled_ReturnsFalseWhenAllZero()
     {
-        var config = new ConnectionRateLimitConfig();
+        var config = new ConnectionRateLimitConfig
+        {
+            // Explicitly disable all limits (defaults are now enabled)
+            MaxConcurrentConnections = 0,
+            GlobalConnectionsPerSecond = 0,
+            MaxConnectionsPerIp = 0,
+            ConnectionsPerIpPerWindow = 0
+        };
         Assert.That(config.IsEnabled, Is.False);
+    }
+
+    [Test]
+    public void IsEnabled_ReturnsTrueWithDefaults()
+    {
+        // Defaults now have rate limiting enabled
+        var config = new ConnectionRateLimitConfig();
+        Assert.That(config.IsEnabled, Is.True);
     }
 
     [Test]

@@ -299,7 +299,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             }
         }
 
-        var baseSessionId = _sessionIdIncrementer++;
+        var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
         _config!.InternalOnConnect?.Invoke();
 
@@ -436,7 +436,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
                 // Create a composite ID of the current ticks along with the current ticks.
                 // This makes guessing IDs harder, but not impossible.
-                var baseSessionId = _sessionIdIncrementer++;
+                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
                 // boxed, but only once per client
                 StartOnScheduler(

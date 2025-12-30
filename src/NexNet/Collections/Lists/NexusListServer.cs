@@ -31,6 +31,13 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         INexusBroadcastSession<INexusCollectionListMessage>? sourceClient,
         CancellationToken ct)
     {
+        // Block client modifications in ServerToClient mode
+        if (Mode == NexusCollectionMode.ServerToClient && sourceClient != null)
+        {
+            Logger?.LogWarning($"Client {sourceClient.Id} attempted modification in ServerToClient mode");
+            return new ProcessResult(null, true); // Disconnect the offending client
+        }
+
         // These are not allowed to be sent by the client to the server.
         if (message is NexusCollectionListResetStartMessage
             or NexusCollectionListResetCompleteMessage
