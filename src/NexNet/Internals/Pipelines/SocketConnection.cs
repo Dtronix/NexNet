@@ -181,12 +181,6 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
         try { socket.NoDelay = true; } catch (Exception ex) { Helpers.DebugLog(nameof(SocketConnection), ex.Message); }
     }
 
-#if DEBUG
-#pragma warning disable CS1591
-    public static void SetLog(System.IO.TextWriter writer) => Helpers.Log = writer;
-#pragma warning restore CS1591
-#endif
-
     [Conditional("VERBOSE")]
     private void DebugLog(string message, [CallerMemberName] string caller = null, [CallerLineNumber] int lineNumber = 0) => Helpers.DebugLog(Name, message, $"{caller}#{lineNumber}");
 
@@ -439,6 +433,8 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
             => _writer.GetSpan(sizeHint);
         public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
             => _writer.WriteAsync(source, cancellationToken);
+        public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+        public override long UnflushedBytes => _writer.UnflushedBytes;
 
         // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
         [Obsolete]

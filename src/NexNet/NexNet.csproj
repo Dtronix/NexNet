@@ -1,7 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
-    <DefineConstants>$(DefineConstants);SOCKET_STREAM_BUFFERS;RANGES</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>A real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.</Description>
     <Version>0.13.0</Version>
@@ -25,5 +24,8 @@
     <PackageReference Include="MemoryPack" Version="1.21.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
     <PackageReference Include="System.IO.Pipelines" Version="9.0.7" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Internals\Pipelines\Arenas\Allocator.cs" />
   </ItemGroup>
 </Project>

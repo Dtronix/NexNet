@@ -14,7 +14,7 @@ using System.Runtime.CompilerServices;
 using NexNet.Pipes;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Buffers;
-using NexNet.Internals.Pipelines.Threading;
+using NexNet.Internals.Threading;
 using NexNet.RateLimiting;
 
 namespace NexNet.Internals;

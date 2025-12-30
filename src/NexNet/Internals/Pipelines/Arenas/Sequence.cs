@@ -510,7 +510,6 @@ internal readonly partial struct Sequence<T> : IEquatable<Sequence<T>>
         return SlowSlice(start, length, seqLength);
     }
 
-#if RANGES
     /// <summary>
     /// Obtains a sub-region of a sequence
     /// </summary>
@@ -531,7 +530,6 @@ internal readonly partial struct Sequence<T> : IEquatable<Sequence<T>>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => ref this[index.GetOffset(checked((int)Length))];
     }
-#endif
 
     private Sequence<T> SlowSlice(long start, long length, long seqLength)
     {

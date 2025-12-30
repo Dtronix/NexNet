@@ -194,29 +194,7 @@ internal partial class SocketConnection
     private static void DoReceive(Socket socket, SocketAwaitableEventArgs args, Memory<byte> buffer, string name)
 #pragma warning restore RCS1231 // Make parameter ref read-only.
     {
-#if SOCKET_STREAM_BUFFERS
         args.SetBuffer(buffer);
-#else
-
-            if (buffer.IsEmpty)
-            {
-                // zero-length; retain existing buffer if possible
-                if (args.Buffer is null)
-                {
-                    args.SetBuffer(Array.Empty<byte>(), 0, 0);
-                }
-                else
-                {   // it doesn't matter that the old buffer may still be in
-                    // use somewhere; we're reading zero bytes!
-                    args.SetBuffer(args.Offset, 0);
-                }
-            }
-            else
-            {
-                var segment = buffer.GetArray();
-                args.SetBuffer(segment.Array, segment.Offset, segment.Count);
-            }
-#endif
         Helpers.DebugLog(name, $"## {nameof(socket.ReceiveAsync)} <={buffer.Length}");
 
         if (!socket.ReceiveAsync(args)) args.Complete();

@@ -120,7 +120,10 @@ internal partial class SocketConnection
                 DebugLog($"shutting down socket-send");
                 Socket.Shutdown(SocketShutdown.Send);
             }
-            catch { }
+            catch
+            {
+                // ignored
+            }
 
             // close *both halves* of the send pipe; we're not
             // listening *and* we don't want anyone trying to write
@@ -144,12 +147,8 @@ internal partial class SocketConnection
             DoSend(socket, args, buffer.First, name);
             return;
         }
-
-#if SOCKET_STREAM_BUFFERS
+        
         if (!args.MemoryBuffer.IsEmpty)
-#else
-            if (args.Buffer is not null)
-#endif
         {
             args.SetBuffer(null, 0, 0);
         }
@@ -175,14 +174,8 @@ internal partial class SocketConnection
     {
         // clear any existing buffer list
         RecycleSpareBuffer(args);
-
-#if SOCKET_STREAM_BUFFERS
+        
         args.SetBuffer(MemoryMarshal.AsMemory(memory));
-#else
-            var segment = memory.GetArray();
-
-            args.SetBuffer(segment.Array, segment.Offset, segment.Count);
-#endif
         Helpers.DebugLog(name, $"## {nameof(socket.SendAsync)} {memory.Length}");
         if (socket.SendAsync(args))
         {

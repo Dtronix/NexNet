@@ -85,7 +85,7 @@ internal static class SequenceExtensions
         {
             if (!Result.IsEmpty && Result.TryGetArray(out var segment))
             {
-                ArrayPool<T>.Shared.Return(segment.Array, clearArray: !PerTypeHelpers<T>.IsBlittable);
+                ArrayPool<T>.Shared.Return(segment.Array, clearArray: RuntimeHelpers.IsReferenceOrContainsReferences<T>());
             }
         }
         internal void PrepareSpace(IEnumerable<T> source)
@@ -507,31 +507,6 @@ internal static class SequenceExtensions
             }
         }
         return true;
-    }
-
-    /// <summary>
-    /// Copy the data from a sequence to a newly allocated sequence, applying a projection
-    /// </summary>
-    public static Sequence<TTo> Allocate<TFrom, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source, Projection<TFrom, TTo> projection)
-    {
-        if (source.IsEmpty) return arena.Allocate(0); // retains position etc
-
-        var block = arena.Allocate(checked((int)source.Length));
-        source.CopyTo(block, projection);
-        return block;
-    }
-
-    /// <summary>
-    /// Copy the data from a sequence to a newly allocated sequence, applying a projection
-    /// </summary>
-    public static Sequence<TTo> Allocate<TFrom, TState, TTo>(this Arena<TTo> arena, in Sequence<TFrom> source,
-        Projection<TFrom, TState, TTo> projection, in TState state)
-    {
-        if (source.IsEmpty) return arena.Allocate(0); // retains position etc
-
-        var block = arena.Allocate(checked((int)source.Length));
-        source.CopyTo(block, projection, state);
-        return block;
     }
 
     /// <summary>
