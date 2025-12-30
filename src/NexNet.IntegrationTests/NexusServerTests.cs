@@ -417,5 +417,47 @@ internal partial class NexusServerTests : BaseTests
             await Utilities.WaitForConnectionClosureAsync(client).Timeout(1);
         }
     }
-    
+
+    [Test]
+    public async Task ConcurrentConnections_UniqueSessionIds()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var sessionIds = new System.Collections.Concurrent.ConcurrentBag<long>();
+        var expectedClients = 20;
+
+        var server = ServerNexus.CreateServer(serverConfig, () =>
+        {
+            var nexus = new ServerNexus();
+            nexus.OnConnectedEvent = _ =>
+            {
+                sessionIds.Add(nexus.SessionContext.Id);
+                return default;
+            };
+            return nexus;
+        });
+
+        await server.StartAsync();
+
+        var tasks = Enumerable.Range(0, expectedClients).Select(async _ =>
+        {
+            var clientConfig = CreateClientConfig(Type.Tcp);
+            var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
+            try
+            {
+                await client.ConnectAsync().Timeout(5);
+                await Task.Delay(100);
+            }
+            catch
+            {
+                // Some connections may fail under load
+            }
+        });
+
+        await Task.WhenAll(tasks);
+        await Task.Delay(500);
+
+        var uniqueIds = sessionIds.Distinct().ToList();
+        Assert.That(uniqueIds.Count, Is.EqualTo(sessionIds.Count),
+            $"All {sessionIds.Count} session IDs should be unique, but found {uniqueIds.Count} unique");
+    }
 }
