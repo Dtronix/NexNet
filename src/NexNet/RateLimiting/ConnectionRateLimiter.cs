@@ -29,6 +29,10 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
     // Banned IPs with expiration timestamp (keyed by normalized IP string)
     private readonly ConcurrentDictionary<string, long> _bannedIps = new();
 
+    // Maximum size limits to prevent memory exhaustion from botnet attacks
+    private const int MaxIpStateEntries = 100_000;
+    private const int MaxBannedIpEntries = 100_000;
+
     // Cleanup timer for stale entries
     private readonly Timer _cleanupTimer;
     private const int CleanupIntervalMs = 60_000;
@@ -105,6 +109,26 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
         // 4. Per-IP checks (skip for UDS/null addresses)
         if (normalizedAddress != null)
         {
+            // Skip per-IP tracking if we've exceeded the maximum entries (DoS protection)
+            // The connection will still be allowed but without per-IP rate limiting
+            if (_ipStates.Count >= MaxIpStateEntries && !_ipStates.ContainsKey(normalizedAddress))
+            {
+                // Allow connection but skip per-IP tracking
+                if (_config.MaxConcurrentConnections == 0)
+                    Interlocked.Increment(ref _currentConnectionCount);
+
+                if (_config.GlobalConnectionsPerSecond > 0)
+                {
+                    lock (_globalRateLock)
+                    {
+                        _globalConnectionTimes.Enqueue(now);
+                    }
+                }
+
+                Interlocked.Increment(ref _totalAccepted);
+                return ConnectionRateLimitResult.Allowed;
+            }
+
             var ipState = _ipStates.GetOrAdd(normalizedAddress, _ => new IpConnectionState());
 
             // 4a. Per-IP concurrent limit (atomic increment-then-check)
@@ -245,10 +269,46 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
 
         if (violations >= _config.BanThreshold)
         {
+            // Enforce max banned IP entries - evict oldest if at capacity
+            if (_bannedIps.Count >= MaxBannedIpEntries)
+            {
+                EvictOldestBan(now);
+            }
+
             var banExpiry = now + (_config.BanDurationSeconds * 1000L);
             _bannedIps[normalizedAddress] = banExpiry;
             Interlocked.Exchange(ref ipState.ViolationCount, 0);
         }
+    }
+
+    /// <summary>
+    /// Evicts the oldest (soonest expiring) ban entry to make room for new bans.
+    /// </summary>
+    private void EvictOldestBan(long now)
+    {
+        long oldestExpiry = long.MaxValue;
+        string? oldestKey = null;
+
+        foreach (var kvp in _bannedIps)
+        {
+            // First, try to find expired bans
+            if (kvp.Value <= now)
+            {
+                _bannedIps.TryRemove(kvp.Key, out _);
+                return;
+            }
+
+            // Track the oldest ban if no expired ones found
+            if (kvp.Value < oldestExpiry)
+            {
+                oldestExpiry = kvp.Value;
+                oldestKey = kvp.Key;
+            }
+        }
+
+        // Remove the oldest ban if we found one
+        if (oldestKey != null)
+            _bannedIps.TryRemove(oldestKey, out _);
     }
 
     private void Cleanup(object? state)

@@ -6,12 +6,13 @@ namespace NexNet.RateLimiting;
 
 /// <summary>
 /// Configuration for connection rate limiting.
-/// All limits are opt-in (disabled by default for backward compatibility).
+/// Default values provide basic DoS protection (1000 concurrent connections, 100/second).
+/// Set values to 0 to disable specific limits.
 /// </summary>
 public class ConnectionRateLimitConfig
 {
-    private int _maxConcurrentConnections = 0;
-    private int _globalConnectionsPerSecond = 0;
+    private int _maxConcurrentConnections = 1000;
+    private int _globalConnectionsPerSecond = 100;
     private int _maxConnectionsPerIp = 0;
     private int _connectionsPerIpPerWindow = 0;
     private int _perIpWindowSeconds = 60;

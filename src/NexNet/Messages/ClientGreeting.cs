@@ -54,6 +54,8 @@ internal partial class ClientGreetingMessage : IClientGreetingMessageBase
             if (AuthenticationToken.IsEmpty)
                 return;
 
+            // Clear sensitive authentication data before returning buffer to pool
+            AuthenticationToken.Span.Clear();
             IMessageBase.ReturnMemoryPackMemory(AuthenticationToken);
             AuthenticationToken = default;
         }
