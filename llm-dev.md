@@ -137,7 +137,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `SessionPoolManager.cs` - Manages proxy instance pooling per session
 - `ProxyPool.cs` - Pool of proxy instances
 
-### 1.9 Synchronization (src/NexNet/Internals/Pipelines/Threading/)
+### 1.9 Synchronization (src/NexNet/Internals/Threading/)
 
 - `MutexSlim.cs` - Lock-free async mutex; LockToken (sync), PendingLockToken (async)
 - `MutexSlim.LockState.cs` - Lock state management

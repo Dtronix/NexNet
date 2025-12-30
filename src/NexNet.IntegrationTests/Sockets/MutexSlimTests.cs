@@ -1,6 +1,6 @@
-using NexNet.Internals.Pipelines.Threading;
+using NexNet.Internals.Threading;
 using NUnit.Framework;
-using static NexNet.Internals.Pipelines.Threading.MutexSlim;
+using static NexNet.Internals.Threading.MutexSlim;
 
 namespace NexNet.IntegrationTests.Sockets
 {
