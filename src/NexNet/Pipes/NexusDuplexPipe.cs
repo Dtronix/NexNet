@@ -66,6 +66,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     private readonly TaskCompletionSource _completeTcs;
     private readonly INexusSession? _session;
     private volatile State _currentState = State.Unset;
+    private readonly object _stateLock = new();
 
     // <summary>
     // Id which changes based upon completion of the pipe. Used to make sure the
@@ -319,15 +320,19 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _outputPipeWriter.PauseWriting = false;
         }
 
-        if (remove)
-        {          
-            // Remove the state from the current state.
-            _currentState &= ~updatedState;
-        }
-        else
+        // Use lock to ensure atomic read-modify-write operations on state
+        lock (_stateLock)
         {
-            // Add the state to the current state.
-            _currentState |= updatedState;
+            if (remove)
+            {
+                // Remove the state from the current state.
+                _currentState &= ~updatedState;
+            }
+            else
+            {
+                // Add the state to the current state.
+                _currentState |= updatedState;
+            }
         }
 
         // Check if the pipe is complete.

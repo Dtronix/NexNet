@@ -30,9 +30,13 @@ public partial interface IServerNexus
 {
     [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> IntListBi { get; }
-    
+
     [NexusCollection(NexusCollectionMode.Relay)]
     INexusList<int> IntListRelay { get; }
+
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    INexusList<int> IntListSC { get; }
+
     void ServerVoid();
     void ServerVoidWithParam(int id);
     ValueTask ServerTask();

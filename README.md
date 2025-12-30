@@ -541,6 +541,46 @@ public class VersioningSample : INexusSample
 
 ## Security
 
+### Authentication Configuration
+
+**Important:** Authentication is disabled by default for backward compatibility. For production deployments, you should explicitly configure authentication:
+
+```csharp
+var serverConfig = new TcpServerConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Any, 5000),
+    Authenticate = true  // Enable authentication
+};
+```
+
+When `Authenticate` is set to `true`, implement the `OnAuthenticate` method in your server nexus to validate client credentials:
+
+```csharp
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+public partial class ServerNexus
+{
+    protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> authToken)
+    {
+        // Validate the authentication token
+        // Return an IIdentity on success, null on failure
+        if (ValidateToken(authToken))
+            return new ValueTask<IIdentity?>(new UserIdentity("username"));
+
+        return new ValueTask<IIdentity?>((IIdentity?)null);
+    }
+}
+```
+
+On the client side, provide the authentication token via the config:
+
+```csharp
+var clientConfig = new TcpClientConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Loopback, 5000),
+    Authenticate = () => Encoding.UTF8.GetBytes("my-auth-token")
+};
+```
+
 ### Connection Rate Limiting
 
 NexNet provides application-level connection rate limiting to protect servers against DoS attacks.

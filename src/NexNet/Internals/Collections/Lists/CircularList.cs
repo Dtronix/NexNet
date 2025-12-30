@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 
 namespace NexNet.Internals.Collections.Lists;
 
@@ -17,6 +18,7 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     private readonly int _capacity;
     private long _nextIndex;
     private int _count;
+    private readonly Lock _lock = new();
 
     /// <summary>
     /// Initializes a new instance with the specified capacity.
@@ -51,36 +53,48 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     /// <summary>
     /// Adds an item, assigns it a global index, and returns that index.
     /// If the buffer is full, overwrites the oldest entry.
+    /// Thread-safe.
     /// </summary>
     /// <param name="item">Item to add.</param>
     /// <returns>Global index of the added item.</returns>
     public long Add(T item)
     {
-        long index = _nextIndex;
-        _buffer[index % _capacity] = item;
-        _nextIndex++;
+        lock (_lock)
+        {
+            long index = _nextIndex;
+            _buffer[index % _capacity] = item;
+            _nextIndex++;
 
-        if (_count < _capacity)
-            _count++;
+            if (_count < _capacity)
+                _count++;
 
-        return index;
+            return index;
+        }
     }
 
     public void Clear()
     {
-        _count = 0;
-        Array.Clear(_buffer, 0, _buffer.Length);
+        lock (_lock)
+        {
+            _count = 0;
+            Array.Clear(_buffer, 0, _buffer.Length);
+        }
     }
-    
+
     public void Reset(int nextIndex = 0)
     {
-        Clear();
-        _nextIndex = nextIndex;
+        lock (_lock)
+        {
+            _count = 0;
+            Array.Clear(_buffer, 0, _buffer.Length);
+            _nextIndex = nextIndex;
+        }
     }
 
     /// <summary>
     /// Retrieves the item at the given global index.
     /// Valid indices are in the range [FirstIndex, LastIndex].
+    /// Thread-safe.
     /// </summary>
     /// <param name="index">Global index of the item.</param>
     /// <returns>The stored item.</returns>
@@ -88,14 +102,17 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
     {
         get
         {
-            long start = FirstIndex;
-            long end = LastIndex;
+            lock (_lock)
+            {
+                long start = FirstIndex;
+                long end = LastIndex;
 
-            if (index < start || index > end)
-                throw new IndexOutOfRangeException(
-                    $"Index out of range: {index}. Valid range: [{start}, {end}]");
+                if (index < start || index > end)
+                    throw new IndexOutOfRangeException(
+                        $"Index out of range: {index}. Valid range: [{start}, {end}]");
 
-            return _buffer[index % _capacity];
+                return _buffer[index % _capacity];
+            }
         }
     }
 
@@ -112,20 +129,24 @@ internal class IndexedCircularList<T> : IEnumerable<(long Index, T Item)>
         
     /// <summary>
     /// Attempts to retrieve the value associated with the index.
+    /// Thread-safe.
     /// </summary>
     /// <param name="index">Value Index to attempt retrieval.</param>
     /// <param name="value">Value to retrieve.  Null if the method returns false.</param>
     /// <returns>False if the index is inside the current bounds, false otherwise.</returns>
     public bool TryGetValue(long index, out T? value)
     {
-        if (index < FirstIndex || index > LastIndex)
+        lock (_lock)
         {
-            value = null;
-            return false;
-        }
+            if (index < FirstIndex || index > LastIndex)
+            {
+                value = null;
+                return false;
+            }
 
-        value = _buffer[index % _capacity];
-        return true;
+            value = _buffer[index % _capacity];
+            return true;
+        }
     }
 
     /// <summary>

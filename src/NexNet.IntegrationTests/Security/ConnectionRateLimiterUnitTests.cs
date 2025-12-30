@@ -145,8 +145,23 @@ internal class ConnectionRateLimiterUnitTests
     [Test]
     public void IsEnabled_ReturnsFalseWhenAllZero()
     {
-        var config = new ConnectionRateLimitConfig();
+        var config = new ConnectionRateLimitConfig
+        {
+            // Explicitly disable all limits (defaults are now enabled)
+            MaxConcurrentConnections = 0,
+            GlobalConnectionsPerSecond = 0,
+            MaxConnectionsPerIp = 0,
+            ConnectionsPerIpPerWindow = 0
+        };
         Assert.That(config.IsEnabled, Is.False);
+    }
+
+    [Test]
+    public void IsEnabled_ReturnsTrueWithDefaults()
+    {
+        // Defaults now have rate limiting enabled
+        var config = new ConnectionRateLimitConfig();
+        Assert.That(config.IsEnabled, Is.True);
     }
 
     [Test]
@@ -235,6 +250,55 @@ internal class ConnectionRateLimiterUnitTests
         var stats = limiter.GetStats();
         Assert.That(stats.CurrentConnections, Is.EqualTo(2));
         Assert.That(stats.TotalAccepted, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void ManyUniqueIps_AllAllowed()
+    {
+        var config = new ConnectionRateLimitConfig
+        {
+            MaxConcurrentConnections = 0,
+            GlobalConnectionsPerSecond = 0,
+            MaxConnectionsPerIp = 5,
+            ConnectionsPerIpPerWindow = 0
+        };
+        using var limiter = new ConnectionRateLimiter(config);
+
+        var uniqueIps = 1000;
+        var results = new List<ConnectionRateLimitResult>();
+
+        for (int i = 0; i < uniqueIps; i++)
+        {
+            var ip = $"10.{i / 256}.{i % 256}.1";
+            results.Add(limiter.TryAcquire(ip));
+        }
+
+        Assert.That(results.All(r => r == ConnectionRateLimitResult.Allowed), Is.True);
+
+        var stats = limiter.GetStats();
+        Assert.That(stats.UniqueIpCount, Is.EqualTo(uniqueIps));
+    }
+
+    [Test]
+    public void MultipleBans_TracksCorrectly()
+    {
+        var config = new ConnectionRateLimitConfig
+        {
+            MaxConnectionsPerIp = 1,
+            BanThreshold = 1,
+            BanDurationSeconds = 3600
+        };
+        using var limiter = new ConnectionRateLimiter(config);
+
+        for (int i = 0; i < 100; i++)
+        {
+            var ip = $"192.168.{i / 256}.{i % 256}";
+            limiter.TryAcquire(ip);
+            limiter.TryAcquire(ip);
+        }
+
+        var stats = limiter.GetStats();
+        Assert.That(stats.BannedIpCount, Is.GreaterThan(0));
     }
 
 }

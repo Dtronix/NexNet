@@ -557,6 +557,29 @@ ValueTask SomeMethod();
 INexusList<int> Items { get; }
 ```
 
+## Authentication
+
+**Important:** Authentication is disabled by default.
+
+```csharp
+// Server: enable auth requirement
+var serverConfig = new TcpServerConfig {
+    Authenticate = true  // requires OnAuthenticate implementation
+};
+
+// Server nexus: implement validation (return null to reject)
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> authToken) {
+    if (ValidateToken(authToken))
+        return new ValueTask<IIdentity?>(new UserIdentity("username"));
+    return new ValueTask<IIdentity?>((IIdentity?)null);
+}
+
+// Client: provide auth token
+var clientConfig = new TcpClientConfig {
+    Authenticate = () => Encoding.UTF8.GetBytes("my-auth-token")
+};
+```
+
 ## CancellationToken
 
 ```csharp

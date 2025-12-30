@@ -87,11 +87,14 @@ internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
         Logger = session.Logger?.CreateLogger($"COL{pipe.Id}");
         _writer = writer;
         Session = session;
-        MessageBuffer = Channel.CreateUnbounded<INexusCollectionBroadcasterMessageWrapper<TUnion>>(new  UnboundedChannelOptions()
-        {
-            SingleReader = true,
-            SingleWriter = true, 
-        });
+        // Use bounded channel to prevent memory exhaustion from slow consumers
+        MessageBuffer = Channel.CreateBounded<INexusCollectionBroadcasterMessageWrapper<TUnion>>(
+            new BoundedChannelOptions(1000)
+            {
+                SingleReader = true,
+                SingleWriter = false, // May have multiple writers in broadcast scenarios
+                FullMode = BoundedChannelFullMode.Wait
+            });
         
         var cts = new CancellationTokenSource();
         CompletionToken = cts.Token;

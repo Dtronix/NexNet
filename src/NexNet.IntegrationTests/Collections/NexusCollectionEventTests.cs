@@ -86,4 +86,28 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         Assert.That(goodEventCount, Is.EqualTo(1));
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
+
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.Uds)]
+    public async Task ServerToClientCollection_ServerCanModify(Type type)
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            CreateClientConfig(type));
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(2);
+
+        await client.Proxy.IntListSC.EnableAsync().Timeout(2);
+        await client.Proxy.IntListSC.ReadyTask.Timeout(2);
+
+        var serverNexus = server.NexusCreatedQueue.First();
+        await serverNexus.IntListSC.AddAsync(100);
+
+        await Task.Delay(200);
+
+        Assert.That(client.Proxy.IntListSC.Count, Is.EqualTo(1));
+        Assert.That(client.Proxy.IntListSC[0], Is.EqualTo(100));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
 }

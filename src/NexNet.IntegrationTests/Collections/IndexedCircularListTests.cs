@@ -1,5 +1,6 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NUnit.Framework;
+using System.Collections.Concurrent;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -559,5 +560,141 @@ internal class IndexedCircularListTests
         list.Add("A");
         list.Reset();
         Assert.That(list.TryGetValue(0, out _), Is.False);
+    }
+
+    [Test]
+    public void ConcurrentAdds_AllIndicesAreUnique()
+    {
+        var list = new IndexedCircularList<string>(10000);
+        var indices = new ConcurrentBag<long>();
+        var threadCount = 10;
+        var addsPerThread = 1000;
+
+        var tasks = Enumerable.Range(0, threadCount).Select(t => Task.Run(() =>
+        {
+            for (int i = 0; i < addsPerThread; i++)
+            {
+                var index = list.Add($"Thread{t}-Item{i}");
+                indices.Add(index);
+            }
+        }));
+
+        Task.WaitAll(tasks.ToArray());
+
+        // All indices should be unique
+        var uniqueIndices = indices.Distinct().ToList();
+        Assert.That(uniqueIndices.Count, Is.EqualTo(indices.Count),
+            $"Expected {indices.Count} unique indices but got {uniqueIndices.Count}");
+    }
+
+    [Test]
+    public void ConcurrentAddAndRead_NoExceptions()
+    {
+        var list = new IndexedCircularList<string>(100);
+        var exceptions = new ConcurrentBag<Exception>();
+        var cts = new CancellationTokenSource();
+        var addsCompleted = 0;
+
+        // Writer task
+        var writerTask = Task.Run(() =>
+        {
+            try
+            {
+                for (int i = 0; i < 1000; i++)
+                {
+                    list.Add($"Item{i}");
+                    Interlocked.Increment(ref addsCompleted);
+                }
+            }
+            catch (Exception ex)
+            {
+                exceptions.Add(ex);
+            }
+            finally
+            {
+                cts.Cancel();
+            }
+        });
+
+        // Reader tasks
+        var readerTasks = Enumerable.Range(0, 5).Select(_ => Task.Run(() =>
+        {
+            try
+            {
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    var count = list.Count;
+                    if (count > 0)
+                    {
+                        var firstIdx = list.FirstIndex;
+                        var lastIdx = list.LastIndex;
+
+                        // Try to read valid indices
+                        for (long i = firstIdx; i <= lastIdx && i < firstIdx + 10; i++)
+                        {
+                            list.TryGetValue(i, out string? _);
+                        }
+                    }
+                    Thread.Yield();
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                exceptions.Add(ex);
+            }
+        }));
+
+        Task.WaitAll(new[] { writerTask }.Concat(readerTasks).ToArray());
+
+        Assert.That(exceptions, Is.Empty,
+            $"Concurrent operations threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
+    }
+
+    [Test]
+    public void ConcurrentAddAndClear_NoExceptions()
+    {
+        var list = new IndexedCircularList<string>(50);
+        var exceptions = new ConcurrentBag<Exception>();
+        var iterations = 100;
+
+        var tasks = new List<Task>
+        {
+            // Adder
+            Task.Run(() =>
+            {
+                try
+                {
+                    for (int i = 0; i < iterations * 10; i++)
+                    {
+                        list.Add($"Item{i}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Add(ex);
+                }
+            }),
+            // Clearer
+            Task.Run(() =>
+            {
+                try
+                {
+                    for (int i = 0; i < iterations; i++)
+                    {
+                        Thread.Sleep(1);
+                        list.Clear();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Add(ex);
+                }
+            })
+        };
+
+        Task.WaitAll(tasks.ToArray());
+
+        Assert.That(exceptions, Is.Empty,
+            $"Concurrent Add/Clear threw exceptions: {string.Join(", ", exceptions.Select(e => e.Message))}");
     }
 }

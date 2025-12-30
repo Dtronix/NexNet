@@ -189,11 +189,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
             _config.MaxConcurrentConnectionInvocations);
 
-        // Register the session if there is a manager.
-        // Note: For local implementation this is synchronous. For backplane implementations,
-        // this may need to be handled differently (e.g., in InitializeConnection).
-        if (_sessionManager != null)
-            _ = _sessionManager.Sessions.RegisterSessionAsync(this);
+        // Note: Session registration is deferred until after authentication completes
+        // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
+        // to prevent unauthenticated sessions from appearing in the registry.
 
         _config.InternalOnSessionSetup?.Invoke(this);
 
