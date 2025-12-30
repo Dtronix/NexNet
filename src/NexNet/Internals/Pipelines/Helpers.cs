@@ -231,14 +231,12 @@ internal static class Helpers
         return segment;
     }
 
-#if DEBUG
-    internal static System.IO.TextWriter Log = System.IO.TextWriter.Null;
-#endif
+    private static readonly System.IO.TextWriter _log = System.IO.TextWriter.Null;
 
     [Conditional("VERBOSE")]
     internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
     {
-            var log = Log;
+            var log = _log;
             if (log is null)
                 return;
             

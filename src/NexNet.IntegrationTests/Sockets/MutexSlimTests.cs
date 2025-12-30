@@ -371,7 +371,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public async Task PreCanceledReportsCorrectly()
+        public void PreCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
@@ -387,7 +387,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public async Task DuringCanceledReportsCorrectly()
+        public void DuringCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
 
@@ -440,7 +440,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public async Task ManualCanceledReportsCorrectly()
+        public void ManualCanceledReportsCorrectly()
         {
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
@@ -493,7 +493,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public async Task ManualCancelOnPreCanceledDoesNothing()
+        public void ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
             using var cancel = new CancellationTokenSource();
