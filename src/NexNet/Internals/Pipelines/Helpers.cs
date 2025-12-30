@@ -11,18 +11,6 @@ using System.Threading.Tasks;
 using NexNet.Internals.Pipelines.Internal;
 
 namespace NexNet.Internals.Pipelines;
-#if DEBUG
-#pragma warning disable CS1591
-public static class DebugCounters
-{
-    public static void Reset() => Helpers.ResetCounters();
-    public static string GetSummary() => Helpers.GetCounterSummary();
-
-    public static void SetLog(System.IO.TextWriter log) => Helpers.Log = log ?? System.IO.TextWriter.Null;
-}
-#pragma warning restore CS1591
-#endif
-
 internal enum Counter
 {
     SocketGetBufferList,
