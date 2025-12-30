@@ -2,6 +2,9 @@
 using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Text;
+using NUnit.Framework;
+using NUnit.Framework.Interfaces;
 
 namespace NexNet.IntegrationTests;
 
@@ -239,6 +242,65 @@ internal static class Utilities
         {
             // Operation was cancelled
             throw;
+        }
+    }
+}
+
+/// <summary>
+/// Buffers test log output and only writes to TestContext.Out if the test fails.
+/// Use in tests to reduce noise from passing tests while preserving diagnostic info for failures.
+/// </summary>
+internal sealed class BufferedTestLogger
+{
+    private readonly StringBuilder _buffer = new();
+    private readonly object _lock = new();
+
+    /// <summary>
+    /// Logs a message to the buffer.
+    /// </summary>
+    public void Log(string message)
+    {
+        lock (_lock)
+        {
+            _buffer.AppendLine(message);
+        }
+    }
+
+    /// <summary>
+    /// Clears the buffer. Call in SetUp to reset state between tests.
+    /// </summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            _buffer.Clear();
+        }
+    }
+
+    /// <summary>
+    /// Writes buffered logs to TestContext.Out only if the current test failed.
+    /// Call in TearDown.
+    /// </summary>
+    public void FlushOnFailure()
+    {
+        var status = TestContext.CurrentContext.Result.Outcome.Status;
+        if (status == TestStatus.Failed)
+        {
+            Flush();
+        }
+    }
+
+    /// <summary>
+    /// Writes all buffered logs to TestContext.Out unconditionally.
+    /// </summary>
+    public void Flush()
+    {
+        lock (_lock)
+        {
+            if (_buffer.Length > 0)
+            {
+                TestContext.Out.Write(_buffer.ToString());
+            }
         }
     }
 }

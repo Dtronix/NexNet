@@ -9,9 +9,12 @@ namespace NexNet.IntegrationTests.Sockets
     [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     internal class MutexSlimTests
     {
+        private readonly BufferedTestLogger _logger = new();
+
         [SetUp]
         public void SetUp()
         {
+            _logger.Clear();
 #if DEBUG
             _timeoutMux.Logged += Log;
 #endif
@@ -23,6 +26,8 @@ namespace NexNet.IntegrationTests.Sockets
 #if DEBUG
             _timeoutMux.Logged -= Log;
 #endif
+            _logger.FlushOnFailure();
+
             // Ensure mutex is released before next test
             // Wait briefly for any lingering operations to complete
             Thread.Sleep(50);
@@ -40,10 +45,7 @@ namespace NexNet.IntegrationTests.Sockets
 
         private void Log(string message)
         {
-            lock (this)
-            {
-                TestContext.Out.WriteLine(message);
-            }
+            _logger.Log(message);
         }
 
         private readonly MutexSlim _zeroTimeoutMux = new MutexSlim(0),
@@ -624,7 +626,7 @@ namespace NexNet.IntegrationTests.Sockets
                 else
                 {
                     var nowAttempt = Volatile.Read(ref _attempts);
-                    TestContext.Out.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    Log($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
                     Interlocked.Increment(ref _failCount);
                     return; // give up promptly if we start failing
                 }
@@ -651,7 +653,7 @@ namespace NexNet.IntegrationTests.Sockets
                 else
                 {
                     var nowAttempt = Volatile.Read(ref _attempts);
-                    TestContext.Out.WriteLine($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
+                    Log($"failure: {token}, available: {_timeoutMux.IsAvailable}; attempts before: {attempt}, now: {nowAttempt}");
                     Interlocked.Increment(ref _failCount);
                     return; // give up promptly if we start failing
                 }
