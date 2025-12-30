@@ -439,6 +439,8 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
             => _writer.GetSpan(sizeHint);
         public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
             => _writer.WriteAsync(source, cancellationToken);
+        public override bool CanGetUnflushedBytes => _writer.CanGetUnflushedBytes;
+        public override long UnflushedBytes => _writer.UnflushedBytes;
 
         // note - consider deprecated: https://github.com/dotnet/corefx/issues/38362
         [Obsolete]
