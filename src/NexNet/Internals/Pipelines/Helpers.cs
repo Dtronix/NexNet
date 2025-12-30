@@ -231,31 +231,28 @@ internal static class Helpers
         return segment;
     }
 
-#if DEBUG
-    internal static System.IO.TextWriter Log = System.IO.TextWriter.Null;
-#endif
+    private static readonly System.IO.TextWriter _log = System.IO.TextWriter.Null;
 
     [Conditional("VERBOSE")]
-#pragma warning disable RCS1163 // Unused parameter.
     internal static void DebugLog(string name, string message, [CallerMemberName] string caller = null)
-#pragma warning restore RCS1163 // Unused parameter.
     {
-#if VERBOSE
-            var log = Log;
-            if (log is not null)
-            {
-                var thread = System.Threading.Thread.CurrentThread;
-                var threadName = thread.Name;
-                if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
+            var log = _log;
+            if (log is null)
+                return;
+            
+            var thread = Thread.CurrentThread;
+            var threadName = thread.Name;
+            if (string.IsNullOrWhiteSpace(threadName)) threadName = thread.ManagedThreadId.ToString();
 
-                var s = $"[{threadName}, {name}, {caller}]: {message}";
-                lock (log)
+            var s = $"[{threadName}, {name}, {caller}]: {message}";
+            lock (log)
+            {
+                try { log.WriteLine(s); }
+                catch
                 {
-                    try { log.WriteLine(s); }
-                    catch { }
+                    // ignored
                 }
             }
-#endif
     }
 
     internal static void PipelinesFireAndForget(this Task task)

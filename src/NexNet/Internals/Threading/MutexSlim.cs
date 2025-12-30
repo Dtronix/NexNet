@@ -7,9 +7,9 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals.Pipelines.Internal;
-using static NexNet.Internals.Pipelines.Threading.MutexSlim.LockToken;
+using static NexNet.Internals.Threading.MutexSlim.LockToken;
 
-namespace NexNet.Internals.Pipelines.Threading;
+namespace NexNet.Internals.Threading;
 
 /// <summary>
 /// A mutex primitive that can be waited or awaited, with support for schedulers

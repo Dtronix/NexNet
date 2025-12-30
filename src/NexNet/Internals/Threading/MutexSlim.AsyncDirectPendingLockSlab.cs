@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Sources;
 using NexNet.Internals.Pipelines.Internal;
 
-namespace NexNet.Internals.Pipelines.Threading;
+namespace NexNet.Internals.Threading;
 
 internal partial class MutexSlim
 {

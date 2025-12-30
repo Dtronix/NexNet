@@ -571,19 +571,12 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
         {
             var array = _arrayPool.Rent(size);
-#if NETSTANDARD2_1_OR_GREATER || NETCOREAPP
-            if (_segmentPool.TryTake(out var segment))
-            {
-#else
-                if (_segmentPool.Count > 0)
-                {
-                    var segment = _segmentPool.Pop();
-#endif
-                segment.Setup(array, previous);
-                return segment;
-            }
+            if (!_segmentPool.TryTake(out var segment))
+                return new ArrayPoolRefCountedSegment(_segmentPool, _arrayPool, array, previous);
 
-            return new ArrayPoolRefCountedSegment(_segmentPool, _arrayPool, array, previous);
+            segment.Setup(array, previous);
+            return segment;
+
         }
 
         internal static RefCountedSegment CreateNewSegment(ArrayPool<T> arrayPool, RefCountedSegment previous, int size)
