@@ -2,18 +2,17 @@
   <Folder Name="/github/">
     <File Path="..\.github\workflows\dotnet.yml" />
     <File Path="..\README.md" />
-    <File Path="..\docs\Transport-Headers.md" />
   </Folder>
   <Folder Name="/Samples/">
-    <Project Path="Samples\NexNetDemo\NexNetDemo.csproj" Type="Classic C#" />
-    <Project Path="Samples\NexNetSample.Asp.Client\NexNetSample.Asp.Client.csproj" Type="Classic C#" />
-    <Project Path="Samples\NexNetSample.Asp.Server\NexNetSample.Asp.Server.csproj" Type="Classic C#" />
-    <Project Path="Samples\NexNetSample.Asp.Shared\NexNetSample.Asp.Shared.csproj" Type="Classic C#" />
+    <Project Path="Samples\NexNetDemo\NexNetDemo.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Asp.Client\NexNetSample.Asp.Client.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Asp.Server\NexNetSample.Asp.Server.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Asp.Shared\NexNetSample.Asp.Shared.csproj" Type="C#" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
   </Folder>
-  <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="Classic C#" />
+  <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="C#" />
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
