@@ -1,31 +1,31 @@
-# NexNet LLM Reference
+# NexNet Usage Reference
 
-High-performance .NET async networking with bidirectional server-client communication. All code is source-generated (no reflection, AOT-friendly).
+High-performance .NET 10 async networking. Bidirectional server-client communication. Source-generated, AOT-friendly. MemoryPack serialization.
 
-## NuGet Packages
+## Packages
 ```xml
-<PackageReference Include="NexNet" Version="0.11.0" />
-<PackageReference Include="NexNet.Generator" Version="0.11.0">
+<PackageReference Include="NexNet" Version="0.14.1" />
+<PackageReference Include="NexNet.Generator" Version="0.14.1">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 </PackageReference>
-<!-- Optional: NexNet.Quic for QUIC, NexNet.Asp for ASP.NET -->
+<!-- Optional: NexNet.Quic, NexNet.Asp -->
 ```
 
 ## Core Pattern
 
 ```csharp
-// Shared interfaces (in shared project)
+// Shared interfaces
 public interface IClientNexus { ValueTask ReceiveMessage(string msg); }
 public interface IServerNexus { ValueTask SendMessage(string msg); }
 
-// Client: implements IClientNexus, calls IServerNexus via Proxy
+// Client implements IClientNexus, calls IServerNexus via Proxy
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 public partial class ClientNexus {
     public ValueTask ReceiveMessage(string msg) => ValueTask.CompletedTask;
 }
 
-// Server: implements IServerNexus, calls IClientNexus via Proxy
+// Server implements IServerNexus, calls IClientNexus via Proxy
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 public partial class ServerNexus {
     public ValueTask SendMessage(string msg) => ValueTask.CompletedTask;
@@ -39,316 +39,233 @@ await client.ConnectAsync();
 await client.Proxy.SendMessage("Hello");
 ```
 
-**Rules:** Nexus classes must be `partial`. One hub instance per connection. No work in constructors (hubs can be temporarily created/disposed via `ContextProvider`).
+Nexus classes must be `partial`, not abstract/nested/generic. One instance per connection. No constructor work (pooled via `ContextProvider`).
 
 ## Method Signatures
 
-| Return Type | Behavior |
-|-------------|----------|
-| `void` | Fire-and-forget |
-| `ValueTask` | Wait for completion |
-| `ValueTask<T>` | Wait and return value |
+| Return | Behavior | Allowed Params |
+|--------|----------|----------------|
+| `void` | Fire-and-forget | args only |
+| `ValueTask` | Await completion | args + CT, OR args + pipes/channels |
+| `ValueTask<T>` | Await + return | args + CT only |
 
-### Argument Rules
-- `void`: args only (no CT, pipes, or channels)
-- `ValueTask`: args + CancellationToken, OR args + pipes/channels (not both)
-- `ValueTask<T>`: args + CancellationToken only (no pipes/channels)
-- CancellationToken must be last parameter
-- Max serialized args: 65,535 bytes (use pipes for larger)
+CancellationToken must be last. Max serialized args: 65,535 bytes (use pipes for larger).
 
-## Lifecycle Methods
+## Lifecycle
 
 ```csharp
-// Both client and server
+// Both
 protected override ValueTask OnConnected(bool isReconnected) => default;
 protected override ValueTask OnDisconnected(Exception? ex) => default;
-
 // Client only
 protected override ValueTask OnReconnecting() => default;
-
-// Server only - authentication returns IIdentity (null = reject)
-protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token) {
-    if (token == null) return new(null);
-    var tokenStr = Encoding.UTF8.GetString(token.Value.Span);
-    return tokenStr == "valid"
-        ? new(new DefaultIdentity { DisplayName = "User1" })
-        : new(null);
-}
-
-// Server only - called after OnAuthenticate, before OnConnected
-protected override async ValueTask OnNexusInitialize() {
-    await Context.Groups.AddAsync("default-room");  // good for group registration
-}
+// Server only (null = reject auth)
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token) => ...;
+// Server only (after auth, before OnConnected)
+protected override ValueTask OnNexusInitialize() => default;
 ```
 
-## Transport Configurations
+## Transports
 
-| Scenario | Transport | Config Classes |
-|----------|-----------|----------------|
-| Same machine IPC | Unix Domain Sockets | `UdsServerConfig`, `UdsClientConfig` |
-| Local network | TCP | `TcpServerConfig`, `TcpClientConfig` |
-| Secure internet | TLS/TCP | `TcpTlsServerConfig`, `TcpTlsClientConfig` |
-| Mobile/unstable | QUIC | `QuicServerConfig`, `QuicClientConfig` |
-| Web browsers | WebSocket | `WebSocketClientConfig` (ASP.NET server) |
-| Reverse proxy | HttpSocket | `HttpSocketClientConfig` (ASP.NET server) |
+| Scenario | Server Config | Client Config |
+|----------|---------------|---------------|
+| Unix IPC | `UdsServerConfig` | `UdsClientConfig` |
+| TCP | `TcpServerConfig` | `TcpClientConfig` |
+| TLS/TCP | `TcpTlsServerConfig` | `TcpTlsClientConfig` |
+| QUIC | `QuicServerConfig` | `QuicClientConfig` |
+| WebSocket | ASP.NET server | `WebSocketClientConfig` |
+| HttpSocket | ASP.NET server | `HttpSocketClientConfig` |
 
-### TCP
 ```csharp
-var serverConfig = new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 1234) };
-var clientConfig = new TcpClientConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 1234) };
-```
+// TCP
+new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 1234) };
+new TcpClientConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 1234) };
 
-### Unix Domain Sockets
-```csharp
-var serverConfig = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock") };
-var clientConfig = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock") };
-```
+// UDS
+new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock") };
 
-### TLS/TCP
-```csharp
-var serverConfig = new TcpTlsServerConfig {
+// TLS - set SslServerAuthenticationOptions / SslClientAuthenticationOptions
+new TcpTlsServerConfig {
     EndPoint = new IPEndPoint(IPAddress.Any, 1234),
     SslServerAuthenticationOptions = new() {
         ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "pass"),
         EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13
     }
 };
-var clientConfig = new TcpTlsClientConfig {
-    EndPoint = new IPEndPoint(IPAddress.Loopback, 1234),
-    SslClientAuthenticationOptions = new() {
-        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-        RemoteCertificateValidationCallback = (_, _, _, _) => true // dev only
-    }
-};
-```
 
-### QUIC (requires NexNet.Quic + libmsquic on Linux)
-```csharp
-var serverConfig = new QuicServerConfig {
+// QUIC (requires NexNet.Quic; libmsquic on Linux)
+new QuicServerConfig {
     EndPoint = new IPEndPoint(IPAddress.Any, 1234),
-    SslServerAuthenticationOptions = new() {
-        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "pass"),
-        EnabledSslProtocols = SslProtocols.Tls13
-    }
+    SslServerAuthenticationOptions = new() { ... }
 };
+
+// WebSocket/HttpSocket clients
+new WebSocketClientConfig { Url = new Uri("ws://localhost:5000/nexus") };
+new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
+// Both support: AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
 ```
 
-### WebSocket / HttpSocket (ASP.NET clients)
-```csharp
-var wsConfig = new WebSocketClientConfig {
-    Url = new Uri("ws://localhost:5000/nexus"),
-    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
-};
-var httpConfig = new HttpSocketClientConfig {
-    Url = new Uri("http://localhost:5000/nexus"),
-    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
-};
-```
+## Configuration
 
-## Configuration Options
+### Base (all transports)
 
-### Base Configuration (all transports)
-```csharp
-var config = new TcpClientConfig {
-    EndPoint = endpoint,
-    Logger = new ConsoleLogger(),             // INexusLogger for debugging
-    MaxConcurrentConnectionInvocations = 2,   // default: 2
-    DisconnectDelay = 200,                    // ms, ensures disconnect msg sends
-    Timeout = 30000,                          // ms, idle timeout before disconnect
-    HandshakeTimeout = 15000,                 // ms, initial handshake timeout
-    NexusPipeFlushChunkSize = 8192,           // bytes per flush chunk
-    NexusPipeHighWaterMark = 196608,          // 192KB - pause writer threshold
-    NexusPipeLowWaterMark = 16384,            // 16KB - resume sending threshold
-    NexusPipeHighWaterCutoff = 262144         // 256KB - hard stop threshold
-};
-```
+| Property | Default | Description |
+|----------|---------|-------------|
+| `Logger` | null | `INexusLogger` instance |
+| `MaxConcurrentConnectionInvocations` | 2 | 1-1000 |
+| `DisconnectDelay` | 200ms | 0-10000ms |
+| `Timeout` | 30000ms | 50-300000ms, idle timeout |
+| `HandshakeTimeout` | 15000ms | 50-60000ms |
+| `NexusPipeFlushChunkSize` | 8KB | 1KB-1MB |
+| `NexusPipeHighWaterMark` | 192KB | Pause writer threshold |
+| `NexusPipeLowWaterMark` | 16KB | Resume threshold |
+| `NexusPipeHighWaterCutoff` | 256KB | Hard stop threshold |
 
-### Client-Specific Options
-```csharp
-var clientConfig = new TcpClientConfig {
-    EndPoint = endpoint,
-    ConnectionTimeout = 50000,                // ms, connect timeout (default: 50000)
-    PingInterval = 10000,                     // ms, keepalive interval (default: 10000)
-    ReconnectionPolicy = new DefaultReconnectionPolicy(),
-    Authenticate = () => Encoding.UTF8.GetBytes("token")
-};
-```
+### Client-specific
 
-### Server-Specific Options
-```csharp
-var serverConfig = new TcpServerConfig {
-    EndPoint = endpoint,
-    AcceptorBacklog = 20,                     // listen backlog (default: 20)
-    Authenticate = true                       // require client auth (default: false)
-};
-```
+| Property | Default | Description |
+|----------|---------|-------------|
+| `ConnectionTimeout` | 50000ms | Connect timeout |
+| `PingInterval` | 10000ms | Keepalive interval |
+| `ReconnectionPolicy` | null | `IReconnectionPolicy`; null = disabled |
+| `Authenticate` | null | `Func<Memory<byte>>` auth token provider |
 
-### TCP-Specific Options
-```csharp
-var tcpConfig = new TcpServerConfig {
-    EndPoint = endpoint,
-    DualMode = false,                         // IPv4/IPv6 dual-stack
-    KeepAlive = true,                         // SO_KEEPALIVE
-    TcpKeepAliveTime = 60,                    // seconds before probes (-1 = OS default)
-    TcpKeepAliveInterval = 10,                // seconds between probes
-    TcpKeepAliveRetryCount = 3,               // probes before disconnect
-    TcpNoDelay = true,                        // disable Nagle's algorithm (default: true)
-    ReuseAddress = false,                     // SO_REUSEADDR (server only)
-    ExclusiveAddressUse = false               // SO_EXCLUSIVEADDRUSE (server only)
-};
-```
+### Server-specific
 
-## Logging
+| Property | Default | Description |
+|----------|---------|-------------|
+| `AcceptorBacklog` | 20 | Listen backlog |
+| `Authenticate` | false | Require client auth |
+| `RateLimiting` | null | `ConnectionRateLimitConfig`; null = disabled |
+
+### TCP options (TcpServerConfig/TcpClientConfig)
+
+`DualMode`, `KeepAlive`, `TcpKeepAliveTime` (-1=OS), `TcpKeepAliveInterval`, `TcpKeepAliveRetryCount`, `TcpNoDelay` (default: true). Server-only: `ReuseAddress`, `ExclusiveAddressUse`.
+
+## Client API
 
 ```csharp
-// Built-in loggers
-var config = new TcpServerConfig {
-    EndPoint = endpoint,
-    Logger = new ConsoleLogger()              // writes to stdout
-    // OR
-    Logger = new RollingLogger(maxLines: 200) // circular buffer for post-mortem
-};
-
-// Log levels: Trace, Debug, Information, Warning, Error, Critical, None
-var logger = new ConsoleLogger();
-logger.MinLogLevel = NexusLogLevel.Information;  // filter threshold
-logger.LogEnabled = true;                        // enable/disable all logging
-
-// Log behaviors (combinable flags)
-logger.Behaviors = NexusLogBehaviors.Default
-    | NexusLogBehaviors.ProxyInvocationsLogAsInfo   // remote calls as Info (not Debug)
-    | NexusLogBehaviors.LocalInvocationsLogAsInfo   // local calls as Info (not Debug)
-    | NexusLogBehaviors.LogTransportData;           // raw I/O bytes (debug only!)
-
-// Hierarchical logging (internal use, but good to know)
-var childLogger = logger.CreateLogger("Session-123");
-Console.WriteLine(childLogger.FormattedPath);    // "Server|Session-123"
-
-// Rolling logger: flush to TextWriter
-var rolling = new RollingLogger(200);
-// ... later, dump logs for debugging
-rolling.Flush(Console.Out);
-Console.WriteLine($"Total lines: {rolling.TotalLinesWritten}");
-```
-
-## Client Options
-
-```csharp
-var config = new TcpClientConfig {
-    EndPoint = endpoint,
-    ConnectionTimeout = 30000,        // default: 50000ms
-    PingInterval = 5000,              // default: 10000ms
-    ReconnectionPolicy = new DefaultReconnectionPolicy(),
-    Authenticate = () => Encoding.UTF8.GetBytes("token")
-};
-
 var client = ClientNexus.CreateClient(config, new ClientNexus());
-await client.ConnectAsync();                    // throws on failure
-var result = await client.TryConnectAsync();    // returns ConnectionResult
-client.StateChanged += (s, state) => { };       // Connected, Disconnected, Reconnecting
-await client.DisconnectedTask;                  // wait for disconnect
+await client.ConnectAsync();                   // throws on failure
+var result = await client.TryConnectAsync();   // ConnectionResult with .Success, .State, .DisconnectReason
+client.StateChanged += (s, state) => { };      // ConnectionState enum
+await client.DisconnectedTask;                 // wait for disconnect
+await client.DisconnectAsync();
+// Create pipes/channels
+var pipe = client.CreatePipe();                // IRentedNexusDuplexPipe
+var ch = client.CreateChannel<T>();            // INexusDuplexChannel<T>
+var uch = client.CreateUnmanagedChannel<T>();  // INexusDuplexUnmanagedChannel<T>
 ```
 
-## Client Connection Pooling
+`ConnectionState`: Unset, Connecting, Connected, Reconnecting, Disconnecting, Disconnected.
+
+### Reconnection
+
+```csharp
+// DefaultReconnectionPolicy: retries at 0s, 2s, 10s, 30s then repeats last
+config.ReconnectionPolicy = new DefaultReconnectionPolicy();
+// Custom intervals
+config.ReconnectionPolicy = new DefaultReconnectionPolicy(
+    [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5)], continuousRetry: true);
+```
+
+### Connection Pooling
 
 ```csharp
 var poolConfig = new NexusClientPoolConfig(clientConfig) {
-    MaxConnections = 10,                      // default: 10
-    MaxIdleTime = TimeSpan.FromMinutes(2),    // default: 2 min
-    MinIdleConnections = 1                    // default: 1
+    MaxConnections = 10, MaxIdleTime = TimeSpan.FromMinutes(2), MinIdleConnections = 1
 };
 var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
-
-// Rent and auto-return
 using var rental = await pool.RentClientAsync();
 await rental.Proxy.DoSomething();
-
-// IRentedNexusClient<TProxy> API
-rental.Proxy                                  // server proxy
-rental.State                                  // ConnectionState
-rental.DisconnectedTask                       // completion task
-await rental.EnsureConnectedAsync();          // reconnect if needed
+await rental.EnsureConnectedAsync();   // reconnect if needed
+// Also: pool.GetCollectionConnector(p => p.Items) for relay collections
 ```
 
-## Server Broadcasting
-
-```csharp
-// Inside server nexus methods
-await Context.Clients.Caller.Method();              // calling client only
-await Context.Clients.All.Method();                 // all clients
-await Context.Clients.Others.Method();              // all except caller
-await Context.Clients.Client(id).Method();          // specific client
-await Context.Clients.Clients([id1, id2]).Method(); // multiple clients
-await Context.Clients.Group("room").Method();       // group members
-await Context.Clients.Groups(["a", "b"]).Method();  // multiple groups
-await Context.Clients.GroupExceptCaller("room").Method();      // group minus caller
-await Context.Clients.GroupsExceptCaller(["a", "b"]).Method(); // groups minus caller
-var allIds = Context.Clients.GetIds();              // all connected session IDs
-
-// Group management (async)
-await Context.Groups.AddAsync("room");
-await Context.Groups.AddAsync(["room1", "room2"]);             // multiple groups
-await Context.Groups.RemoveAsync("room");
-var myGroups = await Context.Groups.GetNamesAsync();           // groups this session is in
-```
-
-## Session Context (Server)
-
-Full `Context` API available inside server nexus methods:
-
-```csharp
-public async ValueTask SomeMethod() {
-    // Broadcasting (documented above)
-    await Context.Clients.All.Notify();
-
-    // Session ID
-    long sessionId = Context.Id;
-
-    // Identity (from OnAuthenticate)
-    string? userName = Context.Identity?.DisplayName;
-
-    // Session Store (per-session key-value storage, lifetime = connection)
-    Context.Store["userId"] = 123;
-    Context.Store["role"] = "admin";
-    if (Context.Store.TryGet("userId", out var value)) {
-        var id = (int)value!;
-    }
-    var role = Context.Store["role"];             // throws if missing
-
-    // Logger access
-    Context.Logger?.Log(NexusLogLevel.Information, "Category", null, "Message");
-
-    // Create pipes/channels from context
-    var pipe = Context.CreatePipe();
-    var channel = Context.CreateChannel<MyData>();
-    var unmanagedChannel = Context.CreateUnmanagedChannel<int>();
-
-    // Disconnect current session
-    await Context.DisconnectAsync();
-
-    // Group management (async)
-    await Context.Groups.AddAsync("room");
-    await Context.Groups.RemoveAsync("room");
-    var groups = await Context.Groups.GetNamesAsync();
-}
-```
-
-## External Invocations (ContextProvider)
-
-Invoke clients from outside nexus methods (background services, timers, etc.):
+## Server API
 
 ```csharp
 var server = ServerNexus.CreateServer(config, () => new ServerNexus());
 await server.StartAsync();
+// server.State: Stopped, Running, Disposed
+await server.StopAsync();
+```
 
-// Later, from anywhere outside a nexus method
+### Server Context (inside nexus methods)
+
+```csharp
+// Broadcasting
+await Context.Clients.Caller.Method();               // calling client
+await Context.Clients.All.Method();                   // all clients
+await Context.Clients.Others.Method();                // all except caller
+await Context.Clients.Client(id).Method();            // by session ID
+await Context.Clients.Clients([id1, id2]).Method();   // multiple IDs
+await Context.Clients.Group("room").Method();         // group members
+await Context.Clients.Groups(["a", "b"]).Method();
+await Context.Clients.GroupExceptCaller("room").Method();
+await Context.Clients.GroupsExceptCaller(["a", "b"]).Method();
+var ids = Context.Clients.GetIds();                   // all session IDs
+
+// Groups
+await Context.Groups.AddAsync("room");
+await Context.Groups.AddAsync(["room1", "room2"]);
+await Context.Groups.RemoveAsync("room");
+var names = await Context.Groups.GetNamesAsync();
+
+// Session info
+long id = Context.Id;
+string? user = Context.Identity?.DisplayName;
+
+// Per-session key-value store (lifetime = connection)
+Context.Store["key"] = value;
+Context.Store.TryGet("key", out var val);
+
+// Disconnect
+await Context.DisconnectAsync();
+```
+
+### ContextProvider (external invocation)
+
+```csharp
+// Invoke clients from outside nexus methods (background services, timers)
 using var owner = server.ContextProvider.Rent();
-await owner.Context.Clients.All.Notify();                  // all clients
-await owner.Context.Clients.Client(sessionId).Notify();    // specific client
-await owner.Context.Clients.Group("room").Notify();        // group
-await owner.Context.Clients.Groups(["a", "b"]).Notify();   // multiple groups
-var ids = owner.Context.Clients.GetIds();                  // all session IDs
-// Dispose owner when done to return context to pool
+await owner.Context.Clients.All.Notify();
+await owner.Context.Clients.Client(sessionId).Notify();
+await owner.Context.Clients.Group("room").Notify();
+```
+
+## Rate Limiting
+
+```csharp
+var serverConfig = new TcpServerConfig {
+    EndPoint = endpoint,
+    RateLimiting = new ConnectionRateLimitConfig {
+        MaxConcurrentConnections = 1000,   // total (default: 1000)
+        GlobalConnectionsPerSecond = 100,  // new conn/sec (default: 100)
+        MaxConnectionsPerIp = 0,           // per-IP concurrent (0=unlimited)
+        ConnectionsPerIpPerWindow = 0,     // per-IP per window (0=unlimited)
+        PerIpWindowSeconds = 60,           // window size (default: 60)
+        BanDurationSeconds = 300,          // ban duration (default: 300)
+        BanThreshold = 5,                  // violations before ban (default: 5)
+        WhitelistedIps = ["127.0.0.1"]     // skip rate limiting
+    }
+};
+```
+
+## Authentication
+
+Disabled by default. Enable with `ServerConfig.Authenticate = true`.
+
+```csharp
+// Server config
+var serverConfig = new TcpServerConfig { EndPoint = ep, Authenticate = true };
+// Server nexus: override OnAuthenticate (return null = reject)
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token) {
+    var str = Encoding.UTF8.GetString(token!.Value.Span);
+    return str == "valid" ? new(new DefaultIdentity { DisplayName = "User" }) : new((IIdentity?)null);
+}
+// Client config
+var clientConfig = new TcpClientConfig { EndPoint = ep, Authenticate = () => Encoding.UTF8.GetBytes("valid") };
 ```
 
 ## Duplex Pipes (Byte Streaming)
@@ -356,98 +273,68 @@ var ids = owner.Context.Clients.GetIds();                  // all session IDs
 NOT thread-safe. For large data or continuous streams.
 
 ```csharp
-// Interface
+// Interface method
 ValueTask Upload(INexusDuplexPipe pipe);
-
-// Client: create and send
+// Client
 var pipe = client.CreatePipe();
 await client.Proxy.Upload(pipe);
 await pipe.ReadyTask;
 await stream.CopyToAsync(pipe.Output);
 await pipe.CompleteAsync();
-
-// Server: receive
+// Server
 public async ValueTask Upload(INexusDuplexPipe pipe) {
     await pipe.Input.CopyToAsync(destStream);
 }
 ```
 
-## Channels (Typed Object Streaming)
+## Channels (Typed Streaming)
 
-Thread-safe for writing. Uses MemoryPack serialization.
-
-| Type | Use Case |
-|------|----------|
-| `INexusDuplexChannel<T>` | MemoryPack-serializable types |
-| `INexusDuplexUnmanagedChannel<T>` | Unmanaged types (int, struct) - faster |
+Thread-safe writing. `INexusDuplexChannel<T>` (MemoryPack) or `INexusDuplexUnmanagedChannel<T>` (unmanaged, faster).
 
 ```csharp
 // Interface
 ValueTask StreamData(INexusDuplexUnmanagedChannel<int> channel);
-
 // Client
 await using var channel = client.CreateUnmanagedChannel<int>();
 await client.Proxy.StreamData(channel);
 var reader = await channel.GetReaderAsync();
-await foreach (var item in reader) { }  // IAsyncEnumerable
-
+await foreach (var item in reader) { }
 // Server
 public async ValueTask StreamData(INexusDuplexUnmanagedChannel<int> channel) {
     var writer = await channel.GetWriterAsync();
     await writer.WriteAsync(42);
     await writer.CompleteAsync();
 }
+// Extensions
+await channel.WriteAndComplete(enumerable, batchSize: 100);
+var list = await reader.ReadUntilComplete(initialCapacity: 1000);
 ```
 
-### Channel Extensions
-```csharp
-await channel.WriteAndComplete(enumerable, batchSize: 100);  // bulk write
-var list = await reader.ReadUntilComplete(initialCapacity: 1000);  // bulk read
-```
+### Different types via pipe
 
-### Different Types via Pipe
 ```csharp
 var pipe = client.CreatePipe();
 await client.Proxy.StreamData(pipe);
 await pipe.ReadyTask;
-
-// Get separate typed reader/writer (can be different types)
 var writer = await pipe.GetChannelWriter<long>();
 var reader = await pipe.GetChannelReader<string>();
-
-// Or get unmanaged variants
-var unmanagedWriter = await pipe.GetUnmanagedChannelWriter<int>();
-var unmanagedReader = await pipe.GetUnmanagedChannelReader<int>();
-
-// Or get full duplex channel from pipe
-var unmanagedChannel = pipe.GetUnmanagedChannel<int>();
-var managedChannel = pipe.GetChannel<MyData>();
+// Also: GetUnmanagedChannelWriter/Reader<T>, GetUnmanagedChannel<T>, GetChannel<T>
 ```
 
 ## Synchronized Collections
 
-Server-side only. Auto-synced to clients.
-
-| Mode | Description |
-|------|-------------|
-| `ServerToClient` | Read-only on client |
-| `BiDirectional` | Client can mutate |
-| `Relay` | Broadcasts from parent to clients |
+Auto-synced server-to-client. Modes: `ServerToClient` (read-only client), `BiDirectional` (client can mutate), `Relay` (hierarchical).
 
 ```csharp
-// Interface (server only)
+// Interface
 public interface IServerNexus {
     [NexusCollection(NexusCollectionMode.BiDirectional)]
     INexusList<int> Items { get; }
 }
-
 // Client usage
 var list = client.Proxy.Items;
-list.Changed.Subscribe(args => { });     // reactive updates
-await list.EnableAsync();                 // connect to collection
-await list.ReadyTask;                     // wait for initial sync
-// OR: await list.ConnectAsync();         // combines both above
-
+await list.ConnectAsync();   // EnableAsync() + ReadyTask
+list.Changed.Subscribe(args => { /* Action: Add, Remove, Replace, Move, Reset, Ready */ });
 await list.AddAsync(1);
 await list.InsertAsync(0, 2);
 await list.RemoveAsync(1);
@@ -455,138 +342,73 @@ await list.RemoveAtAsync(0);
 await list.ReplaceAsync(0, 99);
 await list.MoveAsync(0, 1);
 await list.ClearAsync();
-
-foreach (var item in list) { }           // read local copy
-Console.WriteLine(list.State);           // Disconnected, Connecting, Connected
-await list.DisabledTask;                  // fires on disconnect
+foreach (var item in list) { }  // read local copy
 await list.DisableAsync();
 ```
 
-### Collection Change Events
-```csharp
-list.Changed.Subscribe(args => {
-    // args.Action: Add, Remove, Replace, Move, Reset, Ready
-    // args.NewIndex, args.OldIndex (for Move)
-    // args.Item (affected item)
-});
-```
-
-### Collection Relay Mode
-
-For hierarchical distribution (master -> relay -> clients).
+### Relay mode
 
 ```csharp
-// Master server interface
-public interface IMasterServerNexus {
-    [NexusCollection(NexusCollectionMode.ServerToClient)]
-    INexusList<Data> Items { get; }
-}
-
-// Relay server interface
-public interface IRelayServerNexus {
-    [NexusCollection(NexusCollectionMode.Relay)]
-    INexusList<Data> Items { get; }
-}
-
-// Relay server setup
+// Master interface: [NexusCollection(NexusCollectionMode.ServerToClient)]
+// Relay interface:  [NexusCollection(NexusCollectionMode.Relay)]
 var masterPool = new NexusClientPool<MasterClient, MasterClient.ServerProxy>(poolConfig);
-var relayServer = RelayServerNexus.CreateServer(config, () => new RelayServerNexus(),
-    cfg => {
-        var connector = masterPool.GetCollectionConnector(p => p.Items);
-        cfg.Context.Collections.Items.ConfigureRelay(connector);
-    });
+var relayServer = RelayNexus.CreateServer(config, () => new RelayNexus(),
+    cfg => cfg.Context.Collections.Items.ConfigureRelay(
+        masterPool.GetCollectionConnector(p => p.Items)));
 ```
 
-Relay is read-only, auto-reconnects to parent, maintains full state sync.
+## Versioning
+
+Server-only. All methods need `[NexusMethod(id)]` with unique IDs. `HashLock` prevents accidental changes.
+
+```csharp
+[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+public interface IServerV1 {
+    [NexusMethod(1)] ValueTask<bool> GetStatus();
+}
+[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+public interface IServerV2 : IServerV1 {
+    [NexusMethod(2)] ValueTask<string> GetInfo();
+}
+// V2 server supports V1+V2 clients
+[Nexus<IServerV2, IClient>(NexusType = NexusType.Server)]
+public partial class ServerV2 { ... }
+```
+
+Attribute options: `[NexusMethod(Ignore = true)]`, `[NexusCollection(Id = 1)]`, `[NexusCollection(Ignore = true)]`.
 
 ## ASP.NET Integration
 
 Requires `NexNet.Asp`.
 
 ```csharp
-// Server setup
 builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
-
 app.UseAuthentication();
 app.UseAuthorization();
-
+// HttpSocket
 await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c => {
-    c.Path = "/nexus";
-    c.AspEnableAuthentication = true;
-    c.AspAuthenticationScheme = "BearerToken";
+    c.NexusConfig.Path = "/nexus";
+    c.NexusConfig.AspEnableAuthentication = true;
+    c.NexusConfig.AspAuthenticationScheme = "BearerToken";
+    c.NexusConfig.TrustProxyHeaders = false; // X-Forwarded-For (default: false)
 }).StartAsync(app.Lifetime.ApplicationStopped);
-// OR: UseWebSocketNexusServerAsync for WebSocket
+// WebSocket: UseWebSocketNexusServerAsync instead
 ```
 
-## Versioning
-
-Server-only. For backward-compatible API evolution.
+## Logging
 
 ```csharp
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
-public interface IServerV1 {
-    [NexusMethod(1)]
-    ValueTask<bool> GetStatus();
-}
-
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
-public interface IServerV2 : IServerV1 {
-    [NexusMethod(2)]
-    ValueTask<string> GetInfo();
-}
-
-// V2 server supports V1 and V2 clients
-[Nexus<IServerV2, IClient>(NexusType = NexusType.Server)]
-public partial class ServerV2 { ... }
-```
-
-Rules: All methods need `[NexusMethod(id)]` with unique ID. `HashLock` prevents accidental API changes. V1 client on V2 server can only call V1 methods.
-
-### NexusMethodAttribute Options
-```csharp
-[NexusMethod(1)]                          // explicit method ID
-[NexusMethod(Ignore = true)]              // exclude from generation
-ValueTask SomeMethod();
-```
-
-### NexusCollectionAttribute Options
-```csharp
-[NexusCollection(NexusCollectionMode.BiDirectional)]
-[NexusCollection(Id = 1)]                 // explicit collection ID
-[NexusCollection(Ignore = true)]          // exclude from generation
-INexusList<int> Items { get; }
-```
-
-## Authentication
-
-**Important:** Authentication is disabled by default.
-
-```csharp
-// Server: enable auth requirement
-var serverConfig = new TcpServerConfig {
-    Authenticate = true  // requires OnAuthenticate implementation
-};
-
-// Server nexus: implement validation (return null to reject)
-protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> authToken) {
-    if (ValidateToken(authToken))
-        return new ValueTask<IIdentity?>(new UserIdentity("username"));
-    return new ValueTask<IIdentity?>((IIdentity?)null);
-}
-
-// Client: provide auth token
-var clientConfig = new TcpClientConfig {
-    Authenticate = () => Encoding.UTF8.GetBytes("my-auth-token")
-};
+config.Logger = new ConsoleLogger();                // stdout
+config.Logger = new RollingLogger(maxLines: 200);   // circular buffer, Flush(TextWriter)
+// NexusLogLevel: Trace, Debug, Information, Warning, Error, Critical, None
+// NexusLogBehaviors flags: Default, ProxyInvocationsLogAsInfo, LocalInvocationsLogAsInfo, LogTransportData
 ```
 
 ## CancellationToken
 
 ```csharp
-// Must be last parameter
+// Must be last parameter in interface
 ValueTask Operation(int data, CancellationToken ct);
-
-// Usage
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 await client.Proxy.Operation(42, cts.Token);
 ```
