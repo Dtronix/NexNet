@@ -21,25 +21,13 @@ internal static class MethodEmitter
         if (method.AuthorizeData != null)
         {
             sb.AppendLine($$"""
-                        var __authResult = await this.Authorize(
+                        if (!await this.CheckAuthorization(
                             {{method.Id}},
                             "{{method.Name}}",
-                            __authPerms_{{method.Name}}).ConfigureAwait(false);
-
-                        if (__authResult == global::NexNet.AuthorizeResult.Disconnect)
-                        {
-                            await this.Context.Session.DisconnectAsync(global::NexNet.Messages.DisconnectReason.Unauthorized).ConfigureAwait(false);
+                            __authPerms_{{method.Name}},
+                            message.InvocationId,
+                            returnBuffer != null).ConfigureAwait(false))
                             return;
-                        }
-
-                        if (__authResult == global::NexNet.AuthorizeResult.Unauthorized)
-                        {
-                            if (returnBuffer != null)
-                            {
-                                await this.SendUnauthorizedResult(message.InvocationId).ConfigureAwait(false);
-                            }
-                            return;
-                        }
 """);
         }
 

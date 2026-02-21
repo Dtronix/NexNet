@@ -65,36 +65,57 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     }
 
     /// <summary>
-    /// Wrapper called by generated auth guard code to invoke OnAuthorize with the typed context.
+    /// Called by generated auth guard code. Runs the authorization check and handles
+    /// Unauthorized (sends error result) and Disconnect (disconnects session) outcomes.
+    /// Returns true if the method invocation should proceed, false otherwise.
     /// </summary>
-    protected async ValueTask<AuthorizeResult> Authorize(
+    /// <param name="methodId">The method ID being invoked.</param>
+    /// <param name="methodName">The name of the method being invoked.</param>
+    /// <param name="requiredPermissions">The required permission int values from the attribute.</param>
+    /// <param name="invocationId">The invocation ID for sending result messages.</param>
+    /// <param name="hasReturnChannel">Whether the caller expects a return value (returnBuffer != null).</param>
+    /// <returns>True if authorized and the method should proceed; false if handled (unauthorized or disconnected).</returns>
+    protected async ValueTask<bool> CheckAuthorization(
         int methodId,
         string methodName,
-        ReadOnlyMemory<int> requiredPermissions)
+        ReadOnlyMemory<int> requiredPermissions,
+        ushort invocationId,
+        bool hasReturnChannel)
     {
+        AuthorizeResult result;
         try
         {
-            return await OnAuthorize(Context, methodId, methodName, requiredPermissions).ConfigureAwait(false);
+            result = await OnAuthorize(Context, methodId, methodName, requiredPermissions).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            // Fail-safe: if OnAuthorize itself throws, treat as disconnect.
             SessionContext.Session.Logger?.LogError(ex, $"OnAuthorize threw an exception for method '{methodName}' (id={methodId}). Disconnecting session.");
-            return AuthorizeResult.Disconnect;
+            result = AuthorizeResult.Disconnect;
         }
-    }
 
-    /// <summary>
-    /// Sends an unauthorized invocation result back to the caller.
-    /// Called by generated auth guard code.
-    /// </summary>
-    protected async ValueTask SendUnauthorizedResult(ushort invocationId)
-    {
-        var message = SessionContext.PoolManager.Rent<InvocationResultMessage>();
-        message.InvocationId = invocationId;
-        message.Result = null;
-        message.State = InvocationResultMessage.StateType.Unauthorized;
-        await SessionContext.Session.SendMessage(message).ConfigureAwait(false);
-        message.Dispose();
+        switch (result)
+        {
+            case AuthorizeResult.Allowed:
+                return true;
+
+            case AuthorizeResult.Disconnect:
+                await SessionContext.Session.DisconnectAsync(DisconnectReason.Unauthorized).ConfigureAwait(false);
+                return false;
+
+            case AuthorizeResult.Unauthorized:
+                if (hasReturnChannel)
+                {
+                    var message = SessionContext.PoolManager.Rent<InvocationResultMessage>();
+                    message.InvocationId = invocationId;
+                    message.Result = null;
+                    message.State = InvocationResultMessage.StateType.Unauthorized;
+                    await SessionContext.Session.SendMessage(message).ConfigureAwait(false);
+                    message.Dispose();
+                }
+                return false;
+
+            default:
+                return false;
+        }
     }
 }
