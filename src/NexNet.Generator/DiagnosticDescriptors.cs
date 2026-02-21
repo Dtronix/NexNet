@@ -203,7 +203,7 @@ internal static class DiagnosticDescriptors
         title: "NexusAuthorize used but OnAuthorize is not overridden",
         messageFormat: "The nexus '{0}' uses [NexusAuthorize] but does not override OnAuthorize. All invocations will be allowed by default.",
         category: Category,
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
     public static readonly DiagnosticDescriptor MixedPermissionEnumTypes = new(
