@@ -65,9 +65,9 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     }
 
     /// <summary>
-    /// Internal wrapper called by generated code to invoke OnAuthorize with the typed context.
+    /// Wrapper called by generated auth guard code to invoke OnAuthorize with the typed context.
     /// </summary>
-    internal async ValueTask<AuthorizeResult> Authorize(
+    protected async ValueTask<AuthorizeResult> Authorize(
         int methodId,
         string methodName,
         ReadOnlyMemory<int> requiredPermissions)
@@ -88,7 +88,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// Sends an unauthorized invocation result back to the caller.
     /// Called by generated auth guard code.
     /// </summary>
-    internal async ValueTask SendUnauthorizedResult(ushort invocationId)
+    protected async ValueTask SendUnauthorizedResult(ushort invocationId)
     {
         var message = SessionContext.PoolManager.Rent<InvocationResultMessage>();
         message.InvocationId = invocationId;

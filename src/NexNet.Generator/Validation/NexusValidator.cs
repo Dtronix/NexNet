@@ -76,6 +76,9 @@ internal static class NexusValidator
         // Validate version hashes
         ValidateVersionHashes(data, diagnostics);
 
+        // Validate authorization
+        ValidateAuthorization(data, diagnostics);
+
         return diagnostics.ToImmutable();
     }
 
@@ -328,6 +331,55 @@ internal static class NexusValidator
                         iface.NexusHash.ToString()));
                 }
             }
+        }
+    }
+
+    private static void ValidateAuthorization(
+        NexusGenerationData data,
+        ImmutableArray<Diagnostic>.Builder diagnostics)
+    {
+        var authorizedMethods = data.NexusInterface.AllMethods
+            .Where(m => m.AuthorizeData != null)
+            .ToList();
+
+        if (authorizedMethods.Count == 0)
+            return;
+
+        // Client nexus error
+        if (data.NexusAttribute.IsClient)
+        {
+            foreach (var method in authorizedMethods)
+            {
+                diagnostics.Add(CreateDiagnostic(
+                    DiagnosticDescriptors.AuthorizeOnClientNexus,
+                    method.Location ?? data.IdentifierLocation,
+                    method.Name));
+            }
+            return;
+        }
+
+        // OnAuthorize not overridden warning
+        var hasOnAuthorizeOverride = data.ClassMethods.Any(m => m.Name == "OnAuthorize");
+        if (!hasOnAuthorizeOverride)
+        {
+            diagnostics.Add(CreateDiagnostic(
+                DiagnosticDescriptors.AuthorizeWithoutOnAuthorize,
+                data.IdentifierLocation,
+                data.TypeName));
+        }
+
+        // Mixed permission enum types
+        var enumTypes = authorizedMethods
+            .Select(m => m.AuthorizeData!.PermissionEnumFullyQualifiedName)
+            .Distinct()
+            .ToList();
+
+        if (enumTypes.Count > 1)
+        {
+            diagnostics.Add(CreateDiagnostic(
+                DiagnosticDescriptors.MixedPermissionEnumTypes,
+                data.IdentifierLocation,
+                data.TypeName));
         }
     }
 

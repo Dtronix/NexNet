@@ -17,6 +17,32 @@ internal static class MethodEmitter
         MethodData method,
         InvocationInterfaceData proxyImplementation)
     {
+        // Emit auth guard before any deserialization
+        if (method.AuthorizeData != null)
+        {
+            sb.AppendLine($$"""
+                        var __authResult = await this.Authorize(
+                            {{method.Id}},
+                            "{{method.Name}}",
+                            __authPerms_{{method.Name}}).ConfigureAwait(false);
+
+                        if (__authResult == global::NexNet.AuthorizeResult.Disconnect)
+                        {
+                            await this.Context.Session.DisconnectAsync(global::NexNet.Messages.DisconnectReason.Unauthorized).ConfigureAwait(false);
+                            return;
+                        }
+
+                        if (__authResult == global::NexNet.AuthorizeResult.Unauthorized)
+                        {
+                            if (returnBuffer != null)
+                            {
+                                await this.SendUnauthorizedResult(message.InvocationId).ConfigureAwait(false);
+                            }
+                            return;
+                        }
+""");
+        }
+
         // Create the cancellation token parameter.
         if (method.CancellationTokenParameter != null)
         {
