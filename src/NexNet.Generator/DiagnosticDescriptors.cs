@@ -189,6 +189,30 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor AuthorizeOnClientNexus = new(
+        id: "NEXNET024",
+        title: "NexusAuthorize is only supported on server nexuses",
+        messageFormat: "The method '{0}' uses [NexusAuthorize] but the nexus is a client nexus. Authorization is only supported on server nexuses.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor AuthorizeWithoutOnAuthorize = new(
+        id: "NEXNET025",
+        title: "NexusAuthorize used but OnAuthorize is not overridden",
+        messageFormat: "The nexus '{0}' uses [NexusAuthorize] but does not override OnAuthorize. All invocations will be allowed by default.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor MixedPermissionEnumTypes = new(
+        id: "NEXNET026",
+        title: "All NexusAuthorize attributes must use the same permission enum type",
+        messageFormat: "The nexus '{0}' uses [NexusAuthorize] with mixed permission enum types. All attributes must use the same TPermission type.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 }
 
 

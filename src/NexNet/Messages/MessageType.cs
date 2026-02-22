@@ -79,6 +79,11 @@ public enum MessageType : byte
     /// </summary>
     DisconnectRateLimited = 33,
 
+    /// <summary>
+    /// Connection was disconnected due to an unauthorized method invocation. No body.
+    /// </summary>
+    DisconnectUnauthorized = 34,
+
     // Reserved through -39
 
     /// <summary>

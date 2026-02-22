@@ -17,6 +17,20 @@ internal static class MethodEmitter
         MethodData method,
         InvocationInterfaceData proxyImplementation)
     {
+        // Emit auth guard before any deserialization
+        if (method.AuthorizeData != null)
+        {
+            sb.AppendLine($$"""
+                        if (!await this.CheckAuthorization(
+                            {{method.Id}},
+                            "{{method.Name}}",
+                            __authPerms_{{method.Name}},
+                            message.InvocationId,
+                            returnBuffer != null).ConfigureAwait(false))
+                            return;
+""");
+        }
+
         // Create the cancellation token parameter.
         if (method.CancellationTokenParameter != null)
         {

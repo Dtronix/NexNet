@@ -14,6 +14,15 @@ public class ProxyRemoteInvocationException : Exception
     public ProxyRemoteInvocationException()
         : base("Exception occurred while executing method on proxy.")
     {
-        
+
+    }
+
+    /// <summary>
+    /// Constructs the exception with a custom message.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    protected ProxyRemoteInvocationException(string message)
+        : base(message)
+    {
     }
 }

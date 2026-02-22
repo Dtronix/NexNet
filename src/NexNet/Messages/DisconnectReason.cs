@@ -69,4 +69,9 @@ public enum DisconnectReason : byte
     /// Connection was rejected due to rate limiting.
     /// </summary>
     RateLimited = MessageType.DisconnectRateLimited,
+
+    /// <summary>
+    /// Connection was disconnected due to an unauthorized method invocation.
+    /// </summary>
+    Unauthorized = MessageType.DisconnectUnauthorized,
 }

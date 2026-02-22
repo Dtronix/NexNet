@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -62,6 +63,16 @@ internal static class NexusDataExtractor
             .OfType<IMethodSymbol>()
             .Select(m => ExtractMethodData(m, typeHasher, 0)) // ID 0 for class methods since they're not invokable
             .ToImmutableArray();
+
+        // Correlate authorize data from class methods onto interface methods
+        var authByName = classMethods
+            .Where(m => m.AuthorizeData != null)
+            .ToDictionary(m => m.Name, m => m.AuthorizeData!);
+
+        if (authByName.Count > 0)
+        {
+            nexusInterface = ApplyAuthorizeDataToInterface(nexusInterface, authByName);
+        }
 
         var fullTypeName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
             .Replace("global::", "")
@@ -377,6 +388,9 @@ internal static class NexusDataExtractor
         // Compute hash
         var hash = ComputeMethodHash(symbol, parameters, methodAttr);
 
+        // Extract authorize attribute
+        var authorizeData = ExtractAuthorizeData(symbol);
+
         return new MethodData(
             Name: symbol.Name,
             Id: assignedId,
@@ -399,6 +413,7 @@ internal static class NexusDataExtractor
             MultipleCancellationTokenParameters: multipleCancellationTokens,
             NexusHash: hash,
             MethodAttribute: methodAttr,
+            AuthorizeData: authorizeData,
             Location: LocationData.FromSymbol(symbol)
         );
     }
@@ -476,6 +491,7 @@ internal static class NexusDataExtractor
     {
         var collectionAttr = ExtractCollectionAttribute(symbol);
         var methodAttr = ExtractMethodAttributeFromProperty(symbol);
+        var authorizeData = ExtractAuthorizeData(symbol);
 
         var returnSymbol = symbol.Type as INamedTypeSymbol;
 
@@ -508,11 +524,51 @@ internal static class NexusDataExtractor
             CollectionType: collectionType,
             CollectionAttribute: collectionAttr,
             MethodAttribute: methodAttr,
+            AuthorizeData: authorizeData,
             Location: LocationData.FromSymbol(symbol)
         )
         {
             NexusHash = nexusHash
         };
+    }
+
+    private static AuthorizeData? ExtractAuthorizeData(IPropertySymbol symbol)
+        => ExtractAuthorizeDataFromAttributes(symbol.GetAttributes());
+
+    private static AuthorizeData? ExtractAuthorizeData(IMethodSymbol symbol)
+        => ExtractAuthorizeDataFromAttributes(symbol.GetAttributes());
+
+    private static AuthorizeData? ExtractAuthorizeDataFromAttributes(ImmutableArray<AttributeData> attributes)
+    {
+        var attr = attributes
+            .FirstOrDefault(a => a.AttributeClass is { Name: "NexusAuthorizeAttribute", IsGenericType: true });
+
+        if (attr?.AttributeClass is null)
+            return null;
+
+        // Get the TPermission type argument
+        var permissionType = attr.AttributeClass.TypeArguments[0];
+        var permissionEnumFqn = permissionType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
+        // Extract constructor arguments (the params TPermission[] permissions)
+        var permissions = ImmutableArray<int>.Empty;
+        if (attr.ConstructorArguments.Length > 0)
+        {
+            var arg = attr.ConstructorArguments[0];
+            if (arg.Kind == TypedConstantKind.Array && !arg.Values.IsDefaultOrEmpty)
+            {
+                permissions = arg.Values
+                    .Select(v => Convert.ToInt32(v.Value))
+                    .ToImmutableArray();
+            }
+            else if (arg.Kind == TypedConstantKind.Array)
+            {
+                // Empty params array
+                permissions = ImmutableArray<int>.Empty;
+            }
+        }
+
+        return new AuthorizeData(permissions, permissionEnumFqn);
     }
 
     private static NexusMethodAttributeData ExtractMethodAttribute(IMethodSymbol symbol)
@@ -698,6 +754,21 @@ internal static class NexusDataExtractor
             Hash: hash,
             Location: LocationData.FromSymbol(symbol)
         );
+    }
+
+    private static InvocationInterfaceData ApplyAuthorizeDataToInterface(
+        InvocationInterfaceData iface,
+        Dictionary<string, AuthorizeData> authByName)
+    {
+        var updatedMethods = iface.Methods
+            .Select(m => authByName.TryGetValue(m.Name, out var auth) ? m with { AuthorizeData = auth } : m)
+            .ToImmutableArray();
+
+        var updatedAllMethods = iface.AllMethods
+            .Select(m => authByName.TryGetValue(m.Name, out var auth) ? m with { AuthorizeData = auth } : m)
+            .ToImmutableArray();
+
+        return iface with { Methods = updatedMethods, AllMethods = updatedAllMethods };
     }
 
     private static void AssignMethodIds(MethodData[] methods)
