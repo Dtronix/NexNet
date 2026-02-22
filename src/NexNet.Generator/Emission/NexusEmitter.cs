@@ -23,6 +23,26 @@ internal static class NexusEmitter
     private static string EmitServerClientName(NexusAttributeData attr) =>
         attr.IsServer ? "Server" : "Client";
 
+    private static void EmitAuthPermsField(StringBuilder sb, string name, Models.AuthorizeData authData)
+    {
+        if (authData.Permissions.Length == 0)
+        {
+            sb.Append("        private static readonly int[] __authPerms_").Append(name)
+                .AppendLine(" = global::System.Array.Empty<int>();");
+        }
+        else
+        {
+            sb.Append("        private static readonly int[] __authPerms_").Append(name)
+                .Append(" = new int[] { ");
+            foreach (var perm in authData.Permissions)
+            {
+                sb.Append(perm).Append(", ");
+            }
+            sb.Remove(sb.Length - 2, 2);
+            sb.AppendLine(" };");
+        }
+    }
+
     private static void EmitNexus(StringBuilder sb, NexusGenerationData data)
     {
         var collections = data.NexusAttribute.IsServer
@@ -106,22 +126,16 @@ internal static class NexusEmitter
         {
             if (method.AuthorizeData != null)
             {
-                if (method.AuthorizeData.Permissions.Length == 0)
-                {
-                    sb.Append("        private static readonly int[] __authPerms_").Append(method.Name)
-                        .AppendLine(" = global::System.Array.Empty<int>();");
-                }
-                else
-                {
-                    sb.Append("        private static readonly int[] __authPerms_").Append(method.Name)
-                        .Append(" = new int[] { ");
-                    foreach (var perm in method.AuthorizeData.Permissions)
-                    {
-                        sb.Append(perm).Append(", ");
-                    }
-                    sb.Remove(sb.Length - 2, 2);
-                    sb.AppendLine(" };");
-                }
+                EmitAuthPermsField(sb, method.Name, method.AuthorizeData);
+            }
+        }
+
+        // Emit static permission arrays for authorized collections
+        foreach (var collection in data.NexusInterface.AllCollections)
+        {
+            if (collection.AuthorizeData != null)
+            {
+                EmitAuthPermsField(sb, collection.Name, collection.AuthorizeData);
             }
         }
 

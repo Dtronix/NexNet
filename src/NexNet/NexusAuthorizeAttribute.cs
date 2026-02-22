@@ -7,7 +7,7 @@ namespace NexNet;
 /// that calls <c>OnAuthorize</c> before the method body executes.
 /// </summary>
 /// <typeparam name="TPermission">Enum type representing the permission set.</typeparam>
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+[AttributeUsage(AttributeTargets.Method | AttributeTargets.Property, AllowMultiple = false)]
 public class NexusAuthorizeAttribute<TPermission> : Attribute
     where TPermission : struct, Enum
 {

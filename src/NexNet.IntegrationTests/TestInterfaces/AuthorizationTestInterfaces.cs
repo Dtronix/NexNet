@@ -1,3 +1,5 @@
+using NexNet.Collections;
+using NexNet.Collections.Lists;
 using NexNet.Invocation;
 
 #pragma warning disable CS8618
@@ -14,6 +16,13 @@ public partial interface IAuthServerNexus
     ValueTask UnprotectedMethod();
     ValueTask MarkerOnlyMethod();
     ValueTask<int> ProtectedWithReturn(int value);
+
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    [NexusAuthorize<TestPermission>(TestPermission.Read)]
+    INexusList<string> ProtectedList { get; }
+
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    INexusList<string> UnprotectedList { get; }
 }
 
 public partial interface IAuthClientNexus { }

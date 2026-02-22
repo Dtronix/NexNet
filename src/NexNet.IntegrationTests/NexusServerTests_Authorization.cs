@@ -1,5 +1,7 @@
 using System.Net;
 using NexNet.Asp;
+using NexNet.Collections;
+using NexNet.IntegrationTests.Collections;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -371,6 +373,100 @@ internal class NexusServerTests_Authorization : BaseTests
         // Small delay to ensure any async work settles
         await Task.Delay(100);
         Assert.That(bodyExecuted, Is.False);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task AuthorizedCollection_Allowed_ClientReceivesData(Type type)
+    {
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        var enabled = await client.Proxy.ProtectedList.EnableAsync().Timeout(2);
+        Assert.That(enabled, Is.True);
+
+        var serverNexus = server.NexusCreatedQueue.First();
+        var completeTask = client.Proxy.ProtectedList.WaitForEvent(
+            NexNet.Collections.NexusCollectionChangedAction.Add, 1);
+
+        await serverNexus.ProtectedList.AddAsync("hello");
+        await completeTask.Wait(2);
+
+        Assert.That(client.Proxy.ProtectedList.Count, Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task AuthorizedCollection_Unauthorized_ClientDisconnected(Type type)
+    {
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            // Return Disconnect for collection auth failures since Unauthorized without
+            // a return channel would just leave the client hanging
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
+        };
+
+        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        try
+        {
+            await client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(2);
+        }
+        catch
+        {
+            // Expected - session disconnected
+        }
+
+        await disconnected.Task.Timeout(2);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task UnprotectedCollection_NoAuthCheck(Type type)
+    {
+        var authCalled = false;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                authCalled = true;
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+            };
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        var enabled = await client.Proxy.UnprotectedList.EnableAsync().Timeout(2);
+        Assert.That(enabled, Is.True);
+        Assert.That(authCalled, Is.False);
     }
 
     [TestCase(Type.Uds)]

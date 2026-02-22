@@ -46,6 +46,18 @@ internal static class CollectionEmitter
     /// </summary>
     public static void EmitNexusInvocation(StringBuilder sb, CollectionData collection)
     {
+        // Emit auth guard before any deserialization
+        if (collection.AuthorizeData != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine("                        if (!await this.CheckAuthorization(");
+            sb.Append("                            ").Append(collection.Id)
+                .Append(", \"").Append(collection.Name).Append("\", __authPerms_").Append(collection.Name).AppendLine(",");
+            sb.AppendLine("                            message.InvocationId,");
+            sb.AppendLine("                            returnBuffer != null).ConfigureAwait(false))");
+            sb.AppendLine("                            return;");
+        }
+
         sb.Append(@"
                         var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
                         duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);

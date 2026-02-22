@@ -491,6 +491,7 @@ internal static class NexusDataExtractor
     {
         var collectionAttr = ExtractCollectionAttribute(symbol);
         var methodAttr = ExtractMethodAttributeFromProperty(symbol);
+        var authorizeData = ExtractAuthorizeData(symbol);
 
         var returnSymbol = symbol.Type as INamedTypeSymbol;
 
@@ -523,6 +524,7 @@ internal static class NexusDataExtractor
             CollectionType: collectionType,
             CollectionAttribute: collectionAttr,
             MethodAttribute: methodAttr,
+            AuthorizeData: authorizeData,
             Location: LocationData.FromSymbol(symbol)
         )
         {
@@ -530,9 +532,15 @@ internal static class NexusDataExtractor
         };
     }
 
+    private static AuthorizeData? ExtractAuthorizeData(IPropertySymbol symbol)
+        => ExtractAuthorizeDataFromAttributes(symbol.GetAttributes());
+
     private static AuthorizeData? ExtractAuthorizeData(IMethodSymbol symbol)
+        => ExtractAuthorizeDataFromAttributes(symbol.GetAttributes());
+
+    private static AuthorizeData? ExtractAuthorizeDataFromAttributes(ImmutableArray<AttributeData> attributes)
     {
-        var attr = symbol.GetAttributes()
+        var attr = attributes
             .FirstOrDefault(a => a.AttributeClass is { Name: "NexusAuthorizeAttribute", IsGenericType: true });
 
         if (attr?.AttributeClass is null)

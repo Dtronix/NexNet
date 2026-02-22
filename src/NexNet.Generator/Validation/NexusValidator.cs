@@ -342,7 +342,11 @@ internal static class NexusValidator
             .Where(m => m.AuthorizeData != null)
             .ToList();
 
-        if (authorizedMethods.Count == 0)
+        var authorizedCollections = data.NexusInterface.AllCollections
+            .Where(c => c.AuthorizeData != null)
+            .ToList();
+
+        if (authorizedMethods.Count == 0 && authorizedCollections.Count == 0)
             return;
 
         // Client nexus error
@@ -354,6 +358,13 @@ internal static class NexusValidator
                     DiagnosticDescriptors.AuthorizeOnClientNexus,
                     method.Location ?? data.IdentifierLocation,
                     method.Name));
+            }
+            foreach (var collection in authorizedCollections)
+            {
+                diagnostics.Add(CreateDiagnostic(
+                    DiagnosticDescriptors.AuthorizeOnClientNexus,
+                    collection.Location ?? data.IdentifierLocation,
+                    collection.Name));
             }
             return;
         }
@@ -368,9 +379,10 @@ internal static class NexusValidator
                 data.TypeName));
         }
 
-        // Mixed permission enum types
+        // Mixed permission enum types — collect from both methods and collections
         var enumTypes = authorizedMethods
             .Select(m => m.AuthorizeData!.PermissionEnumFullyQualifiedName)
+            .Concat(authorizedCollections.Select(c => c.AuthorizeData!.PermissionEnumFullyQualifiedName))
             .Distinct()
             .ToList();
 

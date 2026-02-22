@@ -22,6 +22,7 @@ internal sealed record CollectionData(
     CollectionTypeValue CollectionType,
     NexusCollectionAttributeData CollectionAttribute,
     NexusMethodAttributeData? MethodAttribute,
+    AuthorizeData? AuthorizeData,
     LocationData? Location
 )
 {
