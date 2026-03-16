@@ -16,6 +16,7 @@ public partial interface IAuthServerNexus
     ValueTask UnprotectedMethod();
     ValueTask MarkerOnlyMethod();
     ValueTask<int> ProtectedWithReturn(int value);
+    ValueTask MultiPermissionMethod(string input);
 
     [NexusCollection(NexusCollectionMode.ServerToClient)]
     [NexusAuthorize<TestPermission>(TestPermission.Read)]
@@ -37,6 +38,7 @@ public partial class AuthServerNexus
     public Func<AuthServerNexus, ValueTask>? UnprotectedMethodHandler;
     public Func<AuthServerNexus, ValueTask>? MarkerOnlyMethodHandler;
     public Func<AuthServerNexus, int, ValueTask<int>>? ProtectedWithReturnHandler;
+    public Func<AuthServerNexus, string, ValueTask>? MultiPermissionMethodHandler;
 
     [NexusAuthorize<TestPermission>(TestPermission.Write)]
     public ValueTask ProtectedMethod(string input)
@@ -65,6 +67,12 @@ public partial class AuthServerNexus
     public ValueTask<int> ProtectedWithReturn(int value)
     {
         return ProtectedWithReturnHandler?.Invoke(this, value) ?? new ValueTask<int>(0);
+    }
+
+    [NexusAuthorize<TestPermission>(TestPermission.Read, TestPermission.Admin)]
+    public ValueTask MultiPermissionMethod(string input)
+    {
+        return MultiPermissionMethodHandler?.Invoke(this, input) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask<AuthorizeResult> OnAuthorize(

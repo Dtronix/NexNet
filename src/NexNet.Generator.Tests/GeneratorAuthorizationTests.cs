@@ -348,6 +348,66 @@ partial class ServerNexus
     }
 
     [Test]
+    public void AuthorizeWithLongEnum_EmitsError()
+    {
+        var diagnostics = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+
+public enum LongPerm : long { Read, Write }
+partial interface IClientNexus { }
+partial interface IServerNexus
+{
+    ValueTask DoWork();
+}
+
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus { }
+
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    [NexusAuthorize<LongPerm>(LongPerm.Read)]
+    public ValueTask DoWork() => ValueTask.CompletedTask;
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        NexNet.Invocation.ServerSessionContext<ServerNexus.ClientProxy> context,
+        int methodId, string methodName, ReadOnlyMemory<int> requiredPermissions)
+        => new(AuthorizeResult.Allowed);
+}
+""");
+        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.True);
+    }
+
+    [Test]
+    public void AuthorizeWithIntEnum_NoDiagnostic()
+    {
+        var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
+
+[Nexus<IAuthClientNexus, IAuthServerNexus>(NexusType = NexusType.Client)]
+partial class AuthClientNexus { }
+
+[Nexus<IAuthServerNexus, IAuthClientNexus>(NexusType = NexusType.Server)]
+partial class AuthServerNexus
+{
+    [NexusAuthorize<TestPermission>(TestPermission.Write)]
+    public ValueTask ProtectedMethod(string input) => ValueTask.CompletedTask;
+
+    public ValueTask AdminMethod() => ValueTask.CompletedTask;
+    public ValueTask UnprotectedMethod() => ValueTask.CompletedTask;
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        NexNet.Invocation.ServerSessionContext<AuthServerNexus.ClientProxy> context,
+        int methodId, string methodName, ReadOnlyMemory<int> requiredPermissions)
+        => new(AuthorizeResult.Allowed);
+}
+""");
+        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.False);
+    }
+
+    [Test]
     public void AuthorizeOnCollection_WithoutOnAuthorize_EmitsWarning()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""

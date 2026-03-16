@@ -106,11 +106,17 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
                 if (hasReturnChannel)
                 {
                     var message = SessionContext.PoolManager.Rent<InvocationResultMessage>();
-                    message.InvocationId = invocationId;
-                    message.Result = null;
-                    message.State = InvocationResultMessage.StateType.Unauthorized;
-                    await SessionContext.Session.SendMessage(message).ConfigureAwait(false);
-                    message.Dispose();
+                    try
+                    {
+                        message.InvocationId = invocationId;
+                        message.Result = null;
+                        message.State = InvocationResultMessage.StateType.Unauthorized;
+                        await SessionContext.Session.SendMessage(message).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        message.Dispose();
+                    }
                 }
                 return false;
 

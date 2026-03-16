@@ -550,6 +550,15 @@ internal static class NexusDataExtractor
         var permissionType = attr.AttributeClass.TypeArguments[0];
         var permissionEnumFqn = permissionType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
+        // Check underlying type is compatible with int (long/ulong can overflow)
+        var isUnderlyingTypeCompatible = true;
+        if (permissionType is INamedTypeSymbol namedPermType && namedPermType.EnumUnderlyingType != null)
+        {
+            var underlying = namedPermType.EnumUnderlyingType.SpecialType;
+            if (underlying is SpecialType.System_Int64 or SpecialType.System_UInt64)
+                isUnderlyingTypeCompatible = false;
+        }
+
         // Extract constructor arguments (the params TPermission[] permissions)
         var permissions = ImmutableArray<int>.Empty;
         if (attr.ConstructorArguments.Length > 0)
@@ -568,7 +577,7 @@ internal static class NexusDataExtractor
             }
         }
 
-        return new AuthorizeData(permissions, permissionEnumFqn);
+        return new AuthorizeData(permissions, permissionEnumFqn, isUnderlyingTypeCompatible);
     }
 
     private static NexusMethodAttributeData ExtractMethodAttribute(IMethodSymbol symbol)

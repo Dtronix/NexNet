@@ -84,7 +84,7 @@ public enum MessageType : byte
     /// </summary>
     DisconnectUnauthorized = 34,
 
-    // Reserved through -39
+    // Reserved through 39
 
     /// <summary>
     /// Header for data sent to a pipe.

@@ -379,6 +379,22 @@ internal static class NexusValidator
                 data.TypeName));
         }
 
+        // Enum underlying type must fit in int
+        foreach (var method in authorizedMethods.Where(m => !m.AuthorizeData!.IsUnderlyingTypeCompatible))
+        {
+            diagnostics.Add(CreateDiagnostic(
+                DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible,
+                method.Location ?? data.IdentifierLocation,
+                method.Name));
+        }
+        foreach (var collection in authorizedCollections.Where(c => !c.AuthorizeData!.IsUnderlyingTypeCompatible))
+        {
+            diagnostics.Add(CreateDiagnostic(
+                DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible,
+                collection.Location ?? data.IdentifierLocation,
+                collection.Name));
+        }
+
         // Mixed permission enum types — collect from both methods and collections
         var enumTypes = authorizedMethods
             .Select(m => m.AuthorizeData!.PermissionEnumFullyQualifiedName)

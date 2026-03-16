@@ -305,6 +305,39 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    public async Task OnAuthorize_ReceivesMultiplePermissions(Type type)
+    {
+        ReadOnlyMemory<int> capturedPermissions = default;
+        var authCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, perms) =>
+            {
+                capturedPermissions = perms;
+                authCalled.SetResult();
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.MultiPermissionMethodHandler = (_, _) => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.MultiPermissionMethod("test").Timeout(1);
+        await authCalled.Task.Timeout(1);
+        Assert.That(capturedPermissions.Length, Is.EqualTo(2));
+        Assert.That(capturedPermissions.Span[0], Is.EqualTo((int)TestPermission.Read));
+        Assert.That(capturedPermissions.Span[1], Is.EqualTo((int)TestPermission.Admin));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Authorized_WithReturnValue_ReturnsResult(Type type)
     {
         var (server, client, _) = CreateAuthServerClient(type);
