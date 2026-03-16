@@ -241,16 +241,15 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         if (count < 1)
             return;
 
+        if (count > Length)
+            throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {Length} remaining elements.");
+
         var node = _head;
 
         count += _headOffset;
-        
+
         if (node is not null && count < node.Length)
         {
-            // TODO: This should not happen, but does.
-            //if(_tailOffset < count)
-            //    throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {_tailOffset - _headOffset} remaining elements.");
-
             _headOffset = count;
             return;
         }
@@ -270,12 +269,7 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
             node = Unsafe.As<RefCountedSegment>(next);
         } while (node is not null);
 
-
         _head = node;
-        // TODO: This should not happen, but does.
-        //if(_tailOffset < count)
-        //    throw new ArgumentOutOfRangeException(nameof(count), $"The release of {count} elements would exceed the maximum number of {count - _tailOffset} remaining elements.");
-
         _headOffset = count;
     }
 
