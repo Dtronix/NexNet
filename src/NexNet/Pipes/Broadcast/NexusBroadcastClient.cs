@@ -135,13 +135,16 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         }, this, TaskCreationOptions.DenyChildAttach);
         
+        // Capture locally to avoid race with Disconnected() nulling _client.
+        var client = _client!;
+
         // Wait for either the complete task fires or the client is actually connected.
-        var result = await Task.WhenAny(_client!.Pipe.CompleteTask, _initializedTcs.Task).ConfigureAwait(false);
-        
+        await Task.WhenAny(client.Pipe.CompleteTask, _initializedTcs.Task).ConfigureAwait(false);
+
         // Check to see if we have connected or have just been disconnected.
-        var isDisconnected = _client!.Pipe.CompleteTask.IsCompleted;
+        var isDisconnected = client.Pipe.CompleteTask.IsCompleted;
         _initializedTcs = null;
-        
+
         return !isDisconnected;
     }
 
