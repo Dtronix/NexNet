@@ -51,7 +51,7 @@ partial class ServerNexus { }
     }
 
     [Test]
-    public void AuthorizeWithoutOnAuthorize_EmitsWarning()
+    public void AuthorizeWithoutOnAuthorize_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -422,6 +422,40 @@ partial class ClientNexus { }
 partial class ServerNexus
 {
     [NexusAuthorize<LongPerm>(LongPerm.Read)]
+    public ValueTask DoWork() => ValueTask.CompletedTask;
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        NexNet.Invocation.ServerSessionContext<ServerNexus.ClientProxy> context,
+        int methodId, string methodName, ReadOnlyMemory<int> requiredPermissions)
+        => new(AuthorizeResult.Allowed);
+}
+""");
+        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.True);
+    }
+
+    [Test]
+    public void AuthorizeWithByteEnum_EmitsError()
+    {
+        var diagnostics = CSharpGeneratorRunner.RunGenerator("""
+using NexNet;
+using System;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+
+public enum BytePerm : byte { Read, Write }
+partial interface IClientNexus { }
+partial interface IServerNexus
+{
+    ValueTask DoWork();
+}
+
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus { }
+
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
+{
+    [NexusAuthorize<BytePerm>(BytePerm.Read)]
     public ValueTask DoWork() => ValueTask.CompletedTask;
 
     protected override ValueTask<AuthorizeResult> OnAuthorize(

@@ -550,13 +550,11 @@ internal static class NexusDataExtractor
         var permissionType = attr.AttributeClass.TypeArguments[0];
         var permissionEnumFqn = permissionType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        // Check underlying type is compatible with int (long/ulong can overflow)
+        // Permission values are stored as int; only allow enums backed by int
         var isUnderlyingTypeCompatible = true;
         if (permissionType is INamedTypeSymbol namedPermType && namedPermType.EnumUnderlyingType != null)
         {
-            var underlying = namedPermType.EnumUnderlyingType.SpecialType;
-            if (underlying is SpecialType.System_Int64 or SpecialType.System_UInt64)
-                isUnderlyingTypeCompatible = false;
+            isUnderlyingTypeCompatible = namedPermType.EnumUnderlyingType.SpecialType == SpecialType.System_Int32;
         }
 
         // Extract constructor arguments (the params TPermission[] permissions)

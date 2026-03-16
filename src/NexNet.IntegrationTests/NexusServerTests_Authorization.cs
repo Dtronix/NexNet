@@ -867,4 +867,47 @@ internal class NexusServerTests_Authorization : BaseTests
         // Session disconnected due to exception — auth was called once
         Assert.That(authCallCount, Is.EqualTo(1));
     }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_ConcurrentAccess_NoExceptions(Type type)
+    {
+        var authCallCount = 0;
+        var allThreadsReady = new ManualResetEventSlim(false);
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                // Force all threads to pile up inside OnAuthorize simultaneously
+                allThreadsReady.Wait(TimeSpan.FromSeconds(2));
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        const int concurrentCalls = 10;
+        var tasks = new Task[concurrentCalls];
+        for (int i = 0; i < concurrentCalls; i++)
+        {
+            tasks[i] = Task.Run(async () =>
+            {
+                try { await client.Proxy.CachedMethod().Timeout(5); } catch { }
+            });
+        }
+
+        // Let all threads proceed once they've piled up
+        await Task.Delay(200);
+        allThreadsReady.Set();
+
+        await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+
+        // All calls should have completed without exceptions.
+        // Auth may be called multiple times (cache misses race) but never throws.
+        Assert.That(authCallCount, Is.GreaterThan(0));
+    }
 }

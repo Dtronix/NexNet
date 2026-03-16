@@ -24,7 +24,7 @@ internal static class MethodEmitter
                         if (!await this.CheckAuthorization(
                             {{method.Id}},
                             "{{method.Name}}",
-                            __authPerms_{{method.Name}},
+                            __authPerms_{{method.Id}},
                             message.InvocationId,
                             returnBuffer != null,
                             {{method.AuthorizeData!.CacheDurationSeconds}}).ConfigureAwait(false))

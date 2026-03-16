@@ -23,16 +23,16 @@ internal static class NexusEmitter
     private static string EmitServerClientName(NexusAttributeData attr) =>
         attr.IsServer ? "Server" : "Client";
 
-    private static void EmitAuthPermsField(StringBuilder sb, string name, Models.AuthorizeData authData)
+    private static void EmitAuthPermsField(StringBuilder sb, ushort id, Models.AuthorizeData authData)
     {
         if (authData.Permissions.Length == 0)
         {
-            sb.Append("        private static readonly int[] __authPerms_").Append(name)
+            sb.Append("        private static readonly int[] __authPerms_").Append(id)
                 .AppendLine(" = global::System.Array.Empty<int>();");
         }
         else
         {
-            sb.Append("        private static readonly int[] __authPerms_").Append(name)
+            sb.Append("        private static readonly int[] __authPerms_").Append(id)
                 .Append(" = new int[] { ");
             foreach (var perm in authData.Permissions)
             {
@@ -126,7 +126,7 @@ internal static class NexusEmitter
         {
             if (method.AuthorizeData != null)
             {
-                EmitAuthPermsField(sb, method.Name, method.AuthorizeData);
+                EmitAuthPermsField(sb, method.Id, method.AuthorizeData);
             }
         }
 
@@ -135,7 +135,7 @@ internal static class NexusEmitter
         {
             if (collection.AuthorizeData != null)
             {
-                EmitAuthPermsField(sb, collection.Name, collection.AuthorizeData);
+                EmitAuthPermsField(sb, collection.Id, collection.AuthorizeData);
             }
         }
 

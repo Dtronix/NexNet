@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using NexNet.Logging;
@@ -15,7 +15,7 @@ namespace NexNet.Invocation;
 public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
-    private Dictionary<int, (AuthorizeResult Result, long ExpiresAtTicks)>? _authCache;
+    private ConcurrentDictionary<int, (AuthorizeResult Result, long ExpiresAtTicks)>? _authCache;
     internal Func<long>? TickCountOverride;
 
     /// <summary>
@@ -83,7 +83,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// <param name="methodId">The method ID whose cached result should be removed.</param>
     protected void InvalidateAuthorizationCache(int methodId)
     {
-        _authCache?.Remove(methodId);
+        _authCache?.TryRemove(methodId, out _);
     }
 
     /// <summary>
@@ -96,7 +96,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     /// <param name="requiredPermissions">The required permission int values from the attribute.</param>
     /// <param name="invocationId">The invocation ID for sending result messages.</param>
     /// <param name="hasReturnChannel">Whether the caller expects a return value (returnBuffer != null).</param>
-    /// <param name="cacheDurationSeconds">Per-method cache override: -1 = use server config, 0 = no cache, &gt;0 = seconds.</param>
+    /// <param name="cacheDurationSeconds">Per-method cache override: -1 = use server config, 0 = no cache, positive = seconds.</param>
     /// <returns>True if authorized and the method should proceed; false if handled (unauthorized or disconnected).</returns>
     protected async ValueTask<bool> CheckAuthorization(
         int methodId,
@@ -126,10 +126,11 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
         // cacheDurationSeconds == 0 means explicitly no cache
 
         // Check cache
+        var now = TickCountOverride?.Invoke() ?? Environment.TickCount64;
         if (cacheDurationMs > 0 && _authCache != null
             && _authCache.TryGetValue(methodId, out var cached))
         {
-            if ((TickCountOverride?.Invoke() ?? Environment.TickCount64) < cached.ExpiresAtTicks)
+            if (now < cached.ExpiresAtTicks)
             {
                 // Cache hit
                 return await HandleAuthResult(cached.Result, invocationId, hasReturnChannel)
@@ -137,7 +138,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
             }
 
             // Expired
-            _authCache.Remove(methodId);
+            _authCache.TryRemove(methodId, out _);
         }
 
         AuthorizeResult result;
@@ -154,7 +155,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
         // Cache Allowed and Unauthorized results (never Disconnect or exceptions)
         if (cacheDurationMs > 0 && result is AuthorizeResult.Allowed or AuthorizeResult.Unauthorized)
         {
-            _authCache ??= new Dictionary<int, (AuthorizeResult, long)>();
+            _authCache ??= new ConcurrentDictionary<int, (AuthorizeResult, long)>();
             _authCache[methodId] = (result, (TickCountOverride?.Invoke() ?? Environment.TickCount64) + cacheDurationMs);
         }
 

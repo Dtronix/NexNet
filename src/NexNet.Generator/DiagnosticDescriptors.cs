@@ -216,8 +216,8 @@ internal static class DiagnosticDescriptors
 
     public static readonly DiagnosticDescriptor AuthorizeEnumUnderlyingTypeIncompatible = new(
         id: "NEXNET027",
-        title: "NexusAuthorize permission enum underlying type must fit in Int32",
-        messageFormat: "The method '{0}' uses [NexusAuthorize] with a permission enum whose underlying type is Int64 or UInt64. Permission values are stored as Int32 and may overflow. Use an enum backed by int or smaller.",
+        title: "NexusAuthorize permission enum must be backed by int",
+        messageFormat: "The method '{0}' uses [NexusAuthorize] with a permission enum that is not backed by int. Permission values are stored as Int32. Use an enum backed by int (the default).",
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
