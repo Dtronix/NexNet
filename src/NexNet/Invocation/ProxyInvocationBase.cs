@@ -227,6 +227,9 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             case InvocationResultMessage.StateType.Exception:
                 throw new ProxyRemoteInvocationException();
 
+            case InvocationResultMessage.StateType.Unauthorized:
+                throw new ProxyUnauthorizedException();
+
             default:
                 throw new InvalidOperationException($"Unknown state {messageState}");
         }
@@ -263,6 +266,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             case InvocationResultMessage.StateType.Exception:
                 ReturnState(state);
                 throw new ProxyRemoteInvocationException();
+
+            case InvocationResultMessage.StateType.Unauthorized:
+                ReturnState(state);
+                throw new ProxyUnauthorizedException();
 
             default:
                 ReturnState(state);

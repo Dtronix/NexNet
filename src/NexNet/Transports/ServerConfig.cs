@@ -36,6 +36,13 @@ public abstract class ServerConfig : ConfigBase
     public ConnectionRateLimitConfig? RateLimiting { get; set; }
 
     /// <summary>
+    /// Default duration for caching authorization results per session.
+    /// Null (default) = caching disabled. Positive values enable caching for that duration.
+    /// Can be overridden per-method/collection via <c>NexusAuthorizeAttribute.CacheDurationSeconds</c>.
+    /// </summary>
+    public TimeSpan? AuthorizationCacheDuration { get; set; }
+
+    /// <summary>
     /// Creates the listener and starts.
     /// </summary>
     /// <param name="cancellationToken"></param>

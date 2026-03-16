@@ -137,6 +137,7 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 | `AcceptorBacklog` | 20 | Listen backlog |
 | `Authenticate` | false | Require client auth |
 | `RateLimiting` | null | `ConnectionRateLimitConfig`; null = disabled |
+| `AuthorizationCacheDuration` | null | Default auth cache TTL; null = disabled |
 
 ### TCP options (TcpServerConfig/TcpClientConfig)
 
@@ -267,6 +268,77 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? to
 // Client config
 var clientConfig = new TcpClientConfig { EndPoint = ep, Authenticate = () => Encoding.UTF8.GetBytes("valid") };
 ```
+
+## Authorization
+
+Declarative method/collection authorization via `[NexusAuthorize<TPermission>]`. Server-only. Permission enum must be backed by `int` (default).
+
+```csharp
+// 1. Define permission enum
+public enum Permission { Read, Write, Admin }
+
+// 2. Decorate methods on the server nexus class
+[NexusAuthorize<Permission>(Permission.Admin)]
+public ValueTask AdminMethod() { ... }
+
+[NexusAuthorize<Permission>(Permission.Read, Permission.Write)]
+public ValueTask MultiPermMethod() { ... }
+
+[NexusAuthorize<Permission>()]  // marker-only: requires auth, no specific permission
+public ValueTask AnyAuthMethod() { ... }
+
+// 3. Decorate collections on the interface
+public partial interface IServerNexus {
+    [NexusCollection(NexusCollectionMode.ServerToClient)]
+    [NexusAuthorize<Permission>(Permission.Read)]
+    INexusList<string> SecureItems { get; }
+}
+
+// 4. Override OnAuthorize on the server nexus
+protected override ValueTask<AuthorizeResult> OnAuthorize(
+    ServerSessionContext<ClientProxy> context, int methodId,
+    string methodName, ReadOnlyMemory<int> requiredPermissions)
+{
+    // requiredPermissions contains int-cast enum values
+    // Return: Allowed, Unauthorized (error to client), Disconnect (kill session)
+    var user = context.Identity;
+    return new(HasPermissions(user, requiredPermissions)
+        ? AuthorizeResult.Allowed : AuthorizeResult.Unauthorized);
+}
+
+// 5. Client-side: catch ProxyUnauthorizedException
+try { await client.Proxy.AdminMethod(); }
+catch (ProxyUnauthorizedException) { /* denied */ }
+```
+
+Auth guard runs before deserialization. If `OnAuthorize` throws, session disconnects (fail-safe). Collections use `Disconnect` for unauthorized access since they lack a return channel.
+
+### Authorization Caching
+
+Opt-in TTL-based caching per session. Only `Allowed` and `Unauthorized` results are cached; `Disconnect` and exceptions are never cached.
+
+```csharp
+// Server-wide default (null = disabled)
+serverConfig.AuthorizationCacheDuration = TimeSpan.FromSeconds(30);
+
+// Per-method override via attribute (-1 = use server config, 0 = never cache, >0 = seconds)
+[NexusAuthorize<Permission>(Permission.Read, CacheDurationSeconds = 60)]   // 60s override
+[NexusAuthorize<Permission>(Permission.Admin, CacheDurationSeconds = 0)]   // never cache
+[NexusAuthorize<Permission>(Permission.Write)]                              // use server default
+
+// Explicit invalidation (inside nexus methods)
+InvalidateAuthorizationCache();           // clear all cached results
+InvalidateAuthorizationCache(methodId);   // clear single method
+```
+
+### Diagnostics
+
+| ID | Description |
+|---|---|
+| NEXNET024 | `[NexusAuthorize]` on client nexus (server-only) |
+| NEXNET025 | `[NexusAuthorize]` without `OnAuthorize` override |
+| NEXNET026 | Mixed permission enum types across attributes |
+| NEXNET027 | Permission enum not backed by `int` |
 
 ## Duplex Pipes (Byte Streaming)
 
