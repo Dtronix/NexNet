@@ -22,7 +22,7 @@ jobs:
         submodules: 'recursive'
 
     - name: Install msquic
-      run: sudo apt install libmsquic=2.4.8
+      run: sudo apt-get update && sudo apt-get install -y libmsquic
 
     - name: Install .NET
       uses: actions/setup-dotnet@v4

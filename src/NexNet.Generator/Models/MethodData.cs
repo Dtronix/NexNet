@@ -39,6 +39,9 @@ internal sealed record MethodData(
     // Attribute data
     NexusMethodAttributeData MethodAttribute,
 
+    // Authorization
+    AuthorizeData? AuthorizeData,
+
     // For diagnostics
     LocationData? Location
 )
