@@ -9,7 +9,8 @@ namespace NexNet.Generator.Models;
 internal sealed record AuthorizeData(
     ImmutableArray<int> Permissions,
     string PermissionEnumFullyQualifiedName,
-    bool IsUnderlyingTypeCompatible = true)
+    bool IsUnderlyingTypeCompatible = true,
+    int CacheDurationSeconds = -1)
 {
     public bool Equals(AuthorizeData? other)
     {
@@ -17,6 +18,7 @@ internal sealed record AuthorizeData(
         if (ReferenceEquals(this, other)) return true;
         return PermissionEnumFullyQualifiedName == other.PermissionEnumFullyQualifiedName
                && IsUnderlyingTypeCompatible == other.IsUnderlyingTypeCompatible
+               && CacheDurationSeconds == other.CacheDurationSeconds
                && Permissions.SequenceEqual(other.Permissions);
     }
 
@@ -26,6 +28,7 @@ internal sealed record AuthorizeData(
         {
             var hash = PermissionEnumFullyQualifiedName.GetHashCode();
             hash = hash * 31 + IsUnderlyingTypeCompatible.GetHashCode();
+            hash = hash * 31 + CacheDurationSeconds;
             foreach (var p in Permissions)
                 hash = hash * 31 + p;
             return hash;

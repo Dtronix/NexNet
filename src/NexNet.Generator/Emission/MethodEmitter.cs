@@ -26,7 +26,8 @@ internal static class MethodEmitter
                             "{{method.Name}}",
                             __authPerms_{{method.Name}},
                             message.InvocationId,
-                            returnBuffer != null).ConfigureAwait(false))
+                            returnBuffer != null,
+                            {{method.AuthorizeData!.CacheDurationSeconds}}).ConfigureAwait(false))
                             return;
 """);
         }

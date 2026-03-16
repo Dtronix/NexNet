@@ -17,6 +17,8 @@ public partial interface IAuthServerNexus
     ValueTask MarkerOnlyMethod();
     ValueTask<int> ProtectedWithReturn(int value);
     ValueTask MultiPermissionMethod(string input);
+    ValueTask CachedMethod();
+    ValueTask NeverCachedMethod();
 
     [NexusCollection(NexusCollectionMode.ServerToClient)]
     [NexusAuthorize<TestPermission>(TestPermission.Read)]
@@ -39,6 +41,13 @@ public partial class AuthServerNexus
     public Func<AuthServerNexus, ValueTask>? MarkerOnlyMethodHandler;
     public Func<AuthServerNexus, int, ValueTask<int>>? ProtectedWithReturnHandler;
     public Func<AuthServerNexus, string, ValueTask>? MultiPermissionMethodHandler;
+    public Func<AuthServerNexus, ValueTask>? CachedMethodHandler;
+    public Func<AuthServerNexus, ValueTask>? NeverCachedMethodHandler;
+    public Action? InvalidateAllAction;
+    public Action<int>? InvalidateMethodAction;
+
+    public void CallInvalidateAll() => InvalidateAuthorizationCache();
+    public void CallInvalidateMethod(int methodId) => InvalidateAuthorizationCache(methodId);
 
     [NexusAuthorize<TestPermission>(TestPermission.Write)]
     public ValueTask ProtectedMethod(string input)
@@ -73,6 +82,18 @@ public partial class AuthServerNexus
     public ValueTask MultiPermissionMethod(string input)
     {
         return MultiPermissionMethodHandler?.Invoke(this, input) ?? ValueTask.CompletedTask;
+    }
+
+    [NexusAuthorize<TestPermission>(TestPermission.Read, CacheDurationSeconds = 2)]
+    public ValueTask CachedMethod()
+    {
+        return CachedMethodHandler?.Invoke(this) ?? ValueTask.CompletedTask;
+    }
+
+    [NexusAuthorize<TestPermission>(TestPermission.Read, CacheDurationSeconds = 0)]
+    public ValueTask NeverCachedMethod()
+    {
+        return NeverCachedMethodHandler?.Invoke(this) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask<AuthorizeResult> OnAuthorize(

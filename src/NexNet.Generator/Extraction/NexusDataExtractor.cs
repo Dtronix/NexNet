@@ -577,7 +577,15 @@ internal static class NexusDataExtractor
             }
         }
 
-        return new AuthorizeData(permissions, permissionEnumFqn, isUnderlyingTypeCompatible);
+        // Extract named arguments (e.g., CacheDurationSeconds)
+        int cacheDurationSeconds = -1;
+        foreach (var namedArg in attr.NamedArguments)
+        {
+            if (namedArg.Key == "CacheDurationSeconds" && namedArg.Value.Value is int cds)
+                cacheDurationSeconds = cds;
+        }
+
+        return new AuthorizeData(permissions, permissionEnumFqn, isUnderlyingTypeCompatible, cacheDurationSeconds);
     }
 
     private static NexusMethodAttributeData ExtractMethodAttribute(IMethodSymbol symbol)

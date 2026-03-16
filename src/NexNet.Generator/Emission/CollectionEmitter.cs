@@ -54,7 +54,7 @@ internal static class CollectionEmitter
             sb.Append("                            ").Append(collection.Id)
                 .Append(", \"").Append(collection.Name).Append("\", __authPerms_").Append(collection.Name).AppendLine(",");
             sb.AppendLine("                            message.InvocationId,");
-            sb.AppendLine("                            returnBuffer != null).ConfigureAwait(false))");
+            sb.Append("                            returnBuffer != null, ").Append(collection.AuthorizeData!.CacheDurationSeconds).AppendLine(").ConfigureAwait(false))");
             sb.AppendLine("                            return;");
         }
 

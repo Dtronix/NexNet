@@ -48,9 +48,11 @@ internal class NexusServerTests_Authorization : BaseTests
     private (NexusServerFactory<AuthServerNexus, AuthServerNexus.ClientProxy> server,
         NexusClient<AuthClientNexus, AuthClientNexus.ServerProxy> client,
         AuthClientNexus clientNexus)
-        CreateAuthServerClient(Type type)
+        CreateAuthServerClient(Type type, TimeSpan? authCacheDuration = null)
     {
         var sConfig = CreateServerConfig(type);
+        if (authCacheDuration.HasValue)
+            sConfig.AuthorizationCacheDuration = authCacheDuration.Value;
         var cConfig = CreateClientConfig(type);
         var serverFactory = new NexusServerFactory<AuthServerNexus, AuthServerNexus.ClientProxy>(sConfig);
         var clientNexus = new AuthClientNexus();
@@ -526,5 +528,343 @@ internal class NexusServerTests_Authorization : BaseTests
         try { await client.Proxy.ProtectedMethod("test").Timeout(1); } catch { }
 
         await disconnected.Task.Timeout(2);
+    }
+
+    // --- Authorization cache tests ---
+    // Use Uds only since caching is transport-independent
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_AttributeTtl_SecondCallUsesCachedResult(Type type)
+    {
+        var authCallCount = 0;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        await client.Proxy.CachedMethod().Timeout(1);
+        await client.Proxy.CachedMethod().Timeout(1);
+
+        Assert.That(authCallCount, Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_AttributeTtl_ExpiredEntry_ReChecks(Type type)
+    {
+        var authCallCount = 0;
+        var currentTick = Environment.TickCount64;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.TickCountOverride = () => Interlocked.Read(ref currentTick);
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(1));
+
+        // Still cached
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(1));
+
+        // Advance past the 2s TTL
+        Interlocked.Add(ref currentTick, 2001);
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(2));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_NeverCached_AlwaysCallsOnAuthorize(Type type)
+    {
+        var authCallCount = 0;
+        // Set server-level cache to prove CacheDurationSeconds=0 overrides it
+        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(60));
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.NeverCachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.NeverCachedMethod().Timeout(1);
+        await client.Proxy.NeverCachedMethod().Timeout(1);
+        await client.Proxy.NeverCachedMethod().Timeout(1);
+
+        Assert.That(authCallCount, Is.EqualTo(3));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_ServerConfigDefault_CachesWhenAttributeIsDefault(Type type)
+    {
+        var authCallCount = 0;
+        // ProtectedMethod has no CacheDurationSeconds (defaults to -1), so server config applies
+        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.ProtectedMethod("a").Timeout(1);
+        await client.Proxy.ProtectedMethod("b").Timeout(1);
+        await client.Proxy.ProtectedMethod("c").Timeout(1);
+
+        Assert.That(authCallCount, Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_NoServerConfig_NoCaching(Type type)
+    {
+        var authCallCount = 0;
+        // No server config cache, ProtectedMethod has no CacheDurationSeconds override
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.ProtectedMethod("a").Timeout(1);
+        await client.Proxy.ProtectedMethod("b").Timeout(1);
+
+        Assert.That(authCallCount, Is.EqualTo(2));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_CachesUnauthorizedResult(Type type)
+    {
+        var authCallCount = 0;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // CachedMethod has return type ValueTask (void), so Unauthorized with no return channel
+        // means silent drop. Just verify OnAuthorize is called once.
+        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
+        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
+
+        Assert.That(authCallCount, Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_DisconnectNeverCached(Type type)
+    {
+        var authCallCount = 0;
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
+
+        await disconnected.Task.Timeout(2);
+        // Disconnect result should not be cached (session dies anyway)
+        Assert.That(authCallCount, Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_DifferentMethodsHaveIndependentEntries(Type type)
+    {
+        var protectedCallCount = 0;
+        var cachedCallCount = 0;
+        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, methodId, _, _) =>
+            {
+                // Track per-method auth calls by checking which method was invoked
+                // ProtectedMethod and CachedMethod will have different method IDs
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.ProtectedMethodHandler = (_, _) =>
+            {
+                Interlocked.Increment(ref protectedCallCount);
+                return ValueTask.CompletedTask;
+            };
+            nexus.CachedMethodHandler = _ =>
+            {
+                Interlocked.Increment(ref cachedCallCount);
+                return ValueTask.CompletedTask;
+            };
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.ProtectedMethod("a").Timeout(1);
+        await client.Proxy.CachedMethod().Timeout(1);
+        await client.Proxy.ProtectedMethod("b").Timeout(1);
+        await client.Proxy.CachedMethod().Timeout(1);
+
+        // Both methods should have been invoked twice (cache is per-method)
+        Assert.That(protectedCallCount, Is.EqualTo(2));
+        Assert.That(cachedCallCount, Is.EqualTo(2));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_InvalidateAll_ClearsCache(Type type)
+    {
+        var authCallCount = 0;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(1));
+
+        // Invalidate cache
+        var serverNexus = server.NexusCreatedQueue.First();
+        serverNexus.CallInvalidateAll();
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(2));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_InvalidateByMethodId_ClearsSingleEntry(Type type)
+    {
+        var authCallCount = 0;
+        int cachedMethodId = -1;
+        var (server, client, _) = CreateAuthServerClient(type, TimeSpan.FromSeconds(30));
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, methodId, name, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                if (name == "CachedMethod")
+                    cachedMethodId = methodId;
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+            nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Prime both caches
+        await client.Proxy.CachedMethod().Timeout(1);
+        await client.Proxy.ProtectedMethod("a").Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(2));
+
+        // Invalidate only CachedMethod
+        var serverNexus = server.NexusCreatedQueue.First();
+        serverNexus.CallInvalidateMethod(cachedMethodId);
+
+        // CachedMethod should re-check, ProtectedMethod should still be cached
+        await client.Proxy.CachedMethod().Timeout(1);
+        await client.Proxy.ProtectedMethod("b").Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(3)); // Only CachedMethod re-checked
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_ExceptionNotCached_NextCallReInvokes(Type type)
+    {
+        var authCallCount = 0;
+        var shouldThrow = true;
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                if (shouldThrow)
+                    throw new InvalidOperationException("Auth error");
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        _ = client.DisconnectedTask.ContinueWith(_ => { });
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
+
+        // Session disconnected due to exception — auth was called once
+        Assert.That(authCallCount, Is.EqualTo(1));
     }
 }

@@ -18,6 +18,14 @@ public class NexusAuthorizeAttribute<TPermission> : Attribute
     public TPermission[] Permissions { get; }
 
     /// <summary>
+    /// Controls authorization result caching for this method/collection.
+    /// -1 (default) = use server config <c>AuthorizationCacheDuration</c>.
+    ///  0 = never cache (always call <c>OnAuthorize</c>).
+    /// &gt;0 = cache for this many seconds (overrides server config).
+    /// </summary>
+    public int CacheDurationSeconds { get; set; } = -1;
+
+    /// <summary>
     /// Marks the method as requiring authorization with the specified permissions.
     /// </summary>
     /// <param name="permissions">Zero or more permissions required.</param>

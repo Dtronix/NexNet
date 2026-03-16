@@ -236,6 +236,58 @@ partial class AuthServerNexus
     }
 
     [Test]
+    public void AuthorizeWithCacheDuration_GeneratesSuccessfully()
+    {
+        var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
+
+[Nexus<IAuthClientNexus, IAuthServerNexus>(NexusType = NexusType.Client)]
+partial class AuthClientNexus { }
+
+[Nexus<IAuthServerNexus, IAuthClientNexus>(NexusType = NexusType.Server)]
+partial class AuthServerNexus
+{
+    [NexusAuthorize<TestPermission>(TestPermission.Write, CacheDurationSeconds = 60)]
+    public ValueTask ProtectedMethod(string input) => ValueTask.CompletedTask;
+
+    public ValueTask AdminMethod() => ValueTask.CompletedTask;
+    public ValueTask UnprotectedMethod() => ValueTask.CompletedTask;
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        NexNet.Invocation.ServerSessionContext<AuthServerNexus.ClientProxy> context,
+        int methodId, string methodName, ReadOnlyMemory<int> requiredPermissions)
+        => new(AuthorizeResult.Allowed);
+}
+""");
+        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+    }
+
+    [Test]
+    public void AuthorizeWithCacheDurationZero_GeneratesSuccessfully()
+    {
+        var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
+
+[Nexus<IAuthClientNexus, IAuthServerNexus>(NexusType = NexusType.Client)]
+partial class AuthClientNexus { }
+
+[Nexus<IAuthServerNexus, IAuthClientNexus>(NexusType = NexusType.Server)]
+partial class AuthServerNexus
+{
+    [NexusAuthorize<TestPermission>(TestPermission.Write, CacheDurationSeconds = 0)]
+    public ValueTask ProtectedMethod(string input) => ValueTask.CompletedTask;
+
+    public ValueTask AdminMethod() => ValueTask.CompletedTask;
+    public ValueTask UnprotectedMethod() => ValueTask.CompletedTask;
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        NexNet.Invocation.ServerSessionContext<AuthServerNexus.ClientProxy> context,
+        int methodId, string methodName, ReadOnlyMemory<int> requiredPermissions)
+        => new(AuthorizeResult.Allowed);
+}
+""");
+        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+    }
+
+    [Test]
     public void AuthorizeOnCollection_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
@@ -251,7 +303,7 @@ partial interface IClientNexus { }
 partial interface IServerNexus
 {
     [NexusCollection(NexusCollectionMode.ServerToClient)]
-    [NexusAuthorize<TestPermission>(TestPermission.Admin)]
+    [NexusAuthorize<TestPermission>(TestPermission.Admin, CacheDurationSeconds = 120)]
     INexusList<string> SecureItems { get; }
 }
 
