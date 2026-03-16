@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.RateLimiting;
@@ -28,7 +29,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
             Assert.That(client.State, Is.Not.EqualTo(ConnectionState.Connected),
                 "Connection should not remain connected when rate limited");
         }
-        catch (Exception ex) when (ex is TransportException or IOException or OperationCanceledException or WebSocketException or TimeoutException)
+        catch (Exception ex) when (ex is TransportException or IOException or SocketException or OperationCanceledException or WebSocketException or TimeoutException)
         {
             // Expected - connection was rejected (may timeout if server closes before handshake completes)
         }
