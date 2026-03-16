@@ -18,19 +18,23 @@ internal class NexusBroadcastMessageProcessor<TUnion>
 {
     private readonly OnProcessDelegate _process;
     protected readonly INexusLogger? Logger;
-    private readonly Channel<ProcessRequestWrapper> _processorChannel;
+    private Channel<ProcessRequestWrapper> _processorChannel;
     private bool _isRunning;
     private readonly PooledResettableValueTaskCompletionSource<bool> _stoppedTcs;
-    
+
     public ValueTask<bool> StoppedTask => _stoppedTcs.Task;
-    
+
     public NexusBroadcastMessageProcessor(INexusLogger? logger, OnProcessDelegate process)
     {
         _process = process;
         Logger = logger?.CreateLogger("Processor");
         _stoppedTcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
-        
-        _processorChannel = Channel.CreateBounded<ProcessRequestWrapper>(new BoundedChannelOptions(50)
+        _processorChannel = CreateChannel();
+    }
+
+    private static Channel<ProcessRequestWrapper> CreateChannel()
+    {
+        return Channel.CreateBounded<ProcessRequestWrapper>(new BoundedChannelOptions(50)
         {
             AllowSynchronousContinuations = false,
             FullMode = BoundedChannelFullMode.Wait,
@@ -64,9 +68,10 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     {
         if(_isRunning)
             throw new InvalidOperationException("Broadcaster is already running.");
-        
+
         _isRunning = true;
         _stoppedTcs.Reset();
+        _processorChannel = CreateChannel();
         
         Task.Factory.StartNew(async static args =>
         {
