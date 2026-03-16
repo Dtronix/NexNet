@@ -35,12 +35,14 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `NexusAttribute.cs` - `[Nexus<TNexus,TProxy>]` marks classes for generation; NexusType=Server/Client
 - `NexusMethodAttribute.cs` - Optional `[NexusMethod(id)]` for manual method ID assignment
 - `NexusVersionAttribute.cs` - `[NexusVersion]` enables interface versioning with hash validation
+- `NexusAuthorizeAttribute.cs` - `[NexusAuthorize<TPermission>(...)]` marks methods/collections for authorization; `CacheDurationSeconds` property (-1=server config, 0=never, >0=override)
+- `AuthorizeResult.cs` - Enum: Allowed, Unauthorized, Disconnect
 
 ### 1.3 Invocation Layer (src/NexNet/Invocation/)
 
 **Base Classes:**
 - `NexusBase.cs` - Common base; implements IMethodInvoker; manages CTS registry, pipe registration, pooling
-- `ServerNexusBase.cs` - Server base; OnAuthenticate, OnNexusInitialize virtuals
+- `ServerNexusBase.cs` - Server base; OnAuthenticate, OnNexusInitialize, OnAuthorize virtuals; CheckAuthorization with ConcurrentDictionary cache; InvalidateAuthorizationCache() overloads
 - `ClientNexusBase.cs` - Client base; OnReconnecting virtual
 
 **Contexts:**
@@ -50,7 +52,8 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `LocalSessionContext.cs` - Local session registry and key-value store
 
 **Proxy Infrastructure:**
-- `ProxyInvocationBase.cs` - Base for generated proxies; Configure() sets session/mode; supports All/Client/Group modes
+- `ProxyInvocationBase.cs` - Base for generated proxies; Configure() sets session/mode; supports All/Client/Group modes; handles Unauthorized state
+- `ProxyUnauthorizedException.cs` - Thrown client-side when server denies method invocation
 - `IProxyBase.cs` - Interface for proxy client selection (All, Client(id), Group(name), etc.)
 
 **Routing & Registry:**
@@ -64,12 +67,12 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.4 Messages (src/NexNet/Messages/)
 
 **Protocol:**
-- `MessageType.cs` - Enum: Ping, Disconnect variants (20-33), DuplexPipeWrite (50), Greetings (100-105), Invocation (110-112)
+- `MessageType.cs` - Enum: Ping, Disconnect variants (20-34 incl. DisconnectUnauthorized), DuplexPipeWrite (50), Greetings (100-105), Invocation (110-112)
 - `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,521 bytes
 - `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token
 - `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash
 - `InvocationMessage.cs` - Remote method invocation payload
-- `InvocationResultMessage.cs` - Return value or exception from invocation
+- `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
 
 ### 1.5 Session Management (src/NexNet/Internals/)
@@ -97,7 +100,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 **Configuration:**
 - `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
-- `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config
+- `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
 **Socket Pipeline (src/NexNet/Internals/Pipelines/):**
 - `SocketConnection.cs` - Low-level socket-to-pipe adapter with read/write loops
@@ -171,9 +174,9 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 **Three Phases:**
 
-1. **Extraction:** `Extraction/NexusDataExtractor.cs` parses [Nexus<,>]; extracts namespace, type, modifiers, generics, interfaces, methods, collections.
+1. **Extraction:** `Extraction/NexusDataExtractor.cs` parses [Nexus<,>]; extracts namespace, type, modifiers, generics, interfaces, methods, collections, authorization data (permissions, enum type, cache duration).
 
-2. **Validation:** `Validation/NexusValidator.cs` validates class partial/not nested/not generic/not abstract; method signatures; collection modes; version hashes.
+2. **Validation:** `Validation/NexusValidator.cs` validates class partial/not nested/not generic/not abstract; method signatures; collection modes; version hashes; authorization (client nexus check, OnAuthorize override, mixed enum types, enum underlying type).
 
 3. **Emission (Emission/):**
    - `NexusEmitter.cs` - Generates partial class: CreateServer/CreateClient factories, collection properties
@@ -188,12 +191,13 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `InvocationInterfaceData.cs` - Methods, collections, version
 - `MethodData.cs` - Name, return type, parameters, method ID
 - `MethodParameterData.cs` - Name, type, serializable flag
-- `CollectionData.cs` - Name, type, mode, element type
+- `CollectionData.cs` - Name, type, mode, element type, AuthorizeData?
+- `AuthorizeData.cs` - Permissions (ImmutableArray<int>), PermissionEnumFQN, IsUnderlyingTypeCompatible, CacheDurationSeconds
 
 ### 2.3 Utilities
 
 - `TypeHasher.cs` - xxHash32-based interface signature hashing for versioning
-- `DiagnosticDescriptors.cs` - Error/warning/info definitions
+- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum)
 - `SymbolUtilities.cs` - Symbol inspection helpers
 
 ---
@@ -236,6 +240,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `NexusServerFactory.cs` - Generic server wrapper tracking created nexuses in ConcurrentQueue
 - `TestInterfaces/BasicTestsInterfaces.cs` - IClientNexus, IServerNexus interfaces; ClientNexus, ServerNexus implementations with event callbacks
 - `TestInterfaces/VersionedTestsInterfaces.cs` - Version-specific test interfaces
+- `TestInterfaces/AuthorizationTestInterfaces.cs` - Authorization test nexuses with delegate handlers and cache invalidation helpers
 - `Utilities.cs` - Dequeue<T>(), GetBytes<T>(), GetValue<T>(), InvokeAndNotifyAwait()
 - `TaskExtensions.cs` - Timeout() overloads, AssertTimeout()
 - `Collections/CollectionHelpers.cs` - WaitForEvent() extension, WaitForActionHandler
@@ -260,6 +265,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `NexusServerTests_NexusInvocations.cs` - Nexus-to-nexus
 - `NexusServerTests_NexusGroupInvocations.cs` - Group invocations
 - `NexusServerTests_Versioned.cs` - Versioning
+- `NexusServerTests_Authorization.cs` - Authorization: allow/deny/disconnect, collections, caching (TTL, expiry, invalidation, concurrent access), multi-permission
 
 **Collections (Collections/, 24 files):**
 - `NexusCollectionAckTests.cs` - Acknowledgments
@@ -327,6 +333,7 @@ await client.ConnectAsync().Timeout(1);
 - `GeneratorCollectionTests.cs` - Collection property generation
 - `TypeHasherTests.cs` - Type hashing for method IDs
 - `VersioningTests.cs` - Version string parsing, [NexusVersion] + [NexusMethod(id)] validation
+- `GeneratorAuthorizationTests.cs` - Authorization attribute validation: client nexus error, missing OnAuthorize, mixed enums, non-int enum, cache duration, collection auth
 
 **Test Pattern:** Pass C# source string to RunGenerator(), check Diagnostic[] for expected IDs (MustBePartial, etc.)
 
