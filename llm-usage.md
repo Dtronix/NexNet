@@ -4,8 +4,8 @@ High-performance .NET 10 async networking. Bidirectional server-client communica
 
 ## Packages
 ```xml
-<PackageReference Include="NexNet" Version="0.14.1" />
-<PackageReference Include="NexNet.Generator" Version="0.14.1">
+<PackageReference Include="NexNet" Version="0.15.0" />
+<PackageReference Include="NexNet.Generator" Version="0.15.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 </PackageReference>
