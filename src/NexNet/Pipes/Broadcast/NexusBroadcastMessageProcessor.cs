@@ -44,7 +44,17 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     {
         var tcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
         var wrapper = ProcessRequestWrapper.Rent(client, message, tcs);
-        await _processorChannel.Writer.WriteAsync(wrapper).ConfigureAwait(false);
+        try
+        {
+            await _processorChannel.Writer.WriteAsync(wrapper).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogDebug(e, $"S{client?.Id}: Enqueue rejected for {message.GetType().Name}, processor is stopped.");
+            wrapper.Return();
+            tcs.Return();
+            throw;
+        }
         var result = await tcs.Task.ConfigureAwait(false);
         tcs.Return();
         return result;
@@ -116,6 +126,18 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                 }
                 finally
                 {
+                    // Complete the channel writer so any pending WriteAsync calls
+                    // in EnqueueWaitForResult throw ChannelClosedException instead of hanging.
+                    processor._processorChannel.Writer.TryComplete();
+
+                    // Drain any remaining items and resolve their completion sources
+                    // to prevent callers from hanging on tcs.Task.
+                    while (processor._processorChannel.Reader.TryRead(out var remaining))
+                    {
+                        remaining.CompletionTaskSource?.TrySetResult(false);
+                        remaining.Return();
+                    }
+
                     processor._isRunning = false;
                     processor._stoppedTcs.TrySetResult(true);
                 }
