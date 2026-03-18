@@ -107,7 +107,7 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
 
     public ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        ITuple? arguments,
+        Memory<byte> serializedArguments,
         INexusSession session,
         CancellationToken? cancellationToken = null)
     {

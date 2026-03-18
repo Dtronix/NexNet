@@ -109,7 +109,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
     public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        ITuple? arguments,
+        Memory<byte> serializedArguments,
         INexusSession session,
         CancellationToken? cancellationToken = null)
     {
@@ -123,7 +123,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         message.Flags = InvocationFlags.None;
 
         // Try to set the arguments. If we can not, then the arguments are too large.
-        if (!message.TrySetArguments(arguments))
+        if (!message.TrySetArguments(serializedArguments))
         {
             throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
         }

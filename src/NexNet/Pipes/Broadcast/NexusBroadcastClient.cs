@@ -83,7 +83,8 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             null,
             null,
             $"Connecting Proxy Collection[{Id}];");
-        await _invoker.ProxyInvokeMethodCore(Id, new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe)),
+        var __args = new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe));
+        await _invoker.ProxyInvokeMethodCore(Id, MemoryPack.MemoryPackSerializer.Serialize(__args),
             InvocationFlags.DuplexPipe).ConfigureAwait(false);
 
         await pipe.ReadyTask.ConfigureAwait(false);

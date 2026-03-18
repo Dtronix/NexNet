@@ -95,19 +95,19 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags)
+    async ValueTask IProxyInvoker.ProxyInvokeMethodCore(ushort methodId, Memory<byte> serializedArguments, InvocationFlags flags)
     {
         // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
         if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
-        
+
         var message = _poolManager.Rent<InvocationMessage>();
         message.MethodId = methodId;
         message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
 
         // Try to set the arguments. If we can not, then the arguments are too large.
-        if (!message.TrySetArguments(arguments))
+        if (!message.TrySetArguments(serializedArguments))
         {
             message.Dispose();
             throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
@@ -205,13 +205,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
+    async ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken)
     {
         // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
         if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
-        
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
+
+        var state = await InvokeWaitForResultCore(methodId, serializedArguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
             return;
@@ -236,13 +236,13 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     }
 
     /// <inheritdoc />
-    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken)
+    async ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken)
     {
         // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
         if (_sessionManager == null && _session?.State != ConnectionState.Connected)
             throw new InvalidOperationException("Session is not connected");
-        
-        var state = await InvokeWaitForResultCore(methodId, arguments, cancellationToken).ConfigureAwait(false);
+
+        var state = await InvokeWaitForResultCore(methodId, serializedArguments, cancellationToken).ConfigureAwait(false);
 
         if (state == null)
         {
@@ -327,7 +327,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
     private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
         ushort methodId,
-        ITuple? arguments,
+        Memory<byte> serializedArguments,
         CancellationToken? cancellationToken = null)
     {
         // If we are invoking on multiple sessions, then we are not going to wait
@@ -340,7 +340,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             || _mode == ProxyInvocationMode.Others)
         {
             await Unsafe.As<IProxyInvoker>(this)
-                .ProxyInvokeMethodCore(methodId, arguments, InvocationFlags.None)
+                .ProxyInvokeMethodCore(methodId, serializedArguments, InvocationFlags.None)
                 .ConfigureAwait(false);
             return null;
         }
@@ -363,8 +363,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
         var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
             methodId,
-            arguments, 
-            session, 
+            serializedArguments,
+            session,
             cancellationToken).ConfigureAwait(false);
 
         if (state == null)

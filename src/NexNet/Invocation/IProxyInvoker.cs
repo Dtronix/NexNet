@@ -27,7 +27,7 @@ public interface IProxyInvoker
         IServerSessionManager? sessionManager,
         ProxyInvocationMode mode,
         object? modeArguments);
-    
+
     /// <summary>
     /// Logger for the current session.
     /// </summary>
@@ -38,23 +38,23 @@ public interface IProxyInvoker
     /// Will not wait for results on invocations and will instruct the proxy to dismiss any results.
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation.</param>
+    /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="flags">Special flags for the invocation of this method.</param>
     /// <returns>Task which returns when the invocations messages have been issued.</returns>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if the invocation mode is set in an invalid mode.</exception>
-    ValueTask ProxyInvokeMethodCore(ushort methodId, ITuple? arguments, InvocationFlags flags);
+    ValueTask ProxyInvokeMethodCore(ushort methodId, Memory<byte> serializedArguments, InvocationFlags flags);
 
     /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token
     /// and waits the completion of the invocation.
     /// </summary>
     /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
+    ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken = null);
 
     /// <summary>
     /// Invokes a method ID on the connection with the optionally passed arguments and optional cancellation token,
@@ -62,12 +62,12 @@ public interface IProxyInvoker
     /// </summary>
     /// <typeparam name="TReturn">Expected type to be returned by the remote invocation proxy.</typeparam>
     /// <param name="methodId">Method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method invocation</param>
+    /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="cancellationToken">Optional cancellation token to allow cancellation of remote invocation.</param>
     /// <returns>ValueTask with the containing return result which completes upon remote invocation completion.</returns>
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
-    ValueTask<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, ITuple? arguments, CancellationToken? cancellationToken = null);
+    ValueTask<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken = null);
 
     /// <summary>
     /// Gets the Initial Id of the duplex pipe.
@@ -78,10 +78,10 @@ public interface IProxyInvoker
 
 
     /// <summary>
-    /// Provides client side access to a configured list. 
+    /// Provides client side access to a configured list.
     /// </summary>
     /// <param name="id">
-    ///     A unique identifier for the list collection to configure.  
+    ///     A unique identifier for the list collection to configure.
     ///     This must match the identifier used when retrieving or starting the collection.
     /// </param>
     /// <typeparam name="T">The element type stored in the list.</typeparam>

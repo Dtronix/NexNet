@@ -265,6 +265,9 @@ internal static class MethodEmitter
             sb.Remove(sb.Length - 2, 2);
 
             sb.AppendLine(");");
+
+            // Serialize the arguments to bytes at the call site (AOT-safe: concrete type known at compile time).
+            sb.AppendLine("                 var __serializedArgs = global::MemoryPack.MemoryPackSerializer.Serialize(__proxyInvocationArguments);");
         }
 
         // Logging
@@ -298,7 +301,7 @@ internal static class MethodEmitter
             sb.Append(method.DuplexPipeParameter == null ? "_ = " : "return ");
 
             sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(method.Id).Append(", ");
-            sb.Append(method.SerializedParameterCount > 0 ? "__proxyInvocationArguments, " : "null, ");
+            sb.Append(method.SerializedParameterCount > 0 ? "__serializedArgs, " : "global::System.Memory<byte>.Empty, ");
 
             // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
             sb.Append("global::NexNet.Messages.InvocationFlags.")
@@ -313,7 +316,7 @@ internal static class MethodEmitter
             }
 
             sb.Append("(").Append(method.Id).Append(", "); // methodId
-            sb.Append(method.SerializedParameterCount > 0 ? "__proxyInvocationArguments, " : "null, "); // arguments
+            sb.Append(method.SerializedParameterCount > 0 ? "__serializedArgs, " : "global::System.Memory<byte>.Empty, "); // arguments
             sb.Append(method.CancellationTokenParameter != null ? method.CancellationTokenParameter.Name : "null")
                 .AppendLine(");");
         }
