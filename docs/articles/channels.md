@@ -48,8 +48,9 @@ If a channel instance is created, it should be disposed to release held resource
 The preferred method of reading channels is using `IAsyncEnumerable` on the `INexusChannelReader`. This provides efficient buffering and simplifies handling of channel closure, whether graceful or not:
 
 ```csharp
-var writer = await pipe.GetUnmanagedChannelWriter<int>();
-await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
+// Given an INexusDuplexPipe from a method argument
+var writer = await duplexPipe.GetUnmanagedChannelWriter<int>();
+await foreach (var msg in await duplexPipe.GetChannelReader<ComplexMessage>())
 {
     // Process each message
 }

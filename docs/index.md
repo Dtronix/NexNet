@@ -66,11 +66,11 @@ Connection rate limiting and DoS protection.
 Define shared interfaces and let the source generator handle the rest:
 
 ```csharp
-interface IClientNexus
+public interface IClientNexus
 {
     ValueTask<string> GetUserName();
 }
-interface IServerNexus
+public interface IServerNexus
 {
     ValueTask<int> GetStatus(int userId);
 }
@@ -133,6 +133,6 @@ The generator emits all hub and proxy classes at compile time — no reflection,
 </div>
 <div class="col-md-4" style="margin-bottom: 1.5rem;">
 <h3>Auto Reconnection</h3>
-<p>Clients automatically reconnect on timeout or connection loss. Session state is preserved across reconnections.</p>
+<p>Clients automatically reconnect on timeout or connection loss with no additional configuration required.</p>
 </div>
 </div>

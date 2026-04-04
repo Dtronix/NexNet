@@ -1,4 +1,4 @@
-# <img src="./docs/images/logo-128.png" height="48"> NexNet
+# <img src="./docs/images/logo-128.png" height="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)
 
 Real-time bidirectional networking for .NET. Source-generated hubs and proxies with zero reflection, multiple transports, and full AOT compatibility.
 
@@ -67,11 +67,11 @@ Beyond RPC, NexNet provides synchronized collections that keep data in sync acro
 
 ```csharp
 // Shared interfaces
-interface IClientNexus
+public interface IClientNexus
 {
     ValueTask<string> GetUserName();
 }
-interface IServerNexus
+public interface IServerNexus
 {
     ValueTask<int> GetStatus(int userId);
 }
