@@ -99,7 +99,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         }
         
         var (op, version) = NexusListTransformers<T>.RentOperation(message);
-        
+
         // Unknown operation
         if (op == null)
         {
@@ -107,8 +107,15 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
             return new BroadcastMessageProcessResult(false, true);
         }
 
+        // Discard stale operations already included in a reset snapshot.
+        if (version > 0 && version <= _itemList.Version)
+        {
+            op.Return();
+            return new BroadcastMessageProcessResult(true, false);
+        }
+
         var result = _itemList.ApplyOperation(op, version);
-        
+
         if (result != ListProcessResult.DiscardOperation && result != ListProcessResult.Successful)
         {
             Client?.Logger?.LogWarning($"Processing {message} message failed with {result}");

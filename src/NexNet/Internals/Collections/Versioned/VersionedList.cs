@@ -127,9 +127,9 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     {
         if (!ValidateOperation(op))
             return ListProcessResult.BadOperation;
-        
+
         op.Apply(ref State, version);
-        
+
         return ListProcessResult.Successful;
     }
 
