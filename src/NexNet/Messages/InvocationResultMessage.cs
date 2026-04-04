@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using MemoryPack;
 using NexNet.Pools;
@@ -40,7 +41,7 @@ internal partial class InvocationResultMessage : IMessageBase
         set => _result = value;
     }
 
-    public bool TryGetResult<T>(out T? result)
+    public bool TryGetResult<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(out T? result)
     {
         if (_result == null)
         {

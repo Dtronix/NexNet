@@ -67,7 +67,7 @@ internal enum Counter
 internal static class Helpers
 {
 #if DEBUG
-    private readonly static int[] _counters = new int[Enum.GetValues(typeof(Counter)).Length];
+    private readonly static int[] _counters = new int[Enum.GetValues<Counter>().Length];
     internal static void ResetCounters()
     {
         Array.Clear(_counters, 0, _counters.Length);
@@ -75,7 +75,7 @@ internal static class Helpers
     }
     internal static string GetCounterSummary()
     {
-        var enums = (Counter[])Enum.GetValues(typeof(Counter));
+        var enums = Enum.GetValues<Counter>();
         var sb = new System.Text.StringBuilder();
         for(int i = 0 ; i < enums.Length ; i++)
         {
