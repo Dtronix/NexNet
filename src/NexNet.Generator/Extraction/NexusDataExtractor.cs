@@ -150,7 +150,9 @@ internal static class NexusDataExtractor
 
         // Build interface hierarchy first to create method/collection tables
         var interfaceMap = new Dictionary<INamedTypeSymbol, InvocationInterfaceData>(SymbolEqualityComparer.Default);
-        var allInterfaceSymbols = symbol.AllInterfaces.ToList();
+        var allInterfaceSymbols = symbol.AllInterfaces
+            .OrderBy(i => i.ToDisplayString(), StringComparer.Ordinal)
+            .ToList();
 
         // Extract methods from this interface directly
         var directMethods = ExtractMethodsFromMembers(symbol.GetMembers(), typeHasher);
@@ -285,7 +287,7 @@ internal static class NexusDataExtractor
         var allMethods = new List<MethodData>(interfaceMethods);
         var allCollections = new List<CollectionData>(interfaceCollections);
 
-        foreach (var inherited in symbol.AllInterfaces)
+        foreach (var inherited in symbol.AllInterfaces.OrderBy(i => i.ToDisplayString(), StringComparer.Ordinal))
         {
             var inheritedMethods = ExtractMethodsFromMembers(inherited.GetMembers(), typeHasher)
                 .Where(m => !m.MethodAttribute.Ignore);
@@ -902,7 +904,7 @@ internal static class NexusDataExtractor
         List<MethodParameterData> parameters,
         NexusMethodAttributeData methodAttr)
     {
-        var hash = new HashCode();
+        var hash = new IncrementalHasher();
 
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
         if (returnSymbol?.Arity > 0)
@@ -931,7 +933,7 @@ internal static class NexusDataExtractor
         string? itemType,
         NexusCollectionAttributeData collectionAttr)
     {
-        var hash = new HashCode();
+        var hash = new IncrementalHasher();
 
         if (itemType != null)
         {
@@ -955,7 +957,7 @@ internal static class NexusDataExtractor
         MethodData[] methods,
         CollectionData[] collections)
     {
-        var hash = new HashCode();
+        var hash = new IncrementalHasher();
 
         foreach (var method in methods)
             hash.Add(method.NexusHash);
