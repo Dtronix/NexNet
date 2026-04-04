@@ -1,0 +1,15 @@
+apiRules:
+  # Include public and protected APIs
+  - include:
+      uidRegex: ^NexNet
+      type: Namespace
+  - include:
+      uidRegex: ^NexNet\.
+      type: Type
+      hasAttribute:
+        not: true
+        uid: System.ComponentModel.EditorBrowsableAttribute
+  # Exclude internal namespaces
+  - exclude:
+      uidRegex: ^NexNet\.Internals
+      type: Namespace

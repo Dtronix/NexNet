@@ -1,0 +1,75 @@
+{
+  "metadata": [
+    {
+      "src": [
+        {
+          "files": [
+            "src/NexNet/NexNet.csproj",
+            "src/NexNet.Asp/NexNet.Asp.csproj",
+            "src/NexNet.Quic/NexNet.Quic.csproj"
+          ],
+          "src": ".."
+        }
+      ],
+      "dest": "api",
+      "properties": {
+        "TargetFramework": "net10.0",
+        "BuildingDocs": "true"
+      },
+      "filter": "filterConfig.yml",
+      "includePrivateMembers": false
+    }
+  ],
+  "build": {
+    "content": [
+      {
+        "files": [
+          "api/**.yml",
+          "api/index.md"
+        ]
+      },
+      {
+        "files": [
+          "articles/**.md",
+          "articles/**/toc.yml",
+          "internals/**.md",
+          "internals/**/toc.yml",
+          "toc.yml",
+          "*.md"
+        ]
+      }
+    ],
+    "resource": [
+      {
+        "files": [
+          "images/**"
+        ]
+      }
+    ],
+    "dest": "_site",
+    "globalMetadataFiles": [],
+    "fileMetadataFiles": [],
+    "template": [
+      "default",
+      "modern",
+      "templates/nexnet"
+    ],
+    "globalMetadata": {
+      "_appTitle": "NexNet Documentation",
+      "_appName": "NexNet",
+      "_appLogoPath": "images/logo-128.png",
+      "_appFaviconPath": "images/logo-128.png",
+      "_enableSearch": true,
+      "_enableNewTab": true,
+      "_disableContribution": false,
+      "_gitContribute": {
+        "repo": "https://github.com/Dtronix/NexNet",
+        "branch": "master",
+        "apiSpecFolder": "docs/api"
+      }
+    },
+    "postProcessors": [],
+    "keepFileLink": false,
+    "disableGitFeatures": false
+  }
+}
