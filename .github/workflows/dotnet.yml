@@ -34,7 +34,10 @@ jobs:
 
     - name: Build
       run: dotnet build src -c Release --maxcpucount:1
-      
+
+    - name: Validate AOT compatibility
+      run: dotnet build src/Samples/NexNetSample.Aot.Client -c Release --no-restore -p:TreatWarningsAsErrors=true -p:NoWarn=IL2104%3BIL3053%3BIL3050
+
     - name: Execute integration tests
       run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
 
