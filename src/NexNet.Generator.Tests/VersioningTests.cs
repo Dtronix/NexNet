@@ -1,4 +1,5 @@
-﻿using Microsoft.CodeAnalysis;
+﻿using System.Text.RegularExpressions;
+using Microsoft.CodeAnalysis;
 using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
@@ -474,6 +475,50 @@ partial class ServerNexus
 """);
         Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses.Id), Is.EqualTo(3));
     }
+    [Test]
+    public void HashLockIsDeterministicAcrossMultipleRuns()
+    {
+        var source = """
+using System;
+using System.Collections.Generic;
+using NexNet;
+using MemoryPack;
+namespace NexNetDemo;
+[MemoryPackable]
+partial class DataObject {
+    public string Value1 { get; set; }
+    public int Value2 { get; set; }
+}
+partial interface IClientNexus { }
+[NexusVersion(Version = "v1", HashLock = 0)]
+partial interface IServerNexus {
+    [NexusMethod(100)]
+    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2);
+}
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus {
+    public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
+}
+""";
+
+        var hashes = new List<string>();
+        for (var i = 0; i < 5; i++)
+        {
+            var diagnostics = CSharpGeneratorRunner.RunGenerator(source, minDiagnostic: DiagnosticSeverity.Error);
+            var mismatch = diagnostics.FirstOrDefault(d => d.Id == DiagnosticDescriptors.VersionHashLockMismatch.Id);
+            Assert.That(mismatch, Is.Not.Null, $"Expected NEXNET019 diagnostic on iteration {i}");
+
+            var match = Regex.Match(mismatch!.GetMessage(), @"HashLock of '(-?\d+)'");
+            Assert.That(match.Success, Is.True, $"Could not extract hash from diagnostic message: {mismatch.GetMessage()}");
+            hashes.Add(match.Groups[1].Value);
+        }
+
+        Assert.That(hashes.Distinct().Count(), Is.EqualTo(1),
+            $"Hash values were not deterministic across runs: {string.Join(", ", hashes)}");
+        Assert.That(hashes[0], Is.Not.EqualTo("0"),
+            "Extracted hash should not be zero");
+    }
+
     /*
     [Test]
     public void WarnsOnNoLockSet()
