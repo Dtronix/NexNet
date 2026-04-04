@@ -432,7 +432,9 @@ internal sealed class TypeHasher
         {
             if (member is IFieldSymbol { ConstantValue: not null } field)
             {
-                fields[idx++] = (field.Name, field.Name.GetHashCode(), Convert.ToInt64(field.ConstantValue));
+                var nameHasher = new IncrementalHasher();
+                nameHasher.AddString(field.Name);
+                fields[idx++] = (field.Name, nameHasher.ToHashCode(), Convert.ToInt64(field.ConstantValue));
             }
         }
 
