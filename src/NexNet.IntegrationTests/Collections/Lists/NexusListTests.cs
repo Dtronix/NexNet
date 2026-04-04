@@ -825,4 +825,35 @@ internal class NexusListTests : NexusCollectionBaseTests
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.RemoveAtAsync(-1).Timeout(1));
     }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task ClientEnableAfterServerAdds_NoDuplicateItems(Type type)
+    {
+        var (server, client, _) = await ConnectServerAndClient(type);
+        var serverNexus = server.NexusCreatedQueue.First();
+
+        // Add items on server BEFORE client enables collection sync.
+        // This creates a window where broadcast messages for these adds
+        // could overlap with the reset snapshot sent during EnableAsync.
+        await serverNexus.IntListBi.AddAsync(1).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(2).Timeout(1);
+        await serverNexus.IntListBi.AddAsync(3).Timeout(1);
+
+        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+
+        // Perform a move to verify the client state has no duplicates.
+        await client.Proxy.IntListBi.MoveAsync(0, 2).Timeout(1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(3));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(serverNexus.IntListBi));
+            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 3, 1]));
+        });
+    }
 }
