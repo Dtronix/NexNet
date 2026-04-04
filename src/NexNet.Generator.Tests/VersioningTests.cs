@@ -78,7 +78,7 @@ partial class DataObject {
     public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=1729262913)]
+[NexusVersion(Version = "v2", HashLock=-866266143)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2);
@@ -109,12 +109,12 @@ internal partial class Message2 {
     [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -823364119)]
+[NexusVersion(Version = "v1", HashLock = -1823135581)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(Message data);
 }
-[NexusVersion(Version = "v1", HashLock = -911867615)]
+[NexusVersion(Version = "v1", HashLock = -1716870845)]
 partial interface IServerNexus2 {
     [NexusMethod(100)]
     void Update(Message2 data);
@@ -198,7 +198,7 @@ internal partial class ValueObjects {
     [MemoryPackOrder(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = 49619989)]
+[NexusVersion(Version = "v1", HashLock = -429959377)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(ValueTuple<Message> data);

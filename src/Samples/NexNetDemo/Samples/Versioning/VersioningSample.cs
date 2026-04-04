@@ -6,7 +6,7 @@ namespace NexNetDemo.Samples.Versioning;
 
 
 // V1 Server Interface - Initial version with one method
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+[NexusVersion(Version = "v1.0", HashLock = -273416360)]
 public interface IVersioningNexusServerV1
 {
     [NexusMethod(1)]
@@ -24,7 +24,7 @@ public partial class NexusServerV1
 }
 
 // V2 Server Interface - Inherits from V1 and adds new method
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+[NexusVersion(Version = "v2.0", HashLock = 1950812484)]
 public interface IVersioningNexusServerV2 : IVersioningNexusServerV1
 {
     [NexusMethod(2)]
