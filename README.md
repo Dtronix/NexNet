@@ -1,116 +1,112 @@
-﻿# <img src="./docs/images/logo-256.png" width="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)
+# <img src="./docs/images/logo-128.png" height="48"> NexNet [![Action Workflow](https://github.com/Dtronix/NexNet/actions/workflows/dotnet.yml/badge.svg)](https://github.com/Dtronix/NexNet/actions)
 
-NexNet is a .NET real-time asynchronous networking library, providing developers with the capability to seamlessly incorporate server and client bidirectional, multiplexing, and event-driven functionality into applications. This framework streamlines the transmission of data bidirectionally between servers and clients with resilient connections.
+Real-time bidirectional networking for .NET. Source-generated hubs and proxies with zero reflection, multiple transports, and full AOT compatibility.
+
+**[Documentation](https://dtronix.github.io/NexNet/)** | **[API Reference](https://dtronix.github.io/NexNet/api/)**
+
+---
+
+## Packages
+
+| Name | NuGet | Description |
+|------|-------|-------------|
+| [`NexNet`](https://www.nuget.org/packages/NexNet) | [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet) | Core library for server and client communication. |
+| [`NexNet.Generator`](https://www.nuget.org/packages/NexNet.Generator) | [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) | Source generator for hubs and proxies. |
+| [`NexNet.Quic`](https://www.nuget.org/packages/NexNet.Quic) | [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic) | QUIC transport support. |
+| [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) | [![NexNet.Asp](https://img.shields.io/nuget/v/NexNet.Asp.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Asp) | ASP.NET Core integration for WebSocket and HttpSocket transports. |
+
+---
+
+## Why NexNet
+
+NexNet is a networking framework for .NET that handles bidirectional communication between servers and clients. A Roslyn source generator emits all hub and proxy code at compile time — there is no reflection, no runtime code generation, and the result is fully NativeAOT compatible.
+
+Interfaces define the contract between server and client. The generator produces strongly-typed proxies, invocation dispatchers, and serialization code. At runtime, connecting and invoking methods is straightforward: start a server, connect a client, and call methods through the proxy. NexNet handles reconnection, multiplexing, and transport abstraction.
+
+Beyond RPC, NexNet provides synchronized collections that keep data in sync across server and clients, duplex pipes for raw byte streaming, typed channels for structured data streaming, and a declarative authorization system — all source-generated with the same zero-reflection approach.
+
+---
+
+## Comparison
+
+| Capability | NexNet | SignalR | gRPC |
+|---|---|---|---|
+| Source generated (no reflection) | Yes | No | Yes (protobuf) |
+| Bidirectional RPC | Yes | Yes (hub methods) | Yes (streams) |
+| Transport options | 6 (UDS, TCP, TLS, QUIC, WS, HttpSocket) | 3 (WS, SSE, Long Polling) | 1 (HTTP/2) |
+| Synchronized collections | Yes | No | No |
+| Duplex byte streaming | Yes (pipes + channels) | Yes (streams) | Yes (streams) |
+| Auto reconnection | Yes | Yes | No |
+| Built-in rate limiting | Yes | No | No |
+| NativeAOT compatible | Yes | No | Partial |
+| Session groups | Yes | Yes | No |
+| Interface versioning | Yes (hash-locked) | No | Yes (protobuf) |
+| ASP.NET integration | Yes | Native | Native |
+
+---
 
 ## Features
-- Automatic reconnection upon timeout or socket losing connection.
-- High performance Socket and Pipeline usage.
-- Multiple transports and easy extensibility.
-- Connection rate limiting and DoS protection.
-- Declarative method and collection authorization with `[NexusAuthorize<TPermission>]`.
-- Strong Typed Hubs & Clients.
-- Server <-> Client communication
-  - Synchronized collections (INexusList)
-  - Collection relay mode for server-to-server data distribution
-  - Cancellable Invocations
-  - Streaming byte data via `INexusDuplexPipe` with built-in congestion control.
-  - Streaming classes/structs data via `NexusChannel<T>` and simplified reading with IAsyncEnumerable
-  - Multiplexing method invocations
-  - Proxies can return:
-    - void for "fire and forget" invocation situations such as notifications.
-    - ValueTask for waiting for invocation completion.
-    - ValueTask<T> which will return a value from the remote invocation method.
-- Server can message multiple connected clients with a single invocation.
-- Automatic reconnection of clients upon timeout or loss of connection.
-- Thorough use of ValueTasks in hot paths for reduced invocation overhead.
-- Ping system to detect timeouts from client and server side.
-- No reflection. All hubs and proxies are Source Generated by the NexNet.Generator project.  This allows for fast execution and easier tracing of bugs.
-- Full asynchronous TPL usage throughout socket reading/writing, processing and execution of invocations and their return values.
-- Minimal external package requirements.
-- Optional server integration with ASP.NET Core, which enables features such as authentication, proxying, and running multiple Nexus servers on the same application.  
 
-## Installation
-Installation through NuGet is the most common method of installation.  See below for the NuGet packages.
+- **[Source-generated hubs and proxies](https://dtronix.github.io/NexNet/articles/getting-started.html)** — all invocation code emitted at compile time; no reflection
+- **[Bidirectional method invocation](https://dtronix.github.io/NexNet/articles/hub-invocations.html)** — server-to-client and client-to-server calls with void, ValueTask, and ValueTask&lt;T&gt; returns
+- **[Synchronized collections](https://dtronix.github.io/NexNet/articles/synchronized-collections.html)** — INexusList with server-to-client, bidirectional, and relay modes
+- **[Duplex pipes](https://dtronix.github.io/NexNet/articles/duplex-pipes.html)** — bidirectional byte streaming with built-in congestion control
+- **[Typed channels](https://dtronix.github.io/NexNet/articles/channels.html)** — INexusDuplexChannel&lt;T&gt; and INexusDuplexUnmanagedChannel&lt;T&gt; with IAsyncEnumerable support
+- **[Session management](https://dtronix.github.io/NexNet/articles/sessions-and-lifetimes.html)** — per-session hub instances, named groups for targeted broadcasting, automatic reconnection
+- **[Authentication](https://dtronix.github.io/NexNet/articles/authentication.html)** — token-based connection authentication with IIdentity
+- **[Authorization](https://dtronix.github.io/NexNet/articles/authorization.html)** — declarative `[NexusAuthorize<TPermission>]` with caching and compile-time diagnostics
+- **[Interface versioning](https://dtronix.github.io/NexNet/articles/versioning.html)** — version hierarchy with HashLock validation and runtime enforcement
+- **[Six transports](https://dtronix.github.io/NexNet/articles/transports.html)** — UDS, TCP, TLS, QUIC, WebSocket, HttpSocket
+- **[ASP.NET Core integration](https://dtronix.github.io/NexNet/articles/asp-net-integration.html)** — middleware with DI, authentication, and reverse proxy support
+- **[Rate limiting](https://dtronix.github.io/NexNet/articles/rate-limiting.html)** — per-IP limits, sliding windows, and automatic banning
+- **[Benchmarks](https://dtronix.github.io/NexNet/articles/benchmarks.html)** — ~27,000 invocations/sec with minimal allocations
 
-| Name                                                                  | NuGet                                                                                                                                 | Description                                                                   |
-|-----------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------|
-| [`NexNet`](https://www.nuget.org/packages/NexNet)                     | [![NexNet](https://img.shields.io/nuget/v/NexNet.svg?maxAge=60)](https://www.nuget.org/packages/NexNet)                               | Core project required for all Client and Server interactions.                 |
-| [`NexNet.Generator`](https://www.nuget.org/packages/NexNet.Generator) | [![NexNet.Generator](https://img.shields.io/nuget/v/NexNet.Generator.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Generator) | Source Code Generator for Client and Servers.                                 |
-| [`NexNet.Quic`](https://www.nuget.org/packages/NexNet.Quic)           | [![NexNet.Quic](https://img.shields.io/nuget/v/NexNet.Quic.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Quic)                | Adds QUIC client and servers to NexNet.  See below for requirements.          |
-| [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp)             | [![NexNet.Asp](https://img.shields.io/nuget/v/NexNet.Asp.svg?maxAge=60)](https://www.nuget.org/packages/NexNet.Asp)                   | Adds integration into ASP.NET for server WebSocket and HttpSocket transports. |
+---
 
-Add the `NexNex.Generator` package to the `Client` and `Server` projects and the `NexNex` package to the `Shared` project.  Once complete, reference the `Shared` project in the `Client` and `Server` project.
-Adding packages to your existing project can be done through the `dotnet add package NexNet` command.
-The `NexNet.Generator` is a Source Code Generator which will take the provided interfaces and create the required invocation system.  This is the system that allows for the elimination of reflection in the `Client` and `Server` projects and also allows for the final generated classes to be AOT friendly.
-The code below will need to be used to reference the `NexNet.Generator` in your `.csproj`.  It will normally be created automatically when you add the NuGet package.
-```xml
-<PackageReference Include="NexNet.Generator" Version="*-*">
-  <PrivateAssets>all</PrivateAssets>
-  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-</PackageReference>
-```
+## Quick Start
 
-## Setup
-Common client and server interfaces should reside in a separate `Shared` project, referenceable by other projects.
-
-## Usage
-
-#### Base classes
 ```csharp
-interface IInvocationSampleClientNexus
+// Shared interfaces
+public interface IClientNexus
 {
     ValueTask<string> GetUserName();
 }
-
-interface IInvocationSampleServerNexus
+public interface IServerNexus
 {
-    void UpdateInfo(int userId, int status, string? customStatus);
-    ValueTask UpdateInfoAndWait(int userId, int status, string? customStatus);
     ValueTask<int> GetStatus(int userId);
 }
 
-
-[Nexus<IInvocationSampleClientNexus, IInvocationSampleServerNexus>(NexusType = NexusType.Client)]
-partial class InvocationSampleClientNexus
+// Client nexus
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus
 {
     public ValueTask<string> GetUserName()
-    {
-        return new ValueTask<string>("Bill");
-    }
+        => new("Bill");
 }
 
-[Nexus<IInvocationSampleServerNexus, IInvocationSampleClientNexus>(NexusType = NexusType.Server)]
-partial class InvocationSampleServerNexus
+// Server nexus
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus
 {
-    public void UpdateInfo(int userId, int status, string? customStatus)
-    {
-        // Do something with the data.
-    }
-
-    public ValueTask UpdateInfoAndWait(int userId, int status, string? customStatus)
-    {
-        // Do something with the data.
-        return default;
-    }
-
     public ValueTask<int> GetStatus(int userId)
-    {
-        return new ValueTask<int>(1);
-    }
+        => new(1);
 }
 
-```
-#### Client and Server Usage
-```csharp
-var client = InvocationSampleClientNexus.CreateClient(ClientConfig, new InvocationSampleClientNexus());
-var server = InvocationSampleServerNexus.CreateServer(ServerConfig, () => new InvocationSampleServerNexus());
+// Usage
+var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
+var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
 
 await server.StartAsync();
 await client.ConnectAsync();
-
-await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
+var status = await client.Proxy.GetStatus(42);
 ```
+
+The generator emits all hub and proxy classes at compile time. See [Getting Started](https://dtronix.github.io/NexNet/articles/getting-started.html) for the full walkthrough.
+
+---
+
 ## Benchmarks
+
 ```
 BenchmarkDotNet v0.15.8, Windows 11 (10.0.26100.7462/24H2/2024Update/HudsonValley)
 Intel Core i7-10700 CPU 2.90GHz, 1 CPU, 16 logical and 8 physical cores
@@ -121,751 +117,40 @@ Intel Core i7-10700 CPU 2.90GHz, 1 CPU, 16 logical and 8 physical cores
 Platform=X64  Runtime=.NET 9.0
 ```
 
-| Method                               | Mean    | Error   | StdDev  | Op/s     | Allocated |
-|------------------------------------- |--------:|--------:|--------:|---------:|----------:|
-| InvocationNoArgument                 | 36.7 us | 0.33 us | 0.31 us | 27,241.7 |     595 B |
-| InvocationUnmanagedArgument          | 37.4 us | 0.52 us | 0.48 us | 26,769.8 |     649 B |
-| InvocationUnmanagedMultipleArguments | 37.3 us | 0.28 us | 0.25 us | 26,800.8 |     700 B |
-| InvocationNoArgumentWithResult       | 36.9 us | 0.35 us | 0.32 us | 27,095.2 |     633 B |
-| InvocationWithDuplexPipe_Upload      | 51.8 us | 0.60 us | 0.51 us | 19,295.4 |   14951 B |
-
-## Method Invocation Table
-Some methods are handled differently based upon the arguments passed and there are limitations placed upon the types of arguments which can be used together.  Most of these incompatibilities handled with Diagnostic Errors provided by the `NexNet.Generator`.  Below is a table which shows valid combinations of arguments and return values.
-
-|                    | CancellationToken | INexusDuplexPipe | INexusChannel<T> | Args |
-|--------------------|-------------------|------------------|------------------|------|
-| void               |                   |                  |                  | X    |
-| ValueTask          | X                 |                  |                  | X    |
-| ValueTask          |                   | X                | X                | X    |
-| ValueTask&lt;T&gt; | X                 |                  |                  | X    |
-
-Notes:
-- `CancellationToken`s can't be combined with `NexusDuplexPipe` nor `INexusChannel<T>` due to pipes/channels having built-in cancellation/completion notifications.
-- `CancellationToken` must be at the end of the argument list like standard conventions.
-
-## Synchronized Collection Usage
-Synchronized collections exist on the server nexus and are accessed through the server proxy on the client. Collections must be decorated with `NexusCollectionAttribute`, otherwise the server nexus will throw. Synchronized collections are only allowed on the server nexus. Collections can be configured as `ServerToClient`, `BiDirectional`, or `Relay`.
-
-| Mode | Description |
-|------|-------------|
-| `ServerToClient` | One-way sync from server to clients. Clients receive updates but cannot modify. |
-| `BiDirectional` | Two-way sync. Changes from server or any client propagate to all participants. |
-| `Relay` | Read-only collection that receives from a parent and broadcasts to its own clients. |
-
-`INexusList<T>` offers a list-like API with mutations routed to the server. Methods like `AddAsync`, `InsertAsync`, `RemoveAsync`, `RemoveAtAsync`, `ClearAsync`, `MoveAsync`, and `ReplaceAsync` return `Task<bool>`, where the result indicates acceptance or rejection by the server.
-
-``` cs
-public partial interface IClientNexus { }
-public partial interface IServerNexus
-{
-    [NexusCollection(NexusCollectionMode.BiDirectional)]
-    INexusList<int> IntList { get; }
-}
-
-[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
-public partial class ClientNexus { }
-
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-public partial class ServerNexus { }
-```
-
-### Collection Relay Mode
-
-Relay collections enable hierarchical data distribution across multiple servers. A relay server connects to a parent collection (on a master server) and broadcasts changes to its own connected clients. This is useful for scaling read-heavy workloads or distributing data across geographic regions.
-
-```
-┌─────────────────┐
-│  Master Server  │
-│  (Source Data)  │
-└────────┬────────┘
-         │ Collection updates
-         ▼
-┌─────────────────┐
-│  Relay Server   │◄──── Clients connect here
-│  (Read-only)    │
-└────────┬────────┘
-         │ Broadcasts to
-         ▼
-┌─────────────────┐
-│     Clients     │
-└─────────────────┘
-```
-
-### Defining a Relay Collection
-
-``` cs
-// Shared interfaces
-public interface IClientNexus { }
-
-public interface IMasterServerNexus
-{
-    [NexusCollection(NexusCollectionMode.ServerToClient)]
-    INexusList<GameState> GameStates { get; }
-}
-
-public interface IRelayServerNexus
-{
-    [NexusCollection(NexusCollectionMode.Relay)]
-    INexusList<GameState> GameStates { get; }
-}
-```
-
-### Configuring the Relay Server
-
-The relay server uses a `NexusClientPool` to maintain connection to the master server:
-
-``` cs
-// Configuration for connecting to master server
-var masterClientConfig = new TcpClientConfig
-{
-    EndPoint = new IPEndPoint(IPAddress.Parse("10.0.0.1"), 5000)
-};
-
-var poolConfig = new NexusClientPoolConfig(masterClientConfig);
-var masterPool = new NexusClientPool<MasterClientNexus, MasterClientNexus.ServerProxy>(poolConfig);
-
-// Create relay server with collection configuration
-var relayServerConfig = new TcpServerConfig
-{
-    EndPoint = new IPEndPoint(IPAddress.Any, 5001)
-};
-
-var relayServer = RelayServerNexus.CreateServer(
-    relayServerConfig,
-    () => new RelayServerNexus(),
-    configurer =>
-    {
-        // Configure the relay to connect to the master's collection
-        var connector = masterPool.GetCollectionConnector(proxy => proxy.GameStates);
-        configurer.Context.Collections.GameStates.ConfigureRelay(connector);
-    }
-);
-
-await relayServer.StartAsync();
-```
-
-### Client Connection to Relay
-
-Clients connect to the relay server exactly as they would to a master server:
-
-``` cs
-var client = ClientNexus.CreateClient(relayClientConfig, new ClientNexus());
-await client.ConnectAsync();
-
-// Connect to the collection - data comes from the relay
-await client.Proxy.GameStates.ConnectAsync();
-
-// Read data (synchronized from master via relay)
-foreach (var state in client.Proxy.GameStates)
-{
-    Console.WriteLine($"Game: {state.Name}");
-}
-```
-
-### Relay Characteristics
-
-- **Read-only**: Relay collections reject all client modification attempts
-- **Auto-reconnect**: Automatically reconnects to the parent collection if disconnected
-- **State synchronization**: Maintains full state sync with parent, including initial snapshot and incremental updates
-- **Event propagation**: `Changed` events fire for both local subscribers and connected clients
-
-### Monitoring Relay State
-
-``` cs
-// On the relay server
-var relay = relayServer.Collections.GameStates;
-
-// Wait for connection to master
-await relay.ReadyTask;
-Console.WriteLine("Relay connected to master");
-
-// Monitor disconnection
-relay.DisconnectedTask.ContinueWith(_ =>
-    Console.WriteLine("Lost connection to master, reconnecting...")
-);
-```
-
-#### Client Connection and Lifecycle
-Collections support explicit lifecycle management through `EnableAsync()` and `DisableAsync()`, with tasks for monitoring state changes.
-
-``` cs
-var server = ServerNexus.CreateServer(serverConfig, () => new ServerNexus());
-await server.StartAsync();
-
-var client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
-await client.ConnectAsync();
-
-var list = client.Proxy.IntList;
-
-// Subscribe to change events before enabling
-list.Changed.Subscribe(args =>
-{
-    Console.WriteLine($"Collection changed: {args.ChangedAction}");
-});
-
-// Enable the collection connection (starts duplex pipe internally)
-var enabled = await list.EnableAsync();
-
-// Wait for initial sync to complete
-await list.ReadyTask;
-
-// Perform operations
-await list.AddAsync(12345);
-await list.InsertAsync(0, 99999);
-Console.WriteLine($"Count: {list.Count}, First: {list[0]}");
-
-// Monitor disconnection
-_ = list.DisabledTask.ContinueWith(_ => Console.WriteLine("Collection disconnected"));
-
-// Disable when done
-await list.DisableAsync();
-```
-
-The convenience method `ConnectAsync()` combines `EnableAsync()` and waiting for `ReadyTask`:
-``` cs
-// Equivalent to: await EnableAsync(); await ReadyTask;
-await client.Proxy.IntList.ConnectAsync();
-```
-
-#### Collection States
-Collections expose a `State` property of type `NexusCollectionState`:
-- `Disconnected` - Not connected to the server
-- `Connecting` - Connection in progress
-- `Connected` - Connected and synchronized
-
-## Duplex Pipe Usage
-NexNet has a limitation where the total serialized argument's bytes passed can't exceed 65,535 bytes. To address this, NexNet comes with built-in handling for duplex pipes via the `NexusDuplexPipe` argument, allowing you to both send and receive byte arrays. This is especially handy for continuous data streaming or when dealing with large data, like files.  If you need to send larger data, you should use the `NexusDuplexPipe` arguments to handle the transmission.
-
-As with System.IO.Pipelines, the `INexusDuplexPipe` is not thread safe.  You are responsible for ensuring member calls to not overlap.
-
-## Channels
-Building upon the Duplex Pipes infrastructure, NexNet provides two channel structures to allow transmission/streaming of data structures via the `INexusDuplexChannel<T>` and `INexusDuplexUnmanagedChannel<T>` interfaces.
-
-Several extension methods have been provided to allow for ease of reading and writing of entire collections (e.g. selected table rows).
-- `NexusChannelExtensions.WriteAndComplete<T>(...)`: Writing a collection to either a `INexusDuplexChannel<T>` or `INexusChannelWriter<T>` with optional batch sizes for optimized sending.
-- `NexusChannelExtensions.ReadUntilComplete<T>(...)`: Reads from either a `INexusDuplexChannel<T>` or a `INexusChannelReader<T>` with an optional initial collection size to reduce collection resizing.
-
-#### INexusDuplexChannel<T>
-The `INexusDuplexChannel<T>` interface provides data transmission for all types which can be serialized by [MemoryPack](https://github.com/Cysharp/MemoryPack#built-in-supported-types).  This is the interface tuned for general usage and varying sized payloads.  If you have an [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types) to send, make sure to use the  `INexusDuplexUnmanagedChannel<T>` interface instead as it is fine-tuned for performance of those simple types
-
-Unlike the `INexusDuplexPipe`, the `INexusDuplexChannel<T>` is thread safe for writing.  Reading should be done on a single thread.
-
-Acquisition is handled through the `INexusClient.CreateChannel<T>` or `SessionContext<T>.CreateChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
-
-#### INexusDuplexUnmanagedChannel<T> (Unmanaged Types)
-The `INexusDuplexUnmanagedChannel<T>` interface provides data transmission for [unmanaged types](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/builtin-types/unmanaged-types).  This is good for mainly simple types and structs.  This interface should always be used over the `INexusDuplexChannel<T>` if the type is an unmanaged type as it is fine-tuned for performance.
-
-Acquisition is handled through the `INexusClient.CreateUnmanagedChannel<T>` or `SessionContext<T>.CreateUnmanagedChannel<T>` methods.  If an instance is created, it should be disposed to release held resources.
-
-#### IAsyncEnumerable Usage
-
-The preferred method of reading channels is using the IAsyncEnumerable on the provided INexusChannelReader.  This allows for the most efficient buffering of data while reading and simplifies channel closure, whether graceful or not.
-```csharp
-var writer = await pipe.GetUnmanagedChannelWriter<int>();
-await foreach (var msg in await pipe.GetChannelReader<ComplexMessage>())
-{
-    // Do something with the message.
-}
-```
-
-## Lifetimes
-New hub instances are created for each session that connects to the hub. The hub manages the communication between the client and the server and remains active for the duration of the session. Once the session ends, either due to client disconnection, error or session timeout, the hub instance is automatically disposed of by NexNet.
-
-Hubs can be created and disposed temporarily by methods such as NexusServer<>.ContextProvider.  This means no calculations or work should be performed inside the constructor.
-
-Each session is assigned a unique hub instance, ensuring that data is not shared between different sessions. This design guarantees that each session is independently handled, providing a secure and efficient communication mechanism between the client and server.
-
-### Session Groups
-Sessions can be added to named groups for targeted broadcasting. Group membership is managed through the `Context.Groups` API within server nexus methods:
-
-```csharp
-// Add session to groups
-await Context.Groups.AddAsync("room-123");
-await Context.Groups.AddAsync(["lobby", "players"]);
-
-// Remove from group
-await Context.Groups.RemoveAsync("room-123");
-
-// Get all group names
-var groups = await Context.Groups.GetNamesAsync();
-
-// Broadcast to group members
-await Context.Clients.Group("room-123").SendMessage("Hello room!");
-await Context.Clients.Groups(["lobby", "players"]).SendMessage("Hello all!");
-```
-
-Groups are automatically cleaned up when sessions disconnect.
-
-## Versioning
-
-Nexus servers can optionally have versioning built into their interface definitions.  To enable versioning, use the `NexusVersionAttribute` to decorate the interfaces that compose the base NexusServer interface.  Inheriting from a lower version interface to a higher interface allows NexNet to build a hierarchy of version interfaces.  Any of the versioned interfaces can be built into a dedicated server, but normally you will inheit the latest interface version.  This allows a client which has a lower server interface version to connect to a server with running with a newer version.
-
-Clients can't be versioned and is a server only feature.  The versioning system now prevents unauthorized method invocations by validating method IDs against the client's declared version capabilities.
-
-All invoked methods are validated against the connected client's server interface.  If a client tries to invoke a method that is not part of the client's specified server interface, the client will be disconnected.
-
-When versioning, NexNet comes with some caveats:
-1. All interfaces must have a version string which must be used during connection.
-2. All Methods and NexusCollections must have `NexusMethodAttribute` set with a unique method ID (e.g., `[NexusMethod(1)]`).
-3. Method and NexusCollections must not be changed in the interface after setting a version.
-
-While not required, it is highly suggested that you utilize the `HashLock` argument of the `NexusVersionAttribute`.  The purpose of it is to ensure that once your interface API is ready for shipping, it can not be changed without notice.  Once a `HashLock` is set, if any of the arguments, MemoryPack members (including union changes), return values, or method types are changed, then the analyzer will set a compile error.
-
-It is suggested that during development, that the `HashLock` property not be set  This will ensure that you can modify the interface without having to keep the HashLock in sync.
-
-### Versioning Security Features
-- Runtime validation of method invocations against client version capabilities
-- Servers maintain `VersionMethodHashSet` for valid method+version combinations
-- Unauthorized method access results in immediate disconnection with `ProtocolError`
-- Connection establishment includes invocation hash verification for compatibility
-- Method IDs combined with version hashes create unique identifiers for each version+method combination
-- Source generator creates optimized lookup tables for minimal performance overhead
-
-### Versioning Sample
-
-See below for a sample with two server interface versions, and two clients which implement V1.0 and V2.0 of the server interfaces.  This configuration allows the V1 and V2 clients to connect to the same server while only restricting which methods can be invoked due to the interface they implement.
-
-```csharp
-// V1 Server Interface - Initial version with one method
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
-public interface IVersioningNexusServerV1
-{
-    [NexusMethod(1)]
-    ValueTask<bool> GetStatus();
-}
-
-// V1 Server Implementation
-[Nexus<IVersioningNexusServerV1, IVersioningNexusClient>(NexusType = NexusType.Server)]
-public partial class NexusServerV1
-{
-    public ValueTask<bool> GetStatus()
-    {
-        return ValueTask.FromResult(true);
-    }
-}
-
-// V2 Server Interface - Inherits from V1 and adds new method
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
-public interface IVersioningNexusServerV2 : IVersioningNexusServerV1
-{
-    [NexusMethod(2)]
-    ValueTask<string> GetServerInfo();
-}
-
-// V2 Server Implementation
-[Nexus<IVersioningNexusServerV2, IVersioningNexusClient>(NexusType = NexusType.Server)]
-public partial class VersioningNexusServerV2
-{
-    // Implements V1 method
-    public ValueTask<bool> GetStatus()
-    {
-        return ValueTask.FromResult(true);
-    }
-
-    // New V2 method
-    public ValueTask<string> GetServerInfo()
-    {
-        return ValueTask.FromResult("Server v2.0");
-    }
-}
-
-// Client interface (same for both versions)
-public interface IVersioningNexusClient
-{
-    ValueTask OnServerMessage(string message);
-}
-
-// V1 Client (can only connect to servers supporting V1)
-[Nexus<IVersioningNexusClient, IVersioningNexusServerV1>(NexusType = NexusType.Client)]
-public partial class VersioningNexusClientV1
-{
-    public ValueTask OnServerMessage(string message)
-    {
-        Console.WriteLine($"Received: {message}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-// V2 Client (can connect to servers supporting V2)
-[Nexus<IVersioningNexusClient, IVersioningNexusServerV2>(NexusType = NexusType.Client)]
-public partial class VersioningNexusClientV2
-{
-    public ValueTask OnServerMessage(string message)
-    {
-        Console.WriteLine($"Received: {message}");
-        return ValueTask.CompletedTask;
-    }
-}
-
-public class VersioningSample : INexusSample
-{
-    public async Task Run()
-    {
-        var serverConfig = new TcpServerConfig
-        {
-            EndPoint = new IPEndPoint(IPAddress.Loopback, 1234)
-        };
-        
-        // Server supporting both V1 and V2 clients
-        var server = VersioningNexusServerV2.CreateServer(serverConfig, () => new VersioningNexusServerV2());
-        await server.StartAsync();
-
-        // V1 Client connecting to server
-        var clientConfig = new TcpClientConfig()
-        {
-            EndPoint = new IPEndPoint(IPAddress.Loopback, 1234)
-        };
-        
-        var clientV1 = VersioningNexusClientV1.CreateClient(clientConfig, new VersioningNexusClientV1());
-        var result = await clientV1.TryConnectAsync();
-
-        if (result.Success)
-        {
-            // Can call V1 methods
-            Console.WriteLine(await clientV1.Proxy.GetStatus());
-            // Cannot call V2 methods
-        }
-
-        // V2 Client connecting to server
-        var clientV2 = VersioningNexusClientV2.CreateClient(clientConfig, new VersioningNexusClientV2());
-        var result2 = await clientV2.TryConnectAsync();
-
-        if (result2.Success)
-        {
-            // Can call both V1 and V2 methods
-            Console.WriteLine(await clientV2.Proxy.GetStatus());
-            Console.WriteLine(await clientV2.Proxy.GetServerInfo());
-        }
-    }
-}
-```
-
-## Security
-
-### Authentication Configuration
-
-**Important:** Authentication is disabled by default for backward compatibility. For production deployments, you should explicitly configure authentication:
-
-```csharp
-var serverConfig = new TcpServerConfig
-{
-    EndPoint = new IPEndPoint(IPAddress.Any, 5000),
-    Authenticate = true  // Enable authentication
-};
-```
-
-When `Authenticate` is set to `true`, implement the `OnAuthenticate` method in your server nexus to validate client credentials:
-
-```csharp
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-public partial class ServerNexus
-{
-    protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> authToken)
-    {
-        // Validate the authentication token
-        // Return an IIdentity on success, null on failure
-        if (ValidateToken(authToken))
-            return new ValueTask<IIdentity?>(new UserIdentity("username"));
-
-        return new ValueTask<IIdentity?>((IIdentity?)null);
-    }
-}
-```
-
-On the client side, provide the authentication token via the config:
-
-```csharp
-var clientConfig = new TcpClientConfig
-{
-    EndPoint = new IPEndPoint(IPAddress.Loopback, 5000),
-    Authenticate = () => Encoding.UTF8.GetBytes("my-auth-token")
-};
-```
-
-### Method Authorization
-
-NexNet provides declarative, source-generator-driven authorization for server nexus methods and synchronized collections. Authorization is enforced server-side before argument deserialization, preventing wasted work for unauthorized calls.
-
-#### Setup
-
-1. Define a permission enum (must use the default `int` backing type):
-
-```csharp
-public enum Permission { Read, Write, Admin }
-```
-
-2. Decorate server nexus methods with `[NexusAuthorize<TPermission>]`:
-
-```csharp
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-public partial class ServerNexus
-{
-    [NexusAuthorize<Permission>(Permission.Admin)]
-    public ValueTask AdminOnly() { ... }
-
-    [NexusAuthorize<Permission>(Permission.Read, Permission.Write)]
-    public ValueTask MultiPermission() { ... }
-
-    [NexusAuthorize<Permission>()]  // Marker-only: requires auth, no specific permission
-    public ValueTask AnyAuthenticated() { ... }
-
-    public ValueTask PublicMethod() { ... }  // No auth check
-}
-```
-
-3. Collections can also be authorized on the interface:
-
-```csharp
-public partial interface IServerNexus
-{
-    [NexusCollection(NexusCollectionMode.ServerToClient)]
-    [NexusAuthorize<Permission>(Permission.Admin)]
-    INexusList<string> SecureItems { get; }
-}
-```
-
-4. Override `OnAuthorize` to implement custom authorization logic:
-
-```csharp
-protected override ValueTask<AuthorizeResult> OnAuthorize(
-    ServerSessionContext<ClientProxy> context,
-    int methodId,
-    string methodName,
-    ReadOnlyMemory<int> requiredPermissions)
-{
-    var identity = context.Identity;
-    // Check permissions against your user/role system
-    // requiredPermissions contains the int-cast enum values from the attribute
-
-    return new ValueTask<AuthorizeResult>(
-        HasPermissions(identity, requiredPermissions)
-            ? AuthorizeResult.Allowed
-            : AuthorizeResult.Unauthorized);
-}
-```
-
-5. Handle unauthorized responses on the client:
-
-```csharp
-try
-{
-    await client.Proxy.AdminOnly();
-}
-catch (ProxyUnauthorizedException)
-{
-    // Server denied the invocation
-}
-```
-
-#### Authorization Results
-
-| Result | Behavior |
-|--------|----------|
-| `Allowed` | Method invocation proceeds normally |
-| `Unauthorized` | Returns error to caller without invoking the method. Collections silently drop the request |
-| `Disconnect` | Immediately disconnects the session. Use for collections or severe violations |
-
-If `OnAuthorize` throws an exception, the session is disconnected as a fail-safe to prevent accidental authorization bypass.
-
-#### Authorization Caching
-
-Authorization results can be cached per-session with configurable TTL to avoid calling `OnAuthorize` on every invocation. Caching is disabled by default.
-
-**Server-wide default:**
-```csharp
-var serverConfig = new TcpServerConfig
-{
-    EndPoint = endpoint,
-    AuthorizationCacheDuration = TimeSpan.FromSeconds(30)  // null = disabled (default)
-};
-```
-
-**Per-method override via attribute:**
-```csharp
-[NexusAuthorize<Permission>(Permission.Read, CacheDurationSeconds = 60)]   // 60s override
-[NexusAuthorize<Permission>(Permission.Admin, CacheDurationSeconds = 0)]   // Never cache
-[NexusAuthorize<Permission>(Permission.Write)]                              // Use server default
-```
-
-| Method Attribute | Server Config | Effective Cache |
-|------------------|---------------|-----------------|
-| Not set (`-1`) | `null` | No caching |
-| Not set (`-1`) | `30s` | 30s |
-| `0` | `30s` | No caching (explicit disable) |
-| `60` | `30s` | 60s (method wins) |
-| `10` | `null` | 10s (method wins) |
-
-Only `Allowed` and `Unauthorized` results are cached. `Disconnect` and exception paths are never cached. The cache is per-session and automatically cleared on reconnection.
-
-**Explicit invalidation** (inside nexus methods):
-```csharp
-InvalidateAuthorizationCache();           // Clear all cached results for this session
-InvalidateAuthorizationCache(methodId);   // Clear a specific method's cached result
-```
-
-#### Compile-Time Diagnostics
-
-The source generator enforces correct usage with compile-time errors:
-
-| ID | Description |
-|----|-------------|
-| NEXNET024 | `[NexusAuthorize]` used on a client nexus (server-only feature) |
-| NEXNET025 | `[NexusAuthorize]` used but `OnAuthorize` is not overridden |
-| NEXNET026 | Mixed permission enum types across `[NexusAuthorize]` attributes in the same nexus |
-| NEXNET027 | Permission enum is not backed by `int` (the default underlying type) |
-
-### Connection Rate Limiting
-
-NexNet provides application-level connection rate limiting to protect servers against DoS attacks.
-
-**Capabilities:**
-- Global concurrent connection limits
-- Per-IP connection limits
-- Sliding window rate limiting
-- Automatic temporary banning of repeat offenders
-- IP whitelisting for trusted infrastructure
-
-```csharp
-var serverConfig = new TcpServerConfig
-{
-    EndPoint = new IPEndPoint(IPAddress.Any, 5000),
-    RateLimiting = new ConnectionRateLimitConfig
-    {
-        MaxConcurrentConnections = 1000,    // Total connections
-        MaxConnectionsPerIp = 10,           // Per-IP limit
-        ConnectionsPerIpPerWindow = 20,     // Rate limit per IP
-        PerIpWindowSeconds = 60,            // Sliding window
-        BanDurationSeconds = 300,           // 5-min ban for offenders
-        BanThreshold = 5                    // Violations before ban
-    }
-};
-```
-
-Rate limiting works across all transport types (TCP, TLS, UDS, WebSocket, HttpSocket, QUIC). Per-IP limits are automatically skipped for Unix Domain Sockets.
-
-## Transports Supported
-- Unix Domain Sockets (UDS)
-- TCP
-- TLS over TCP
-- QUIC (UDP)
-- WebSockets
-- HttpSockets (Custom HTTP Negotiation)
-
-Unix Domain Sockets (UDS)
-Unix Domain Sockets offer the highest efficiency for inter-process communication due to minimal overhead. UDS are suitable when processes communicate on the same host, providing optimal performance without network stack overhead.
-
-#### TCP
-TCP supports reliable network and internet communication. It is the fastest transport method following Unix Domain Sockets, offering reliable, ordered packet delivery over IP networks.
-
-#### TLS over TCP
-TLS over TCP enables secure, encrypted communication using SslStream on both server and client ends. While it maintains good performance, it introduces additional overhead due to encapsulation—using a Socket wrapped by a NetworkStream, further wrapped by an SslStream—making it less performant compared to UDS and plain TCP.
-
-#### QUIC (UDP)
-QUIC is a reliable UDP-based protocol guaranteeing packet transmission, order integrity, and resilience against IP and port changes, such as transitions from Wi-Fi to cellular connections. Implementation requires installing the libmsquic library (sudo apt install libmsquic on Ubuntu) and including the NexNet.Quic NuGet package.
-
-#### WebSockets (ASP.NET Core)
-WebSockets enable real-time, bidirectional data exchange between client and server over persistent TCP connections. NexNet utilizes Binary WebSocket streams, which introduce a minor overhead—specifically, 4 bytes per message header/data frame transmitted.
-
-#### HttpSockets (ASP.NET Core - Custom HTTP Negotiation)
-HttpSockets establish a bidirectional, long-lived data stream by upgrading a standard HTTP connection. Similar to WebSockets in connection upgrade methodology, HttpSockets differ by eliminating WebSocket-specific message header overhead. After connection establishment, the stream is directly managed by the NexNet server, minimizing transmission overhead.  The server requires an ASP.NET Core server.
-
-Additional transports can be added wit relative ease as long as the new transport guarantees order and transmission.
+| Method | Mean | Error | StdDev | Op/s | Allocated |
+|--------|-----:|------:|-------:|-----:|----------:|
+| InvocationNoArgument | 36.7 us | 0.33 us | 0.31 us | 27,241.7 | 595 B |
+| InvocationUnmanagedArgument | 37.4 us | 0.52 us | 0.48 us | 26,769.8 | 649 B |
+| InvocationUnmanagedMultipleArguments | 37.3 us | 0.28 us | 0.25 us | 26,800.8 | 700 B |
+| InvocationNoArgumentWithResult | 36.9 us | 0.35 us | 0.32 us | 27,095.2 | 633 B |
+| InvocationWithDuplexPipe_Upload | 51.8 us | 0.60 us | 0.51 us | 19,295.4 | 14,951 B |
+
+---
 
 ## Transport Selection Guide
 
-| Scenario                 | Recommended Transport | Reason                                          |
-|--------------------------|-----------------------|-------------------------------------------------|
-| Same machine IPC         | Unix Domain Sockets   | Highest performance, no network overhead        |
-| Local network            | TCP                   | Simple, reliable, fast                          |
-| Internet/WAN             | TLS over TCP          | Secure, widely supported                        |
-| Mobile/unstable networks | QUIC                  | Connection migration, better congestion control |
-| Web applications         | WebSockets            | Browser compatibility, firewall-friendly        |
-| Reverse proxy setups     | HttpSockets           | Lower overhead than WebSockets                  |
+| Scenario | Recommended Transport | Reason |
+|----------|----------------------|--------|
+| Same machine IPC | Unix Domain Sockets | Highest performance, no network overhead |
+| Local network | TCP | Simple, reliable, fast |
+| Internet/WAN | TLS over TCP | Secure, widely supported |
+| Mobile/unstable networks | QUIC | Connection migration, better congestion control |
+| Web applications | WebSockets | Browser compatibility, firewall-friendly |
+| Reverse proxy setups | HttpSockets | Lower overhead than WebSockets |
 
-Additional information about the wire protocol can be found in the [Transport-Headers](docs/Transport-Headers.md) documentation.
-
-## ASP.NET Server Integration
-
-The NexNet.Transports.Asp package allows direct integration of NexNet servers into ASP.NET Core applications. It integrates into middleware pipelines, simplifying configuration, routing, and dependency injection.
-
-The package supports integration of NexNet server using WebSocket and HttpSocket connections, enabling easy management and proxying via common reverse proxies such as Nginx. This allows for potential improved connection handling, load balancing, and security.
-
-Abstracting the server away from direct connections can have some advantages such as th following:
-- Proxying HTTP connections through reverse proxies provides SSL/TLS termination, reducing cryptographic overhead on application servers.
-- Enables centralized traffic management, simplifying enforcement of security policies (e.g., rate-limiting, IP allowlisting, header validation).
-- Facilitates consistent logging, monitoring, and metrics collection at proxy level, aiding operational visibility and troubleshooting.
-- Provides an additional layer for DDoS mitigation and protection against common web vulnerabilities.
-- Allows for additional authentication with the connection prior to handing the connection to the NexusServer.
-
-### Sample ASP.NET Server
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-// If the connection is proxied setup the header forwards.
-builder.Services.Configure<ForwardedHeadersOptions>(o => o.ForwardedHeaders = ForwardedHeaders.All);
-
-// Optionally add authentication.  Bearer shown for simplicity.
-builder.Services.AddAuthentication().AddBearerToken("BearerTokenScheme", ...);
-builder.Services.AddAuthorization();
-
-// Add the Nexus server to the services.  This allows for DI on the ServerNexus constructor
-builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
-
-var app = builder.Build();
-
-// Eanble the headers and authentication.
-app.UseForwardedHeaders();
-app.UseAuthentication();
-app.UseAuthorization();
-
-// Enable, configure and start the nexus. Use UseWebSocketNexusServerAsync for a WebSocket connection instead.
-await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
-{
-    // Set the connection mapping path.
-    c.Path = "/nexus";
-    
-    // Optionally enable authentication and the scheme to apply.
-    c.AspEnableAuthentication = true;
-    c.AspAuthenticationScheme = "BearerTokenScheme";
-}).StartAsync(app.Lifetime.ApplicationStopped); // Stop the Nexus server upon ASP stopping.
-```
-
-### Sample Client Connecting to ASP.NET Server
-```csharp
-// Use WebSocketClientConfig for a WebSocket connection.
-var config = new HttpSocketClientConfig()
-{
-    Url = new Uri("http://127.0.0.1:9001/nexus"), // The URI will need to change to ws:// or wss:// for a websocket connection
-    AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "SecretTokenValue") // Optional auth header.
-};
-
-// Create the client with the configuration.
-var client = ClientNexus.CreateClient(config, new ClientNexus());
-
-// Await the connection.  Will throw if the optional authentication fails.
-await client.ConnectAsync();
-```
-
-### ASP.NET Proxying Configurations
-A non-exhaustive list of proxy configurations that are known to work with ASP.NET
-#### Nginx
-Below is a simple configuration that will allow for proxy integration with an ASP.NET Core server
-```
-server {
-    server_name example.com;
-    location / {
-        proxy_pass         http://backend;
-        proxy_http_version 1.1;
-        proxy_cache_bypass $http_upgrade;
-        proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection $connection_upgrade;
-        proxy_set_header   Host $host;
-        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header   X-Forwarded-Proto $scheme;
-    }
-```
+---
 
 ## Dependencies
-- [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization. 
-- Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for Pipeline socket transports.
-- Quic protocol requires `libmsquic` on *nix based systems. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
 
+- [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization.
+- Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for pipeline socket transports.
+- QUIC transport requires `libmsquic` on Linux. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
+
+---
+
+## Samples
+
+| Sample | Description |
+|--------|-------------|
+| [`NexNetDemo`](https://github.com/Dtronix/NexNet/tree/master/src/Samples/NexNetDemo) | Console app demonstrating invocations, channels, duplex pipes, collections, and API versioning |
+| [`NexNetSample.Asp`](https://github.com/Dtronix/NexNet/tree/master/src/Samples) | ASP.NET Core server and client with HttpSocket transport, bearer auth, duplex pipes, and collections |

@@ -1,0 +1,9 @@
+- name: Articles
+  href: articles/
+  homepage: articles/getting-started.md
+- name: Internals
+  href: internals/
+  homepage: internals/protocol-specification.md
+- name: API Reference
+  href: api/
+  homepage: api/index.md

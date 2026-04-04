@@ -1,0 +1,5 @@
+/* Constrain logo in the header navbar */
+#logo {
+  height: 32px !important;
+  width: auto !important;
+}
