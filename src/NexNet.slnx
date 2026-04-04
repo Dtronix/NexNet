@@ -8,6 +8,9 @@
     <Project Path="Samples\NexNetSample.Asp.Client\NexNetSample.Asp.Client.csproj" Type="C#" />
     <Project Path="Samples\NexNetSample.Asp.Server\NexNetSample.Asp.Server.csproj" Type="C#" />
     <Project Path="Samples\NexNetSample.Asp.Shared\NexNetSample.Asp.Shared.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Aot.Client\NexNetSample.Aot.Client.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Aot.Server\NexNetSample.Aot.Server.csproj" Type="C#" />
+    <Project Path="Samples\NexNetSample.Aot.Shared\NexNetSample.Aot.Shared.csproj" Type="C#" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
