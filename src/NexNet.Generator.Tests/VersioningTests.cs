@@ -475,6 +475,7 @@ partial class ServerNexus
 """);
         Assert.That(diagnostic.Count(d => d.Id == DiagnosticDescriptors.AllMethodsIdsShallNotBe0ForVersioningNexuses.Id), Is.EqualTo(3));
     }
+
     [Test]
     public void HashLockIsDeterministicAcrossMultipleRuns()
     {
