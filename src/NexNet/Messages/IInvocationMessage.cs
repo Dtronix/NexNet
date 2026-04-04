@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace NexNet.Messages;
@@ -43,5 +44,5 @@ public interface IInvocationMessage
     /// <typeparam name="T">Type to deserialize to.</typeparam>
     /// <returns>Deserialized value</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    T? DeserializeArguments<T>();
+    T? DeserializeArguments<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>();
 }

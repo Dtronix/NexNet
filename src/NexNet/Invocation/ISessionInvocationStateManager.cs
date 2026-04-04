@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
@@ -31,13 +31,13 @@ internal interface ISessionInvocationStateManager
     /// Invokes a method and waits for the result.
     /// </summary>
     /// <param name="methodId">The method ID to invoke.</param>
-    /// <param name="arguments">Optional arguments to pass to the method.</param>
+    /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="session">The session to invoke on.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <returns>The registered invocation state, or null if cancelled.</returns>
     ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
-        ITuple? arguments,
+        Memory<byte> serializedArguments,
         INexusSession session,
         CancellationToken? cancellationToken = null);
 

@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
@@ -71,7 +72,7 @@ internal class PoolManager
     /// Gets the typed message pool for a specific message type.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public MessagePool<T> Pool<T>()
+    public MessagePool<T> Pool<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
         where T : class, IMessageBase, new()
     {
         return Unsafe.As<MessagePool<T>>(_messagePools[((int)T.Type) - MessagePoolOffsetModifier])!;
@@ -88,7 +89,7 @@ internal class PoolManager
     /// <summary>
     /// Rents a message of the specified type.
     /// </summary>
-    public T Rent<T>()
+    public T Rent<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
         where T : class, IMessageBase, new()
     {
         return Pool<T>().Rent();

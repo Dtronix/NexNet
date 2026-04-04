@@ -6,7 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Pipelines;
 using System.Net.Sockets;
-using System.Reflection;
+
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -249,47 +249,16 @@ internal sealed partial class SocketConnection : IMeasuredDuplexPipe, IDisposabl
     /// </summary>
     public readonly struct Counters
     {
-        private static readonly Func<Pipe, long> s_pipeLengthReader;
-        static Counters()
-        {
-            try
-            {
-                // theoretically there's a problem here on x86; I'm... "comfortable enough" with it
-                // not to try to do anything more clever, though - if an x86 client has gone over 2GiB
-                // then they deserve a clap - a slow clap
-                var method = typeof(Pipe).GetProperty("Length",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)?.GetGetMethod(true);
-                if (method is null)
-                {
-                    s_pipeLengthReader = _ => 0L;
-                }
-                else
-                {
-                    s_pipeLengthReader = (Func<Pipe, long>)Delegate.CreateDelegate(typeof(Func<Pipe, long>), method);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex.Message);
-                s_pipeLengthReader = _ => 0L;
-            }
-        }
+        [System.Runtime.CompilerServices.UnsafeAccessor(System.Runtime.CompilerServices.UnsafeAccessorKind.Method, Name = "get_Length")]
+        private static extern long GetLength(Pipe pipe);
 
         /// <summary>
-        /// Get the number of bytes currently held in a pipe instance
+        /// Get the number of bytes currently held in a pipe instance.
         /// </summary>
         public static long GetPipeLength(Pipe pipe)
         {
             if (pipe is null) return 0;
-            try
-            {
-                return s_pipeLengthReader(pipe);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(ex.Message);
-                return 0;
-            }
+            return GetLength(pipe);
         }
 
         /// <summary>
