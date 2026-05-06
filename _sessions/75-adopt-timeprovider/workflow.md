@@ -81,7 +81,7 @@ This was deferred from the `add-nexnet-testing` workflow. Removes the existing `
 12. `SessionInvocationStateManager` — **delete unused `RegisteredInvocationState.Created` field** (it is dead code, not a TimeProvider migration).
 13. Add `Microsoft.Extensions.TimeProvider.Testing` PackageReference to `NexNet.IntegrationTests`. Add new tests exercising auth-cache TTL expiry, reconnection backoff, and ping behavior under `FakeTimeProvider`.
 
-**WIP commit:** This commit on branch `75-adopt-timeprovider`. Latest commit on the branch IS the suspend WIP (no in-progress code changes; only session-doc state).
+**WIP commit:** `8a67fcb` on branch `75-adopt-timeprovider` — `[WIP] DESIGN: capture TimeProvider scope + decisions`. No in-progress code changes; only session-doc state.
 
 **Test status:** Baseline pre-change still valid — 149/149 generator + 2628/2628 integration. No code modified yet.
 
