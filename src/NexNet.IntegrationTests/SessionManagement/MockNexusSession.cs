@@ -119,4 +119,6 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
     {
         // No-op for testing
     }
+
+    public int PendingInvocationCount => 0;
 }

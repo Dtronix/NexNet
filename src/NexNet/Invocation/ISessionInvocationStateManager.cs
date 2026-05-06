@@ -45,4 +45,13 @@ internal interface ISessionInvocationStateManager
     /// Cancels all pending invocations.
     /// </summary>
     void CancelAll();
+
+    /// <summary>
+    /// Gets the count of invocations that have been sent and are still awaiting a result.
+    /// </summary>
+    /// <remarks>
+    /// Reads the live count from the concurrent registry of in-flight invocations.
+    /// Intended for diagnostic / test-harness use (e.g., quiescence tracking); not part of the public surface.
+    /// </remarks>
+    int PendingInvocationCount { get; }
 }
