@@ -9,6 +9,9 @@
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="NexNet.Testing.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

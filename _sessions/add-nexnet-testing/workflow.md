@@ -12,7 +12,7 @@ issue: discussion
 pr:
 session: 3
 phases-total: 13
-phases-complete: 6
+phases-complete: 7
 
 ## Problem Statement
 
@@ -109,3 +109,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 5 complete: `NexNet.Testing` project created with `InProcessTransport` (paired `System.IO.Pipelines.Pipe`s cross-wired), `InProcessTransportListener` (Channel-based pending-connection queue), `InProcessServerConfig`/`InProcessClientConfig`, and a process-local `InProcessRendezvous` keyed on endpoint strings. `NexNet.Testing.Tests` project with 5 focused tests covers bidirectional exchange, ordering across 50 messages, close-completes-peer-reader, no-listener-throws, and duplicate-endpoint-throws. Both new projects added to `NexNet.slnx`. Full solution builds clean. |
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT (suspended) | End-of-session suspend. 5/13 phases done; commits `a4c42b3` (P1), `0f253c9` (P2), `4d05970` (P3), `3235bf1` (P4), `7e1d331` (P5). Working tree clean. Resume next session at Phase 6 (Type.InProcess matrix integration). |
 | 3 | 2026-05-22 IMPLEMENT (resumed) | 2026-05-22 IMPLEMENT | User requested continuation through remaining phases. Resuming at Phase 6. Phase 6 complete: added `Type.InProcess` enum value, `_currentInProcessEndpoint` per-test state, server+client config branches in `BaseTests`; added `[TestCase(Type.InProcess)]` to 8 representative test classes (skipped `ReconnectsNotifiesReconnecting_Hosted` since it depends on ASP host start/stop). 106 new test cases. Full integration: 2742/2742 green. |
+| 3 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 7 complete: recorder primitives in `NexNet.Testing` — `NexusAssertionException` (public), `Arg.Any<T>()`/`Arg.Is<T>(predicate)` (public sentinels), `ArgMatcher` (internal: wildcard/equality/predicate), `InvocationRecord`, `InvocationRecorder` (thread-safe append + snapshot + change-signal), `ExpressionParser` (resolves `Expression<Action<TInterface>>` to MethodInfo + matchers using compiled-lambda fallback for constants and captured locals). `InternalsVisibleTo("NexNet.Testing.Tests")` added. 12 new tests cover the parser branches and recorder semantics; testing suite now 17/17 green. |
