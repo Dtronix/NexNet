@@ -12,7 +12,7 @@ issue: discussion
 pr:
 session: 2
 phases-total: 13
-phases-complete: 1
+phases-complete: 2
 
 ## Problem Statement
 
@@ -90,3 +90,4 @@ _(none — workflow resumed and active. WIP commit `77553c3` will be amended on 
 | 1 | 2026-05-06 DESIGN | 2026-05-06 PLAN | Verified core surfaces against actual source via Explore agent. Recorded 7 design decisions and revised them after verification (transport home moved to `NexNet.Testing`; hooks reduced to two; outer-only interceptor; channels via helpers only; auth dual-mode). Created issue #75 to track deferred TimeProvider work. |
 | 1 | 2026-05-06 PLAN | 2026-05-06 PLAN (suspended) | Drafted `plan.md` with 13 atomic phases, dependencies, file paths, and per-phase tests. User issued handoff before plan approval. Suspended for handoff to next session. |
 | 2 | 2026-05-22 PLAN (resumed) | 2026-05-22 IMPLEMENT | Resumed suspended workflow. Plan approved by user. Phase 1 complete: `PendingInvocationCount` added to `ISessionInvocationStateManager` + concrete + test mock. All 149 generator + 2628 integration tests pass. Amended WIP commit `77553c3` into Phase 1 commit. |
+| 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 2 complete: `IInvocationInterceptor` interface added; `InvocationInterceptor` property added to `ConfigBase` + `NexusSessionConfigurations` struct; copied through construction sites in `NexusServer`/`NexusClient`; wired into `InvocationTask` in `NexusSession.Receiving.cs`. `InternalsVisibleTo` added for `NexNet.Testing` + `NexNet.Testing.Tests`. 3 new interceptor tests pass. Full suite: 149 generator + 2631 integration green (one flaky UDS rate-limit test on first run, passed clean on rerun — unrelated to interceptor path). |

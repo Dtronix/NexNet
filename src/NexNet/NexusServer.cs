@@ -322,7 +322,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             CollectionManager = _collectionManager,
             Logger = _logger,
             RateLimiterAddress = remoteAddress,
-            RateLimiter = _rateLimiter
+            RateLimiter = _rateLimiter,
+            InvocationInterceptor = _config.InvocationInterceptor
         }, cancellationToken);
     }
 
@@ -460,7 +461,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         CollectionManager = _collectionManager,
                         Logger = _logger,
                         RateLimiterAddress = remoteAddress,
-                        RateLimiter = _rateLimiter
+                        RateLimiter = _rateLimiter,
+                        InvocationInterceptor = _config.InvocationInterceptor
                     });
             }
         }

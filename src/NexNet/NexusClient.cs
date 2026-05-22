@@ -149,7 +149,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         var config = new NexusSessionConfigurations<TClientNexus, TServerProxy>()
         {
-            ConnectionState = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting, 
+            ConnectionState = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting,
             Configs = _config,
             Transport = transport,
             Pool = _poolManager,
@@ -160,7 +160,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             ReadyTaskCompletionSource = readyTaskCompletionSource,
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
             CollectionManager = _collectionManager,
-            Logger = _logger
+            Logger = _logger,
+            InvocationInterceptor = _config.InvocationInterceptor
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)

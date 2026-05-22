@@ -42,4 +42,11 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// Rate limiter reference for release on disconnect.
     /// </summary>
     public IConnectionRateLimiter? RateLimiter { get; init; }
+
+    /// <summary>
+    /// Optional invocation interceptor copied from <see cref="ConfigBase.InvocationInterceptor"/>
+    /// at the construction site. Read directly by the session's invocation dispatcher; null in
+    /// production paths.
+    /// </summary>
+    public IInvocationInterceptor? InvocationInterceptor { get; init; }
 }
