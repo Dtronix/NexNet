@@ -147,7 +147,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         // Initialize rate limiter if configured
         if (config.RateLimiting?.IsEnabled == true)
         {
-            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting);
+            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting, config.Time);
         }
     }
 

@@ -1,3 +1,4 @@
+using System;
 using NexNet.RateLimiting;
 using NUnit.Framework;
 
@@ -10,7 +11,7 @@ internal class ConnectionRateLimiterUnitTests
     public void TryAcquire_WithinGlobalLimit_ReturnsAllowed()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 10 };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         var result = limiter.TryAcquire("127.0.0.1");
 
@@ -21,7 +22,7 @@ internal class ConnectionRateLimiterUnitTests
     public void TryAcquire_ExceedsGlobalLimit_ReturnsExceeded()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 2 };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         limiter.TryAcquire("127.0.0.1");
         limiter.TryAcquire("127.0.0.1");
@@ -34,7 +35,7 @@ internal class ConnectionRateLimiterUnitTests
     public void Release_DecrementsCount()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         limiter.TryAcquire("127.0.0.1");
         limiter.Release("127.0.0.1");
@@ -52,7 +53,7 @@ internal class ConnectionRateLimiterUnitTests
             BanThreshold = 2,
             BanDurationSeconds = 60
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
         var ip = "192.168.1.1";
 
         limiter.TryAcquire(ip); // Allowed
@@ -73,7 +74,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConcurrentConnections = 100,
             MaxConnectionsPerIp = 1
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // UDS connections have null or path address
         var result1 = limiter.TryAcquire(null);
@@ -91,7 +92,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConcurrentConnections = 100,
             MaxConnectionsPerIp = 1
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // UDS socket paths are not valid IP addresses
         var result1 = limiter.TryAcquire("/var/run/app.sock");
@@ -106,7 +107,7 @@ internal class ConnectionRateLimiterUnitTests
     public void IPv6Normalization_TreatsEquivalentAddressesAsSame()
     {
         var config = new ConnectionRateLimitConfig { MaxConnectionsPerIp = 1 };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // These are the same IPv6 address in different formats
         limiter.TryAcquire("::1");
@@ -119,7 +120,7 @@ internal class ConnectionRateLimiterUnitTests
     public void GetStats_ReturnsCorrectValues()
     {
         var config = new ConnectionRateLimitConfig { MaxConcurrentConnections = 10 };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         limiter.TryAcquire("192.168.1.1");
         limiter.TryAcquire("192.168.1.2");
@@ -180,7 +181,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConcurrentConnections = 1,
             WhitelistedIps = new HashSet<string> { "10.0.0.1" }
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // Whitelisted IP bypasses all limits
         var result1 = limiter.TryAcquire("10.0.0.1");
@@ -202,7 +203,7 @@ internal class ConnectionRateLimiterUnitTests
             BanDurationSeconds = 60,
             WhitelistedIps = new HashSet<string> { "10.0.0.1" }
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // Non-whitelisted IP gets banned
         limiter.TryAcquire("192.168.1.1");
@@ -224,7 +225,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConnectionsPerIp = 1,
             WhitelistedIps = new HashSet<string> { "::1" }
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         // IPv6 variations should all be recognized as whitelisted
         var result1 = limiter.TryAcquire("::1");
@@ -242,7 +243,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConcurrentConnections = 10,
             WhitelistedIps = new HashSet<string> { "10.0.0.1" }
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         limiter.TryAcquire("10.0.0.1");
         limiter.TryAcquire("10.0.0.1");
@@ -262,7 +263,7 @@ internal class ConnectionRateLimiterUnitTests
             MaxConnectionsPerIp = 5,
             ConnectionsPerIpPerWindow = 0
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         var uniqueIps = 1000;
         var results = new List<ConnectionRateLimitResult>();
@@ -288,7 +289,7 @@ internal class ConnectionRateLimiterUnitTests
             BanThreshold = 1,
             BanDurationSeconds = 3600
         };
-        using var limiter = new ConnectionRateLimiter(config);
+        using var limiter = new ConnectionRateLimiter(config, TimeProvider.System);
 
         for (int i = 0; i < 100; i++)
         {

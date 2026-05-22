@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
+using NexNet.Internals;
 
 namespace NexNet.RateLimiting;
 
@@ -13,6 +14,7 @@ namespace NexNet.RateLimiting;
 internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
 {
     private readonly ConnectionRateLimitConfig _config;
+    private readonly TimeProvider _time;
 
     // Global state
     private int _currentConnectionCount;
@@ -34,18 +36,19 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
     private const int MaxBannedIpEntries = 100_000;
 
     // Cleanup timer for stale entries
-    private readonly Timer _cleanupTimer;
+    private readonly ITimer _cleanupTimer;
     private const int CleanupIntervalMs = 60_000;
 
-    public ConnectionRateLimiter(ConnectionRateLimitConfig config)
+    public ConnectionRateLimiter(ConnectionRateLimitConfig config, TimeProvider time)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _cleanupTimer = new Timer(Cleanup, null, CleanupIntervalMs, CleanupIntervalMs);
+        _time = time ?? throw new ArgumentNullException(nameof(time));
+        _cleanupTimer = _time.CreateTimer(Cleanup, null, TimeSpan.FromMilliseconds(CleanupIntervalMs), TimeSpan.FromMilliseconds(CleanupIntervalMs));
     }
 
     public ConnectionRateLimitResult TryAcquire(string? remoteAddress)
     {
-        var now = Environment.TickCount64;
+        var now = _time.GetTickCount64();
 
         // Normalize the address for consistent lookup
         var normalizedAddress = NormalizeAddress(remoteAddress);
@@ -313,7 +316,7 @@ internal sealed class ConnectionRateLimiter : IConnectionRateLimiter
 
     private void Cleanup(object? state)
     {
-        var now = Environment.TickCount64;
+        var now = _time.GetTickCount64();
 
         // Clean up expired bans
         foreach (var kvp in _bannedIps)
