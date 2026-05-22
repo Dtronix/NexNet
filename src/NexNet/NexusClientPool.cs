@@ -25,7 +25,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     private readonly Func<TClientNexus> _nexusFactory;
     private readonly ConcurrentRemovableQueue<PooledClient> _availableClients;
     private readonly SemaphoreSlim _semaphore;
-    private readonly Timer _healthCheckTimer;
+    private readonly ITimer _healthCheckTimer;
     private volatile bool _disposed;
 
     /// <summary>
@@ -56,7 +56,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
         
         // Set health check interval to be more frequent than idle timeout, but with reasonable bounds
         var healthCheckInterval = TimeSpan.FromMilliseconds(Math.Max(100, Math.Min(30000, config.MaxIdleTime.TotalMilliseconds / 4)));
-        _healthCheckTimer = new Timer(PerformHealthAndIdleCheck, null, healthCheckInterval, healthCheckInterval);
+        _healthCheckTimer = _config.ClientConfig.Time.CreateTimer(PerformHealthAndIdleCheck, null, healthCheckInterval, healthCheckInterval);
     }
 
     /// <summary>
@@ -113,7 +113,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
             {
                 var nexus = _nexusFactory();
                 var client = new NexusClient<TClientNexus, TServerProxy>(_config.ClientConfig, nexus);
-                pooledClient = new PooledClient(client);
+                pooledClient = new PooledClient(client, _config.ClientConfig.Time);
 
                 // Attempt to connect
                 var result = await client.TryConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -162,7 +162,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
         if (_disposed)
             return;
 
-        var now = DateTime.UtcNow;
+        var now = _config.ClientConfig.Time.GetUtcNow().UtcDateTime;
         var minRequired = _config.MinIdleConnections;
         var processedClients = new List<PooledClient>();
         var healthyCount = 0;
@@ -231,13 +231,15 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     internal sealed class PooledClient : IAsyncDisposable
     {
         private readonly NexusClient<TClientNexus, TServerProxy> _client;
+        private readonly TimeProvider _time;
         private volatile bool _disposed;
         private DateTime _lastUsed;
 
-        public PooledClient(NexusClient<TClientNexus, TServerProxy> client)
+        public PooledClient(NexusClient<TClientNexus, TServerProxy> client, TimeProvider time)
         {
             _client = client;
-            _lastUsed = DateTime.UtcNow;
+            _time = time;
+            _lastUsed = _time.GetUtcNow().UtcDateTime;
         }
 
         public NexusClient<TClientNexus, TServerProxy> Client => _client;
@@ -252,7 +254,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
 
         public void UpdateLastUsed()
         {
-            _lastUsed = DateTime.UtcNow;
+            _lastUsed = _time.GetUtcNow().UtcDateTime;
         }
 
         public async ValueTask DisposeAsync()
