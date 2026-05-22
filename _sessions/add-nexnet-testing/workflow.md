@@ -12,7 +12,7 @@ issue: discussion
 pr:
 session: 3
 phases-total: 13
-phases-complete: 8
+phases-complete: 9
 
 ## Problem Statement
 
@@ -111,3 +111,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 3 | 2026-05-22 IMPLEMENT (resumed) | 2026-05-22 IMPLEMENT | User requested continuation through remaining phases. Resuming at Phase 6. Phase 6 complete: added `Type.InProcess` enum value, `_currentInProcessEndpoint` per-test state, server+client config branches in `BaseTests`; added `[TestCase(Type.InProcess)]` to 8 representative test classes (skipped `ReconnectsNotifiesReconnecting_Hosted` since it depends on ASP host start/stop). 106 new test cases. Full integration: 2742/2742 green. |
 | 3 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 7 complete: recorder primitives in `NexNet.Testing` — `NexusAssertionException` (public), `Arg.Any<T>()`/`Arg.Is<T>(predicate)` (public sentinels), `ArgMatcher` (internal: wildcard/equality/predicate), `InvocationRecord`, `InvocationRecorder` (thread-safe append + snapshot + change-signal), `ExpressionParser` (resolves `Expression<Action<TInterface>>` to MethodInfo + matchers using compiled-lambda fallback for constants and captured locals). `InternalsVisibleTo("NexNet.Testing.Tests")` added. 12 new tests cover the parser branches and recorder semantics; testing suite now 17/17 green. |
 | 3 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 8 complete: `TestInvocationInterceptor` (IInvocationInterceptor impl that records into `InvocationRecorder` and tracks inDispatch on a `QuiescenceCounters`), `QuiescenceCounters` (atomic counter set per session), `QuiescenceTracker` (aggregates across sessions; uses observe-zero/yield/re-observe pattern; pull-style probe for PendingInvocationCount to avoid double-counting). 5 new quiescence tests; testing suite 22/22. **Method-ID resolution deferred to Phase 12**: the interceptor records with `method: null` for now, since the methodId → MethodInfo mapping requires runtime inspection of the user's generated proxy types and is only needed at assertion time. |
+| 3 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 9 complete: `PipeRecording` (public; ConsumedBytes/WrittenBytes/IsCompleted/FaultedWith + WaitForBytesAsync/WaitForCompletionAsync), `TappingPipeReader` (records consumed slice on AdvanceTo), `TappingPipeWriter` (records on Advance), `TappedNexusDuplexPipe`/`TappedRentedNexusDuplexPipe` (wrappers delegating WriterCore/ReaderCore through), `TestPipeFactory` (IPipeFactory impl that wraps and brackets each pipe's lifetime with OpenPipe/ClosePipe on the counters). 5 new pipe-recording tests; testing suite 27/27. |
