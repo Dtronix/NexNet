@@ -7,7 +7,7 @@ base-branch: master
 
 ## State
 phase: REVIEW
-status: active
+status: suspended
 issue: discussion
 pr:
 session: 3
@@ -74,22 +74,26 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 
 ## Suspend State
 
-- **Phase:** IMPLEMENT — 5 of 13 phases complete. Clean checkpoint between phases (no mid-phase work).
-- **Sub-step:** End of Phase 5; Phase 6 has NOT started.
+- **Phase:** REVIEW — all 13 IMPLEMENT phases complete. Clean transition; no mid-phase work.
+- **Sub-step:** Top of REVIEW. Analysis pass has NOT started.
 - **In progress:** Nothing actively executing. Working tree clean.
-- **Immediate next step on resume:** Start Phase 6 — wire `Type.InProcess` into `NexNet.IntegrationTests`. Add `ProjectReference` to `NexNet.Testing` in `NexNet.IntegrationTests.csproj`, extend the `Type` enum in `BaseTests.cs:29`, add `InProcess` cases to the config-creation switch (with a unique endpoint per test via test name + `Guid.NewGuid()`), and start by adding `[TestCase(Type.InProcess)]` to `NexusClientTests`, `NexusServerTests`, `NexusServerTests_SendInvocation`, `NexusServerTests_ReceiveInvocation`, `NexusServerTests_NexusInvocations`, and `NexusServerTests_Authorization`. Expand to the full matrix where it makes sense after the representative subset is green.
-- **WIP commit:** None — `7e1d331` is the latest real commit (Phase 5).
+- **Immediate next step on resume:** Run the REVIEW analysis pass. Delegate to an agent: have it read `_sessions/add-nexnet-testing/plan.md` + Decisions section + the full diff across all commits on this branch (`git diff origin/master...HEAD`), and produce `_sessions/add-nexnet-testing/review.md` covering the 6 sections (Plan Compliance, Correctness, Security, Test Quality, Codebase Consistency, Integration / Breaking Changes). Then classification (A/B/C/D) per the workflow.
+- **WIP commit:** None — `76183db` is the latest real commit.
 - **Test status:** All green at HEAD.
   - `NexNet.Generator.Tests`: 149/149.
-  - `NexNet.IntegrationTests`: 2636/2636 (includes the 8 new tests from Phases 2-4).
-  - `NexNet.Testing.Tests`: 5/5 (the InProcess transport tests from Phase 5).
-- **Unrecorded context:** None — design notes are already captured in the **Decisions** + **Revisions** sections above.
+  - `NexNet.IntegrationTests`: 2742/2742 (includes 106 new `Type.InProcess` cases + 8 hook tests from P2-P4).
+  - `NexNet.Testing.Tests`: 41/41 (transport, recorder, quiescence, pipe-recording, channel-recording, host, assertions).
+- **Known issues that should appear in REVIEW:**
+  - **Multi-client connect hang.** `host.ConnectAsAsync` called a second time against the same NexusTestHost hangs (timed out at 60s in the original multi-client test). Likely a synchronization issue in the InProcess transport's listener accept path or the harness's connect flow. Phase 13's group-introspection / multi-client broadcast showcase tests are blocked on this. Suggest classifying as C (separate issue).
+  - **Phase 11 scope reduction.** Streaming-helper extension methods (`PipeUpload`, `PipeDownload`, `ChannelCollect`, `ChannelPublish`, `TapChannel`) were not implemented; the ChannelRecording<T> type ships but the convenience helpers don't. Should be C (separate issue) or D (decided not valid for v1).
+  - **Phase 13 scope reduction.** Group introspection (`host.Groups[name].Members`) was not implemented; blocked on multi-client.
+  - **Method-id resolution heuristic.** `MethodIdMap` mirrors the generator's `AssignMethodIds` at runtime by walking `Type.GetMethods()` in declaration order. Empirically matches; documented as best-effort. Could surface a determinism question.
+  - **Pipe-side recording vs visible reads.** `TappingPipeReader` records on `AdvanceTo`, but if the user accesses a buffer via `ReadAsync` without advancing past consumed bytes, those bytes won't be in the recording. This is intentional ("what the handler saw") but worth surfacing.
+  - **`TappingPipeWriter.GetSpan` re-routes through `GetMemory`** to keep the tap able to read the source. Slight perf overhead but only on tapped pipes, which are test-only.
 
-### Phase 5 deviation from plan worth noting on resume
-- Plan said "register the listener under a named endpoint" — implemented exactly that, but note the `ConnectAsClient` method on `InProcessTransportListener` builds and enqueues the server-side transport *synchronously*; the channel is unbounded so this never blocks. The accept loop on the NexNet server dequeues via `AcceptTransportAsync`. This is symmetric with how `SocketTransportListener` exposes connections to the server.
-- `InProcessClientConfig.OnConnectTransport` returns the client-side transport synchronously (no awaiting); it's wrapped in `ValueTask<ITransport>` to satisfy the abstract contract.
+### Context carried forward from earlier sessions (preserved for durability)
 
-### Context carried from Session 1 (recorded for durability)
+### Context carried from Session 1 (preserved)
 - User opted to defer TimeProvider integration to a follow-up issue (#75 created at https://github.com/Dtronix/NexNet/issues/75).
 - User picked `NexusSessionConfigurations struct` for hook location even though Claude's recommendation was `ConfigBase`. Plan adapts: hooks are stored on `ConfigBase` (authoritative install point) and copied into the struct at session-construction time so the runtime read happens via the struct as the user requested.
 - User picked `InProcessTransport` (revised from `MemoryTransport`) and chose `NexNet.Testing` as its home (revised from `NexNet` core).
