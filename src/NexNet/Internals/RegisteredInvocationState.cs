@@ -24,11 +24,6 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public InvocationResultMessage? Result { get; set; } = null;
 
-    /// <summary>
-    /// Environment.Ticks when this state was instanced.
-    /// </summary>
-    public long Created { get; set; }
-
     public RegisteredInvocationState()
     {
         // Ensure all continuations run asynchronously to prevent deadlocks.
