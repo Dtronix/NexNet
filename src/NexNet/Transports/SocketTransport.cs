@@ -93,7 +93,7 @@ internal class SocketTransport : ITransport
                 {
                     try
                     {
-                        await Task.Delay(clientConfig.ConnectionTimeout, timeoutCancellation.Token).ConfigureAwait(false);
+                        await Task.Delay(TimeSpan.FromMilliseconds(clientConfig.ConnectionTimeout), clientConfig.Time, timeoutCancellation.Token).ConfigureAwait(false);
                         socket.Close(0);
                     }
                     catch
