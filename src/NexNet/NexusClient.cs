@@ -86,7 +86,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _poolManager = new SessionPoolManager<TServerProxy>();
 
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(_logger, false);
+        _collectionManager = new NexusCollectionManager(_logger, false, _config.Time);
         TClientNexus.ConfigureCollections(_collectionManager);
 
         _proxy = new TServerProxy() { PoolManager = _poolManager };

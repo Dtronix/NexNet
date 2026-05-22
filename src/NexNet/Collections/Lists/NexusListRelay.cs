@@ -48,6 +48,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     private readonly object _syncLock = new object();
 
     private NexusCollectionState _state = NexusCollectionState.Disconnected;
+    private readonly TimeProvider _time;
 
     /// <inheritdoc />
     public int Count => _itemList.Count;
@@ -77,10 +78,12 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     /// <param name="id">The collection ID.</param>
     /// <param name="mode">The collection mode (should be Relay).</param>
     /// <param name="logger">Optional logger.</param>
-    public NexusListRelay(ushort id, NexusCollectionMode mode, INexusLogger? logger)
+    /// <param name="time">Time source driving the reconnect-loop delay.</param>
+    public NexusListRelay(ushort id, NexusCollectionMode mode, INexusLogger? logger, TimeProvider time)
         : base(id, mode, logger)
     {
         _itemList = new VersionedList<T>(1024, logger);
+        _time = time;
     }
 
     /// <summary>
@@ -147,7 +150,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
                 {
                     try
                     {
-                        await Task.Delay(TimeSpan.FromMilliseconds(500), ct).ConfigureAwait(false);
+                        await Task.Delay(TimeSpan.FromMilliseconds(500), _time, ct).ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {

@@ -120,7 +120,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         _sessionManager = config.GetSessionManager();
 
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(_logger, true);
+        _collectionManager = new NexusCollectionManager(_logger, true, _config.Time);
         TServerNexus.ConfigureCollections(_collectionManager);
 
         ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
