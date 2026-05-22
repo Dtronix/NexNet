@@ -12,7 +12,7 @@ issue: #75
 pr:
 session: 2
 phases-total: 13
-phases-complete: 6
+phases-complete: 7
 
 ## Problem Statement
 
@@ -59,6 +59,8 @@ This was deferred from the `add-nexnet-testing` workflow. Removes the existing `
 - 2026-05-06 — **Harness exposure deferred.** This branch only lands TimeProvider on `ConfigBase`. The `add-nexnet-testing` workflow (which has not shipped) will surface `Time` on `NexusTestHost.Options` when it lands.
 - 2026-05-06 — **All `Task.Delay` sites that take a CancellationToken switch to the `Task.Delay(TimeSpan, TimeProvider, CancellationToken)` overload.** Sites without a token use `Task.Delay(TimeSpan, TimeProvider)`.
 - 2026-05-06 — **All `new Timer(...)` sites switch to `Time.CreateTimer(...)` returning `ITimer` (still IDisposable).**
+- 2026-05-22 — **Deviation from design: `ConfigBase.Time` is `{ get; set; }` not `{ get; init; }`.** Every other ConfigBase property is `{ get; set; }` (Logger, the int-property setters, etc.), and the auth-cache test needed to override `Time` on an already-constructed `ServerConfig` returned from helper methods. Mutability of Time post-construction is documented as supported but limited: timers/delays already in flight retain the original provider.
+- 2026-05-22 — **`Microsoft.Extensions.TimeProvider.Testing` package added in phase 7** (not deferred to phase 13 as originally planned). Phase 7 needed `FakeTimeProvider` to migrate the auth-cache test in the same commit; phase 13 will reuse the already-present package for the new tests.
 
 ## Suspend State
 

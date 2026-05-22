@@ -563,12 +563,12 @@ internal class NexusServerTests_Authorization : BaseTests
     public async Task AuthCache_AttributeTtl_ExpiredEntry_ReChecks(Type type)
     {
         var authCallCount = 0;
-        var currentTick = Environment.TickCount64;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
 
         server.OnNexusCreated = nexus =>
         {
-            nexus.TickCountOverride = () => Interlocked.Read(ref currentTick);
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
                 Interlocked.Increment(ref authCallCount);
@@ -588,7 +588,7 @@ internal class NexusServerTests_Authorization : BaseTests
         Assert.That(authCallCount, Is.EqualTo(1));
 
         // Advance past the 2s TTL
-        Interlocked.Add(ref currentTick, 2001);
+        fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
 
         await client.Proxy.CachedMethod().Timeout(1);
         Assert.That(authCallCount, Is.EqualTo(2));

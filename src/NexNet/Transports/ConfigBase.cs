@@ -33,7 +33,7 @@ public abstract class ConfigBase
     /// substitute <c>FakeTimeProvider</c> from <c>Microsoft.Extensions.TimeProvider.Testing</c>
     /// to drive time deterministically.
     /// </summary>
-    public TimeProvider Time { get; init; } = TimeProvider.System;
+    public TimeProvider Time { get; set; } = TimeProvider.System;
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
