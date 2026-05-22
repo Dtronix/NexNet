@@ -308,7 +308,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
                 try
                 {
-                    await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);
+                    await Task.Delay(TimeSpan.FromMilliseconds(_config.DisconnectDelay), _config.Time).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {

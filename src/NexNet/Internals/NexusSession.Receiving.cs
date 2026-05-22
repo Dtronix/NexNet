@@ -14,7 +14,7 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
-        _ = Task.Delay(Config.HandshakeTimeout, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
+        _ = Task.Delay(TimeSpan.FromMilliseconds(Config.HandshakeTimeout), Config.Time, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
         
         Logger?.LogTrace("Reading");
         try
@@ -26,7 +26,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     return;
 
                 var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
-                LastReceived = Environment.TickCount64;
+                LastReceived = Config.Time.GetTickCount64();
                 
                 var buffer = result.Buffer;
                 // Terribly inefficient and only used for testing
