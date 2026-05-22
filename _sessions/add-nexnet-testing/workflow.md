@@ -7,7 +7,7 @@ base-branch: master
 
 ## State
 phase: IMPLEMENT
-status: active
+status: suspended
 issue: discussion
 pr:
 session: 2
@@ -74,7 +74,20 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 
 ## Suspend State
 
-_(none — workflow resumed and active. WIP commit `77553c3` will be amended on first real commit.)_
+- **Phase:** IMPLEMENT — 5 of 13 phases complete. Clean checkpoint between phases (no mid-phase work).
+- **Sub-step:** End of Phase 5; Phase 6 has NOT started.
+- **In progress:** Nothing actively executing. Working tree clean.
+- **Immediate next step on resume:** Start Phase 6 — wire `Type.InProcess` into `NexNet.IntegrationTests`. Add `ProjectReference` to `NexNet.Testing` in `NexNet.IntegrationTests.csproj`, extend the `Type` enum in `BaseTests.cs:29`, add `InProcess` cases to the config-creation switch (with a unique endpoint per test via test name + `Guid.NewGuid()`), and start by adding `[TestCase(Type.InProcess)]` to `NexusClientTests`, `NexusServerTests`, `NexusServerTests_SendInvocation`, `NexusServerTests_ReceiveInvocation`, `NexusServerTests_NexusInvocations`, and `NexusServerTests_Authorization`. Expand to the full matrix where it makes sense after the representative subset is green.
+- **WIP commit:** None — `7e1d331` is the latest real commit (Phase 5).
+- **Test status:** All green at HEAD.
+  - `NexNet.Generator.Tests`: 149/149.
+  - `NexNet.IntegrationTests`: 2636/2636 (includes the 8 new tests from Phases 2-4).
+  - `NexNet.Testing.Tests`: 5/5 (the InProcess transport tests from Phase 5).
+- **Unrecorded context:** None — design notes are already captured in the **Decisions** + **Revisions** sections above.
+
+### Phase 5 deviation from plan worth noting on resume
+- Plan said "register the listener under a named endpoint" — implemented exactly that, but note the `ConnectAsClient` method on `InProcessTransportListener` builds and enqueues the server-side transport *synchronously*; the channel is unbounded so this never blocks. The accept loop on the NexNet server dequeues via `AcceptTransportAsync`. This is symmetric with how `SocketTransportListener` exposes connections to the server.
+- `InProcessClientConfig.OnConnectTransport` returns the client-side transport synchronously (no awaiting); it's wrapped in `ValueTask<ITransport>` to satisfy the abstract contract.
 
 ### Context carried from Session 1 (recorded for durability)
 - User opted to defer TimeProvider integration to a follow-up issue (#75 created at https://github.com/Dtronix/NexNet/issues/75).
@@ -94,3 +107,4 @@ _(none — workflow resumed and active. WIP commit `77553c3` will be amended on 
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 3 complete: `IPipeFactory` interface (WrapLocal for rented pipes, WrapRemote for registered pipes) added; same plumb-through pattern as Phase 2; hooked into `NexusPipeManager.RentPipe`/`RegisterPipe` after the inner pipe is registered in `_activePipes`. `INexusSession.PipeFactory` getter added. 2 new pipe-factory tests pass. Full suite: 2633 integration green. |
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 4 complete: `ServerConfig.OnAuthenticateOverride` (internal nullable Func) added; `ServerNexusBase.Authenticate` consults it before falling back to `OnAuthenticate`. 3 new tests cover no-override fallback, override-consulted-not-OnAuthenticate, and null-identity-disconnect. Full suite: 2636 integration green. |
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 5 complete: `NexNet.Testing` project created with `InProcessTransport` (paired `System.IO.Pipelines.Pipe`s cross-wired), `InProcessTransportListener` (Channel-based pending-connection queue), `InProcessServerConfig`/`InProcessClientConfig`, and a process-local `InProcessRendezvous` keyed on endpoint strings. `NexNet.Testing.Tests` project with 5 focused tests covers bidirectional exchange, ordering across 50 messages, close-completes-peer-reader, no-listener-throws, and duplicate-endpoint-throws. Both new projects added to `NexNet.slnx`. Full solution builds clean. |
+| 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT (suspended) | End-of-session suspend. 5/13 phases done; commits `a4c42b3` (P1), `0f253c9` (P2), `4d05970` (P3), `3235bf1` (P4), `7e1d331` (P5). Working tree clean. Resume next session at Phase 6 (Type.InProcess matrix integration). |
