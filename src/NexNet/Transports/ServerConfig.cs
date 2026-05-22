@@ -43,6 +43,14 @@ public abstract class ServerConfig : ConfigBase
     public TimeSpan? AuthorizationCacheDuration { get; set; }
 
     /// <summary>
+    /// Optional override for client authentication. When set, the server consults this
+    /// delegate instead of the user nexus's <c>OnAuthenticate</c> override. Used by the
+    /// test harness to install fake-identity mapping without forcing users to disable or
+    /// replace their real auth code. Leave null in production paths.
+    /// </summary>
+    internal Func<ReadOnlyMemory<byte>?, ValueTask<IIdentity?>>? OnAuthenticateOverride { get; set; }
+
+    /// <summary>
     /// Creates the listener and starts.
     /// </summary>
     /// <param name="cancellationToken"></param>

@@ -25,6 +25,11 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
 
     internal ValueTask<IIdentity?> Authenticate(ReadOnlyMemory<byte>? authenticationToken)
     {
+        if (SessionContext.Session.Config is ServerConfig serverConfig &&
+            serverConfig.OnAuthenticateOverride is { } authenticateOverride)
+        {
+            return authenticateOverride(authenticationToken);
+        }
         return OnAuthenticate(authenticationToken);
     }
 
