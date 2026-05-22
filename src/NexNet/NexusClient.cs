@@ -161,7 +161,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
             CollectionManager = _collectionManager,
             Logger = _logger,
-            InvocationInterceptor = _config.InvocationInterceptor
+            InvocationInterceptor = _config.InvocationInterceptor,
+            PipeFactory = _config.PipeFactory
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)

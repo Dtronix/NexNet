@@ -199,4 +199,11 @@ public abstract class ConfigBase
     /// When null, sessions invoke the nexus directly (the default production path).
     /// </summary>
     internal IInvocationInterceptor? InvocationInterceptor { get; set; }
+
+    /// <summary>
+    /// Optional factory that wraps duplex pipes at the boundary between the pipe manager and
+    /// user code. Used by the test harness to install tap wrappers for byte-level recording
+    /// and pipe-lifetime tracking. When null, pipes are returned to user code unwrapped.
+    /// </summary>
+    internal IPipeFactory? PipeFactory { get; set; }
 }

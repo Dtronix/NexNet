@@ -12,7 +12,7 @@ issue: discussion
 pr:
 session: 2
 phases-total: 13
-phases-complete: 2
+phases-complete: 3
 
 ## Problem Statement
 
@@ -91,3 +91,4 @@ _(none — workflow resumed and active. WIP commit `77553c3` will be amended on 
 | 1 | 2026-05-06 PLAN | 2026-05-06 PLAN (suspended) | Drafted `plan.md` with 13 atomic phases, dependencies, file paths, and per-phase tests. User issued handoff before plan approval. Suspended for handoff to next session. |
 | 2 | 2026-05-22 PLAN (resumed) | 2026-05-22 IMPLEMENT | Resumed suspended workflow. Plan approved by user. Phase 1 complete: `PendingInvocationCount` added to `ISessionInvocationStateManager` + concrete + test mock. All 149 generator + 2628 integration tests pass. Amended WIP commit `77553c3` into Phase 1 commit. |
 | 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 2 complete: `IInvocationInterceptor` interface added; `InvocationInterceptor` property added to `ConfigBase` + `NexusSessionConfigurations` struct; copied through construction sites in `NexusServer`/`NexusClient`; wired into `InvocationTask` in `NexusSession.Receiving.cs`. `InternalsVisibleTo` added for `NexNet.Testing` + `NexNet.Testing.Tests`. 3 new interceptor tests pass. Full suite: 149 generator + 2631 integration green (one flaky UDS rate-limit test on first run, passed clean on rerun — unrelated to interceptor path). |
+| 2 | 2026-05-22 IMPLEMENT | 2026-05-22 IMPLEMENT | Phase 3 complete: `IPipeFactory` interface (WrapLocal for rented pipes, WrapRemote for registered pipes) added; same plumb-through pattern as Phase 2; hooked into `NexusPipeManager.RentPipe`/`RegisterPipe` after the inner pipe is registered in `_activePipes`. `INexusSession.PipeFactory` getter added. 2 new pipe-factory tests pass. Full suite: 2633 integration green. |

@@ -65,6 +65,12 @@ internal interface INexusSession : ISessionMessenger
     /// </summary>
     ConfigBase Config { get; }
 
+    /// <summary>
+    /// Optional pipe factory snapshot captured at session construction. Null in production
+    /// paths; non-null when the test harness has installed a tap.
+    /// </summary>
+    IPipeFactory? PipeFactory { get; }
+
     ConnectionState State { get; }
     bool IsServer { get; }
     NexusPipeManager PipeManager { get; }

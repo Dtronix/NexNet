@@ -49,4 +49,11 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// production paths.
     /// </summary>
     public IInvocationInterceptor? InvocationInterceptor { get; init; }
+
+    /// <summary>
+    /// Optional pipe factory copied from <see cref="ConfigBase.PipeFactory"/> at the
+    /// construction site. Consulted by the session's pipe manager when wrapping pipes for
+    /// user code; null in production paths.
+    /// </summary>
+    public IPipeFactory? PipeFactory { get; init; }
 }

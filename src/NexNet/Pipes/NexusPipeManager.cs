@@ -48,7 +48,8 @@ internal class NexusPipeManager
 
         _activePipes.TryAdd(partialId, pipe);
 
-        return pipe;
+        var factory = _session.PipeFactory;
+        return factory is null ? pipe : factory.WrapLocal(pipe);
     }
 
     /// <summary>
@@ -96,7 +97,9 @@ internal class NexusPipeManager
         pipe.UpdateState(State.Ready);
         await pipe.NotifyState().ConfigureAwait(false);
         _logger?.LogTrace($"Sending Ready Notification");
-        return pipe;
+
+        var factory = _session.PipeFactory;
+        return factory is null ? pipe : factory.WrapRemote(pipe);
     }
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
