@@ -92,7 +92,7 @@ internal class WebSocketPipe : IWebSocketPipe
             _webSocket.CloseOutputAsync(closeStatus, closeStatusDescription, default);
 
         // Don't wait indefinitely for the close to be acknowledged
-        await Task.WhenAny(closeTask, Task.Delay(closeTimeout)).ConfigureAwait(false);
+        await Task.WhenAny(closeTask, Task.Delay(closeTimeout, _config.Time)).ConfigureAwait(false);
     }
 
     async Task ReadInputAsync(CancellationToken cancellation)
