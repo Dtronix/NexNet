@@ -95,6 +95,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AuthorizedMethod_Allowed_InvokesMethod(Type type)
     {
         var methodInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -123,6 +124,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AuthorizedMethod_Unauthorized_ThrowsOnClient(Type type)
     {
         var (server, client, _) = CreateAuthServerClient(type);
@@ -145,6 +147,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AuthorizedMethod_Disconnect_DisconnectsSession(Type type)
     {
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -179,6 +182,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task UnprotectedMethod_NoAuthCheck(Type type)
     {
         var authCalled = false;
@@ -213,6 +217,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task MarkerOnly_CallsOnAuthorizeWithEmptyPermissions(Type type)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -244,6 +249,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnAuthorize_ReceivesCorrectMethodName(Type type)
     {
         string? capturedName = null;
@@ -275,6 +281,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnAuthorize_ReceivesCorrectPermissions(Type type)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -307,6 +314,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnAuthorize_ReceivesMultiplePermissions(Type type)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -340,6 +348,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task Authorized_WithReturnValue_ReturnsResult(Type type)
     {
         var (server, client, _) = CreateAuthServerClient(type);
@@ -363,6 +372,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task Unauthorized_WithReturnValue_ThrowsNotReturns(Type type)
     {
         var (server, client, _) = CreateAuthServerClient(type);
@@ -385,6 +395,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task Unauthorized_MethodBodyNeverExecutes(Type type)
     {
         var bodyExecuted = false;
@@ -416,6 +427,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AuthorizedCollection_Allowed_ClientReceivesData(Type type)
     {
         var (server, client, _) = CreateAuthServerClient(type);
@@ -447,6 +459,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AuthorizedCollection_Unauthorized_ClientDisconnected(Type type)
     {
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -482,6 +495,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task UnprotectedCollection_NoAuthCheck(Type type)
     {
         var authCalled = false;
@@ -510,6 +524,7 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnAuthorize_ThrowsException_TreatedAsDisconnect(Type type)
     {
         var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
