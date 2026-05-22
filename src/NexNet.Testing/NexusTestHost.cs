@@ -43,7 +43,7 @@ public static class NexusTestHost
 /// helpers. One host per logical scenario; dispose to stop the server and release the
 /// rendezvous endpoint.
 /// </summary>
-public sealed class NexusTestHost<TServerNexus, TClientProxy, TClientNexus, TServerProxy>
+public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNexus, TServerProxy>
     : IAsyncDisposable
     where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
     where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
