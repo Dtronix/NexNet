@@ -28,6 +28,14 @@ public abstract class ConfigBase
     public INexusLogger? Logger { get; set; }
 
     /// <summary>
+    /// Time source for all time-dependent behavior on this server/client (timers, delays,
+    /// timeouts, cache expiry). Defaults to <see cref="TimeProvider.System"/>. Tests can
+    /// substitute <c>FakeTimeProvider</c> from <c>Microsoft.Extensions.TimeProvider.Testing</c>
+    /// to drive time deterministically.
+    /// </summary>
+    public TimeProvider Time { get; init; } = TimeProvider.System;
+
+    /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
     /// Must be between 1 and 1000.
     /// </summary>

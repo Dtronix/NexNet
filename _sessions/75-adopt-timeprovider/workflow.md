@@ -6,13 +6,13 @@ remote: https://github.com/Dtronix/NexNet.git
 base-branch: master
 
 ## State
-phase: DESIGN
-status: suspended
+phase: IMPLEMENT
+status: active
 issue: #75
 pr:
-session: 1
-phases-total:
-phases-complete: 0
+session: 2
+phases-total: 13
+phases-complete: 1
 
 ## Problem Statement
 
@@ -95,3 +95,4 @@ This was deferred from the `add-nexnet-testing` workflow. Removes the existing `
 |---|------------|-----------|---------|
 | 1 | 2026-05-06 INTAKE | 2026-05-06 DESIGN | Bootstrapped workflow from issue #75. Worktree + branch `75-adopt-timeprovider` created. Baseline tests green (149 generator + 2628 integration). |
 | 1 | 2026-05-06 DESIGN | 2026-05-06 DESIGN (suspended) | Explored all refactor sites listed in #75. Recorded 11 design decisions covering surface, scope, helper, wiring, removed seams, and test framework integration. Suspended at user request immediately before drafting plan.md. |
+| 2 | 2026-05-22 DESIGN (resumed) | 2026-05-22 IMPLEMENT | Resumed from suspend. Re-verified refactor sites against current source. Drafted plan.md with 13 phases. User approved plan; transitioned to IMPLEMENT. |
