@@ -353,8 +353,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
 
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
@@ -400,8 +398,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 5,
@@ -447,8 +443,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 1,
@@ -488,8 +482,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 10,
@@ -539,8 +531,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 10,
@@ -591,8 +581,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 5,
@@ -1234,8 +1222,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 2,
@@ -1502,8 +1488,6 @@ internal class NexusClientPoolTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
         clientConfig.Time = fakeTime;
-        // Skip the post-disconnect drain delay (which would otherwise await fakeTime in pool.DisposeAsync).
-        clientConfig.DisconnectDelay = 0;
         var poolConfig = new NexusClientPoolConfig(clientConfig)
         {
             MaxConnections = 2,

@@ -14,7 +14,10 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
-        _ = Task.Delay(TimeSpan.FromMilliseconds(Config.HandshakeTimeout), Config.Time, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
+        // Handshake timeout is a real network deadline — the underlying TCP/TLS/WebSocket handshake
+        // runs on the OS schedule, so this wait stays on real time. Routing it through TimeProvider
+        // would not speed up real handshakes and would deadlock tests using FakeTimeProvider.
+        _ = Task.Delay(Config.HandshakeTimeout, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
         
         Logger?.LogTrace("Reading");
         try

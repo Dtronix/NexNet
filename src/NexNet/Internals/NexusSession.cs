@@ -308,7 +308,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 // Add a delay in here to ensure that the data has a chance to send on the wire before a full disconnection.
                 try
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(_config.DisconnectDelay), _config.Time).ConfigureAwait(false);
+                    // Real-time wait so the OS TCP stack actually has wall-clock time to flush the
+                    // disconnect message before the socket is closed. Not routed through TimeProvider —
+                    // faking this would not accelerate any real kernel work and would deadlock test
+                    // teardown when the test no longer advances FakeTimeProvider.
+                    await Task.Delay(_config.DisconnectDelay).ConfigureAwait(false);
                 }
                 catch (Exception e)
                 {

@@ -202,8 +202,6 @@ internal partial class NexusClientTests : BaseTests
         var clientConfig = CreateClientConfig(type);
         clientConfig.Time = fakeTime;
         clientConfig.PingInterval = 1000;
-        // Skip post-disconnect drain so client teardown doesn't await fakeTime.
-        clientConfig.DisconnectDelay = 0;
 
         var (server, client, _) = CreateServerClient(
             CreateServerConfig(type),
@@ -352,8 +350,6 @@ internal partial class NexusClientTests : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(type);
         clientConfig.Time = fakeTime;
-        // Skip post-disconnect drain so client teardown doesn't await fakeTime.
-        clientConfig.DisconnectDelay = 0;
 
         // A 30-second reconnect delay — impractical to test with real Task.Delay.
         clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromSeconds(30) });
