@@ -7,7 +7,7 @@ base-branch: master
 
 ## State
 phase: REMEDIATE
-status: active
+status: suspended
 issue: discussion
 pr: 77
 session: 5
@@ -74,36 +74,42 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 
 ## Suspend State
 
-- **Phase:** REMEDIATE — 4 of 12 remediation phases complete (R1–R4 committed).
-- **Sub-step:** Top of R5 (per-client assertions on `NexusTestClient`).
-- **In progress:** Nothing actively executing. Working tree clean.
-- **Immediate next step on resume:** Start R5 — add `AssertReceived<TInterface>(expr)`, `AssertNotReceived<TInterface>(expr)`, and `WaitFor<TInterface>(expr, timeout)` methods to `NexusTestClient<TClientNexus, TServerProxy>` so tests can ask "did THIS client receive method X with these args?". Today only the server-side variant exists on `NexusTestHost` (`Assertions.cs`). The per-client variant needs a per-client recorder; the existing `TestInvocationInterceptor` is shared and indiscriminately records every dispatch on every session, so the recorder either needs to track per-session in its records or each client needs its own `TestInvocationInterceptor` wired through a per-client client config. Implementation note: `NexusSessionConfigurations.InvocationInterceptor` is per-config, so per-client interceptors are achievable by constructing a fresh interceptor + recorder in `ConnectAsAsync`. See finding 3 in review.md.
-- **WIP commit:** None — latest real commit is `5d3567d` (R4).
-- **Test status:** All green at HEAD.
+- **Phase:** REMEDIATE — all 12 remediation phases complete; PR #77 created and CI green.
+- **Sub-step:** Awaiting user "go" to FINALIZE (merge). Workflow is paused at REMEDIATE step 8 ("Ready to finalize and merge?" decision).
+- **In progress:** Nothing actively executing. Working tree clean. PR #77 open with green CI on the latest commit (`7ed0984` series + ce26041 follow-ups).
+- **Immediate next step on resume:** Ask the user via AskUserQuestion whether to proceed with FINALIZE (squash merge), rebase first, or go back to REVIEW. The PR is in a clean state; nothing else is pending.
+- **WIP commit:** None.
+- **Test status (latest CI run #26460964379 — 4m27s, all green):**
   - `NexNet.Generator.Tests`: 149/149.
-  - `NexNet.IntegrationTests`: 2742/2742.
-  - `NexNet.Testing.Tests`: 53/53 (added 12 across R1–R4: 2 new quiescence, 1 e2e quiescence, 2 multi-client + shared-instance detection, 3 group/broadcast showcase, 4 streaming helpers).
-- **Remaining remediation phases (8 of 12):**
-  - **R5** — Per-client assertions on `NexusTestClient` (finding 3, plan §12).
-  - **R6** — `MethodIdMap` robustness + generator parity test (findings 8, 10, 11, 25). Determinism risk under AOT/trimming; need a test that asserts the runtime map matches the generator-emitted IDs.
-  - **R7** — `ArgumentDeserializer` parameter-type filter robustness + arg values in mismatch diagnostics (findings 9, 27, 34).
-  - **R8** — Tap recording fixes (findings 14, 15, 16, 17, 18). Note R4 already partially touched this — `TestPipeFactory.WrapLocal` now passes pipes through unwrapped to fix the `Unsafe.As<NexusDuplexPipe>` issue. R8 should revisit whether locally-rented pipes need an alternative observation API, and address findings 14–18 directly.
-  - **R9** — Security fixes (findings 20, 21, 22). Remove `InternalsVisibleTo("NexNet.Testing.Tests")` from `NexNet.csproj`; surface predicate exceptions in `ArgMatcher.PredicateMatcher`; document/limit `TestAuthenticationStore` token retention.
-  - **R10** — Test matrix expansion (findings 23, 24, 28). Add `[TestCase(Type.InProcess)]` to pipes/channels/collections/invocations classes; add hook tests on a non-Tcp transport; replace synthetic ExpressionParser test.
-  - **R11** — Consistency polish (findings 30, 31, 32, 33, 39, 40).
-  - **R12** — API ergonomics (findings 35, 36, 37, 38).
-- **Carryover guidance for next session:**
-  - The shared `_interceptor` + `_pipeFactory` are now installed on both server and client configs (R3). This is the right wiring for server-side recording + quiescence aggregation across sessions; per-client recording (R5) will need each `ConnectAsAsync` to construct its own interceptor + recorder.
-  - Demo nexus (`HarnessSampleNexus.cs`) grew `JoinGroup`, `BroadcastToGroup`, `Upload`, `Download`, `CollectStrings`, `PublishStrings` plus the matching interface entries. Statics `LastUploadedBytes` / `LastCollectedItems` are read by streaming tests; a `[SetUp]` clears them.
-  - `TestPipeFactory.WrapLocal` returns the inner pipe unchanged (R4). `Track(_, null)` still brackets the pipe lifetime for quiescence. R8 should consider whether to add a side-channel recording attached by pipe reference identity (so the user can still observe local pipes) — but that interacts with finding 17's id-keying issue.
-  - `NexusServer.SessionManagerInternal` is the new internal accessor used by `host.Groups` (R3); R12 may want to surface a stable shape of it on the host directly.
-- **Known issues that should appear in REVIEW (still relevant for completeness):**
-  - **Multi-client connect hang.** Resolved in R2 — root cause was user-supplied factories returning shared nexus instances. Detection now throws clearly.
-  - **Phase 11 scope reduction.** Resolved in R4.
-  - **Phase 13 scope reduction.** Resolved in R3.
-  - **Method-id resolution heuristic.** Pending in R6.
-  - **Pipe-side recording vs visible reads.** Pending in R8 (or R10/R11).
-  - **`TappingPipeWriter.GetSpan` re-routes through `GetMemory`** — Classification D (intentional design tradeoff).
+  - `NexNet.IntegrationTests`: 2825/2825 (was 2742; +83 InProcess cases from R10).
+  - `NexNet.Testing.Tests`: 65/65 (53 from R1–R4 + 5 R5 client-assertions + 4 R6 MethodIdMap + 3 R7 multi-arg/diagnostic = 65).
+- **Latest commit on branch:** `7ed0984` ("CI: bump upload-artifact to v7 (v5 still ran on Node 20)").
+- **All 12 remediation phases done:**
+  - **R1** (c9b3c2e) — Quiescence counters wired end-to-end (findings 5, 6, 7, 12, 13, 26).
+  - **R2** (8a49f16) — Detect shared-nexus factory misuse instead of hanging (finding 4).
+  - **R3** (f95a1a0) — Group introspection + broadcast showcase (finding 2).
+  - **R4** (5d3567d) — Streaming helpers + unwrap local pipes (finding 1).
+  - **R5** (7d660f4) — Per-client assertions on `NexusTestClient` (finding 3).
+  - **R6** (afa5d95) — MethodIdMap robustness + generator parity tests (findings 8, 10, 11, 25).
+  - **R7** (aec8169) — ArgumentDeserializer precise filter + diagnostic args (findings 9, 27, 34).
+  - **R8** (4c71168) — Tap recording fixes (findings 14, 15, 16, 17, 18).
+  - **R9** (604719c) — Security fixes (findings 20, 21, 22, 37).
+  - **R10** (f2061f2) — Test matrix expansion (findings 23, 24, 28).
+  - **R11** (3edaa79) — Consistency polish (findings 30, 31, 32, 33, 39, 40).
+  - **R12** (5b50310) — API ergonomics (findings 35, 36, 38).
+- **Post-remediation polish committed after R12:**
+  - `d22caa6` — record PR #77 artifact.
+  - `ce26041` — revert R11 source-attribute `InternalsVisibleTo` move (kept csproj convention per user feedback); add CI test/pack steps for `NexNet.Testing`.
+  - `679c2b6` — CI: switch test runs to `--logger "console;verbosity=minimal"` to suppress per-test noise.
+  - `15ad8b0` — Per-test-project NUnit `ITestAction` progress reporter (writes to stderr so it survives the minimal logger). Cadence: every 100 tests or 15s for IntegrationTests; every 25 tests or 10s for Generator/Testing tests.
+  - `0a080a2` — bump `actions/checkout@v5`, `actions/setup-dotnet@v5`, `actions/upload-artifact@v5` to silence Node 20 deprecation.
+  - `7ed0984` — bump `actions/upload-artifact` to v7 (v5 still ran on Node 20).
+- **PR body** lives at `_sessions/add-nexnet-testing/pr-body.md` and is the source for the GitHub PR description on #77.
+- **Carryover guidance for resume:**
+  - If user picks FINALIZE: follow workflow REMEDIATE step 8 → FINALIZE. Pre-merge cleanup deletes `_sessions/add-nexnet-testing/` locally, pushes that deletion, then squash merges PR #77 with commit message `"Add NexNet.Testing harness + InProcessTransport + minimal core hooks (#77)"`.
+  - If user picks rebase: rebase on `origin/master`, re-run tests locally + watch CI, then re-prompt.
+  - If user wants more REVIEW: every review finding now has an "Action Taken" entry in `review.md` § Classifications; rerun the analysis agent for a fresh pass if needed.
+- **Findings status (review.md § Classifications):** all 11 A's, 27 B's, and 2 D's have an Action Taken note. Finding 40 was reclassified D after the user-requested revert.
 
 ### Context carried forward from earlier sessions (preserved for durability)
 
@@ -149,3 +155,5 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R11 complete (findings 30, 31, 32, 33, 39, 40): rewrote `InProcessRendezvous.Unregister` using `TryGetValue` + `ReferenceEquals` + `TryRemove(key, out _)`. Cached `TestAuthenticationStore.OverrideDelegate` as a constructor-set readonly field. `NexusTestHost.DisposeAsync` logs StopAsync exceptions via the configured Logger instead of swallowing. Moved `InternalsVisibleTo("NexNet.Testing")` from `NexNet.csproj` to source via `Properties/InternalsVisibleTo.cs`. Finding 30 (ConfigureAwait) verified clean by code-search + analyzer. Finding 39 verified theoretical — no integration mocks set Config=null! and `OnAuthenticateOverrideTests` (now covering InProcess too) exercise both paths. 65 testing + 2825 integration green. |
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R12 complete (findings 35, 36, 38; 37 was done in R9): expanded `NexusTestHost.CreateAsync` XML docs with per-`typeparam` descriptions and a worked-example `<code>` block so the 4-type-parameter shape is self-explanatory (finding 35 — the shape itself stays because the nested ClientProxy / ServerProxy types can't be inferred without generator changes). Added public `host.RecordedServerInvocationCount` as the v1 read-side handle (finding 36; keeping `ServerRecorder`/`Tracker`/`AuthStore` internal — promoting them would leak internal types and is a one-way door). Documented `InProcessRendezvous`'s AppDomain/ALC scope explicitly (finding 38). 65 testing + 2825 integration green. All 12 remediation phases complete. |
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | PR #77 created and pushed; first CI run green (4m27s). User feedback: revert R11's source-attribute migration of `InternalsVisibleTo("NexNet.Testing")` (finding 40 reclassified D — kept csproj convention) AND update `.github/workflows/dotnet.yml` to run `NexNet.Testing.Tests` and pack `NexNet.Testing`. Both applied: removed `src/NexNet/Properties/InternalsVisibleTo.cs`, restored the csproj `<InternalsVisibleTo>` entry, added two CI steps. 65 testing green locally. |
+| 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | CI test-output polish: switched all three test steps to `--logger "console;verbosity=minimal"` to suppress per-test pass lines (the 2825-case integration suite was dumping thousands of lines per CI run). Added an assembly-level NUnit `ITestAction` (`TestProgressReporterAttribute`) per test project that emits `[progress] <assembly>: N ran (X passed, Y failed), Ts elapsed` on stderr at a fixed cadence (100 tests / 15s for IntegrationTests; 25 / 10s for the small suites). Stderr survives the minimal logger; TestContext.Progress does not at that verbosity. |
+| 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE (suspended) | Bumped CI actions out of Node 20 deprecation: `actions/checkout@v5`, `actions/setup-dotnet@v5`, `actions/upload-artifact@v7`. Latest CI run (#26460964379) green in 4m27s with no deprecation annotation. User issued handoff — suspending at REMEDIATE step 8 awaiting finalize decision. Working tree clean; latest commit `7ed0984`. |
