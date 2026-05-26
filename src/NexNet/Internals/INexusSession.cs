@@ -82,7 +82,7 @@ internal interface INexusSession : ISessionMessenger
     /// <summary>
     /// Disconnects the session if the last received time is less than the timeout ticks.
     /// </summary>
-    /// <param name="timeoutTicks">Normally use Environment.TickCount64 - Timeout</param>
+    /// <param name="timeoutTicks">Normally use <c>Config.Time.GetTickCount64() - Config.Timeout</c>.</param>
     /// <returns>True upon successful disconnection due to timeout.  False otherwise.</returns>
     bool DisconnectIfTimeout(long timeoutTicks);
 }

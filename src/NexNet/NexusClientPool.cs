@@ -113,7 +113,7 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
             {
                 var nexus = _nexusFactory();
                 var client = new NexusClient<TClientNexus, TServerProxy>(_config.ClientConfig, nexus);
-                pooledClient = new PooledClient(client, _config.ClientConfig.Time);
+                pooledClient = new PooledClient(client, _config);
 
                 // Attempt to connect
                 var result = await client.TryConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -231,30 +231,32 @@ public sealed class NexusClientPool<TClientNexus, TServerProxy> : IAsyncDisposab
     internal sealed class PooledClient : IAsyncDisposable
     {
         private readonly NexusClient<TClientNexus, TServerProxy> _client;
-        private readonly TimeProvider _time;
+        private readonly NexusClientPoolConfig _poolConfig;
         private volatile bool _disposed;
         private DateTime _lastUsed;
 
-        public PooledClient(NexusClient<TClientNexus, TServerProxy> client, TimeProvider time)
+        public PooledClient(NexusClient<TClientNexus, TServerProxy> client, NexusClientPoolConfig poolConfig)
         {
             _client = client;
-            _time = time;
-            _lastUsed = _time.GetUtcNow().UtcDateTime;
+            _poolConfig = poolConfig;
+            _lastUsed = _poolConfig.ClientConfig.Time.GetUtcNow().UtcDateTime;
         }
 
         public NexusClient<TClientNexus, TServerProxy> Client => _client;
 
         public bool IsHealthy => !_disposed && _client.State == ConnectionState.Connected;
 
-        public DateTime LastUsed 
-        { 
+        public DateTime LastUsed
+        {
             get => _lastUsed;
             private set => _lastUsed = value;
         }
 
+        // Reads Time dynamically from the shared pool config so it stays consistent
+        // with PerformHealthAndIdleCheck even if Config.Time is mutated post-construction.
         public void UpdateLastUsed()
         {
-            _lastUsed = _time.GetUtcNow().UtcDateTime;
+            _lastUsed = _poolConfig.ClientConfig.Time.GetUtcNow().UtcDateTime;
         }
 
         public async ValueTask DisposeAsync()

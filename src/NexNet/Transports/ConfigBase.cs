@@ -33,6 +33,13 @@ public abstract class ConfigBase
     /// substitute <c>FakeTimeProvider</c> from <c>Microsoft.Extensions.TimeProvider.Testing</c>
     /// to drive time deterministically.
     /// </summary>
+    /// <remarks>
+    /// Set this before invoking any lifecycle method (<c>StartAsync</c>, <c>ConnectAsync</c>,
+    /// <c>Configure</c>). Mutation after that point is supported but limited: already-stored
+    /// <see cref="DateTime"/>/tick values (e.g. <c>NexusClientPool</c> last-used timestamps),
+    /// already-constructed timers, and in-flight <see cref="Task.Delay(TimeSpan, TimeProvider)"/>
+    /// continuations retain the provider that was active when they were created.
+    /// </remarks>
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
     /// <summary>

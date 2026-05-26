@@ -269,9 +269,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         var previousState = Interlocked.Exchange(ref _state, NexusServerState.Disposed);
 
         if (previousState == NexusServerState.Disposed || previousState == NexusServerState.Stopped)
+        {
+            _watchdogTimer?.Dispose();
+            _watchdogTimer = null;
             return;
+        }
 
         await StopAsync().ConfigureAwait(false);
+        _watchdogTimer?.Dispose();
+        _watchdogTimer = null;
     }
     
     ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)

@@ -23,7 +23,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private long _id;
-    private readonly ITimer _pingTimer;
+    private ITimer? _pingTimer;
     private readonly ClientConfig _config;
     private readonly SessionPoolManager<TServerProxy> _poolManager;
     private readonly TClientNexus _nexus;
@@ -91,7 +91,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         _proxy = new TServerProxy() { PoolManager = _poolManager };
         _nexus = nexus;
-        _pingTimer = _config.Time.CreateTimer(PingTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
@@ -182,6 +181,10 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected, session.DisconnectReason);
         }
 
+        // Construct the ping timer here so it uses whatever TimeProvider is on _config at connect-time.
+        // Disposing any prior timer first lets reconnects pick up a fresh provider if Config.Time was swapped.
+        _pingTimer?.Dispose();
+        _pingTimer = _config.Time.CreateTimer(PingTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _pingTimer.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
 
         return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
@@ -310,20 +313,20 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private void OnDisconnected()
     {
         //_receiveLoopThread = null;
-        _pingTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _pingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _session = null;
     }
-    
-    
+
+
     private void OnReconnectingStatusChange(bool reconnected)
     {
         if (reconnected)
         {
-            _pingTimer.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
+            _pingTimer?.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
         }
         else
         {
-            _pingTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _pingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
     }
 }

@@ -340,6 +340,50 @@ internal class NexusClientPoolTests : BaseTests
         }
     }
 
+    [Test]
+    public async Task Pool_FakeTimeProvider_DisposesIdleClientsDeterministically()
+    {
+        // Arrange
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var clientConfig = CreateClientConfig(Type.Uds);
+        clientConfig.Time = fakeTime;
+
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
+            MaxConnections = 5,
+            MaxIdleTime = TimeSpan.FromSeconds(2),
+            MinIdleConnections = 0
+        };
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig);
+
+        try
+        {
+            var client1 = await pool.RentClientAsync().Timeout(1);
+            var client2 = await pool.RentClientAsync().Timeout(1);
+            client1.Dispose();
+            client2.Dispose();
+
+            Assert.That(pool.AvailableConnections, Is.EqualTo(2));
+
+            // Advance past MaxIdleTime + health-check interval (MaxIdleTime/4 = 500ms).
+            // The health-check timer is registered with FakeTimeProvider and fires synchronously on Advance.
+            fakeTime.Advance(TimeSpan.FromSeconds(3));
+
+            Assert.That(pool.AvailableConnections, Is.EqualTo(0),
+                "MinIdleConnections is 0, so all idle clients should be evicted once their idle time exceeds MaxIdleTime.");
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
     // Idle Timeout Tests
     [Test]
     public async Task Pool_DisposesIdleClientsAfterTimeout()

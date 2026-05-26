@@ -302,4 +302,51 @@ internal class ConnectionRateLimiterUnitTests
         Assert.That(stats.BannedIpCount, Is.GreaterThan(0));
     }
 
+    [Test]
+    public void PerIpWindow_FakeTimeProvider_ExpiredEntriesAllowNewConnections()
+    {
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var config = new ConnectionRateLimitConfig
+        {
+            ConnectionsPerIpPerWindow = 2,
+            PerIpWindowSeconds = 60
+        };
+        using var limiter = new ConnectionRateLimiter(config, fakeTime);
+
+        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.PerIpRateExceeded));
+
+        // Advance past the 60s sliding window.
+        fakeTime.Advance(TimeSpan.FromSeconds(61));
+
+        Assert.That(limiter.TryAcquire("10.0.0.1"), Is.EqualTo(ConnectionRateLimitResult.Allowed),
+            "Once the sliding window expires, a new connection from the same IP must be allowed.");
+    }
+
+    [Test]
+    public void BanExpiration_FakeTimeProvider_ExpiredBanReleasesIp()
+    {
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var config = new ConnectionRateLimitConfig
+        {
+            MaxConnectionsPerIp = 1,
+            BanThreshold = 1,
+            BanDurationSeconds = 30
+        };
+        using var limiter = new ConnectionRateLimiter(config, fakeTime);
+
+        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.Allowed));
+        // Second concurrent connection exceeds per-IP — records a violation that should ban the IP.
+        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.PerIpConcurrentLimitExceeded));
+        Assert.That(limiter.TryAcquire("10.0.0.5"), Is.EqualTo(ConnectionRateLimitResult.IpBanned));
+
+        // Advance past the 30s ban — IP should be unbanned.
+        fakeTime.Advance(TimeSpan.FromSeconds(31));
+
+        var afterBan = limiter.TryAcquire("10.0.0.5");
+        Assert.That(afterBan, Is.Not.EqualTo(ConnectionRateLimitResult.IpBanned),
+            "Once BanDurationSeconds elapses, the IP must no longer be banned.");
+    }
+
 }

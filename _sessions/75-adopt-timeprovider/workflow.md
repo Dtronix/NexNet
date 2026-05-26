@@ -6,7 +6,7 @@ remote: https://github.com/Dtronix/NexNet.git
 base-branch: master
 
 ## State
-phase: REVIEW
+phase: REMEDIATE
 status: active
 issue: #75
 pr:
@@ -61,6 +61,8 @@ This was deferred from the `add-nexnet-testing` workflow. Removes the existing `
 - 2026-05-06 — **All `new Timer(...)` sites switch to `Time.CreateTimer(...)` returning `ITimer` (still IDisposable).**
 - 2026-05-22 — **Deviation from design: `ConfigBase.Time` is `{ get; set; }` not `{ get; init; }`.** Every other ConfigBase property is `{ get; set; }` (Logger, the int-property setters, etc.), and the auth-cache test needed to override `Time` on an already-constructed `ServerConfig` returned from helper methods. Mutability of Time post-construction is documented as supported but limited: timers/delays already in flight retain the original provider.
 - 2026-05-22 — **`Microsoft.Extensions.TimeProvider.Testing` package added in phase 7** (not deferred to phase 13 as originally planned). Phase 7 needed `FakeTimeProvider` to migrate the auth-cache test in the same commit; phase 13 will reuse the already-present package for the new tests.
+- 2026-05-26 — **`NexusPipeReader.time` parameter is optional (`TimeProvider? time = null` defaulting to `TimeProvider.System`); `ConnectionRateLimiter.time` is required.** Asymmetry rationale: `NexusPipeReader` is internal with 30+ direct test ctor sites and its back-pressure delay is not commonly tested under fake time, so a required parameter would force mechanical churn for no test value. `ConnectionRateLimiter` has only ~14 direct ctor sites and its sliding-window math is a likely future fake-time test target, so the required parameter keeps construction explicit and discoverable. Resolves review findings #3 and #18.
+- 2026-05-26 — **REMEDIATE phase delivered partial FakeTimeProvider coverage for issue #75's "broader tests" scope.** New deterministic tests added: pool idle reaping (`Pool_FakeTimeProvider_DisposesIdleClientsDeterministically`), rate-limiter sliding window (`PerIpWindow_FakeTimeProvider_ExpiredEntriesAllowNewConnections`), and ban expiration (`BanExpiration_FakeTimeProvider_ExpiredBanReleasesIp`). Reconnect-backoff and ping-interval tests deferred — they require a custom `IReconnectionPolicy` and wire-level inspection respectively, both non-trivial scaffolding. Filed as separate follow-up rather than blocking the PR on test infrastructure work.
 
 ## Suspend State
 
