@@ -7,10 +7,10 @@ base-branch: master
 
 ## State
 phase: REMEDIATE
-status: suspended
+status: active
 issue: discussion
 pr:
-session: 4
+session: 5
 phases-total: 13
 phases-complete: 13
 
@@ -140,3 +140,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R3 complete (finding 2): added `host.Groups[name].Members/Count` via new `GroupIntrospector`/`GroupView` types backed by `IServerSessionManager.Groups` (exposed via new internal `NexusServer.SessionManagerInternal`). Added `JoinGroup` and `BroadcastToGroup` to `DemoServerNexus` and a `HarnessShowcaseTests` test class (3 tests: empty group, membership across 3 clients, group broadcast delivery to members only). Also installed the shared `_interceptor` + `_pipeFactory` on the client config so client-side broadcast dispatch is tracked by quiescence. 49/49 testing green. |
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R4 complete (finding 1): added `PipeUploadAsync`/`PipeDownloadAsync`/`ChannelPublishAsync<T>`/`ChannelCollectAsync<T>` extension methods in `NexNet.Testing.Streaming.StreamingExtensions`. `client.CreatePipe()` shortcut added on `NexusTestClient`. Required removing the wrapper return from `TestPipeFactory.WrapLocal` — the framework's `ProxyInvocationBase.ProxyGetDuplexPipeInitialId` does an `Unsafe.As<NexusDuplexPipe>` cast, so an interface-only wrapper would read garbage memory. Locally-rented pipes are now passed through unwrapped (byte-level transport tap still feeds quiescence via `BytesInTransit`); remote-incoming pipes still wrap normally. 4 new streaming tests pass; 53/53 testing green. |
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE (suspended) | End-of-session suspend after R4. 4 of 12 remediation phases done; commits c9b3c2e (R1), 8a49f16 (R2), f95a1a0 (R3), 5d3567d (R4). Working tree clean. Resume next session at R5 (per-client assertions). |
+| 5 | 2026-05-26 REMEDIATE (resumed) | 2026-05-26 REMEDIATE | Resumed at R5. R5 complete (finding 3): extracted assertion logic into `RecorderAssertions` shared by host and per-client API; `ConnectAsAsync` now creates a per-client recorder + interceptor; `NexusTestClient.AssertReceived/AssertNotReceived/WaitFor` delegate to the new engine. 5 new tests verify per-client isolation, timeout, mismatch. 58/58 testing green. |

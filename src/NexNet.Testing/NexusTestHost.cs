@@ -168,11 +168,20 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
     /// </summary>
     public async Task<NexusTestClient<TClientNexus, TServerProxy>> ConnectAsAsync(IIdentity? identity)
     {
+        // Each client owns a fresh recorder + interceptor so per-client assertions only see
+        // dispatch on that client's session. The interceptor is also installed on the server's
+        // shared config (server-side recording aggregates across clients) — this duplicates the
+        // counter increments but those still net to zero per dispatch, so quiescence stays
+        // correct.
+        var clientRecorder = new InvocationRecorder();
+        var clientCounters = _tracker.GetCountersFor(0);
+        var clientInterceptor = new TestInvocationInterceptor(clientRecorder, clientCounters, _tracker);
+
         var clientConfig = new InProcessClientConfig
         {
             Endpoint = _endpoint,
             InternalOnSessionSetup = RegisterSessionWithTracker,
-            InvocationInterceptor = _interceptor,
+            InvocationInterceptor = clientInterceptor,
             PipeFactory = _pipeFactory,
         };
         if (identity is not null)
@@ -192,7 +201,7 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
         }
         var client = new NexusClient<TClientNexus, TServerProxy>(clientConfig, clientNexus);
         await client.ConnectAsync().ConfigureAwait(false);
-        return new NexusTestClient<TClientNexus, TServerProxy>(client, clientNexus);
+        return new NexusTestClient<TClientNexus, TServerProxy>(client, clientNexus, clientRecorder);
     }
 
     /// <inheritdoc />
