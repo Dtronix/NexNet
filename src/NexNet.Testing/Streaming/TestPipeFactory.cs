@@ -32,7 +32,9 @@ internal sealed class TestPipeFactory : IPipeFactory
         // INexusDuplexPipe would read garbage memory through the cast. Locally-rented pipes
         // therefore use the byte-level transport tap (via BytesInTransit) for quiescence and
         // give up the per-pipe-recording observation API on the caller side. Remote (incoming)
-        // pipes are still wrapped — see WrapRemote.
+        // pipes are still wrapped — see WrapRemote. The id-keying for `GetRecordingFor` is
+        // intentionally only populated by WrapRemote (where the id is known and stable at
+        // wrap-time); locally-rented pipes start at Id=0 and aren't lookup-able by id.
         Track(inner.CompleteTask, recording: null);
         return inner;
     }
@@ -47,14 +49,15 @@ internal sealed class TestPipeFactory : IPipeFactory
 
     private void Track(Task completeTask, PipeRecording? recording)
     {
-        // `recording` is ignored here today; the bracketed Open/Close pair is what quiescence
-        // needs. Keeping the parameter so callers can stay declarative ("this pipe owns this
-        // recording") even when the recording is attached via a different code path.
-        _ = recording;
         _counters.OpenPipe();
         _tracker.SignalChange();
-        _ = completeTask.ContinueWith(_ =>
+        _ = completeTask.ContinueWith(t =>
         {
+            // Drive both the quiescence bookkeeping and the recording's completion signal from
+            // the single continuation. Previously the wrapper registered its own
+            // RecordCompletion continuation in parallel; consolidating here removes the duplicate
+            // callback path and the constructor-time race window it implied.
+            recording?.RecordCompletion(t.Exception?.GetBaseException());
             _counters.ClosePipe();
             _tracker.SignalChange();
         }, TaskScheduler.Default);

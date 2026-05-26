@@ -44,16 +44,19 @@ internal sealed class RecorderAssertions
         Expression<Action<TInterface>> expression,
         TimeSpan? timeout)
     {
-        var deadline = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(5));
+        // Monotonic clock so the wait survives wall-clock jumps (DST, NTP correction).
+        var totalMs = (long)(timeout ?? TimeSpan.FromSeconds(5)).TotalMilliseconds;
+        var startTicks = Environment.TickCount64;
         while (true)
         {
             if (FindMatches(expression).Count > 0) return;
-            var remaining = deadline - DateTime.UtcNow;
-            if (remaining <= TimeSpan.Zero)
+            var elapsedMs = Environment.TickCount64 - startTicks;
+            var remainingMs = totalMs - elapsedMs;
+            if (remainingMs <= 0)
                 throw new TimeoutException(
-                    $"WaitFor timed out after {timeout?.TotalSeconds ?? 5} seconds.");
+                    $"WaitFor timed out after {totalMs} ms.");
 
-            using var cts = new CancellationTokenSource(remaining);
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(remainingMs));
             try { await _recorder.WaitForChangeAsync(cts.Token).ConfigureAwait(false); }
             catch (OperationCanceledException) { /* re-check on next loop iteration */ }
         }

@@ -25,10 +25,10 @@ internal sealed class TappedNexusDuplexPipe : INexusDuplexPipe
         Recording = new PipeRecording();
         _reader = new TappingPipeReader(_inner.Input, Recording);
         _writer = new TappingPipeWriter(_inner.Output, Recording);
-        _ = _inner.CompleteTask.ContinueWith(t =>
-        {
-            Recording.RecordCompletion(t.Exception?.GetBaseException());
-        }, TaskScheduler.Default);
+        // Completion forwarding is owned by TestPipeFactory.Track, which bridges
+        // CompleteTask -> Recording.RecordCompletion + ClosePipe in one place. Registering a
+        // second continuation here would race-free-but-wasteful-double-invoke; rely on the
+        // factory's continuation instead.
     }
 
     public PipeReader Input => _reader;
@@ -55,10 +55,7 @@ internal sealed class TappedRentedNexusDuplexPipe : IRentedNexusDuplexPipe
         Recording = new PipeRecording();
         _reader = new TappingPipeReader(_inner.Input, Recording);
         _writer = new TappingPipeWriter(_inner.Output, Recording);
-        _ = _inner.CompleteTask.ContinueWith(t =>
-        {
-            Recording.RecordCompletion(t.Exception?.GetBaseException());
-        }, TaskScheduler.Default);
+        // Completion forwarding is owned by TestPipeFactory.Track (see TappedNexusDuplexPipe).
     }
 
     public PipeReader Input => _reader;
