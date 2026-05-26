@@ -27,6 +27,23 @@ public static class NexusTestHost
     /// detects duplicate instances and throws a clear error rather than silently hanging. Omit
     /// the factory arguments to use the default <c>new TServerNexus()</c> / <c>new TClientNexus()</c>.
     /// </summary>
+    /// <typeparam name="TServerNexus">The user's server nexus class, generated via
+    ///   <c>[Nexus(NexusType = NexusType.Server)]</c>.</typeparam>
+    /// <typeparam name="TClientProxy">The nested <c>ClientProxy</c> type the generator emits
+    ///   inside <typeparamref name="TServerNexus"/>.</typeparam>
+    /// <typeparam name="TClientNexus">The user's client nexus class, generated via
+    ///   <c>[Nexus(NexusType = NexusType.Client)]</c>.</typeparam>
+    /// <typeparam name="TServerProxy">The nested <c>ServerProxy</c> type the generator emits
+    ///   inside <typeparamref name="TClientNexus"/>.</typeparam>
+    /// <remarks>
+    /// The four type parameters are required because the C# compiler cannot infer the nested
+    /// proxy types from the outer nexus types alone. A typical call looks like:
+    /// <code>
+    /// await using var host = await NexusTestHost.CreateAsync&lt;
+    ///     MyServerNexus, MyServerNexus.ClientProxy,
+    ///     MyClientNexus, MyClientNexus.ServerProxy&gt;();
+    /// </code>
+    /// </remarks>
     public static async Task<NexusTestHost<TServerNexus, TClientProxy, TClientNexus, TServerProxy>> CreateAsync<TServerNexus, TClientProxy, TClientNexus, TServerProxy>(
         Func<TServerNexus>? serverNexusFactory = null,
         Func<TClientNexus>? clientNexusFactory = null)
@@ -128,9 +145,19 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
         _tracker.RegisterPendingInvocationProbe(session, () => stateManager.PendingInvocationCount);
     }
 
-    /// <summary>Recorder capturing every invocation the server dispatched. Internal until
-    /// Phase 12 exposes it via assertion helpers.</summary>
+    /// <summary>Recorder capturing every invocation the server dispatched. Internal because
+    /// the public surface is the assertion API (<see cref="AssertReceived"/>,
+    /// <see cref="AssertNotReceived"/>, <see cref="WaitFor"/>) plus
+    /// <see cref="RecordedServerInvocationCount"/>; user code that needs the raw recorder
+    /// should consume one of those layers.</summary>
     internal InvocationRecorder ServerRecorder { get; }
+
+    /// <summary>
+    /// Number of invocations the server has dispatched since the host was created. Useful for
+    /// scenario-level "did the server actually receive anything?" sanity checks where the
+    /// assertion API is too narrow.
+    /// </summary>
+    public int RecordedServerInvocationCount => ServerRecorder.Count;
 
     /// <summary>
     /// Lazily-initialised view onto the server's group registry. <c>host.Groups["editors"].Members</c>

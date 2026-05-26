@@ -9,9 +9,21 @@ namespace NexNet.Testing.Transports.InProcess;
 /// listener by endpoint to obtain a paired transport.
 /// </summary>
 /// <remarks>
-/// The registry is per-AppDomain (static). Endpoint names are arbitrary strings; tests typically
-/// use a unique GUID-derived value per test method so concurrent runs do not collide. Multiple
-/// listeners cannot register under the same endpoint; the second attempt throws.
+/// <para>
+/// The registry is a <c>static</c> field, so its scope is one <see cref="System.AppDomain"/>
+/// (equivalently: one <see cref="System.Runtime.Loader.AssemblyLoadContext"/> graph that
+/// resolves this assembly). Endpoint names are arbitrary strings; tests typically use a unique
+/// GUID-derived value per test method so concurrent runs in the same AppDomain do not collide.
+/// <see cref="NexusTestHost.CreateAsync"/> generates such a GUID-suffixed endpoint
+/// automatically.
+/// </para>
+/// <para>
+/// Multiple listeners cannot register under the same endpoint; the second attempt throws.
+/// Multiple test assemblies loaded into separate AssemblyLoadContexts (e.g. some hot-reload
+/// scenarios) each get their own registry instance and cannot see each other's listeners; this
+/// is normally what tests want, but worth noting if a future runner splits a single logical
+/// test into multiple ALCs.
+/// </para>
 /// </remarks>
 internal static class InProcessRendezvous
 {
