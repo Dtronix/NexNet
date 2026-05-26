@@ -11,6 +11,13 @@ namespace NexNet.Testing.Authentication;
 /// override produces the corresponding identity; unknown tokens resolve to null and the
 /// server drops the connection through the existing auth path.
 /// </summary>
+/// <remarks>
+/// Tokens are not garbage-collected: a long-lived host that issues many tokens accumulates them
+/// for the host's lifetime. This is by design — the store doesn't know which tokens are still
+/// in use, and test scenarios that need long-lived hosts can call <see cref="Clear"/> between
+/// scenarios. Typical per-test-method host construction releases the store when the host is
+/// disposed.
+/// </remarks>
 internal sealed class TestAuthenticationStore
 {
     private readonly ConcurrentDictionary<string, IIdentity> _byTokenKey = new(StringComparer.Ordinal);
@@ -36,4 +43,12 @@ internal sealed class TestAuthenticationStore
             ? new ValueTask<IIdentity?>(id)
             : new ValueTask<IIdentity?>((IIdentity?)null);
     };
+
+    /// <summary>
+    /// Removes every issued token. Long-lived hosts that issue many tokens across scenarios can
+    /// call this between scenarios to bound memory; tokens issued before <c>Clear</c> stop
+    /// resolving and subsequent connect attempts with those tokens are rejected as if they were
+    /// never issued.
+    /// </summary>
+    public void Clear() => _byTokenKey.Clear();
 }

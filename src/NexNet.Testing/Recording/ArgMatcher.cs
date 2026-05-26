@@ -61,17 +61,23 @@ internal abstract class ArgMatcher
         public override bool Matches(object? actual)
         {
             // The predicate is typed Func<T, bool>; invoke via DynamicInvoke so we don't need
-            // to thread <T> through the recorder. Fast path: actual is the correct type or null
-            // for reference types. If the cast fails, the assertion fails cleanly.
+            // to thread <T> through the recorder.
+            object? result;
             try
             {
-                var result = _predicate.DynamicInvoke(actual);
-                return result is bool b && b;
+                result = _predicate.DynamicInvoke(actual);
             }
-            catch (Exception)
+            catch (System.Reflection.TargetInvocationException tie) when (tie.InnerException is not null)
             {
-                return false;
+                // DynamicInvoke wraps user-thrown exceptions; surface the original so the user
+                // sees their predicate's exception instead of a generic "no match". Previously
+                // this was swallowed silently and reported as `observed: 0`, which was
+                // indistinguishable from a real no-match and frustrating to diagnose.
+                throw new NexusAssertionException(
+                    $"Arg.Is<{_argType.Name}>(predicate) threw {tie.InnerException.GetType().Name}: {tie.InnerException.Message}",
+                    tie.InnerException);
             }
+            return result is bool b && b;
         }
 
         public override string ToString() => $"Arg.Is<{_argType.Name}>(predicate)";

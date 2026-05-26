@@ -17,4 +17,14 @@ public sealed class NexusAssertionException : Exception
         : base(message)
     {
     }
+
+    /// <summary>
+    /// Creates a new <see cref="NexusAssertionException"/> wrapping an inner exception, e.g.
+    /// when a user-supplied predicate inside <c>Arg.Is&lt;T&gt;(p)</c> throws and the harness
+    /// wants to surface the original cause rather than masking it as a no-match.
+    /// </summary>
+    public NexusAssertionException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
 }
