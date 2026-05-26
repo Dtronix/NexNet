@@ -78,10 +78,24 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
             InvocationInterceptor = interceptor,
             PipeFactory = pipeFactory,
             OnAuthenticateOverride = _authStore.OverrideDelegate,
+            Counters = counters,
+            Tracker = _tracker,
+            InternalOnSessionSetup = RegisterSessionWithTracker,
         };
 
         _server = new NexusServer<TServerNexus, TClientProxy>(_serverConfig, _serverNexusFactory, null);
         ServerRecorder = recorder;
+    }
+
+    /// <summary>
+    /// Registers a freshly-constructed session's <c>PendingInvocationCount</c> probe with the
+    /// tracker so quiescence accounts for invocations the registry knows about. The session
+    /// instance is used as the probe key, so the matching unregister can be a single lookup.
+    /// </summary>
+    private void RegisterSessionWithTracker(NexNet.Internals.INexusSession session)
+    {
+        var stateManager = session.SessionInvocationStateManager;
+        _tracker.RegisterPendingInvocationProbe(session, () => stateManager.PendingInvocationCount);
     }
 
     /// <summary>Recorder capturing every invocation the server dispatched. Internal until
@@ -108,7 +122,11 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
     /// </summary>
     public async Task<NexusTestClient<TClientNexus, TServerProxy>> ConnectAsAsync(IIdentity? identity)
     {
-        var clientConfig = new InProcessClientConfig { Endpoint = _endpoint };
+        var clientConfig = new InProcessClientConfig
+        {
+            Endpoint = _endpoint,
+            InternalOnSessionSetup = RegisterSessionWithTracker,
+        };
         if (identity is not null)
         {
             var token = _authStore.IssueToken(identity);

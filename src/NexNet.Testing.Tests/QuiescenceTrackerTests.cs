@@ -60,7 +60,8 @@ internal class QuiescenceTrackerTests
     {
         var tracker = new QuiescenceTracker();
         int pending = 2;
-        tracker.RegisterPendingInvocationProbe(() => pending);
+        var key = new object();
+        tracker.RegisterPendingInvocationProbe(key, () => pending);
 
         var quiesceTask = tracker.QuiesceAsync();
         await Task.Delay(50);
@@ -69,6 +70,40 @@ internal class QuiescenceTrackerTests
         pending = 0;
         tracker.SignalChange();
         await quiesceTask.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Test]
+    public async Task PendingInvocationProbe_Unregister_RemovesProbe()
+    {
+        var tracker = new QuiescenceTracker();
+        int pending = 5;
+        var key = new object();
+        tracker.RegisterPendingInvocationProbe(key, () => pending);
+
+        var quiesceTask = tracker.QuiesceAsync();
+        await Task.Delay(50);
+        Assert.That(quiesceTask.IsCompleted, Is.False);
+
+        tracker.UnregisterPendingInvocationProbe(key);
+        tracker.SignalChange();
+        await quiesceTask.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Test]
+    public async Task QuiesceAsync_HonorsCancellation()
+    {
+        var tracker = new QuiescenceTracker();
+        var counters = tracker.GetCountersFor(sessionId: 1);
+        counters.EnterDispatch();
+
+        using var cts = new CancellationTokenSource();
+        var quiesceTask = tracker.QuiesceAsync(cts.Token);
+        await Task.Delay(50);
+        Assert.That(quiesceTask.IsCompleted, Is.False);
+
+        cts.Cancel();
+        Assert.CatchAsync<OperationCanceledException>(
+            async () => await quiesceTask.WaitAsync(TimeSpan.FromSeconds(1)));
     }
 
     [Test]

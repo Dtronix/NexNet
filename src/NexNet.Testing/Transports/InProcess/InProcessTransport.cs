@@ -1,5 +1,6 @@
 using System.IO.Pipelines;
 using System.Threading.Tasks;
+using NexNet.Testing.Quiescence;
 using NexNet.Transports;
 
 namespace NexNet.Testing.Transports.InProcess;
@@ -8,7 +9,8 @@ namespace NexNet.Testing.Transports.InProcess;
 /// In-process implementation of <see cref="ITransport"/> that exposes a pair of
 /// <see cref="System.IO.Pipelines.Pipe"/> ends as the duplex stream. Used in pairs: the server
 /// side and client side of a single connection share two pipes cross-wired so that one side's
-/// output is the other side's input.
+/// output is the other side's input. When constructed with non-null quiescence inputs, the
+/// reader/writer are wrapped to feed <see cref="QuiescenceCounters.BytesInTransit"/>.
 /// </summary>
 internal sealed class InProcessTransport : ITransport
 {
@@ -21,10 +23,23 @@ internal sealed class InProcessTransport : ITransport
     public string? RemoteAddress { get; }
     public int? RemotePort => null;
 
-    public InProcessTransport(PipeReader input, PipeWriter output, string remoteAddress)
+    public InProcessTransport(
+        PipeReader input,
+        PipeWriter output,
+        string remoteAddress,
+        QuiescenceCounters? counters = null,
+        QuiescenceTracker? tracker = null)
     {
-        _input = input;
-        _output = output;
+        if (counters is not null && tracker is not null)
+        {
+            _input = new CountingPipeReader(input, counters, tracker);
+            _output = new CountingPipeWriter(output, counters, tracker);
+        }
+        else
+        {
+            _input = input;
+            _output = output;
+        }
         RemoteAddress = remoteAddress;
     }
 

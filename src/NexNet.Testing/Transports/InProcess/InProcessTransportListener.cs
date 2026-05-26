@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using NexNet.Testing.Quiescence;
 using NexNet.Transports;
 
 namespace NexNet.Testing.Transports.InProcess;
@@ -17,12 +18,19 @@ internal sealed class InProcessTransportListener : ITransportListener
 {
     private readonly string _endpoint;
     private readonly Channel<ITransport> _accepted;
+    private readonly QuiescenceCounters? _counters;
+    private readonly QuiescenceTracker? _tracker;
     private int _connectionSequence;
     private bool _closed;
 
-    public InProcessTransportListener(string endpoint)
+    public InProcessTransportListener(
+        string endpoint,
+        QuiescenceCounters? counters = null,
+        QuiescenceTracker? tracker = null)
     {
         _endpoint = endpoint;
+        _counters = counters;
+        _tracker = tracker;
         // Unbounded so clients never block on connect; the server's accept loop drains.
         _accepted = Channel.CreateUnbounded<ITransport>(new UnboundedChannelOptions
         {
@@ -53,12 +61,16 @@ internal sealed class InProcessTransportListener : ITransportListener
         var serverSide = new InProcessTransport(
             input: clientToServer.Reader,
             output: serverToClient.Writer,
-            remoteAddress: clientAddress);
+            remoteAddress: clientAddress,
+            counters: _counters,
+            tracker: _tracker);
 
         var clientSide = new InProcessTransport(
             input: serverToClient.Reader,
             output: clientToServer.Writer,
-            remoteAddress: serverAddress);
+            remoteAddress: serverAddress,
+            counters: _counters,
+            tracker: _tracker);
 
         if (!_accepted.Writer.TryWrite(serverSide))
             throw new InvalidOperationException(

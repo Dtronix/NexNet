@@ -13,15 +13,15 @@ namespace NexNet.Testing.Quiescence;
 /// </summary>
 /// <remarks>
 /// The tracker exposes raw counter handles via <see cref="GetCountersFor"/> so the interceptor,
-/// pipe factory, and transport can record activity directly. <see cref="GetPendingInvocations"/>
-/// is a pull-style probe used because the session's invocation-state registry is the source of
-/// truth — counting writes through the interceptor would double-count.
+/// pipe factory, and transport can record activity directly. Pending-invocation probes are
+/// pull-style because the session's invocation-state registry is the source of truth; counting
+/// writes through the interceptor would double-count.
 /// </remarks>
 internal sealed class QuiescenceTracker
 {
     private readonly object _gate = new();
     private readonly Dictionary<long, QuiescenceCounters> _bySession = new();
-    private readonly List<Func<int>> _pendingInvocationProbes = new();
+    private readonly Dictionary<object, Func<int>> _pendingInvocationProbes = new();
 
     private TaskCompletionSource _changeSignal =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -40,26 +40,28 @@ internal sealed class QuiescenceTracker
     }
 
     /// <summary>
-    /// Registers a probe that returns the live pending-invocation count for a single session.
-    /// Probes are aggregated into the global total each time <see cref="QuiesceAsync"/> samples
-    /// the state.
+    /// Registers a probe under <paramref name="key"/> that returns the live pending-invocation
+    /// count for a single session. Probes are aggregated into the global total each time
+    /// <see cref="QuiesceAsync"/> samples the state. The <paramref name="key"/> is used to
+    /// unregister the probe later (typically when the session disconnects or the host is
+    /// disposed).
     /// </summary>
-    public void RegisterPendingInvocationProbe(Func<int> probe)
+    public void RegisterPendingInvocationProbe(object key, Func<int> probe)
     {
         lock (_gate)
         {
-            _pendingInvocationProbes.Add(probe);
+            _pendingInvocationProbes[key] = probe;
         }
     }
 
     /// <summary>
-    /// Removes a previously-registered probe (typically called when a session disconnects).
+    /// Removes a previously-registered probe.
     /// </summary>
-    public void UnregisterPendingInvocationProbe(Func<int> probe)
+    public void UnregisterPendingInvocationProbe(object key)
     {
         lock (_gate)
         {
-            _pendingInvocationProbes.Remove(probe);
+            _pendingInvocationProbes.Remove(key);
         }
     }
 
@@ -78,9 +80,15 @@ internal sealed class QuiescenceTracker
         toFire.TrySetResult();
     }
 
-    private (int bytesInTransit, int inDispatch, int activePipes, int pendingInvocations) Sample()
+    /// <summary>
+    /// Atomic sample: reads counters and snapshots the signal task under the same lock so a
+    /// caller awaiting the returned signal won't miss a <see cref="SignalChange"/> that happens
+    /// after the sample but before the await.
+    /// </summary>
+    private (int bytesInTransit, int inDispatch, int activePipes, int pendingInvocations, Task signal) SampleAndSnapshotSignal()
     {
         int bytes = 0, dispatch = 0, pipes = 0, pending = 0;
+        Task signal;
         lock (_gate)
         {
             foreach (var (_, counters) in _bySession)
@@ -89,19 +97,14 @@ internal sealed class QuiescenceTracker
                 dispatch += counters.InDispatch;
                 pipes += counters.ActivePipes;
             }
-            foreach (var probe in _pendingInvocationProbes)
+            foreach (var probe in _pendingInvocationProbes.Values)
             {
                 try { pending += probe(); }
                 catch { /* probe may be stale post-disconnect */ }
             }
+            signal = _changeSignal.Task;
         }
-        return (bytes, dispatch, pipes, pending);
-    }
-
-    private int GetPendingInvocations()
-    {
-        var (_, _, _, pending) = Sample();
-        return pending;
+        return (bytes, dispatch, pipes, pending, signal);
     }
 
     /// <summary>
@@ -113,20 +116,19 @@ internal sealed class QuiescenceTracker
     {
         while (true)
         {
-            var (bytes, dispatch, pipes, pending) = Sample();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var (bytes, dispatch, pipes, pending, signal) = SampleAndSnapshotSignal();
             if (bytes == 0 && dispatch == 0 && pipes == 0 && pending == 0)
             {
                 // Drain synchronously-scheduled continuations.
                 await Task.Yield();
-                (bytes, dispatch, pipes, pending) = Sample();
+                cancellationToken.ThrowIfCancellationRequested();
+                (bytes, dispatch, pipes, pending, _) = SampleAndSnapshotSignal();
                 if (bytes == 0 && dispatch == 0 && pipes == 0 && pending == 0)
                     return;
-            }
-
-            Task signal;
-            lock (_gate)
-            {
-                signal = _changeSignal.Task;
+                // Re-sample to take a fresh signal for the next wait.
+                (_, _, _, _, signal) = SampleAndSnapshotSignal();
             }
 
             if (cancellationToken.CanBeCanceled)
