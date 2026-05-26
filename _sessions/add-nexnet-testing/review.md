@@ -30,14 +30,14 @@
 | 24 | A | A | Med | Test Quality | Hook tests (`InvocationInterceptorTests`, `PipeFactoryHookTests`, `OnAuthenticateOverrideTests`) only exercise `Type.Tcp` |  |
 | 25 | A | A | Med | Test Quality | No tests for the `MethodIdMap` determinism / generator-parity claim | R6: `MethodIdMapTests` pins expected ids for the demo interfaces against source declaration order; explicit-id precedence + slot-skipping is exercised via a synthetic `IExplicitIdSample` interface. |
 | 26 | B | B | Med | Test Quality | `QuiescenceTracker` tests use raw counter handles in isolation, not under contention from the actual interceptor/factory wired in production paths | R1: added `QuiesceAsync_AwaitsRealActivityEndToEnd` driving real Ping+Notify load through the full pipeline |
-| 27 | B | B | Med | Test Quality | `AssertionTests` only exercise single-arg `Ping(int)`; no multi-arg or string-arg coverage at the end-to-end level |  |
+| 27 | B | B | Med | Test Quality | `AssertionTests` only exercise single-arg `Ping(int)`; no multi-arg or string-arg coverage at the end-to-end level | R7: added 3 new tests covering string-arg matching (Notify), multi-arg matching with wildcards (BroadcastToGroup), and the mismatch-diagnostic-includes-args contract. |
 | 28 | B | B | Low | Test Quality | `ExpressionParserTests.NonCallExpression_Throws` constructs a synthetic AST instead of a real misuse case |  |
 | 29 | D | D | Low | Test Quality | Pipe-side recording captures consumed bytes only — intentional and documented |  |
 | 30 | B | B | Med | Codebase Consistency | New `NexNet.Testing` code is missing `.ConfigureAwait(false)` in places despite the `ConfigureAwaitChecker` package being referenced |  |
 | 31 | B | B | Low | Codebase Consistency | `InProcessRendezvous.Unregister` uses awkward `KeyValuePair`-based remove instead of `TryRemove` overload |  |
 | 32 | B | B | Low | Codebase Consistency | `TestAuthenticationStore.OverrideDelegate` allocates a new delegate instance on every read |  |
 | 33 | B | B | Low | Codebase Consistency | `NexusTestHost.DisposeAsync` swallows every exception from `StopAsync` |  |
-| 34 | B | B | Low | Codebase Consistency | `Assertions.BuildMismatchMessage` doesn't include recorded args (only method ids), undermining the plan's "diagnostic must include actual recorded arg values" requirement |  |
+| 34 | B | B | Low | Codebase Consistency | `Assertions.BuildMismatchMessage` doesn't include recorded args (only method ids), undermining the plan's "diagnostic must include actual recorded arg values" requirement | R7: mismatch diagnostic now deserializes the recorded args and renders `Notify("alpha")` rather than just `#1`. Falls back to `<args undecodable: ...>` if deserialization itself throws. |
 | 35 | B | B | Med | Integration / Breaking Changes | `NexusTestHost.CreateAsync` has 4 type parameters with no inference path — a hard-to-revise v1 API |  |
 | 36 | B | B | Low | Integration / Breaking Changes | `NexusTestHost.ServerRecorder` and `Tracker`/`AuthStore` are `internal` but the host class is `public sealed` — extensibility is precluded |  |
 | 37 | B | B | Low | Integration / Breaking Changes | `NexusAssertionException` has no `(message, innerException)` constructor and is `sealed` |  |

@@ -115,4 +115,52 @@ internal class AssertionTests
         Assert.ThrowsAsync<TimeoutException>(async () =>
             await host.WaitFor<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()), TimeSpan.FromMilliseconds(200)));
     }
+
+    [Test]
+    public async Task AssertReceived_StringArg_MatchesExactly()
+    {
+        var (host, client, _) = await SetupAsync();
+        await using var _host = host;
+
+        await client.Server.Notify("hello");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        host.AssertReceived<IDemoServerNexus>(n => n.Notify("hello"));
+        host.AssertNotReceived<IDemoServerNexus>(n => n.Notify("goodbye"));
+    }
+
+    [Test]
+    public async Task AssertReceived_MultiArg_AllMustMatch()
+    {
+        var (host, client, _) = await SetupAsync();
+        await using var _host = host;
+
+        await client.Server.BroadcastToGroup("editors", "draft-saved");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", "draft-saved"));
+        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", Arg.Any<string>()));
+        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup(Arg.Any<string>(), Arg.Any<string>()));
+        host.AssertNotReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", "wrong-text"));
+        host.AssertNotReceived<IDemoServerNexus>(n => n.BroadcastToGroup("readers", "draft-saved"));
+    }
+
+    [Test]
+    public async Task AssertReceived_MismatchDiagnostic_IncludesRecordedArgs()
+    {
+        var (host, client, _) = await SetupAsync();
+        await using var _host = host;
+
+        await client.Server.Notify("alpha");
+        await client.Server.Notify("beta");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        var ex = Assert.Throws<NexusAssertionException>(
+            () => host.AssertReceived<IDemoServerNexus>(n => n.Notify("gamma")));
+
+        // The diagnostic must include the actual recorded arg values, not just method ids.
+        Assert.That(ex!.Message, Does.Contain("alpha"));
+        Assert.That(ex.Message, Does.Contain("beta"));
+        Assert.That(ex.Message, Does.Contain("Notify"));
+    }
 }

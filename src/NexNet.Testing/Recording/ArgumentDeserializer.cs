@@ -56,13 +56,27 @@ internal static class ArgumentDeserializer
         return list.ToArray();
     }
 
-    private static bool IsSerializableParameter(Type t)
+    /// <summary>
+    /// Mirrors the source generator's exclusion list verbatim. The generator at
+    /// <c>NexusDataExtractor.cs</c> excludes these specific shapes from the serialized
+    /// ValueTuple; matching them here keeps the runtime deserializer in lockstep so future
+    /// generator additions need an explicit update in both places (rather than silently failing
+    /// because a new excluded namespace member slipped through a prefix-based filter).
+    /// </summary>
+    internal static bool IsSerializableParameter(Type t)
     {
-        // Mirrors the generator's exclusion list: CancellationToken, pipe/channel handles.
         if (t.FullName == "System.Threading.CancellationToken") return false;
-        var ns = t.Namespace;
-        if (ns is not null && (ns.StartsWith("NexNet.Pipes") || ns == "NexNet.Pipes"))
-            return false;
+
+        if (t.FullName == "NexNet.Pipes.INexusDuplexPipe") return false;
+        if (t.FullName == "NexNet.Pipes.IRentedNexusDuplexPipe") return false;
+
+        if (t.IsGenericType)
+        {
+            var def = t.GetGenericTypeDefinition();
+            if (def.FullName == "NexNet.Pipes.INexusDuplexUnmanagedChannel`1") return false;
+            if (def.FullName == "NexNet.Pipes.INexusDuplexChannel`1") return false;
+        }
+
         return true;
     }
 

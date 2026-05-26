@@ -98,18 +98,10 @@ internal sealed class RecorderAssertions
         var result = new List<ArgMatcher>(allMatchers.Count);
         for (int i = 0; i < parameters.Length; i++)
         {
-            if (IsSerializableParameter(parameters[i].ParameterType))
+            if (ArgumentDeserializer.IsSerializableParameter(parameters[i].ParameterType))
                 result.Add(allMatchers[i]);
         }
         return result;
-    }
-
-    private static bool IsSerializableParameter(Type t)
-    {
-        if (t.FullName == "System.Threading.CancellationToken") return false;
-        var ns = t.Namespace;
-        if (ns is not null && ns.StartsWith("NexNet.Pipes")) return false;
-        return true;
     }
 
     private static bool ArgsMatch(MethodInfo method, IReadOnlyList<ArgMatcher> matchers, ReadOnlyMemory<byte> argsBytes)
@@ -131,16 +123,61 @@ internal sealed class RecorderAssertions
         sb.Append("Expected ").Append(expected).Append(" invocation(s) matching '")
           .Append(expression).Append("', observed ").Append(observed).Append('.');
 
-        var recentIds = _recorder.Snapshot()
-            .Reverse()
-            .Take(10)
-            .Select(r => $"#{r.MethodId}")
-            .ToArray();
-        if (recentIds.Length > 0)
+        var recent = _recorder.Snapshot().Reverse().Take(10).ToArray();
+        if (recent.Length > 0)
         {
-            sb.Append(" Recent recorded methodIds (most-recent first): ");
-            sb.Append(string.Join(", ", recentIds));
+            // Build a methodId -> MethodInfo reverse map so we can deserialize the arg bytes
+            // and render the actual recorded values alongside the methodIds. Falls back to the
+            // bare methodId when no MethodInfo is known (e.g., a method id from a different
+            // interface than the one currently being asserted against).
+            var idToMethod = new Dictionary<ushort, MethodInfo>();
+            var interfaceMap = GetMethodIdMap(typeof(TInterface));
+            foreach (var (method, id) in interfaceMap)
+                idToMethod[id] = method;
+
+            sb.Append(" Recent recorded invocations (most-recent first):");
+            for (int i = 0; i < recent.Length; i++)
+            {
+                var record = recent[i];
+                sb.Append(' ');
+                sb.Append('[').Append(i).Append("] ");
+                if (idToMethod.TryGetValue(record.MethodId, out var method))
+                {
+                    sb.Append(method.Name).Append('(');
+                    var argText = TryRenderArgs(method, record.Arguments);
+                    sb.Append(argText);
+                    sb.Append(')');
+                }
+                else
+                {
+                    sb.Append("#").Append(record.MethodId).Append("(unknown-method)");
+                }
+                if (i < recent.Length - 1) sb.Append(';');
+            }
         }
         return sb.ToString();
     }
+
+    private static string TryRenderArgs(MethodInfo method, ReadOnlyMemory<byte> argsBytes)
+    {
+        try
+        {
+            var values = ArgumentDeserializer.Deserialize(method, argsBytes);
+            if (values.Length == 0) return string.Empty;
+            return string.Join(", ", values.Select(FormatArgValue));
+        }
+        catch (Exception ex)
+        {
+            // A deserialize failure here is not the user's main bug — it's a side-effect of
+            // surfacing the diagnostic. Show the exception type instead of throwing.
+            return $"<args undecodable: {ex.GetType().Name}>";
+        }
+    }
+
+    private static string FormatArgValue(object? value) => value switch
+    {
+        null => "null",
+        string s => "\"" + s + "\"",
+        _ => value.ToString() ?? value.GetType().Name,
+    };
 }
