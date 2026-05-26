@@ -14,6 +14,7 @@ internal class ExpressionParserTests
         void One(int id);
         void Two(int id, string name);
         void Mixed(int id, string name, bool flag);
+        int IntValue { get; }
     }
 
     [Test]
@@ -97,15 +98,17 @@ internal class ExpressionParserTests
     }
 
     [Test]
-    public void NonCallExpression_Throws()
+    public void NonCallExpression_PropertyAccess_Throws()
     {
-        // Body is a property access, not a method call.
-        Expression<Action<ISample>> expr = n => Console.Write(n);
-        // Above is a method call so let's make a clearly bad one:
-        Expression<Func<ISample, int>> bad = n => 5;
+        // Real misuse: user wrote `n => n.IntValue` instead of `n => n.Method()`. The parser
+        // must surface this as a clear argument exception rather than producing an
+        // ill-formed matcher.
+        Expression<Func<ISample, int>> propertyAccess = n => n.IntValue;
+        // Coerce into the Action<ISample> shape the parser accepts so it sees the property-access
+        // body, not the wrapper lambda's shape.
         var asAction = Expression.Lambda<Action<ISample>>(
-            Expression.Constant(0, typeof(int)),
-            bad.Parameters);
+            propertyAccess.Body,
+            propertyAccess.Parameters);
 
         Assert.Throws<ArgumentException>(() => ExpressionParser.Parse(asAction));
     }

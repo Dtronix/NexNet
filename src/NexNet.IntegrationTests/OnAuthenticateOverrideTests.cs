@@ -8,6 +8,7 @@ namespace NexNet.IntegrationTests;
 internal class OnAuthenticateOverrideTests : BaseTests
 {
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task NoOverride_OnAuthenticateIsCalled(Type type)
     {
         // Baseline: when no override is installed, the nexus's OnAuthenticate is the auth source.
@@ -33,6 +34,7 @@ internal class OnAuthenticateOverrideTests : BaseTests
     }
 
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task Override_ConsultedInsteadOfOnAuthenticate(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -66,6 +68,7 @@ internal class OnAuthenticateOverrideTests : BaseTests
     }
 
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task Override_NullIdentity_DisconnectsClient(Type type)
     {
         // The override returning null mirrors OnAuthenticate-returns-null behavior: server sends auth-disconnect.

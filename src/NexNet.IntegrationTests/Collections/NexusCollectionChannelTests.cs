@@ -9,6 +9,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 {
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task ServerProcessChannel_HandlesCapacityLimit(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -35,6 +36,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task ClientMessageChannel_HandlesSaturation(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -62,6 +64,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task ConcurrentOperations_DoNotBlockChannel(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);

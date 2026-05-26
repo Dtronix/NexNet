@@ -9,6 +9,7 @@ namespace NexNet.IntegrationTests;
 internal class PipeFactoryHookTests : BaseTests
 {
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task NoFactory_PipeBehavesNormally(Type type)
     {
         // Sanity check: with no factory installed, pipe round-trip still works.
@@ -37,6 +38,7 @@ internal class PipeFactoryHookTests : BaseTests
     }
 
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task Factory_WrapsLocalAndRemotePipes(Type type)
     {
         var serverFactory = new CountingPipeFactory();

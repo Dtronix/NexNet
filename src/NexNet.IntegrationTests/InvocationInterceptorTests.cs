@@ -10,6 +10,7 @@ namespace NexNet.IntegrationTests;
 internal class InvocationInterceptorTests : BaseTests
 {
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task NoInterceptor_InvocationsRunDirectly(Type type)
     {
         // Sanity check: when no interceptor is installed, server invocations dispatch normally.
@@ -32,6 +33,7 @@ internal class InvocationInterceptorTests : BaseTests
     }
 
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task Interceptor_WrapsEveryInvocation(Type type)
     {
         var interceptor = new CountingInterceptor();
@@ -63,6 +65,7 @@ internal class InvocationInterceptorTests : BaseTests
     }
 
     [TestCase(Type.Tcp)]
+    [TestCase(Type.InProcess)]
     public async Task Interceptor_CanShortCircuitDispatch(Type type)
     {
         // If WrapAsync chooses not to invoke the inner delegate, the nexus method must not run.
