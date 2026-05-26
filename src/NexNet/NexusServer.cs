@@ -33,6 +33,14 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
 
     private IServerSessionManager _sessionManager = null!;
+
+    /// <summary>
+    /// Live session/group registry. Exposed to in-assembly callers (and the test harness via
+    /// <c>InternalsVisibleTo</c>) so test fixtures can inspect membership without going through
+    /// the public proxy surface.
+    /// </summary>
+    internal IServerSessionManager SessionManagerInternal => _sessionManager;
+
     private ITimer? _watchdogTimer;
     private ServerConfig? _config;
     private Func<TServerNexus>? _nexusFactory;

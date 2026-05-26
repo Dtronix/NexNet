@@ -63,6 +63,8 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
     private readonly NexusServer<TServerNexus, TClientProxy> _server;
     private readonly QuiescenceTracker _tracker = new();
     private readonly TestAuthenticationStore _authStore = new();
+    private readonly TestInvocationInterceptor _interceptor;
+    private readonly TestPipeFactory _pipeFactory;
     internal QuiescenceTracker Tracker => _tracker;
     internal TestAuthenticationStore AuthStore => _authStore;
 
@@ -74,15 +76,15 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
 
         var counters = _tracker.GetCountersFor(0);
         var recorder = new InvocationRecorder();
-        var interceptor = new TestInvocationInterceptor(recorder, counters, _tracker);
-        var pipeFactory = new TestPipeFactory(counters, _tracker);
+        _interceptor = new TestInvocationInterceptor(recorder, counters, _tracker);
+        _pipeFactory = new TestPipeFactory(counters, _tracker);
 
         _serverConfig = new InProcessServerConfig
         {
             Endpoint = _endpoint,
             Authenticate = true,
-            InvocationInterceptor = interceptor,
-            PipeFactory = pipeFactory,
+            InvocationInterceptor = _interceptor,
+            PipeFactory = _pipeFactory,
             OnAuthenticateOverride = _authStore.OverrideDelegate,
             Counters = counters,
             Tracker = _tracker,
@@ -129,6 +131,23 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
     /// Phase 12 exposes it via assertion helpers.</summary>
     internal InvocationRecorder ServerRecorder { get; }
 
+    /// <summary>
+    /// Lazily-initialised view onto the server's group registry. <c>host.Groups["editors"].Members</c>
+    /// yields the session ids currently in <c>"editors"</c>; <c>host.Groups["editors"].Count</c>
+    /// returns the size. Reads snapshot the live registry, so callers can write tests like
+    /// <c>Assert.That(host.Groups["editors"].Members, Has.Length.EqualTo(3))</c>.
+    /// </summary>
+    public GroupIntrospector Groups
+    {
+        get
+        {
+            var sm = _server.SessionManagerInternal
+                ?? throw new System.InvalidOperationException(
+                    "Server has not been started yet; call CreateAsync to obtain a started host.");
+            return new GroupIntrospector(sm.Groups);
+        }
+    }
+
     /// <summary>Returns when every counter the tracker watches has been zero across a yield.</summary>
     public Task QuiesceAsync() => _tracker.QuiesceAsync();
 
@@ -153,6 +172,8 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
         {
             Endpoint = _endpoint,
             InternalOnSessionSetup = RegisterSessionWithTracker,
+            InvocationInterceptor = _interceptor,
+            PipeFactory = _pipeFactory,
         };
         if (identity is not null)
         {

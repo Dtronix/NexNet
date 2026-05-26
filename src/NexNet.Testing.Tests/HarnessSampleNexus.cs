@@ -19,6 +19,16 @@ internal partial class DemoServerNexus : ServerNexusBase<DemoServerNexus.ClientP
     {
         return ValueTask.CompletedTask;
     }
+
+    public async ValueTask JoinGroup(string groupName)
+    {
+        await Context.Groups.AddAsync(groupName);
+    }
+
+    public async ValueTask BroadcastToGroup(string groupName, string message)
+    {
+        await Context.Clients.Group(groupName).ReceiveBroadcast(message);
+    }
 }
 
 [Nexus<IDemoClientNexus, IDemoServerNexus>(NexusType = NexusType.Client)]
@@ -37,6 +47,8 @@ internal partial interface IDemoServerNexus
 {
     ValueTask<int> Ping(int value);
     ValueTask Notify(string message);
+    ValueTask JoinGroup(string groupName);
+    ValueTask BroadcastToGroup(string groupName, string message);
 }
 
 internal partial interface IDemoClientNexus

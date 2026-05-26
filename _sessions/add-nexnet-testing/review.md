@@ -5,7 +5,7 @@
 | # | Class | Rec | Sev | Section | Finding | Action Taken |
 |---|-------|-----|-----|---------|---------|--------------|
 | 1 | A | C | Med | Plan Compliance | Phase 11 scope reduction: streaming-helper extensions skipped |  |
-| 2 | A | C | Med | Plan Compliance | Phase 13 scope reduction: group introspection + showcase tests deferred |  |
+| 2 | A | C | Med | Plan Compliance | Phase 13 scope reduction: group introspection + showcase tests deferred | R3: added `host.Groups[name].Members/Count` via `GroupView`/`GroupIntrospector` backed by the live `IGroupRegistry`; new `HarnessShowcaseTests` covers empty group, membership reflection across 3 clients, and broadcast delivery only to members. |
 | 3 | A | C | Med | Plan Compliance | `NexusTestClient` lacks `.AssertReceived` / `.AssertNotReceived` / `.WaitFor` (plan §12) |  |
 | 4 | A | C | High | Correctness | Multi-client `ConnectAsAsync` hang on second call against same host | R2: root cause was user passing a shared nexus instance via factory; harness now detects duplicate returns and throws a clear `InvalidOperationException`. Factory args are now optional with `new T()` default. |
 | 5 | A | A | High | Correctness | `bytesInTransit` quiescence counter is never incremented | R1: wired via `CountingPipeWriter`/`CountingPipeReader` in `InProcessTransport` |
