@@ -21,6 +21,24 @@ namespace NexNet.Testing.Authentication;
 internal sealed class TestAuthenticationStore
 {
     private readonly ConcurrentDictionary<string, IIdentity> _byTokenKey = new(StringComparer.Ordinal);
+    private readonly Func<ReadOnlyMemory<byte>?, ValueTask<IIdentity?>> _override;
+
+    public TestAuthenticationStore()
+    {
+        // Cache the delegate as a field rather than allocating a fresh closure on every read of
+        // OverrideDelegate. The harness only reads it once during host construction today, but
+        // the previous getter-builds-lambda pattern is the kind of thing that would silently
+        // burn allocations if someone copied it into a hot path.
+        _override = token =>
+        {
+            if (token is null || token.Value.IsEmpty)
+                return new ValueTask<IIdentity?>((IIdentity?)null);
+            var key = System.Text.Encoding.UTF8.GetString(token.Value.Span);
+            return _byTokenKey.TryGetValue(key, out var id)
+                ? new ValueTask<IIdentity?>(id)
+                : new ValueTask<IIdentity?>((IIdentity?)null);
+        };
+    }
 
     /// <summary>
     /// Records an identity under a fresh opaque token and returns the bytes the client will
@@ -34,15 +52,7 @@ internal sealed class TestAuthenticationStore
     }
 
     /// <summary>The delegate to install on <c>ServerConfig.OnAuthenticateOverride</c>.</summary>
-    public Func<ReadOnlyMemory<byte>?, ValueTask<IIdentity?>> OverrideDelegate => token =>
-    {
-        if (token is null || token.Value.IsEmpty)
-            return new ValueTask<IIdentity?>((IIdentity?)null);
-        var key = System.Text.Encoding.UTF8.GetString(token.Value.Span);
-        return _byTokenKey.TryGetValue(key, out var id)
-            ? new ValueTask<IIdentity?>(id)
-            : new ValueTask<IIdentity?>((IIdentity?)null);
-    };
+    public Func<ReadOnlyMemory<byte>?, ValueTask<IIdentity?>> OverrideDelegate => _override;
 
     /// <summary>
     /// Removes every issued token. Long-lived hosts that issue many tokens across scenarios can

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Testing.Authentication;
 using NexNet.Testing.Quiescence;
 using NexNet.Testing.Recording;
@@ -207,7 +208,16 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        try { await _server.StopAsync().ConfigureAwait(false); }
-        catch { /* idempotent */ }
+        try
+        {
+            await _server.StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // Swallowing teardown errors hides legitimate test diagnostics. Log via the
+            // configured logger so failures during dispose surface in test output rather than
+            // silently masking the real cause of a test failure.
+            _serverConfig.Logger?.LogError(ex, "NexusTestHost.DisposeAsync: server StopAsync threw");
+        }
     }
 }

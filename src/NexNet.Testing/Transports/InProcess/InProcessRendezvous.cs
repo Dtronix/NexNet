@@ -29,11 +29,14 @@ internal static class InProcessRendezvous
 
     /// <summary>
     /// Removes the listener registration for the given endpoint, if any. Safe to call on an
-    /// already-unregistered endpoint.
+    /// already-unregistered endpoint. Removal is conditional: we only remove the entry when it
+    /// still maps to <paramref name="listener"/>, so a different listener that re-registered
+    /// under the same endpoint between Register and Unregister isn't blown away.
     /// </summary>
     public static void Unregister(string endpoint, InProcessTransportListener listener)
     {
-        _listeners.TryRemove(new System.Collections.Generic.KeyValuePair<string, InProcessTransportListener>(endpoint, listener));
+        if (_listeners.TryGetValue(endpoint, out var current) && ReferenceEquals(current, listener))
+            _listeners.TryRemove(endpoint, out _);
     }
 
     /// <summary>
