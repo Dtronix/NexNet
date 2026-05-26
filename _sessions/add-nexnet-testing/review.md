@@ -11,10 +11,10 @@
 | 5 | A | A | High | Correctness | `bytesInTransit` quiescence counter is never incremented | R1: wired via `CountingPipeWriter`/`CountingPipeReader` in `InProcessTransport` |
 | 6 | A | A | High | Correctness | `PendingInvocationCount` probe is never registered with the tracker | R1: registered per-session via `InternalOnSessionSetup` on server + client configs |
 | 7 | A | A | High | Correctness | `RegisterPendingInvocationProbe` / `UnregisterPendingInvocationProbe` are dead code on the host path | R1: probe API replaced with object-keyed dictionary; wired from session-setup callback |
-| 8 | B | B | Med | Correctness | `MethodIdMap` declaration-order heuristic with no determinism test |  |
-| 9 | B | B | Med | Correctness | `ArgumentDeserializer` parameter-type filter is namespace-prefix based and brittle |  |
-| 10 | B | B | Med | Correctness | `MethodIdMap` lookup uses `Type.GetMethods(Public\|Instance)` — interface `GetMethods()` returns only declared methods |  |
-| 11 | B | B | Med | Correctness | `MethodIdMap.CollectDeclaredMethods` uses `.Distinct()` on `MethodInfo` which can yield non-deterministic order across inherited interfaces |  |
+| 8 | B | B | Med | Correctness | `MethodIdMap` declaration-order heuristic with no determinism test | R6: added `MethodIdMapTests` with parity assertions for IDemoServerNexus / IDemoClientNexus + a determinism check (build N times, compare). |
+| 9 | B | B | Med | Correctness | `ArgumentDeserializer` parameter-type filter is namespace-prefix based and brittle | R7: replaced namespace-prefix check with explicit `FullName` matches against the generator's exclusion set (INexusDuplexPipe, IRentedNexusDuplexPipe, INexusDuplexUnmanagedChannel`1, INexusDuplexChannel`1, CancellationToken). Future generator additions now require an explicit update in both places. |
+| 10 | B | B | Med | Correctness | `MethodIdMap` lookup uses `Type.GetMethods(Public\|Instance)` — interface `GetMethods()` returns only declared methods | R6: switched to `BindingFlags.DeclaredOnly` for the direct interface, then iterate inherited interfaces explicitly. |
+| 11 | B | B | Med | Correctness | `MethodIdMap.CollectDeclaredMethods` uses `.Distinct()` on `MethodInfo` which can yield non-deterministic order across inherited interfaces | R6: removed `Distinct()`; inherited interfaces are sorted alphabetically by FullName (matches the generator's `OrderBy(i => i.ToDisplayString())`). |
 | 12 | B | B | Low | Correctness | `QuiescenceTracker.SignalChange` swap is not synchronized with the lock-protected `Sample()` | R1: signal+counters now snapshot under the same lock in `SampleAndSnapshotSignal` |
 | 13 | B | B | Low | Correctness | `QuiescenceTracker.QuiesceAsync` may busy-loop on `CancellationToken` cancellation | R1: added `ThrowIfCancellationRequested` at top of loop |
 | 14 | B | B | Low | Correctness | `TappingPipeReader.AdvanceTo` records the slice from the buffer start, not from prior consumed watermark |  |
@@ -28,7 +28,7 @@
 | 22 | B | B | Low | Security | `TestAuthenticationStore` tokens never expire and persist for host lifetime |  |
 | 23 | A | A | Med | Test Quality | `Type.InProcess` was added only to a representative subset of test classes, far short of "full matrix" expansion the plan promised |  |
 | 24 | A | A | Med | Test Quality | Hook tests (`InvocationInterceptorTests`, `PipeFactoryHookTests`, `OnAuthenticateOverrideTests`) only exercise `Type.Tcp` |  |
-| 25 | A | A | Med | Test Quality | No tests for the `MethodIdMap` determinism / generator-parity claim |  |
+| 25 | A | A | Med | Test Quality | No tests for the `MethodIdMap` determinism / generator-parity claim | R6: `MethodIdMapTests` pins expected ids for the demo interfaces against source declaration order; explicit-id precedence + slot-skipping is exercised via a synthetic `IExplicitIdSample` interface. |
 | 26 | B | B | Med | Test Quality | `QuiescenceTracker` tests use raw counter handles in isolation, not under contention from the actual interceptor/factory wired in production paths | R1: added `QuiesceAsync_AwaitsRealActivityEndToEnd` driving real Ping+Notify load through the full pipeline |
 | 27 | B | B | Med | Test Quality | `AssertionTests` only exercise single-arg `Ping(int)`; no multi-arg or string-arg coverage at the end-to-end level |  |
 | 28 | B | B | Low | Test Quality | `ExpressionParserTests.NonCallExpression_Throws` constructs a synthetic AST instead of a real misuse case |  |

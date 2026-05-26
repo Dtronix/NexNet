@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -5,21 +6,24 @@ using System.Reflection;
 namespace NexNet.Testing.Recording;
 
 /// <summary>
-/// Best-effort mapping from <see cref="MethodInfo"/> to the <c>ushort</c> method id assigned
-/// by the source generator. Mirrors the generator's <c>AssignMethodIds</c> algorithm at
-/// runtime: explicit <see cref="NexusMethodAttribute.MethodId"/> values take precedence, the
-/// remaining methods get sequential ids skipping the reserved set.
+/// Mapping from <see cref="MethodInfo"/> to the <c>ushort</c> method id assigned by the source
+/// generator. Mirrors the generator's <c>AssignMethodIds</c> algorithm at runtime: directly-
+/// declared methods first (in metadata-token order, which matches source declaration order),
+/// then inherited-interface methods grouped per-interface and ordered by interface full name
+/// (matching the generator's <c>OrderBy(i =&gt; i.ToDisplayString(), StringComparer.Ordinal)</c>).
+/// Explicit <see cref="NexusMethodAttribute.MethodId"/> values take precedence; the remaining
+/// methods receive sequential ids that skip the reserved set.
 /// </summary>
 /// <remarks>
-/// The runtime sees methods in <c>Type.GetMethods()</c> order; for a single interface
-/// declaration this is metadata-token order, which matches C# source order and the
-/// generator's behavior. If the generator's ordering ever diverges, assertions that depend on
-/// this map will surface a clear "method not recorded" failure rather than silently match the
-/// wrong method.
+/// AOT/trimming caveat: metadata-token order remains stable under standard runtimes today; if a
+/// future host re-orders <c>GetMethods()</c> output, assertions will surface a clear "method not
+/// recorded" failure rather than silently match the wrong method. See
+/// <c>MethodIdMapTests.GeneratorParity_DemoInterfaces</c> for a regression test that locks in the
+/// expected layout.
 /// </remarks>
 internal static class MethodIdMap
 {
-    public static Dictionary<MethodInfo, ushort> Build(System.Type interfaceType)
+    public static Dictionary<MethodInfo, ushort> Build(Type interfaceType)
     {
         var methods = CollectDeclaredMethods(interfaceType);
 
@@ -50,13 +54,24 @@ internal static class MethodIdMap
         return result;
     }
 
-    private static IReadOnlyList<MethodInfo> CollectDeclaredMethods(System.Type interfaceType)
+    /// <summary>
+    /// Enumerates methods in the same order the generator's <c>AssignMethodIds</c> uses:
+    /// directly-declared methods first, then each inherited interface's directly-declared
+    /// methods, with inherited interfaces ordered by full type name (ordinal).
+    /// </summary>
+    private static IReadOnlyList<MethodInfo> CollectDeclaredMethods(Type interfaceType)
     {
-        // GetMethods on an interface returns the interface's own methods (no Object methods).
-        // For inherited interfaces, append their methods in interface declaration order.
-        var direct = interfaceType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+        const BindingFlags directOnly =
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+
+        var ordered = new List<MethodInfo>();
+        ordered.AddRange(interfaceType.GetMethods(directOnly));
+
         var inherited = interfaceType.GetInterfaces()
-            .SelectMany(i => i.GetMethods(BindingFlags.Public | BindingFlags.Instance));
-        return direct.Concat(inherited).Distinct().ToList();
+            .OrderBy(i => i.FullName ?? i.Name, StringComparer.Ordinal);
+        foreach (var iface in inherited)
+            ordered.AddRange(iface.GetMethods(directOnly));
+
+        return ordered;
     }
 }
