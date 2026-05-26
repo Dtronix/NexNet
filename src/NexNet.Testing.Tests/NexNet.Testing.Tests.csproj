@@ -5,6 +5,8 @@
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
     <LanguageVersion>latest</LanguageVersion>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    <CompilerGeneratedFilesOutputPath>$(BaseIntermediateOutputPath)gen</CompilerGeneratedFilesOutputPath>
   </PropertyGroup>
 
   <ItemGroup>

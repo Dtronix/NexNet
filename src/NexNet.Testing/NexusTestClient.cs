@@ -1,5 +1,6 @@
 using NexNet.Collections;
 using NexNet.Invocation;
+using NexNet.Pipes;
 
 namespace NexNet.Testing;
 
@@ -27,4 +28,11 @@ public sealed class NexusTestClient<TClientNexus, TServerProxy>
         Client = client;
         Nexus = nexus;
     }
+
+    /// <summary>
+    /// Convenience: rents a duplex pipe via the client's session context. The same pipe can then
+    /// be passed to a server proxy call that accepts an <see cref="IRentedNexusDuplexPipe"/>
+    /// parameter, and driven via the streaming extensions in <c>NexNet.Testing.Streaming</c>.
+    /// </summary>
+    public IRentedNexusDuplexPipe CreatePipe() => Nexus.Context.CreatePipe();
 }

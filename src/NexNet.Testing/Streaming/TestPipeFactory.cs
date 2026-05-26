@@ -26,12 +26,15 @@ internal sealed class TestPipeFactory : IPipeFactory
 
     public IRentedNexusDuplexPipe WrapLocal(IRentedNexusDuplexPipe inner)
     {
-        var wrapped = new TappedRentedNexusDuplexPipe(inner);
-        Track(inner.CompleteTask, wrapped.Recording);
-        // Id is set to 0 on rent; the wrapper exposes it dynamically once the partner state
-        // notification arrives. We use the recording reference directly for now since the
-        // assertions look up by reference, not id, for locally-rented pipes.
-        return wrapped;
+        // We deliberately do NOT wrap the locally-rented pipe: the framework's proxy invoker
+        // does an Unsafe.As<NexusDuplexPipe>(pipe) when reading the initial id (see
+        // ProxyInvocationBase.ProxyGetDuplexPipeInitialId), so a wrapper that merely implements
+        // INexusDuplexPipe would read garbage memory through the cast. Locally-rented pipes
+        // therefore use the byte-level transport tap (via BytesInTransit) for quiescence and
+        // give up the per-pipe-recording observation API on the caller side. Remote (incoming)
+        // pipes are still wrapped — see WrapRemote.
+        Track(inner.CompleteTask, recording: null);
+        return inner;
     }
 
     public INexusDuplexPipe WrapRemote(INexusDuplexPipe inner)
@@ -42,8 +45,12 @@ internal sealed class TestPipeFactory : IPipeFactory
         return wrapped;
     }
 
-    private void Track(Task completeTask, PipeRecording recording)
+    private void Track(Task completeTask, PipeRecording? recording)
     {
+        // `recording` is ignored here today; the bracketed Open/Close pair is what quiescence
+        // needs. Keeping the parameter so callers can stay declarative ("this pipe owns this
+        // recording") even when the recording is attached via a different code path.
+        _ = recording;
         _counters.OpenPipe();
         _tracker.SignalChange();
         _ = completeTask.ContinueWith(_ =>
