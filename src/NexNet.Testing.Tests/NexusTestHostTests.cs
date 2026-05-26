@@ -52,6 +52,47 @@ internal class NexusTestHostTests
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
     }
 
+    [Test]
+    public async Task SharedClientNexusInstance_ThrowsOnSecondConnect()
+    {
+        var sharedClient = new DemoClientNexus();
+
+        await using var host = await NexusTestHost.CreateAsync<
+            DemoServerNexus, DemoServerNexus.ClientProxy,
+            DemoClientNexus, DemoClientNexus.ServerProxy>(
+                serverNexusFactory: () => new DemoServerNexus(),
+                clientNexusFactory: () => sharedClient);
+
+        await host.ConnectAsAsync(TestIdentity.Of("alice"))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await host.ConnectAsAsync(TestIdentity.Of("bob"))
+                .WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.That(ex!.Message, Does.Contain("clientNexusFactory"));
+    }
+
+    [Test]
+    public async Task MultipleClients_CanConnectAgainstSameHost()
+    {
+        await using var host = await NexusTestHost.CreateAsync<
+            DemoServerNexus, DemoServerNexus.ClientProxy,
+            DemoClientNexus, DemoClientNexus.ServerProxy>(
+                serverNexusFactory: () => new DemoServerNexus(),
+                clientNexusFactory: () => new DemoClientNexus());
+
+        var c1 = await host.ConnectAsAsync(TestIdentity.Of("alice"))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        var c2 = await host.ConnectAsAsync(TestIdentity.Of("bob"))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        var c3 = await host.ConnectAsAsync(TestIdentity.Of("carol"))
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(await c1.Server.Ping(1), Is.EqualTo(1));
+        Assert.That(await c2.Server.Ping(2), Is.EqualTo(2));
+        Assert.That(await c3.Server.Ping(3), Is.EqualTo(3));
+    }
+
     /// <summary>
     /// Drives the harness with a burst of invocations and a fire-and-forget Notify, then checks
     /// QuiesceAsync only completes after every invocation has returned and every byte has been

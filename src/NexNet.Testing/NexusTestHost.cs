@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Invocation;
@@ -19,20 +20,23 @@ public static class NexusTestHost
 {
     /// <summary>
     /// Creates and starts a <see cref="NexusTestHost{TServerNexus, TClientProxy, TClientNexus, TServerProxy}"/>.
-    /// The server's nexus is constructed via <paramref name="serverNexusFactory"/> once per
-    /// connection; the same client nexus instance supplied via <paramref name="clientNexusFactory"/>
-    /// is used for the next call to <c>ConnectAsync</c>.
+    /// Each call to <paramref name="serverNexusFactory"/> and <paramref name="clientNexusFactory"/>
+    /// MUST return a fresh instance: NexNet stores per-session state on the nexus, so sharing
+    /// instances across connections corrupts state and hangs the second connect. The harness
+    /// detects duplicate instances and throws a clear error rather than silently hanging. Omit
+    /// the factory arguments to use the default <c>new TServerNexus()</c> / <c>new TClientNexus()</c>.
     /// </summary>
     public static async Task<NexusTestHost<TServerNexus, TClientProxy, TClientNexus, TServerProxy>> CreateAsync<TServerNexus, TClientProxy, TClientNexus, TServerProxy>(
-        Func<TServerNexus> serverNexusFactory,
-        Func<TClientNexus> clientNexusFactory)
+        Func<TServerNexus>? serverNexusFactory = null,
+        Func<TClientNexus>? clientNexusFactory = null)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
         where TClientNexus : ClientNexusBase<TServerProxy>, IMethodInvoker, IInvocationMethodHash, ICollectionConfigurer, new()
         where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
     {
         var host = new NexusTestHost<TServerNexus, TClientProxy, TClientNexus, TServerProxy>(
-            serverNexusFactory, clientNexusFactory);
+            serverNexusFactory ?? (static () => new TServerNexus()),
+            clientNexusFactory ?? (static () => new TClientNexus()));
         await host.StartAsync().ConfigureAwait(false);
         return host;
     }
@@ -52,6 +56,8 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
 {
     private readonly Func<TServerNexus> _serverNexusFactory;
     private readonly Func<TClientNexus> _clientNexusFactory;
+    private readonly HashSet<object> _seenServerNexuses = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<object> _seenClientNexuses = new(ReferenceEqualityComparer.Instance);
     private readonly string _endpoint;
     private readonly InProcessServerConfig _serverConfig;
     private readonly NexusServer<TServerNexus, TClientProxy> _server;
@@ -83,8 +89,29 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
             InternalOnSessionSetup = RegisterSessionWithTracker,
         };
 
-        _server = new NexusServer<TServerNexus, TClientProxy>(_serverConfig, _serverNexusFactory, null);
+        _server = new NexusServer<TServerNexus, TClientProxy>(_serverConfig, WrappedServerFactory, null);
         ServerRecorder = recorder;
+    }
+
+    /// <summary>
+    /// Wraps the user-supplied server-nexus factory with duplicate-instance detection. Returning
+    /// the same instance on a subsequent connect would silently corrupt per-session state on the
+    /// shared <c>SessionContext</c>; surfacing it as an exception turns a multi-client hang into
+    /// a discoverable misuse error.
+    /// </summary>
+    private TServerNexus WrappedServerFactory()
+    {
+        var instance = _serverNexusFactory();
+        lock (_seenServerNexuses)
+        {
+            if (!_seenServerNexuses.Add(instance))
+                throw new InvalidOperationException(
+                    "serverNexusFactory returned an instance that was already used by a previous session. " +
+                    "Each session needs its own nexus instance because NexNet stores per-session state on it " +
+                    "(SessionContext, identity, etc.). Use `() => new TServerNexus()` and capture cross-session " +
+                    "state in static fields, closures, or external collaborators instead.");
+        }
+        return instance;
     }
 
     /// <summary>
@@ -134,6 +161,14 @@ public sealed partial class NexusTestHost<TServerNexus, TClientProxy, TClientNex
         }
 
         var clientNexus = _clientNexusFactory();
+        lock (_seenClientNexuses)
+        {
+            if (!_seenClientNexuses.Add(clientNexus))
+                throw new InvalidOperationException(
+                    "clientNexusFactory returned an instance that was already used by a previous client. " +
+                    "Each client needs its own nexus instance because NexNet stores per-session state on it. " +
+                    "Use `() => new TClientNexus()` and capture cross-client state externally instead.");
+        }
         var client = new NexusClient<TClientNexus, TServerProxy>(clientConfig, clientNexus);
         await client.ConnectAsync().ConfigureAwait(false);
         return new NexusTestClient<TClientNexus, TServerProxy>(client, clientNexus);

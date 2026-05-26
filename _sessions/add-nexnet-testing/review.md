@@ -7,7 +7,7 @@
 | 1 | A | C | Med | Plan Compliance | Phase 11 scope reduction: streaming-helper extensions skipped |  |
 | 2 | A | C | Med | Plan Compliance | Phase 13 scope reduction: group introspection + showcase tests deferred |  |
 | 3 | A | C | Med | Plan Compliance | `NexusTestClient` lacks `.AssertReceived` / `.AssertNotReceived` / `.WaitFor` (plan §12) |  |
-| 4 | A | C | High | Correctness | Multi-client `ConnectAsAsync` hang on second call against same host |  |
+| 4 | A | C | High | Correctness | Multi-client `ConnectAsAsync` hang on second call against same host | R2: root cause was user passing a shared nexus instance via factory; harness now detects duplicate returns and throws a clear `InvalidOperationException`. Factory args are now optional with `new T()` default. |
 | 5 | A | A | High | Correctness | `bytesInTransit` quiescence counter is never incremented | R1: wired via `CountingPipeWriter`/`CountingPipeReader` in `InProcessTransport` |
 | 6 | A | A | High | Correctness | `PendingInvocationCount` probe is never registered with the tracker | R1: registered per-session via `InternalOnSessionSetup` on server + client configs |
 | 7 | A | A | High | Correctness | `RegisterPendingInvocationProbe` / `UnregisterPendingInvocationProbe` are dead code on the host path | R1: probe API replaced with object-keyed dictionary; wired from session-setup callback |
