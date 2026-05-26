@@ -540,6 +540,8 @@ internal class NexusServerTests_Authorization : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
         server.Server.Config.Time = fakeTime;
+        // Skip post-disconnect drain so server teardown doesn't await fakeTime.
+        server.Server.Config.DisconnectDelay = 0;
 
         server.OnNexusCreated = nexus =>
         {
@@ -569,6 +571,8 @@ internal class NexusServerTests_Authorization : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
         server.Server.Config.Time = fakeTime;
+        // Skip post-disconnect drain so server teardown doesn't await fakeTime.
+        server.Server.Config.DisconnectDelay = 0;
 
         server.OnNexusCreated = nexus =>
         {
@@ -604,6 +608,8 @@ internal class NexusServerTests_Authorization : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
         server.Server.Config.Time = fakeTime;
+        // Skip post-disconnect drain so server teardown doesn't await fakeTime.
+        server.Server.Config.DisconnectDelay = 0;
 
         server.OnNexusCreated = nexus =>
         {
@@ -635,6 +641,8 @@ internal class NexusServerTests_Authorization : BaseTests
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
         server.Server.Config.Time = fakeTime;
+        // Skip post-disconnect drain so server teardown doesn't await fakeTime.
+        server.Server.Config.DisconnectDelay = 0;
 
         server.OnNexusCreated = nexus =>
         {

@@ -426,6 +426,8 @@ internal partial class NexusServerTests : BaseTests
         var serverConfig = CreateServerConfig(type);
         serverConfig.Time = fakeTime;
         serverConfig.Timeout = 4000; // Watchdog fires every Timeout/4 = 1000 ms.
+        // Skip the post-disconnect drain delay so the server-initiated close doesn't await fakeTime.
+        serverConfig.DisconnectDelay = 0;
 
         var clientConfig = CreateClientConfig(type);
         // Make the client effectively silent — its PingInterval >> the test horizon — so the server's

@@ -179,6 +179,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         // delay (NexusListRelay.cs:153 — Task.Delay(500, _time, ct)).
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clSv = await CreateRelayCollectionClientServers(true, server2Time: fakeTime);
+        // Skip the post-disconnect drain delay so tear-down doesn't await fakeTime.
+        clSv.Server2.Config.DisconnectDelay = 0;
 
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
