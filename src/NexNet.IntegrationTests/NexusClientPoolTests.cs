@@ -395,9 +395,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 5,
             MaxIdleTime = TimeSpan.FromMilliseconds(100) // Very short idle time
         };
@@ -415,12 +417,12 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(3));
 
-            // Wait for idle timeout + health check interval
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            // Drive idle timeout deterministically.
+            fakeTime.Advance(TimeSpan.FromMilliseconds(500));
 
-            // At least one client should remain (pool keeps minimum of 1)
+            // Default MinIdleConnections (1) keeps one client; others evicted.
             Assert.That(pool.AvailableConnections, Is.GreaterThanOrEqualTo(1));
-            Assert.That(pool.AvailableConnections, Is.LessThan(3)); // Some should be disposed
+            Assert.That(pool.AvailableConnections, Is.LessThan(3));
         }
         finally
         {
@@ -438,9 +440,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 1,
             MaxIdleTime = TimeSpan.FromMilliseconds(50),
             MinIdleConnections = 1
@@ -454,11 +458,10 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(1));
 
-            // Wait for idle timeout + health check interval
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            fakeTime.Advance(TimeSpan.FromMilliseconds(200));
 
-            // Should still have 1 client (minimum retention)
-            Assert.That(pool.AvailableConnections, Is.EqualTo(1));
+            Assert.That(pool.AvailableConnections, Is.EqualTo(1),
+                "MinIdleConnections=1 must retain the single pooled client past MaxIdleTime.");
         }
         finally
         {
@@ -476,9 +479,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 10,
             MaxIdleTime = TimeSpan.FromMilliseconds(100),
             MinIdleConnections = 3
@@ -502,12 +507,10 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(5));
 
-            // Wait for idle timeout + health check interval
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            fakeTime.Advance(TimeSpan.FromMilliseconds(200));
 
-            // Should have at least MinIdleConnections (3) remaining
-            Assert.That(pool.AvailableConnections, Is.GreaterThanOrEqualTo(3));
-            Assert.That(pool.AvailableConnections, Is.LessThan(5)); // Some should be disposed
+            Assert.That(pool.AvailableConnections, Is.EqualTo(3),
+                "MinIdleConnections=3 must keep exactly the floor count; surplus idle clients are evicted.");
         }
         finally
         {
@@ -525,9 +528,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 10,
             MaxIdleTime = TimeSpan.FromMinutes(5), // Long idle time to prevent cleanup
             MinIdleConnections = 5 // Higher than what we'll create
@@ -551,11 +556,11 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(2));
 
-            // Wait a bit to ensure no new clients are automatically created
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
+            // Advance time to trigger several health-check cycles; no pre-warming should occur.
+            fakeTime.Advance(TimeSpan.FromMilliseconds(200));
 
-            // Should still only have 2 clients (MinIdleConnections doesn't create new ones)
-            Assert.That(pool.AvailableConnections, Is.EqualTo(2));
+            Assert.That(pool.AvailableConnections, Is.EqualTo(2),
+                "Health check must not pre-warm new clients to reach MinIdleConnections.");
         }
         finally
         {
@@ -573,9 +578,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 5,
             MaxIdleTime = TimeSpan.FromMilliseconds(100),
             MinIdleConnections = 0 // Allow all idle clients to be disposed
@@ -599,11 +606,10 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(3));
 
-            // Wait for idle timeout + health check interval
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            fakeTime.Advance(TimeSpan.FromMilliseconds(500));
 
-            // With MinIdleConnections = 0, all idle clients should be disposed
-            Assert.That(pool.AvailableConnections, Is.EqualTo(0));
+            Assert.That(pool.AvailableConnections, Is.EqualTo(0),
+                "MinIdleConnections=0 must allow every idle client to be evicted.");
         }
         finally
         {
@@ -1213,9 +1219,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 2,
             MaxIdleTime = TimeSpan.Zero, // Immediate idle timeout
             MinIdleConnections = 0
@@ -1229,11 +1237,11 @@ internal class NexusClientPoolTests : BaseTests
 
             Assert.That(pool.AvailableConnections, Is.EqualTo(1));
 
-            // Wait for health check to process idle timeout
-            await Task.Delay(200);
+            // Health-check interval has a 100ms floor (Math.Max(100, MaxIdleTime/4)); advance past it.
+            fakeTime.Advance(TimeSpan.FromMilliseconds(200));
 
-            // With zero idle time, client should be disposed
-            Assert.That(pool.AvailableConnections, Is.EqualTo(0));
+            Assert.That(pool.AvailableConnections, Is.EqualTo(0),
+                "MaxIdleTime=Zero must evict the client on the very first health-check pass.");
         }
         finally
         {
@@ -1477,9 +1485,11 @@ internal class NexusClientPoolTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var clientConfig = CreateClientConfig(Type.Uds);
-        var poolConfig = new NexusClientPoolConfig(clientConfig) 
-        { 
+        clientConfig.Time = fakeTime;
+        var poolConfig = new NexusClientPoolConfig(clientConfig)
+        {
             MaxConnections = 2,
             MaxIdleTime = TimeSpan.FromMilliseconds(50) // Very short for quick test
         };
@@ -1490,17 +1500,18 @@ internal class NexusClientPoolTests : BaseTests
             // Create clients to populate pool
             var client1 = await pool.RentClientAsync().Timeout(1);
             var client2 = await pool.RentClientAsync().Timeout(1);
-            
+
             client1.Dispose();
             client2.Dispose();
 
             var initialCount = pool.AvailableConnections;
-            
-            // Wait for multiple health check cycles
-            await Task.Delay(300);
-            
-            // Health check should have run multiple times
-            // (This test mainly ensures no exceptions break the timer)
+
+            // Advance time in three discrete steps; the timer must re-arm and fire on each.
+            fakeTime.Advance(TimeSpan.FromMilliseconds(100));
+            fakeTime.Advance(TimeSpan.FromMilliseconds(100));
+            fakeTime.Advance(TimeSpan.FromMilliseconds(100));
+
+            // Default MinIdleConnections (1) keeps one client; surplus evicted across cycles.
             Assert.That(pool.AvailableConnections, Is.LessThanOrEqualTo(initialCount));
         }
         finally

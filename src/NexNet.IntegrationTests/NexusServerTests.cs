@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System;
+using System.Net;
 using System.Net.Sockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
@@ -416,6 +417,41 @@ internal partial class NexusServerTests : BaseTests
 
             await Utilities.WaitForConnectionClosureAsync(client).Timeout(1);
         }
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task Server_ConnectionWatchdog_DisconnectsTimedOutSessions_DrivenByFakeTime(Type type)
+    {
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Time = fakeTime;
+        serverConfig.Timeout = 4000; // Watchdog fires every Timeout/4 = 1000 ms.
+
+        var clientConfig = CreateClientConfig(type);
+        // Make the client effectively silent — its PingInterval >> the test horizon — so the server's
+        // LastReceived doesn't get refreshed mid-test by real-time client pings.
+        clientConfig.PingInterval = 600_000;
+
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        var disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        clientNexus.OnDisconnectedEvent = _ =>
+        {
+            disconnectTcs.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        Assert.That(disconnectTcs.Task.IsCompleted, Is.False, "Client should still be connected at t=0.");
+
+        // Advance past the server-side timeout. The watchdog fires under fakeTime, sees LastReceived
+        // (recorded at handshake time) as expired, and closes the session — the client observes
+        // the socket close.
+        fakeTime.Advance(TimeSpan.FromMilliseconds(5000));
+
+        await disconnectTcs.Task.Timeout(2);
     }
 
     [Test]

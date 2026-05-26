@@ -537,7 +537,9 @@ internal class NexusServerTests_Authorization : BaseTests
     public async Task AuthCache_AttributeTtl_SecondCallUsesCachedResult(Type type)
     {
         var authCallCount = 0;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
 
         server.OnNexusCreated = nexus =>
         {
@@ -552,6 +554,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
+        // No time advance — every call falls within the cache TTL deterministically.
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
