@@ -43,7 +43,10 @@ jobs:
 
     - name: Execute generator tests
       run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
-      
+
+    - name: Execute testing-harness tests
+      run: dotnet test src/NexNet.Testing.Tests -c Release --no-build -v=normal
+
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts --maxcpucount:1
 
@@ -52,7 +55,10 @@ jobs:
 
     - name: Pack NexNet.Asp
       run: dotnet pack src/NexNet.Asp -c Release -o ./artifacts --maxcpucount:1
-      
+
+    - name: Pack NexNet.Testing
+      run: dotnet pack src/NexNet.Testing -c Release -o ./artifacts --maxcpucount:1
+
     - name: Pack NexNet.Generator
       run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts --maxcpucount:1
       

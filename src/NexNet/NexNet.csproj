@@ -8,9 +8,8 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />
     <InternalsVisibleTo Include="NexNet.Asp" />
+    <InternalsVisibleTo Include="NexNet.Testing" />
     <InternalsVisibleTo Include="NexNetBenchmarks" />
-    <!-- NexNet.Testing grant lives in Properties/InternalsVisibleTo.cs so it appears in
-         source-search results next to the rest of the codebase. -->
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
