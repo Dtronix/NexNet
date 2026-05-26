@@ -7,7 +7,7 @@ base-branch: master
 
 ## State
 phase: REMEDIATE
-status: active
+status: suspended
 issue: discussion
 pr:
 session: 4
@@ -74,22 +74,36 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 
 ## Suspend State
 
-- **Phase:** REVIEW — all 13 IMPLEMENT phases complete. Clean transition; no mid-phase work.
-- **Sub-step:** Top of REVIEW. Analysis pass has NOT started.
+- **Phase:** REMEDIATE — 4 of 12 remediation phases complete (R1–R4 committed).
+- **Sub-step:** Top of R5 (per-client assertions on `NexusTestClient`).
 - **In progress:** Nothing actively executing. Working tree clean.
-- **Immediate next step on resume:** Run the REVIEW analysis pass. Delegate to an agent: have it read `_sessions/add-nexnet-testing/plan.md` + Decisions section + the full diff across all commits on this branch (`git diff origin/master...HEAD`), and produce `_sessions/add-nexnet-testing/review.md` covering the 6 sections (Plan Compliance, Correctness, Security, Test Quality, Codebase Consistency, Integration / Breaking Changes). Then classification (A/B/C/D) per the workflow.
-- **WIP commit:** None — `76183db` is the latest real commit.
+- **Immediate next step on resume:** Start R5 — add `AssertReceived<TInterface>(expr)`, `AssertNotReceived<TInterface>(expr)`, and `WaitFor<TInterface>(expr, timeout)` methods to `NexusTestClient<TClientNexus, TServerProxy>` so tests can ask "did THIS client receive method X with these args?". Today only the server-side variant exists on `NexusTestHost` (`Assertions.cs`). The per-client variant needs a per-client recorder; the existing `TestInvocationInterceptor` is shared and indiscriminately records every dispatch on every session, so the recorder either needs to track per-session in its records or each client needs its own `TestInvocationInterceptor` wired through a per-client client config. Implementation note: `NexusSessionConfigurations.InvocationInterceptor` is per-config, so per-client interceptors are achievable by constructing a fresh interceptor + recorder in `ConnectAsAsync`. See finding 3 in review.md.
+- **WIP commit:** None — latest real commit is `5d3567d` (R4).
 - **Test status:** All green at HEAD.
   - `NexNet.Generator.Tests`: 149/149.
-  - `NexNet.IntegrationTests`: 2742/2742 (includes 106 new `Type.InProcess` cases + 8 hook tests from P2-P4).
-  - `NexNet.Testing.Tests`: 41/41 (transport, recorder, quiescence, pipe-recording, channel-recording, host, assertions).
-- **Known issues that should appear in REVIEW:**
-  - **Multi-client connect hang.** `host.ConnectAsAsync` called a second time against the same NexusTestHost hangs (timed out at 60s in the original multi-client test). Likely a synchronization issue in the InProcess transport's listener accept path or the harness's connect flow. Phase 13's group-introspection / multi-client broadcast showcase tests are blocked on this. Suggest classifying as C (separate issue).
-  - **Phase 11 scope reduction.** Streaming-helper extension methods (`PipeUpload`, `PipeDownload`, `ChannelCollect`, `ChannelPublish`, `TapChannel`) were not implemented; the ChannelRecording<T> type ships but the convenience helpers don't. Should be C (separate issue) or D (decided not valid for v1).
-  - **Phase 13 scope reduction.** Group introspection (`host.Groups[name].Members`) was not implemented; blocked on multi-client.
-  - **Method-id resolution heuristic.** `MethodIdMap` mirrors the generator's `AssignMethodIds` at runtime by walking `Type.GetMethods()` in declaration order. Empirically matches; documented as best-effort. Could surface a determinism question.
-  - **Pipe-side recording vs visible reads.** `TappingPipeReader` records on `AdvanceTo`, but if the user accesses a buffer via `ReadAsync` without advancing past consumed bytes, those bytes won't be in the recording. This is intentional ("what the handler saw") but worth surfacing.
-  - **`TappingPipeWriter.GetSpan` re-routes through `GetMemory`** to keep the tap able to read the source. Slight perf overhead but only on tapped pipes, which are test-only.
+  - `NexNet.IntegrationTests`: 2742/2742.
+  - `NexNet.Testing.Tests`: 53/53 (added 12 across R1–R4: 2 new quiescence, 1 e2e quiescence, 2 multi-client + shared-instance detection, 3 group/broadcast showcase, 4 streaming helpers).
+- **Remaining remediation phases (8 of 12):**
+  - **R5** — Per-client assertions on `NexusTestClient` (finding 3, plan §12).
+  - **R6** — `MethodIdMap` robustness + generator parity test (findings 8, 10, 11, 25). Determinism risk under AOT/trimming; need a test that asserts the runtime map matches the generator-emitted IDs.
+  - **R7** — `ArgumentDeserializer` parameter-type filter robustness + arg values in mismatch diagnostics (findings 9, 27, 34).
+  - **R8** — Tap recording fixes (findings 14, 15, 16, 17, 18). Note R4 already partially touched this — `TestPipeFactory.WrapLocal` now passes pipes through unwrapped to fix the `Unsafe.As<NexusDuplexPipe>` issue. R8 should revisit whether locally-rented pipes need an alternative observation API, and address findings 14–18 directly.
+  - **R9** — Security fixes (findings 20, 21, 22). Remove `InternalsVisibleTo("NexNet.Testing.Tests")` from `NexNet.csproj`; surface predicate exceptions in `ArgMatcher.PredicateMatcher`; document/limit `TestAuthenticationStore` token retention.
+  - **R10** — Test matrix expansion (findings 23, 24, 28). Add `[TestCase(Type.InProcess)]` to pipes/channels/collections/invocations classes; add hook tests on a non-Tcp transport; replace synthetic ExpressionParser test.
+  - **R11** — Consistency polish (findings 30, 31, 32, 33, 39, 40).
+  - **R12** — API ergonomics (findings 35, 36, 37, 38).
+- **Carryover guidance for next session:**
+  - The shared `_interceptor` + `_pipeFactory` are now installed on both server and client configs (R3). This is the right wiring for server-side recording + quiescence aggregation across sessions; per-client recording (R5) will need each `ConnectAsAsync` to construct its own interceptor + recorder.
+  - Demo nexus (`HarnessSampleNexus.cs`) grew `JoinGroup`, `BroadcastToGroup`, `Upload`, `Download`, `CollectStrings`, `PublishStrings` plus the matching interface entries. Statics `LastUploadedBytes` / `LastCollectedItems` are read by streaming tests; a `[SetUp]` clears them.
+  - `TestPipeFactory.WrapLocal` returns the inner pipe unchanged (R4). `Track(_, null)` still brackets the pipe lifetime for quiescence. R8 should consider whether to add a side-channel recording attached by pipe reference identity (so the user can still observe local pipes) — but that interacts with finding 17's id-keying issue.
+  - `NexusServer.SessionManagerInternal` is the new internal accessor used by `host.Groups` (R3); R12 may want to surface a stable shape of it on the host directly.
+- **Known issues that should appear in REVIEW (still relevant for completeness):**
+  - **Multi-client connect hang.** Resolved in R2 — root cause was user-supplied factories returning shared nexus instances. Detection now throws clearly.
+  - **Phase 11 scope reduction.** Resolved in R4.
+  - **Phase 13 scope reduction.** Resolved in R3.
+  - **Method-id resolution heuristic.** Pending in R6.
+  - **Pipe-side recording vs visible reads.** Pending in R8 (or R10/R11).
+  - **`TappingPipeWriter.GetSpan` re-routes through `GetMemory`** — Classification D (intentional design tradeoff).
 
 ### Context carried forward from earlier sessions (preserved for durability)
 
@@ -125,3 +139,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R2 complete (finding 4): identified root cause of multi-client hang — user-supplied factory returning a shared nexus instance overwrites `_nexus.SessionContext` on the 2nd construction, corrupting handshake state. Wrapped both factories with `HashSet<object>+ReferenceEqualityComparer` detection that throws `InvalidOperationException` on duplicate instance return. Made factory args optional (default `new T()`) and tightened CreateAsync XML docs. New `MultipleClients_CanConnectAgainstSameHost` (3 clients, 3 pings) and `SharedClientNexusInstance_ThrowsOnSecondConnect` (negative case). Testing suite 46/46. |
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R3 complete (finding 2): added `host.Groups[name].Members/Count` via new `GroupIntrospector`/`GroupView` types backed by `IServerSessionManager.Groups` (exposed via new internal `NexusServer.SessionManagerInternal`). Added `JoinGroup` and `BroadcastToGroup` to `DemoServerNexus` and a `HarnessShowcaseTests` test class (3 tests: empty group, membership across 3 clients, group broadcast delivery to members only). Also installed the shared `_interceptor` + `_pipeFactory` on the client config so client-side broadcast dispatch is tracked by quiescence. 49/49 testing green. |
 | 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | R4 complete (finding 1): added `PipeUploadAsync`/`PipeDownloadAsync`/`ChannelPublishAsync<T>`/`ChannelCollectAsync<T>` extension methods in `NexNet.Testing.Streaming.StreamingExtensions`. `client.CreatePipe()` shortcut added on `NexusTestClient`. Required removing the wrapper return from `TestPipeFactory.WrapLocal` — the framework's `ProxyInvocationBase.ProxyGetDuplexPipeInitialId` does an `Unsafe.As<NexusDuplexPipe>` cast, so an interface-only wrapper would read garbage memory. Locally-rented pipes are now passed through unwrapped (byte-level transport tap still feeds quiescence via `BytesInTransit`); remote-incoming pipes still wrap normally. 4 new streaming tests pass; 53/53 testing green. |
+| 4 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE (suspended) | End-of-session suspend after R4. 4 of 12 remediation phases done; commits c9b3c2e (R1), 8a49f16 (R2), f95a1a0 (R3), 5d3567d (R4). Working tree clean. Resume next session at R5 (per-client assertions). |
