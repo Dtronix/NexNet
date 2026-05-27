@@ -7,6 +7,9 @@ namespace NexNet.Testing.Tests;
 
 internal class AssertionTests
 {
+    [SetUp]
+    public void ResetEditorState() => EditorServerNexus.ResetAll();
+
     private async Task<(NexusTestHost<EditorServerNexus, EditorServerNexus.ClientProxy, EditorClientNexus, EditorClientNexus.ServerProxy> host,
             NexusTestClient<EditorClientNexus, EditorClientNexus.ServerProxy> client,
             EditorServerNexus server)>

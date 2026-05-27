@@ -151,17 +151,21 @@ internal class EditorAppShowcaseTests
     [Test]
     public async Task ListActiveEditors_CancelledToken_PropagatesAndThrows()
     {
-        // Client-side CT fires partway through the server's `await Task.Delay(50, ct)` in
-        // ListActiveEditors. Framework propagates the cancel signal to the server-side CT,
+        // Client-side CT fires partway through the server's `await Task.Delay(200, ct)` in
+        // ListActiveEditors (the delay is guarded on CanBeCanceled, so only cancellable
+        // callers pay it). Framework propagates the cancel signal to the server-side CT,
         // which causes the delay to throw. Pre-cancelled tokens are not short-circuited by
-        // the proxy — the cancel signal is only sent when the client-side CT FIRES.
+        // the proxy — the cancel signal is only sent when the client-side CT FIRES. The
+        // assertion uses OperationCanceledException (the base) rather than TaskCanceledException
+        // so the test pins the semantic, not the concrete subtype.
         await using var host = await CreateHost();
         var alice = await host.ConnectAsAsync(TestIdentity.Of("alice"));
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(10));
 
-        Assert.ThrowsAsync<TaskCanceledException>(
-            async () => await alice.Server.ListActiveEditors("design.md", cts.Token));
+        Assert.That(
+            async () => await alice.Server.ListActiveEditors("design.md", cts.Token),
+            Throws.InstanceOf<OperationCanceledException>());
     }
 
     [Test]
@@ -193,7 +197,7 @@ internal class EditorAppShowcaseTests
             .Select(i => new EditOp(i, $"text-{i}"))
             .ToArray();
 
-        var channel = alice.Nexus.Context.CreateChannel<EditOp>();
+        await using var channel = alice.Nexus.Context.CreateChannel<EditOp>();
         var serverCall = alice.Server.StreamEdits("design.md", channel).AsTask();
         var writer = await channel.GetWriterAsync();
         foreach (var op in ops)
@@ -215,11 +219,19 @@ internal class EditorAppShowcaseTests
 
         await alice.Server.OpenDocument("design.md");
         await bob.Server.OpenDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
+        // Producer runs in the background AFTER a small delay so the waiter actually
+        // observes the async-arrival path, not the "already recorded" fast path.
         var waiter = alice.WaitFor<IEditorClientNexus>(
             n => n.DraftSaved("bob", "v1"), TimeSpan.FromSeconds(3));
-        await bob.Server.SaveDraft("design.md", "v1");
+        var producer = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            await bob.Server.SaveDraft("design.md", "v1");
+        });
         await waiter;
+        await producer;
     }
 
     [Test]
@@ -252,14 +264,15 @@ internal class EditorAppShowcaseTests
         var ops = Enumerable.Range(0, 5).Select(i => new EditOp(i, $"o{i}")).ToArray();
 
         // Fire all four traffic shapes in flight at once.
+        await using var pipe = alice.CreatePipe();
+        await using var channel = bob.Nexus.Context.CreateChannel<EditOp>();
+
         var draftCall = alice.Server.SaveDraft("design.md", "draft-a").AsTask();
         var whisperCall = carol.Server.Whisper(bob.Nexus.Context.Id, "ping").AsTask();
 
-        var pipe = alice.CreatePipe();
         var uploadCall = alice.Server.UploadAttachment("design.md", pipe).AsTask();
         var uploadDrive = pipe.PipeUploadAsync(attachment).AsTask();
 
-        var channel = bob.Nexus.Context.CreateChannel<EditOp>();
         var streamCall = bob.Server.StreamEdits("design.md", channel).AsTask();
         var streamDrive = Task.Run(async () =>
         {
@@ -270,16 +283,63 @@ internal class EditorAppShowcaseTests
 
         await Task.WhenAll(draftCall, whisperCall, uploadDrive, uploadCall, streamDrive, streamCall)
             .WaitAsync(TimeSpan.FromSeconds(5));
-        await pipe.DisposeAsync();
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Every callback delivered, every server-side append visible — no extra waits needed.
-        alice.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
-        bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
-        carol.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
-        bob.AssertReceived<IEditorClientNexus>(n => n.WhisperReceived("carol", "ping"));
+        // Every callback delivered exactly once on the expected recipients; non-recipients
+        // never see the per-target whisper.
+        alice.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"), times: 1);
+        bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"), times: 1);
+        carol.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"), times: 1);
+        bob.AssertReceived<IEditorClientNexus>(n => n.WhisperReceived("carol", "ping"), times: 1);
+        alice.AssertNotReceived<IEditorClientNexus>(
+            n => n.WhisperReceived(Arg.Any<string>(), Arg.Any<string>()));
+        carol.AssertNotReceived<IEditorClientNexus>(
+            n => n.WhisperReceived(Arg.Any<string>(), Arg.Any<string>()));
         Assert.That(EditorServerNexus.Documents["design.md"].Attachment, Is.EqualTo(attachment));
         Assert.That(EditorServerNexus.Documents["design.md"].Edits.ToArray(), Is.EqualTo(ops));
+    }
+
+    [Test]
+    public async Task OpenDocument_NotifiesOthersExceptCaller()
+    {
+        // Pairs with LeaveDocument_NotifiesOthersExceptCaller — exercises the EditorJoined
+        // GroupExceptCaller broadcast that fires inside OpenDocument.
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice"));
+        var bob = await host.ConnectAsAsync(TestIdentity.Of("bob"));
+        var carol = await host.ConnectAsAsync(TestIdentity.Of("carol"));
+
+        await alice.Server.OpenDocument("design.md");
+        await bob.Server.OpenDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        // Carol joins last → alice + bob receive EditorJoined("carol"); carol does not see
+        // her own join. Alice never sees her own join either (first joiner, group empty at
+        // broadcast time).
+        await carol.Server.OpenDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        alice.AssertReceived<IEditorClientNexus>(n => n.EditorJoined("carol"), times: 1);
+        bob.AssertReceived<IEditorClientNexus>(n => n.EditorJoined("carol"), times: 1);
+        carol.AssertNotReceived<IEditorClientNexus>(n => n.EditorJoined("carol"));
+        alice.AssertNotReceived<IEditorClientNexus>(n => n.EditorJoined("alice"));
+    }
+
+    [Test]
+    public async Task Connect_WithoutIdentity_IsRejectedAtHandshake()
+    {
+        // The anonymous-call-to-gated-method path can't be exercised directly because the
+        // framework rejects null-identity sessions at the handshake (NexusSession.Receiving
+        // returns DisconnectReason.Authentication when Authenticate returns null). The
+        // TestAuthenticationStore-backed override returns null for a missing token, so
+        // ConnectAsync() (no identity) never completes a usable session and the OnAuthorize
+        // override's `is not TestIdentity` guard isn't reachable via this harness's auth path.
+        await using var host = await CreateHost();
+
+        Assert.That(
+            async () => await host.ConnectAsync(),
+            Throws.InstanceOf<NexNet.Transports.TransportException>()
+                .With.Message.Contains("Authentication"));
     }
 
     [Test]

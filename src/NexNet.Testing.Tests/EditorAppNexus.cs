@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using MemoryPack;
-using NexNet;
 using NexNet.Invocation;
 using NexNet.Pipes;
 
@@ -39,6 +38,13 @@ internal partial class EditorServerNexus : ServerNexusBase<EditorServerNexus.Cli
     public static byte[]? LastUploadedBytes;
     public static List<string>? LastCollectedItems;
 
+    // Resets cross-fixture process-global state. PingCount is intentionally NOT touched —
+    // it is per-instance (each test gets its own EditorServerNexus via the factory) and
+    // doesn't bleed across tests. The Documents / ActiveEditors / LastUploadedBytes /
+    // LastCollectedItems statics persist across nexus instances and MUST be cleared by
+    // every test fixture that exercises these fields, regardless of whether the test
+    // reads them directly. Tests assume sequential fixture execution; enabling
+    // [assembly: Parallelizable(ParallelScope.Fixtures)] would race this state.
     public static void ResetAll()
     {
         Documents.Clear();
@@ -134,12 +140,14 @@ internal partial class EditorServerNexus : ServerNexusBase<EditorServerNexus.Cli
 
     public async ValueTask<string[]> ListActiveEditors(string docId, CancellationToken cancellationToken)
     {
-        // Observable async point so callers passing a CancellationToken can actually observe
-        // cancellation. The framework only sends a cancel signal when the client-side CT
-        // FIRES during the call (pre-cancelled tokens are not short-circuited by the proxy),
-        // so the server needs an awaiting point long enough for that signal to arrive. 200ms
-        // gives ample headroom for in-process propagation.
-        await Task.Delay(200, cancellationToken);
+        // Observable async point so callers passing a cancellable CancellationToken can
+        // actually observe cancellation. The framework only sends a cancel signal when the
+        // client-side CT FIRES during the call (pre-cancelled tokens are not short-circuited
+        // by the proxy), so the server needs an awaiting point long enough for that signal
+        // to arrive. Guarded on CanBeCanceled so happy-path callers (CancellationToken.None)
+        // don't pay the latency tax.
+        if (cancellationToken.CanBeCanceled)
+            await Task.Delay(200, cancellationToken);
         if (!ActiveEditors.TryGetValue(docId, out var registry))
             return Array.Empty<string>();
         return registry.Values.ToArray();
@@ -168,6 +176,13 @@ internal partial class EditorServerNexus : ServerNexusBase<EditorServerNexus.Cli
             doc.Edits.Enqueue(op);
     }
 
+    // Policy: AND-semantics over requiredPermissions — every declared permission must be
+    // present on the identity, otherwise Unauthorized. This is a per-app choice, not a
+    // framework default — the framework hands you the int[] of required permissions and
+    // OnAuthorize decides how to interpret them. An OR-semantics policy would just flip the
+    // loop to "any match → Allowed". Marker-only [NexusAuthorize<TPermission>()] (empty
+    // requiredPermissions) is currently treated as "TestIdentity sufficient" since the for
+    // loop is skipped entirely.
     protected override ValueTask<AuthorizeResult> OnAuthorize(
         ServerSessionContext<EditorServerNexus.ClientProxy> context,
         int methodId,

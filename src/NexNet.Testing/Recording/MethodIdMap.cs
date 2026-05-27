@@ -18,8 +18,8 @@ namespace NexNet.Testing.Recording;
 /// AOT/trimming caveat: metadata-token order remains stable under standard runtimes today; if a
 /// future host re-orders <c>GetMethods()</c> output, assertions will surface a clear "method not
 /// recorded" failure rather than silently match the wrong method. See
-/// <c>MethodIdMapTests.GeneratorParity_DemoInterfaces</c> for a regression test that locks in the
-/// expected layout.
+/// <c>MethodIdMapTests.GeneratorParity_EditorServerInterface_AssignsExpectedIds</c> (and the
+/// matching client-interface test) for the regression tests that lock in the expected layout.
 /// </remarks>
 internal static class MethodIdMap
 {

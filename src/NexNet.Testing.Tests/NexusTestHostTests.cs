@@ -7,6 +7,9 @@ namespace NexNet.Testing.Tests;
 
 internal class NexusTestHostTests
 {
+    [SetUp]
+    public void ResetEditorState() => EditorServerNexus.ResetAll();
+
     [Test]
     public async Task EndToEnd_InvokeServerMethodOverInProcess()
     {
