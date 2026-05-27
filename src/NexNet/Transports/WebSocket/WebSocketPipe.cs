@@ -92,6 +92,8 @@ internal class WebSocketPipe : IWebSocketPipe
             _webSocket.CloseOutputAsync(closeStatus, closeStatusDescription, default);
 
         // Don't wait indefinitely for the close to be acknowledged
+        // WebSocket close handshake runs on the real network — the timeout here is a real-time
+        // deadline for the peer to acknowledge close, not an application-logic decision.
         await Task.WhenAny(closeTask, Task.Delay(closeTimeout)).ConfigureAwait(false);
     }
 

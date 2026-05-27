@@ -93,6 +93,8 @@ internal class SocketTransport : ITransport
                 {
                     try
                     {
+                        // Real TCP/Uds/Quic connect happens on the OS schedule; this timeout governs
+                        // the real-network handshake, not application logic, so it stays on real time.
                         await Task.Delay(clientConfig.ConnectionTimeout, timeoutCancellation.Token).ConfigureAwait(false);
                         socket.Close(0);
                     }

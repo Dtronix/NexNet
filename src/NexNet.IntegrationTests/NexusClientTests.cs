@@ -194,6 +194,47 @@ internal partial class NexusClientTests : BaseTests
 
         await tcs.Task.Timeout(1);
     }
+
+    [TestCase(Type.Uds)]
+    public async Task Client_PingTimer_FiresAtConfiguredInterval_DrivenByFakeTime(Type type)
+    {
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.Time = fakeTime;
+        clientConfig.PingInterval = 1000;
+
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(type),
+            clientConfig);
+
+        await server.StartAsync().Timeout(1);
+
+        var pingCount = 0;
+        var firstPingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondPingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        FireOnSend(clientConfig, (_, bytes) =>
+        {
+            if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping)
+            {
+                var observed = Interlocked.Increment(ref pingCount);
+                if (observed == 1) firstPingTcs.TrySetResult();
+                else if (observed == 2) secondPingTcs.TrySetResult();
+            }
+        });
+
+        await client.ConnectAsync().Timeout(1);
+
+        Assert.That(pingCount, Is.EqualTo(0), "No ping should be sent before the first interval elapses.");
+
+        fakeTime.Advance(TimeSpan.FromMilliseconds(1000));
+        await firstPingTcs.Task.Timeout(1);
+        Assert.That(pingCount, Is.EqualTo(1));
+
+        fakeTime.Advance(TimeSpan.FromMilliseconds(1000));
+        await secondPingTcs.Task.Timeout(1);
+        Assert.That(pingCount, Is.EqualTo(2));
+    }
     
     [TestCase(Type.Quic)]
     [TestCase(Type.Uds)]
@@ -301,6 +342,48 @@ internal partial class NexusClientTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task Client_ReconnectDelay_DrivenByFakeTime(Type type)
+    {
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var clientConfig = CreateClientConfig(type);
+        clientConfig.Time = fakeTime;
+
+        // A 30-second reconnect delay — impractical to test with real Task.Delay.
+        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromSeconds(30) });
+
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.InternalNoLingerOnShutdown = true;
+        serverConfig.InternalForceDisableSendingDisconnectSignal = true;
+
+        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+
+        var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        clientNexus.OnConnectedEvent = (_, isReconnected) =>
+        {
+            if (isReconnected) reconnected.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Restart cycle: stop, then bring server back up so the eventual reconnect can succeed.
+        await server.StopAsync();
+        await Task.Delay(100); // let disconnect propagate so the reconnect loop entered the Task.Delay
+        await server.StartAsync().Timeout(1);
+
+        // Without advancing fake time, the 30 s reconnect delay must not have elapsed yet.
+        await Task.Delay(100);
+        Assert.That(reconnected.Task.IsCompleted, Is.False,
+            "Reconnect must not occur until fakeTime has advanced past the policy delay.");
+
+        // Advance past the configured 30 s policy delay.
+        fakeTime.Advance(TimeSpan.FromSeconds(31));
+
+        await reconnected.Task.Timeout(2);
     }
 
     [TestCase(Type.Quic)]

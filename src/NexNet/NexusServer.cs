@@ -33,7 +33,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     internal static void ResetIdCounter() => Interlocked.Exchange(ref _idCounter, 0);
 
     private IServerSessionManager _sessionManager = null!;
-    private readonly Timer _watchdogTimer;
+    private ITimer? _watchdogTimer;
     private ServerConfig? _config;
     private Func<TServerNexus>? _nexusFactory;
     private readonly SessionPoolManager<TClientProxy> _poolManager;
@@ -88,7 +88,6 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     public NexusServer()
     {
         _poolManager = new SessionPoolManager<TClientProxy>();
-        _watchdogTimer = new Timer(ConnectionWatchdog);
     }
 
     /// <summary>
@@ -112,6 +111,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         
 
         _config = config;
+        _watchdogTimer = _config.Time.CreateTimer(ConnectionWatchdog, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _nexusFactory = nexusFactory;
         var id = Interlocked.Increment(ref _idCounter);
         _logger = config.Logger?.CreateLogger($"SV{id}");
@@ -120,7 +120,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         _sessionManager = config.GetSessionManager();
 
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(_logger, true);
+        _collectionManager = new NexusCollectionManager(_logger, true, _config.Time);
         TServerNexus.ConfigureCollections(_collectionManager);
 
         ContextProvider = new ServerNexusContextProvider<TServerNexus, TClientProxy>(
@@ -147,7 +147,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         // Initialize rate limiter if configured
         if (config.RateLimiting?.IsEnabled == true)
         {
-            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting);
+            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting, config.Time);
         }
     }
 
@@ -194,7 +194,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 _ => FireAndForget(ListenForConnectionsAsync()), null);
         }
         
-        _watchdogTimer.Change(_config.Timeout / 4, _config.Timeout / 4);
+        _watchdogTimer!.Change(TimeSpan.FromMilliseconds(_config.Timeout / 4), TimeSpan.FromMilliseconds(_config.Timeout / 4));
 
         // Initialize the session manager
         await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
@@ -260,7 +260,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         _poolManager.Clear();
 
         // Stop the watchdog timer as the server is no longer running.
-        _watchdogTimer.Change(-1, -1);
+        _watchdogTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     /// <inheritdoc />
@@ -269,9 +269,15 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         var previousState = Interlocked.Exchange(ref _state, NexusServerState.Disposed);
 
         if (previousState == NexusServerState.Disposed || previousState == NexusServerState.Stopped)
+        {
+            _watchdogTimer?.Dispose();
+            _watchdogTimer = null;
             return;
+        }
 
         await StopAsync().ConfigureAwait(false);
+        _watchdogTimer?.Dispose();
+        _watchdogTimer = null;
     }
     
     ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
@@ -395,7 +401,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
     private void ConnectionWatchdog(object? state)
     {
-        var timeoutTicks = Environment.TickCount64 - _config!.Timeout;
+        var timeoutTicks = _config!.Time.GetTickCount64() - _config!.Timeout;
 
         foreach (var session in _sessionManager.Sessions.LocalSessions)
             session.DisconnectIfTimeout(timeoutTicks);

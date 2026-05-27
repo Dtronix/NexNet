@@ -23,7 +23,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     where TServerProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
     private long _id;
-    private readonly Timer _pingTimer;
+    private ITimer? _pingTimer;
     private readonly ClientConfig _config;
     private readonly SessionPoolManager<TServerProxy> _poolManager;
     private readonly TClientNexus _nexus;
@@ -86,12 +86,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _poolManager = new SessionPoolManager<TServerProxy>();
 
         // Set the collection manager and configure for this nexus.
-        _collectionManager = new NexusCollectionManager(_logger, false);
+        _collectionManager = new NexusCollectionManager(_logger, false, _config.Time);
         TClientNexus.ConfigureCollections(_collectionManager);
 
         _proxy = new TServerProxy() { PoolManager = _poolManager };
         _nexus = nexus;
-        _pingTimer = new Timer(PingTimer);
     }
 
     /// <inheritdoc />
@@ -182,7 +181,11 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Disconnected, session.DisconnectReason);
         }
 
-        _pingTimer.Change(_config.PingInterval, _config.PingInterval);
+        // Construct the ping timer here so it uses whatever TimeProvider is on _config at connect-time.
+        // Disposing any prior timer first lets reconnects pick up a fresh provider if Config.Time was swapped.
+        _pingTimer?.Dispose();
+        _pingTimer = _config.Time.CreateTimer(PingTimer, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+        _pingTimer.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
 
         return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
     }
@@ -230,7 +233,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             if (delay == null)
                 return;
 
-            await Task.Delay(delay.Value).ConfigureAwait(false);
+            await Task.Delay(delay.Value, _config.Time).ConfigureAwait(false);
             _config.ReconnectionPolicy.FireReconnection(this, count);
 
             _config.Logger?.LogTrace($"Reconnection attempt {count}");
@@ -298,7 +301,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
     private void PingTimer(object? state)
     {
-        var timeoutTicks = Environment.TickCount64 - _config.Timeout;
+        var timeoutTicks = _config.Time.GetTickCount64() - _config.Timeout;
 
         // Check to see if we have timed out on receiving first.
         if (_session?.DisconnectIfTimeout(timeoutTicks) == true)
@@ -310,20 +313,20 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private void OnDisconnected()
     {
         //_receiveLoopThread = null;
-        _pingTimer.Change(-1, -1);
+        _pingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         _session = null;
     }
-    
-    
+
+
     private void OnReconnectingStatusChange(bool reconnected)
     {
         if (reconnected)
         {
-            _pingTimer.Change(_config.PingInterval, _config.PingInterval);
+            _pingTimer?.Change(TimeSpan.FromMilliseconds(_config.PingInterval), TimeSpan.FromMilliseconds(_config.PingInterval));
         }
         else
         {
-            _pingTimer.Change(-1, -1);
+            _pingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
         }
     }
 }

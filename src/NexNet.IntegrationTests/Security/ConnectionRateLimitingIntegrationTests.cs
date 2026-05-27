@@ -1,3 +1,4 @@
+using System;
 using System.Net.Sockets;
 using System.Net.WebSockets;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -274,7 +275,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         serverConfig.RateLimiting = rateLimitConfig;
 
         // Create rate limiter to track stats (server creates its own, but we can verify the config)
-        using var limiter = new ConnectionRateLimiter(rateLimitConfig);
+        using var limiter = new ConnectionRateLimiter(rateLimitConfig, TimeProvider.System);
 
         // Acquire some connections
         limiter.TryAcquire("127.0.0.1");

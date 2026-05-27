@@ -146,7 +146,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _session.IsServer,
             _session.Config.NexusPipeHighWaterMark,
             _session.Config.NexusPipeHighWaterCutoff,
-            _session.Config.NexusPipeLowWaterMark);
+            _session.Config.NexusPipeLowWaterMark,
+            _session.Config.Time);
 
         _outputPipeWriter = new NexusPipeWriter(
             this,

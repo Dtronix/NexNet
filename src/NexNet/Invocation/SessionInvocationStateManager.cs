@@ -144,8 +144,6 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
             cancellationToken.Value.Register(Callback, state);
         }
 
-        state.Created = Environment.TickCount64;
-
         // Add the state information to the active states.
 
         if (cancellationToken == null || cancellationToken?.IsCancellationRequested == false)

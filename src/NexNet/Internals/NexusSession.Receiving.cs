@@ -14,6 +14,9 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
+        // Handshake timeout is a real network deadline — the underlying TCP/TLS/WebSocket handshake
+        // runs on the OS schedule, so this wait stays on real time. Routing it through TimeProvider
+        // would not speed up real handshakes and would deadlock tests using FakeTimeProvider.
         _ = Task.Delay(Config.HandshakeTimeout, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
         
         Logger?.LogTrace("Reading");
@@ -26,7 +29,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     return;
 
                 var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
-                LastReceived = Environment.TickCount64;
+                LastReceived = Config.Time.GetTickCount64();
                 
                 var buffer = result.Buffer;
                 // Terribly inefficient and only used for testing

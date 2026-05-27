@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -159,15 +161,43 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     public async Task RelayReconnectsUponOtherServerDisconnection()
     {
         var clSv = await CreateRelayCollectionClientServers(true);
-        
-        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
+
+        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
-        
+
         await clSv.Server1.StopAsync();
-        
+
         await relayList.DisconnectedTask.Timeout(1);
         await clSv.Server1.StartAsync();
         await relayList.ReadyTask.Timeout(1);
+    }
+
+    [Test]
+    public async Task RelayReconnect_500msBackoff_DrivenByFakeTime()
+    {
+        // Server2 carries the relay; injecting fakeTime on its config drives the 500 ms reconnect
+        // delay (NexusListRelay.cs:153 — Task.Delay(500, _time, ct)).
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var clSv = await CreateRelayCollectionClientServers(true, server2Time: fakeTime);
+
+        var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
+        await relayList.ReadyTask.Timeout(1);
+
+        await clSv.Server1.StopAsync();
+        await relayList.DisconnectedTask.Timeout(1);
+
+        // Restart Server1; the relay's reconnect loop has just slept on the 500 ms TimeProvider delay.
+        await clSv.Server1.StartAsync();
+
+        // Without advancing fakeTime, the relay reconnect Task.Delay does not return.
+        await Task.Delay(100);
+        Assert.That(relayList.State, Is.Not.EqualTo(NexNet.Collections.NexusCollectionState.Connected),
+            "Relay must not have reconnected yet — its 500 ms delay is awaiting fakeTime.Advance.");
+
+        // Advance past the 500 ms reconnect-loop delay; the relay should now reconnect.
+        fakeTime.Advance(TimeSpan.FromMilliseconds(500));
+
+        await relayList.ReadyTask.Timeout(2);
     }
     
     [Test]

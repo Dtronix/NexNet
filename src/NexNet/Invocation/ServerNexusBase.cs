@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -16,7 +17,6 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     where TProxy : ProxyInvocationBase, IProxyInvoker, new()
 {
     private ConcurrentDictionary<int, (AuthorizeResult Result, long ExpiresAtTicks)>? _authCache;
-    internal Func<long>? TickCountOverride;
 
     /// <summary>
     /// Context for this current session.
@@ -126,7 +126,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
         // cacheDurationSeconds == 0 means explicitly no cache
 
         // Check cache
-        var now = TickCountOverride?.Invoke() ?? Environment.TickCount64;
+        var now = SessionContext.Session.Config.Time.GetTickCount64();
         if (cacheDurationMs > 0 && _authCache != null
             && _authCache.TryGetValue(methodId, out var cached))
         {
@@ -156,7 +156,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
         if (cacheDurationMs > 0 && result is AuthorizeResult.Allowed or AuthorizeResult.Unauthorized)
         {
             _authCache ??= new ConcurrentDictionary<int, (AuthorizeResult, long)>();
-            _authCache[methodId] = (result, (TickCountOverride?.Invoke() ?? Environment.TickCount64) + cacheDurationMs);
+            _authCache[methodId] = (result, SessionContext.Session.Config.Time.GetTickCount64() + cacheDurationMs);
         }
 
         return await HandleAuthResult(result, invocationId, hasReturnChannel).ConfigureAwait(false);

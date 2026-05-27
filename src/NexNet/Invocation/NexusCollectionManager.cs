@@ -19,11 +19,13 @@ internal class NexusCollectionManager : IConfigureCollectionManager
     private Dictionary<ushort, INexusCollection>? _collectionBuilder = new();
     private FrozenDictionary<ushort, INexusCollection>? _collections;
     private readonly INexusLogger? _logger;
+    private readonly TimeProvider _time;
 
-    public NexusCollectionManager(INexusLogger? logger, bool isServer)
+    public NexusCollectionManager(INexusLogger? logger, bool isServer, TimeProvider time)
     {
         _logger = logger;
         _isServer = isServer;
+        _time = time;
     }
 
     public INexusList<T> GetList<T>(ushort id)
@@ -56,7 +58,7 @@ internal class NexusCollectionManager : IConfigureCollectionManager
         {
             if (mode == NexusCollectionMode.Relay)
             {
-                var relay = new NexusListRelay<T>(id, mode, _logger);
+                var relay = new NexusListRelay<T>(id, mode, _logger, _time);
                 relay.Start();
                 list = relay;
             }

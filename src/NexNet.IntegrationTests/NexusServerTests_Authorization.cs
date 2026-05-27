@@ -537,7 +537,9 @@ internal class NexusServerTests_Authorization : BaseTests
     public async Task AuthCache_AttributeTtl_SecondCallUsesCachedResult(Type type)
     {
         var authCallCount = 0;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
 
         server.OnNexusCreated = nexus =>
         {
@@ -552,6 +554,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
+        // No time advance — every call falls within the cache TTL deterministically.
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
@@ -563,12 +566,12 @@ internal class NexusServerTests_Authorization : BaseTests
     public async Task AuthCache_AttributeTtl_ExpiredEntry_ReChecks(Type type)
     {
         var authCallCount = 0;
-        var currentTick = Environment.TickCount64;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
 
         server.OnNexusCreated = nexus =>
         {
-            nexus.TickCountOverride = () => Interlocked.Read(ref currentTick);
             nexus.OnAuthorizeHandler = (_, _, _, _) =>
             {
                 Interlocked.Increment(ref authCallCount);
@@ -588,10 +591,73 @@ internal class NexusServerTests_Authorization : BaseTests
         Assert.That(authCallCount, Is.EqualTo(1));
 
         // Advance past the 2s TTL
-        Interlocked.Add(ref currentTick, 2001);
+        fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
 
         await client.Proxy.CachedMethod().Timeout(1);
         Assert.That(authCallCount, Is.EqualTo(2));
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_FakeTimeProvider_AdvanceJustBeforeTtl_StaysCached(Type type)
+    {
+        var authCallCount = 0;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(1));
+
+        // Advance to just before the 2s TTL would expire
+        fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
+
+        await client.Proxy.CachedMethod().Timeout(1);
+        Assert.That(authCallCount, Is.EqualTo(1), "Cache should remain hot until the TTL elapses");
+    }
+
+    [TestCase(Type.Uds)]
+    public async Task AuthCache_FakeTimeProvider_MultipleExpiryCycles_ReChecksEachTime(Type type)
+    {
+        var authCallCount = 0;
+        var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
+        var (server, client, _) = CreateAuthServerClient(type);
+        server.Server.Config.Time = fakeTime;
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) =>
+            {
+                Interlocked.Increment(ref authCallCount);
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+            };
+            nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Three full TTL cycles - each should re-invoke OnAuthorize once.
+        for (var cycle = 1; cycle <= 3; cycle++)
+        {
+            await client.Proxy.CachedMethod().Timeout(1);
+            await client.Proxy.CachedMethod().Timeout(1);
+            Assert.That(authCallCount, Is.EqualTo(cycle), $"Cycle {cycle}: cache hits within TTL should not re-invoke OnAuthorize");
+
+            fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
+        }
     }
 
     [TestCase(Type.Uds)]

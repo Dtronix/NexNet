@@ -1,4 +1,5 @@
-﻿using NexNet.Collections.Lists;
+﻿using System;
+using NexNet.Collections.Lists;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
@@ -26,7 +27,7 @@ internal class NexusCollectionBaseTests : BaseTests
         NexusServer<ServerNexus, ServerNexus.ClientProxy> Server2,
         NexusClient<ClientNexus, ClientNexus.ServerProxy> Client2);
 
-    protected async ValueTask<RelayedCollectionServerClient> CreateRelayCollectionClientServers(bool startServers = false)
+    protected async ValueTask<RelayedCollectionServerClient> CreateRelayCollectionClientServers(bool startServers = false, TimeProvider? server2Time = null)
     {
         CurrentUdsPath = null;
         var serverConfig1 = CreateServerConfig(Type.Uds);
@@ -40,6 +41,8 @@ internal class NexusCollectionBaseTests : BaseTests
         // Reset the port to get a new port.
         CurrentUdsPath = null;
         var serverConfig2 = CreateServerConfig(Type.Uds);
+        if (server2Time != null)
+            serverConfig2.Time = server2Time;
         var server2 = CreateServer(serverConfig2, nexus => { }, configureCollections: nexus =>
             nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
         var clientConfig2 = CreateClientConfig(Type.Uds);

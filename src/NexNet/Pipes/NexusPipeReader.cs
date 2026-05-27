@@ -33,6 +33,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private readonly NexusDuplexPipe.State _backPressureFlag;
     private readonly NexusDuplexPipe.State _writingCompleteFlag;
     private readonly INexusLogger? _logger;
+    private readonly TimeProvider _time;
     private long _examinedPosition;
     private long _bufferTailPosition;
     private int _receiveCounter;
@@ -57,14 +58,16 @@ internal class NexusPipeReader : PipeReader, IDisposable
     public NexusPipeReader(
         IPipeStateManager stateManager,
         INexusLogger? logger,
-        bool isServer, 
-        int highWaterMark, 
+        bool isServer,
+        int highWaterMark,
         int highWaterCutoff,
-        int lowWaterMark)
+        int lowWaterMark,
+        TimeProvider? time = null)
     {
         _stateManager = stateManager;
         _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         _logger = logger;
+        _time = time ?? TimeProvider.System;
         _highWaterMark = highWaterMark; //_session!.Config.NexusPipeHighWaterMark;
         _highWaterCutoff = highWaterCutoff; //_session!.Config.NexusPipeHighWaterCutoff;
         _lowWaterMark = lowWaterMark; //_session!.Config.NexusPipeLowWaterMark;
@@ -106,13 +109,14 @@ internal class NexusPipeReader : PipeReader, IDisposable
             {
                 _logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low watermark completion. Loop {loopCount}");
                 // Do a short delay to allow the other side to process the data and progressively increase the delay.
-                await Task.Delay(loopCount < 2
+                var delayMs = loopCount < 2
                     ? 1
                     : loopCount < 10
                         ? 5
                         : loopCount < 50
                             ? 10
-                            : 100).ConfigureAwait(false);
+                            : 100;
+                await Task.Delay(TimeSpan.FromMilliseconds(delayMs), _time).ConfigureAwait(false);
 
                 loopCount++;
 
