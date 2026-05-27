@@ -14,36 +14,44 @@ namespace NexNet.Testing.Tests;
 internal class MethodIdMapTests
 {
     [Test]
-    public void GeneratorParity_DemoServerInterface_AssignsExpectedIds()
+    public void GeneratorParity_EditorServerInterface_AssignsExpectedIds()
     {
-        var map = MethodIdMap.Build(typeof(IDemoServerNexus));
+        var map = MethodIdMap.Build(typeof(IEditorServerNexus));
 
-        // Source declaration order in HarnessSampleNexus.cs:
-        //   Ping, Notify, JoinGroup, BroadcastToGroup, Upload, Download,
-        //   CollectStrings, PublishStrings.
-        AssertMethodId(map, nameof(IDemoServerNexus.Ping), 0);
-        AssertMethodId(map, nameof(IDemoServerNexus.Notify), 1);
-        AssertMethodId(map, nameof(IDemoServerNexus.JoinGroup), 2);
-        AssertMethodId(map, nameof(IDemoServerNexus.BroadcastToGroup), 3);
-        AssertMethodId(map, nameof(IDemoServerNexus.Upload), 4);
-        AssertMethodId(map, nameof(IDemoServerNexus.Download), 5);
-        AssertMethodId(map, nameof(IDemoServerNexus.CollectStrings), 6);
-        AssertMethodId(map, nameof(IDemoServerNexus.PublishStrings), 7);
+        // Source declaration order in EditorAppNexus.cs.
+        AssertMethodId(map, nameof(IEditorServerNexus.Ping), 0);
+        AssertMethodId(map, nameof(IEditorServerNexus.Notify), 1);
+        AssertMethodId(map, nameof(IEditorServerNexus.Upload), 2);
+        AssertMethodId(map, nameof(IEditorServerNexus.Download), 3);
+        AssertMethodId(map, nameof(IEditorServerNexus.CollectStrings), 4);
+        AssertMethodId(map, nameof(IEditorServerNexus.PublishStrings), 5);
+        AssertMethodId(map, nameof(IEditorServerNexus.OpenDocument), 6);
+        AssertMethodId(map, nameof(IEditorServerNexus.LeaveDocument), 7);
+        AssertMethodId(map, nameof(IEditorServerNexus.SaveDraft), 8);
+        AssertMethodId(map, nameof(IEditorServerNexus.Whisper), 9);
+        AssertMethodId(map, nameof(IEditorServerNexus.BroadcastSystemAnnouncement), 10);
+        AssertMethodId(map, nameof(IEditorServerNexus.ListActiveEditors), 11);
+        AssertMethodId(map, nameof(IEditorServerNexus.UploadAttachment), 12);
+        AssertMethodId(map, nameof(IEditorServerNexus.StreamEdits), 13);
     }
 
     [Test]
-    public void GeneratorParity_DemoClientInterface_AssignsExpectedIds()
+    public void GeneratorParity_EditorClientInterface_AssignsExpectedIds()
     {
-        var map = MethodIdMap.Build(typeof(IDemoClientNexus));
-        AssertMethodId(map, nameof(IDemoClientNexus.ReceiveBroadcast), 0);
+        var map = MethodIdMap.Build(typeof(IEditorClientNexus));
+        AssertMethodId(map, nameof(IEditorClientNexus.DraftSaved), 0);
+        AssertMethodId(map, nameof(IEditorClientNexus.EditorJoined), 1);
+        AssertMethodId(map, nameof(IEditorClientNexus.EditorLeft), 2);
+        AssertMethodId(map, nameof(IEditorClientNexus.WhisperReceived), 3);
+        AssertMethodId(map, nameof(IEditorClientNexus.SystemAnnouncement), 4);
     }
 
     [Test]
     public void Build_IsDeterministic_AcrossInvocations()
     {
-        var first = MethodIdMap.Build(typeof(IDemoServerNexus));
-        var second = MethodIdMap.Build(typeof(IDemoServerNexus));
-        var third = MethodIdMap.Build(typeof(IDemoServerNexus));
+        var first = MethodIdMap.Build(typeof(IEditorServerNexus));
+        var second = MethodIdMap.Build(typeof(IEditorServerNexus));
+        var third = MethodIdMap.Build(typeof(IEditorServerNexus));
 
         foreach (var (method, id) in first)
         {

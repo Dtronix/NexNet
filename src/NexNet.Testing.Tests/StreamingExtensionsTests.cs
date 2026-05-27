@@ -8,16 +8,16 @@ namespace NexNet.Testing.Tests;
 
 internal class StreamingExtensionsTests
 {
-    private static Task<NexusTestHost<DemoServerNexus, DemoServerNexus.ClientProxy, DemoClientNexus, DemoClientNexus.ServerProxy>> CreateHost()
+    private static Task<NexusTestHost<EditorServerNexus, EditorServerNexus.ClientProxy, EditorClientNexus, EditorClientNexus.ServerProxy>> CreateHost()
         => NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>();
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>();
 
     [SetUp]
     public void ClearServerNexusStatics()
     {
-        DemoServerNexus.LastUploadedBytes = null;
-        DemoServerNexus.LastCollectedItems = null;
+        EditorServerNexus.LastUploadedBytes = null;
+        EditorServerNexus.LastCollectedItems = null;
     }
 
     [Test]
@@ -35,7 +35,7 @@ internal class StreamingExtensionsTests
         await serverCall.WaitAsync(TimeSpan.FromSeconds(2));
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        Assert.That(DemoServerNexus.LastUploadedBytes, Is.EqualTo(payload));
+        Assert.That(EditorServerNexus.LastUploadedBytes, Is.EqualTo(payload));
     }
 
     [Test]
@@ -68,7 +68,7 @@ internal class StreamingExtensionsTests
         await serverCall.WaitAsync(TimeSpan.FromSeconds(2));
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        Assert.That(DemoServerNexus.LastCollectedItems, Is.EqualTo(items));
+        Assert.That(EditorServerNexus.LastCollectedItems, Is.EqualTo(items));
     }
 
     [Test]

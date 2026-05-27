@@ -10,12 +10,12 @@ internal class NexusTestHostTests
     [Test]
     public async Task EndToEnd_InvokeServerMethodOverInProcess()
     {
-        var sNexus = new DemoServerNexus();
-        var cNexus = new DemoClientNexus();
+        var sNexus = new EditorServerNexus();
+        var cNexus = new EditorClientNexus();
 
         await using var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
                 serverNexusFactory: () => sNexus,
                 clientNexusFactory: () => cNexus);
 
@@ -31,12 +31,12 @@ internal class NexusTestHostTests
     [Test]
     public async Task ManyInvocations_OneClient()
     {
-        var sNexus = new DemoServerNexus();
-        var cNexus = new DemoClientNexus();
+        var sNexus = new EditorServerNexus();
+        var cNexus = new EditorClientNexus();
 
         await using var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
                 serverNexusFactory: () => sNexus,
                 clientNexusFactory: () => cNexus);
 
@@ -55,12 +55,12 @@ internal class NexusTestHostTests
     [Test]
     public async Task SharedClientNexusInstance_ThrowsOnSecondConnect()
     {
-        var sharedClient = new DemoClientNexus();
+        var sharedClient = new EditorClientNexus();
 
         await using var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
-                serverNexusFactory: () => new DemoServerNexus(),
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
+                serverNexusFactory: () => new EditorServerNexus(),
                 clientNexusFactory: () => sharedClient);
 
         await host.ConnectAsAsync(TestIdentity.Of("alice"))
@@ -76,10 +76,10 @@ internal class NexusTestHostTests
     public async Task MultipleClients_CanConnectAgainstSameHost()
     {
         await using var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
-                serverNexusFactory: () => new DemoServerNexus(),
-                clientNexusFactory: () => new DemoClientNexus());
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
+                serverNexusFactory: () => new EditorServerNexus(),
+                clientNexusFactory: () => new EditorClientNexus());
 
         var c1 = await host.ConnectAsAsync(TestIdentity.Of("alice"))
             .WaitAsync(TimeSpan.FromSeconds(5));
@@ -102,12 +102,12 @@ internal class NexusTestHostTests
     [Test]
     public async Task QuiesceAsync_AwaitsRealActivityEndToEnd()
     {
-        var sNexus = new DemoServerNexus();
-        var cNexus = new DemoClientNexus();
+        var sNexus = new EditorServerNexus();
+        var cNexus = new EditorClientNexus();
 
         await using var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
                 serverNexusFactory: () => sNexus,
                 clientNexusFactory: () => cNexus);
 

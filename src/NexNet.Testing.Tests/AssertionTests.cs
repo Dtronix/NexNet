@@ -7,18 +7,18 @@ namespace NexNet.Testing.Tests;
 
 internal class AssertionTests
 {
-    private async Task<(NexusTestHost<DemoServerNexus, DemoServerNexus.ClientProxy, DemoClientNexus, DemoClientNexus.ServerProxy> host,
-            NexusTestClient<DemoClientNexus, DemoClientNexus.ServerProxy> client,
-            DemoServerNexus server)>
+    private async Task<(NexusTestHost<EditorServerNexus, EditorServerNexus.ClientProxy, EditorClientNexus, EditorClientNexus.ServerProxy> host,
+            NexusTestClient<EditorClientNexus, EditorClientNexus.ServerProxy> client,
+            EditorServerNexus server)>
         SetupAsync()
     {
-        var sNexus = new DemoServerNexus();
+        var sNexus = new EditorServerNexus();
         var host = await NexusTestHost.CreateAsync<
-            DemoServerNexus, DemoServerNexus.ClientProxy,
-            DemoClientNexus, DemoClientNexus.ServerProxy>(
+            EditorServerNexus, EditorServerNexus.ClientProxy,
+            EditorClientNexus, EditorClientNexus.ServerProxy>(
                 () => sNexus,
-                () => new DemoClientNexus());
-        var client = await host.ConnectAsAsync(TestIdentity.Of("alice"));
+                () => new EditorClientNexus());
+        var client = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
         return (host, client, sNexus);
     }
 
@@ -31,7 +31,7 @@ internal class AssertionTests
         await client.Server.Ping(42);
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertReceived<IDemoServerNexus>(n => n.Ping(42));
+        host.AssertReceived<IEditorServerNexus>(n => n.Ping(42));
     }
 
     [Test]
@@ -43,7 +43,7 @@ internal class AssertionTests
         await client.Server.Ping(99);
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertReceived<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()));
+        host.AssertReceived<IEditorServerNexus>(n => n.Ping(Arg.Any<int>()));
     }
 
     [Test]
@@ -55,7 +55,7 @@ internal class AssertionTests
         await client.Server.Ping(150);
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertReceived<IDemoServerNexus>(n => n.Ping(Arg.Is<int>(x => x > 100)));
+        host.AssertReceived<IEditorServerNexus>(n => n.Ping(Arg.Is<int>(x => x > 100)));
     }
 
     [Test]
@@ -69,7 +69,7 @@ internal class AssertionTests
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Throws<NexusAssertionException>(
-            () => host.AssertReceived<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()), times: 5));
+            () => host.AssertReceived<IEditorServerNexus>(n => n.Ping(Arg.Any<int>()), times: 5));
     }
 
     [Test]
@@ -79,7 +79,7 @@ internal class AssertionTests
         await using var _host = host;
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertNotReceived<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()));
+        host.AssertNotReceived<IEditorServerNexus>(n => n.Ping(Arg.Any<int>()));
     }
 
     [Test]
@@ -92,7 +92,7 @@ internal class AssertionTests
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
         Assert.Throws<NexusAssertionException>(
-            () => host.AssertNotReceived<IDemoServerNexus>(n => n.Ping(Arg.Any<int>())));
+            () => host.AssertNotReceived<IEditorServerNexus>(n => n.Ping(Arg.Any<int>())));
     }
 
     [Test]
@@ -101,7 +101,7 @@ internal class AssertionTests
         var (host, client, _) = await SetupAsync();
         await using var _host = host;
 
-        var waiter = host.WaitFor<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()), TimeSpan.FromSeconds(2));
+        var waiter = host.WaitFor<IEditorServerNexus>(n => n.Ping(Arg.Any<int>()), TimeSpan.FromSeconds(2));
         await client.Server.Ping(5);
         await waiter;
     }
@@ -113,7 +113,7 @@ internal class AssertionTests
         await using var _host = host;
 
         Assert.ThrowsAsync<TimeoutException>(async () =>
-            await host.WaitFor<IDemoServerNexus>(n => n.Ping(Arg.Any<int>()), TimeSpan.FromMilliseconds(200)));
+            await host.WaitFor<IEditorServerNexus>(n => n.Ping(Arg.Any<int>()), TimeSpan.FromMilliseconds(200)));
     }
 
     [Test]
@@ -125,8 +125,8 @@ internal class AssertionTests
         await client.Server.Notify("hello");
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertReceived<IDemoServerNexus>(n => n.Notify("hello"));
-        host.AssertNotReceived<IDemoServerNexus>(n => n.Notify("goodbye"));
+        host.AssertReceived<IEditorServerNexus>(n => n.Notify("hello"));
+        host.AssertNotReceived<IEditorServerNexus>(n => n.Notify("goodbye"));
     }
 
     [Test]
@@ -135,14 +135,14 @@ internal class AssertionTests
         var (host, client, _) = await SetupAsync();
         await using var _host = host;
 
-        await client.Server.BroadcastToGroup("editors", "draft-saved");
+        await client.Server.SaveDraft("design.md", "v1");
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
-        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", "draft-saved"));
-        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", Arg.Any<string>()));
-        host.AssertReceived<IDemoServerNexus>(n => n.BroadcastToGroup(Arg.Any<string>(), Arg.Any<string>()));
-        host.AssertNotReceived<IDemoServerNexus>(n => n.BroadcastToGroup("editors", "wrong-text"));
-        host.AssertNotReceived<IDemoServerNexus>(n => n.BroadcastToGroup("readers", "draft-saved"));
+        host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", "v1"));
+        host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", Arg.Any<string>()));
+        host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft(Arg.Any<string>(), Arg.Any<string>()));
+        host.AssertNotReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", "v2"));
+        host.AssertNotReceived<IEditorServerNexus>(n => n.SaveDraft("recipe.txt", "v1"));
     }
 
     [Test]
@@ -156,7 +156,7 @@ internal class AssertionTests
         await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
 
         var ex = Assert.Throws<NexusAssertionException>(
-            () => host.AssertReceived<IDemoServerNexus>(n => n.Notify("gamma")));
+            () => host.AssertReceived<IEditorServerNexus>(n => n.Notify("gamma")));
 
         // The diagnostic must include the actual recorded arg values, not just method ids.
         Assert.That(ex!.Message, Does.Contain("alpha"));
