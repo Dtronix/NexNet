@@ -6,12 +6,12 @@ remote: https://github.com/Dtronix/NexNet.git
 base-branch: master
 
 ## State
-phase: REMEDIATE
+phase: PLAN
 status: suspended
 issue: discussion
 pr: 77
-session: 5
-phases-total: 13
+session: 6
+phases-total: 14
 phases-complete: 13
 
 ## Problem Statement
@@ -52,6 +52,14 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 - 2026-05-06 — **Recorder API uses LINQ expressions** (`AssertReceived<I>(n => n.M(arg, Arg.Any<T>()))`). Method ID lookup via the same `TypeHasher` machinery the generator uses; arg matching via `ExpressionVisitor`.
 - 2026-05-06 — **Rollout is staged.** Step 1 ships `MemoryTransport` only and validates it by adding `Type.Memory` to existing `[TestCase]` matrices. Step 2 adds the hooks (pure refactor, no behavior change). Step 3 ships `NexNet.Testing`. Steps will be reflected as plan phases.
 - 2026-05-22 — **Plan approved.** User approved `plan.md` as drafted. IMPLEMENT begins with Phase 1.
+- 2026-05-27 — **Showcase rewrite (Phase 14).** Replace the `DemoServerNexus` / `JoinGroup` / `BroadcastToGroup` scaffolding with a realistic `EditorServerNexus` document-editor domain that exercises every harness feature via natural business methods. Reason: PR sample showed harness ergonomics in the worst light by forcing users to write passthrough methods just to test broadcasts; real NexNet code drives typed callbacks via `Context.Clients.Group(...)` inside business methods, and the showcase should reflect that. Folded into PR #77 (not split into follow-up).
+- 2026-05-27 — **Demo domain: document editor.** `EditorServerNexus` methods: `OpenDocument(docId)`, `LeaveDocument(docId)`, `SaveDraft(docId, content)`, `Whisper(targetId, text)`, `BroadcastSystemAnnouncement(msg)` (admin-only), `ListActiveEditors(docId, ct)`, `UploadAttachment(docId, INexusDuplexPipe)`, `StreamEdits(INexusDuplexChannel<EditOp>)`. Client callbacks: `DraftSaved`, `EditorJoined`, `EditorLeft`, `WhisperReceived`, `SystemAnnouncement`.
+- 2026-05-27 — **Full authorization story included.** `DocPermission { Read, Write, Admin }` enum, `[NexusAuthorize<DocPermission>(Admin)]` on `BroadcastSystemAnnouncement`, `OnAuthorize` override consults `context.Identity as TestIdentity` and checks `IsInRole(((DocPermission)p).ToString())` for each required permission. **Role matching is case-sensitive ordinal**, role-name string equals enum-member name.
+- 2026-05-27 — **Cross-session document state: static dictionary on `EditorServerNexus`.** `ConcurrentDictionary<string, DocState>` static field. Tests clear at top of `[Test]` (matches the existing `LastUploadedBytes`/`PingCount` pattern in `DemoServerNexus`).
+- 2026-05-27 — **`ListActiveEditors` returns `string[]` of display names.** Reads naturally in assertions and validates identity flow implicitly.
+- 2026-05-27 — **`EditOp` is a `record struct(int Position, string Inserted)` over `INexusDuplexChannel<EditOp>`** (managed channel; the unmanaged variant doesn't apply because the struct contains `string`). MemoryPack-attributed.
+- 2026-05-27 — **Drop two superseded HarnessShowcaseTests.** `Groups_ReflectMembershipAfterJoin` and `GroupBroadcast_DeliversToMembers` are covered by the new editor-app scenarios. `Groups_EmptyGroup_HasNoMembers` survives, renamed into the new showcase file.
+- 2026-05-27 — **No new harness API.** The fix is the demo + showcase, not new surface. `host.Clients`-style direct broadcast and `client.JoinGroupAsync`-style direct membership are explicitly NOT added — they would conflict with the "drive real business methods, observe callbacks" pattern that this rewrite is built around.
 
 ### Revisions after source verification (2026-05-06)
 - **Hook location:** Two nullable fields added to the `NexusSessionConfigurations` readonly struct (per user choice). Authoritative install point is on `ConfigBase` (so users set hooks once and all sessions inherit); the struct's session-construction site copies them in, giving `NexusSession` direct field access.
@@ -74,16 +82,38 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 
 ## Suspend State
 
-- **Phase:** REMEDIATE — all 12 remediation phases complete; PR #77 created and CI green.
-- **Sub-step:** Awaiting user "go" to FINALIZE (merge). Workflow is paused at REMEDIATE step 8 ("Ready to finalize and merge?" decision).
-- **In progress:** Nothing actively executing. Working tree clean. PR #77 open with green CI on the latest commit (`7ed0984` series + ce26041 follow-ups).
-- **Immediate next step on resume:** Ask the user via AskUserQuestion whether to proceed with FINALIZE (squash merge), rebase first, or go back to REVIEW. The PR is in a clean state; nothing else is pending.
-- **WIP commit:** None.
-- **Test status (latest CI run #26460964379 — 4m27s, all green):**
+- **Phase:** PLAN — Phase 14 addendum (showcase rewrite) drafted in `plan.md`; awaiting user approval before transitioning to IMPLEMENT.
+- **Sub-step:** End of PLAN. Plan.md was extended with a `Phase 14: Showcase rewrite — document-editor demo` section (5 sub-phases 14a–14e, full design including method table, OnAuthorize snippet, doc-state strategy, EditOp shape, 18-test showcase list, README sample, method-ID treatment for the JoinGroup/BroadcastToGroup deletion). All eight Phase 14 design decisions logged in `## Decisions` (2026-05-27 dates).
+- **In progress:** Nothing actively executing. Code under `src/` not yet touched in Session 6. Tasks #4–#8 pending.
+- **Immediate next step on resume:**
+  1. If user approves the Phase 14 plan: set `phase: IMPLEMENT`, `status: active`, mark task #4 in_progress, begin sub-phase 14a (build `EditorAppNexus.cs`).
+  2. If user wants changes to the plan: amend `plan.md` Phase 14 section accordingly, then re-prompt.
+- **WIP commit:** This commit (`[WIP] Phase 14 plan: document-editor showcase rewrite`) IS the suspend point. No mid-code work to recover; the entire suspend state is in `plan.md` + `workflow.md`.
+- **Test status (unchanged from previous suspend — no code touched in Session 6):**
   - `NexNet.Generator.Tests`: 149/149.
-  - `NexNet.IntegrationTests`: 2825/2825 (was 2742; +83 InProcess cases from R10).
-  - `NexNet.Testing.Tests`: 65/65 (53 from R1–R4 + 5 R5 client-assertions + 4 R6 MethodIdMap + 3 R7 multi-arg/diagnostic = 65).
-- **Latest commit on branch:** `7ed0984` ("CI: bump upload-artifact to v7 (v5 still ran on Node 20)").
+  - `NexNet.IntegrationTests`: 2825/2825.
+  - `NexNet.Testing.Tests`: 65/65.
+- **Latest commit before this WIP:** `7ed0984`.
+- **PR #77:** Still open with green CI. No change to remote branch state since previous suspend.
+- **Phase 14 design highlights (carry forward):**
+  - Demo domain = collaborative document editor. New types: `EditorServerNexus` / `EditorClientNexus` / `IEditorServerNexus` / `IEditorClientNexus`. File: `EditorAppNexus.cs` (replaces `HarnessSampleNexus.cs`).
+  - Methods (renamed from Demo, with JoinGroup/BroadcastToGroup deleted, editor methods added): `Ping`, `Notify`, `Upload`, `Download`, `CollectStrings`, `PublishStrings`, `OpenDocument`, `LeaveDocument`, `SaveDraft`, `Whisper`, `BroadcastSystemAnnouncement` ([NexusAuthorize<DocPermission>(Admin)]), `ListActiveEditors(docId, ct)→ValueTask<string[]>`, `UploadAttachment(docId, pipe)`, `StreamEdits(channel)`.
+  - `DocPermission { Read, Write, Admin }`. `OnAuthorize` casts `context.Identity` to `TestIdentity`, checks `IsInRole(((DocPermission)p).ToString())` per required permission (case-sensitive ordinal).
+  - Cross-session state: static `ConcurrentDictionary<string, DocState>` on `EditorServerNexus`, cleared at top of each `[Test]`.
+  - `EditOp` = `[MemoryPackable] record struct EditOp(int Position, string Inserted)` over `INexusDuplexChannel<EditOp>`.
+  - Method IDs after rewrite (deletion of JoinGroup/BroadcastToGroup + appended editor methods): 1=Ping, 2=Notify, 3=Upload, 4=Download, 5=CollectStrings, 6=PublishStrings, 7=OpenDocument, 8=LeaveDocument, 9=SaveDraft, 10=Whisper, 11=BroadcastSystemAnnouncement, 12=ListActiveEditors, 13=UploadAttachment, 14=StreamEdits. `MethodIdMapTests` will need a coherent update.
+  - HarnessShowcaseTests replaced by EditorAppShowcaseTests.cs (18 tests). `Groups_EmptyGroup_HasNoMembers` migrates; the other two are dropped as superseded.
+  - **No new harness API** — explicit decision. `host.Clients` / `client.JoinGroupAsync` were considered and rejected as conflicting with the "drive real business methods, observe callbacks" pattern.
+- **Risks flagged for IMPLEMENT:**
+  - Auth integration exercised end-to-end for the first time (tests 4, 5, 6). May surface OnAuthorize / TestIdentity.Roles gaps.
+  - `ListActiveEditors` server-side impl: `Context` doesn't expose the group registry per-method; plan calls for a parallel `ConcurrentDictionary<string, ConcurrentDictionary<long, string>>` maintained by OpenDocument/LeaveDocument. Verify the approach against actual NexNet APIs before coding.
+  - MethodIdMapTests update is mechanical but a single-step coordinated change — easy to forget the shift.
+- **Open task list:**
+  - #4 IMPLEMENT: build EditorServerNexus + EditorClientNexus (pending)
+  - #5 IMPLEMENT: rename Demo* → Editor* across dependent tests (pending)
+  - #6 IMPLEMENT: rewrite HarnessShowcaseTests as EditorAppShowcaseTests (pending)
+  - #7 IMPLEMENT: update README sample + pr-body.md (pending)
+  - #8 REVIEW + REMEDIATE: re-review showcase rewrite, rebase, push (pending)
 - **All 12 remediation phases done:**
   - **R1** (c9b3c2e) — Quiescence counters wired end-to-end (findings 5, 6, 7, 12, 13, 26).
   - **R2** (8a49f16) — Detect shared-nexus factory misuse instead of hanging (finding 4).
@@ -157,3 +187,6 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | PR #77 created and pushed; first CI run green (4m27s). User feedback: revert R11's source-attribute migration of `InternalsVisibleTo("NexNet.Testing")` (finding 40 reclassified D — kept csproj convention) AND update `.github/workflows/dotnet.yml` to run `NexNet.Testing.Tests` and pack `NexNet.Testing`. Both applied: removed `src/NexNet/Properties/InternalsVisibleTo.cs`, restored the csproj `<InternalsVisibleTo>` entry, added two CI steps. 65 testing green locally. |
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE | CI test-output polish: switched all three test steps to `--logger "console;verbosity=minimal"` to suppress per-test pass lines (the 2825-case integration suite was dumping thousands of lines per CI run). Added an assembly-level NUnit `ITestAction` (`TestProgressReporterAttribute`) per test project that emits `[progress] <assembly>: N ran (X passed, Y failed), Ts elapsed` on stderr at a fixed cadence (100 tests / 15s for IntegrationTests; 25 / 10s for the small suites). Stderr survives the minimal logger; TestContext.Progress does not at that verbosity. |
 | 5 | 2026-05-26 REMEDIATE | 2026-05-26 REMEDIATE (suspended) | Bumped CI actions out of Node 20 deprecation: `actions/checkout@v5`, `actions/setup-dotnet@v5`, `actions/upload-artifact@v7`. Latest CI run (#26460964379) green in 4m27s with no deprecation annotation. User issued handoff — suspending at REMEDIATE step 8 awaiting finalize decision. Working tree clean; latest commit `7ed0984`. |
+| 6 | 2026-05-27 REMEDIATE (resumed) | 2026-05-27 DESIGN | Resumed at REMEDIATE step 8. User raised ergonomics feedback on PR sample: the `JoinGroup`/`BroadcastToGroup` passthrough methods on DemoServerNexus don't reflect real NexNet usage (typed callbacks via `Context.Clients.Group(...)`). Agreed to expand demo to showcase all harness features via a realistic document-editor domain. Folding into PR #77 rather than splitting. Stepping back from REMEDIATE → DESIGN; phases-total bumped 13 → 14 (one new showcase rewrite phase). Prior REMEDIATE state (review.md classifications, R1–R12 actions, PR #77 body) preserved intact. Session 6 begins. |
+| 6 | 2026-05-27 DESIGN | 2026-05-27 PLAN | DESIGN locked: document-editor domain, full auth story (NexusAuthorize + OnAuthorize matching TestIdentity.Roles case-sensitive ordinal against `((DocPermission)p).ToString()`), pipes + channels in unified showcase. Eight Phase 14 decisions recorded. Doc-state via static dict cleared per-test; ListActiveEditors returns string[] of names; EditOp is record struct over INexusDuplexChannel<T>; drop two superseded showcase tests. No new harness API added (explicit decision). |
+| 6 | 2026-05-27 PLAN | 2026-05-27 PLAN (suspended) | Phase 14 plan written into `plan.md`: 5 sub-phases (14a build EditorAppNexus.cs, 14b update dependent tests + MethodIdMapTests, 14c replace HarnessShowcaseTests with EditorAppShowcaseTests tests 1–10, 14d add tests 11–18, 14e update README + pr-body). Method-ID layout post-rewrite documented (deletion shifts Upload..PublishStrings; editor methods append at 7..14). 18 showcase tests enumerated. User issued handoff before plan approval. Suspended awaiting plan approval on resume. |

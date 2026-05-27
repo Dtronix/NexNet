@@ -308,6 +308,133 @@ Add an end-to-end sample test class `HarnessShowcaseTests.cs` in `NexNet.Testing
 
 **Tests:** The showcase class is itself the test surface — each broadcast pattern verified end-to-end.
 
+## Phase 14: Showcase rewrite — document-editor demo
+
+Added 2026-05-27 after PR #77 review feedback. The PR-sample broadcast pattern (`alice.Server.JoinGroup("editors"); alice.Server.BroadcastToGroup("editors", "draft-saved")`) reflected harness ergonomics in the worst light by forcing users to write passthrough methods on their server nexus just to drive broadcast tests. Real NexNet code invokes typed callbacks directly on group proxies (`Context.Clients.Group($"doc-{docId}").DraftSaved(...)`) inside business methods. The fix is to replace the demo nexus with a realistic domain whose internal use of `Context.Groups` / `Context.Clients` is incidental to the business verb, and rewrite the showcase tests to drive those verbs and assert on observed client callbacks. No new harness API is added.
+
+### Design
+
+**Domain.** Collaborative document editor. Server-side methods, each with a business reason that internally exercises one or two NexNet features:
+
+| Method | NexNet feature exercised |
+|---|---|
+| `OpenDocument(docId)` | `Context.Groups.AddAsync` + broadcasts `EditorJoined(name)` via `Context.Clients.GroupExceptCaller` |
+| `LeaveDocument(docId)` | `Context.Groups.RemoveAsync` + broadcasts `EditorLeft(name)` via `GroupExceptCaller` |
+| `SaveDraft(docId, content)` | `[NexusAuthorize<DocPermission>(Write)]` + `Context.Clients.Group(...).DraftSaved(Context.Identity?.DisplayName, content)` |
+| `Whisper(targetId, text)` | `Context.Clients.Client(targetId).WhisperReceived(...)` direct targeting |
+| `BroadcastSystemAnnouncement(msg)` | `[NexusAuthorize<DocPermission>(Admin)]` + `Context.Clients.All.SystemAnnouncement(msg)` |
+| `ListActiveEditors(docId, ct)` | `ValueTask<string[]>` return + `CancellationToken` propagation; reads display names from sessions in the group |
+| `UploadAttachment(docId, INexusDuplexPipe pipe)` | Pipe byte-streaming consumed by server; bytes appended to doc state |
+| `StreamEdits(INexusDuplexChannel<EditOp> channel)` | Channel typed-streaming consumed by server; ops appended to doc state |
+
+**Permissions.** `enum DocPermission { Read, Write, Admin }`. `OnAuthorize` override:
+
+```csharp
+protected override ValueTask<AuthorizeResult> OnAuthorize(
+    ServerSessionContext<ClientProxy> context, int methodId, string methodName,
+    ReadOnlyMemory<int> requiredPermissions)
+{
+    if (context.Identity is not TestIdentity id)
+        return new(AuthorizeResult.Unauthorized);
+    foreach (var p in requiredPermissions.Span) {
+        var roleName = ((DocPermission)p).ToString();
+        if (!id.IsInRole(roleName))
+            return new(AuthorizeResult.Unauthorized);
+    }
+    return new(AuthorizeResult.Allowed);
+}
+```
+
+Role matching: case-sensitive ordinal, role-name string == enum-member name. Tests connect with `TestIdentity.Of("alice", "Write", "Admin")`.
+
+**Client callbacks.** `IEditorClientNexus`: `DraftSaved(string author, string content)`, `EditorJoined(string author)`, `EditorLeft(string author)`, `WhisperReceived(string from, string text)`, `SystemAnnouncement(string message)`.
+
+**Cross-session state.** `EditorServerNexus` holds a static `ConcurrentDictionary<string, DocState>` keyed by `docId`. `DocState` carries appended attachment bytes and edit ops for verification in tests. State is process-global; each `[Test]` clears the dictionary at the top (matches the existing `LastUploadedBytes` / `PingCount` pattern).
+
+**`EditOp` type.** `record struct EditOp(int Position, string Inserted)` with `[MemoryPackable]`. Channel: `INexusDuplexChannel<EditOp>` (managed; string field rules out unmanaged channel).
+
+**`ListActiveEditors` impl.** Reads sessions in the doc group via the *server-side* equivalent of `host.Groups[...]`. Inside a method, `Context` doesn't expose the registry directly — but iterating `Context.Clients.GetIds()` and filtering by group membership is awkward. Cleaner: walk `Context.Group.GetNamesAsync()` is per-session not server-wide. Simplest path: maintain a parallel `ConcurrentDictionary<string, ConcurrentDictionary<long, string>>` (docId → sessionId → name) on the server nexus that `OpenDocument`/`LeaveDocument` mutate. Return its values for the docId.
+
+### Rename impact
+
+Rename `DemoServerNexus`/`DemoClientNexus`/`IDemoServerNexus`/`IDemoClientNexus` → `EditorServerNexus`/`EditorClientNexus`/`IEditorServerNexus`/`IEditorClientNexus`. Rename `HarnessSampleNexus.cs` → `EditorAppNexus.cs`. Touches:
+
+- `HarnessSampleNexus.cs` (rebuild as `EditorAppNexus.cs`)
+- `AssertionTests.cs`, `NexusTestHostTests.cs`, `ClientAssertionTests.cs`, `HarnessShowcaseTests.cs`, `StreamingExtensionsTests.cs`, `MethodIdMapTests.cs`
+
+`MethodIdMapTests` pins specific method IDs against the demo interface. The generator assigns IDs by declaration order; adding new methods after the existing 8 means the existing pinned IDs (Ping=1..PublishStrings=8 in current ordering, or whatever they actually are) stay stable. The new methods get the next IDs (9..16). The test's expected-IDs dictionary will be extended; existing entries do not change values.
+
+### Showcase tests
+
+New file `EditorAppShowcaseTests.cs` in `NexNet.Testing.Tests`. Each test focused on one observable harness capability:
+
+1. `SaveDraft_BroadcastsToDocGroup_WithAuthorIdentity` — Alice + Bob open `design.md`; Carol opens `recipe.txt`. Alice saves. Bob receives `DraftSaved("alice", "v1")`; Carol does not. Pins identity flow + group routing + per-client `AssertReceived`.
+2. `LeaveDocument_NotifiesOthersExceptCaller` — Alice + Bob + Carol all open `design.md`. Bob leaves. Alice and Carol receive `EditorLeft("bob")`; Bob does not. Pins `GroupExceptCaller`.
+3. `Whisper_DeliveredToTargetOnly` — Alice whispers Bob. Bob receives `WhisperReceived("alice", "hi")`; Carol does not. Pins `Client(id)`.
+4. `BroadcastSystemAnnouncement_AsNonAdmin_Throws` — Alice (no Admin role) calls `BroadcastSystemAnnouncement`. Throws `ProxyUnauthorizedException`. Pins `[NexusAuthorize]` + `OnAuthorize`.
+5. `BroadcastSystemAnnouncement_AsAdmin_DeliversToAll` — Connected as admin. Every connected client receives `SystemAnnouncement`. Pins `Context.Clients.All`.
+6. `SaveDraft_AsReader_Throws` — Alice connects without `Write` role. `SaveDraft` throws unauthorized.
+7. `ListActiveEditors_ReturnsNames` — Three editors open `design.md`. `ListActiveEditors("design.md", default)` returns `["alice","bob","carol"]` (equivalent-to assertion, order-independent). Pins `ValueTask<string[]>` return shape.
+8. `ListActiveEditors_CancelledToken_Throws` — Token canceled before invoke. Server method observes cancellation and throws. Pins CT propagation.
+9. `UploadAttachment_StreamsBytes_ServerAppendsToDoc` — Alice uploads 4 KiB to `design.md`. Server stores bytes in doc state; assert byte count + content equality.
+10. `StreamEdits_AllOpsCollected` — Alice streams 10 `EditOp` values. Server appends to doc state. Assert all 10 are present and ordered.
+11. `WaitFor_DraftSaved_ResolvesWhenInvoked` — Bob calls `SaveDraft` in background. Alice `WaitFor`s the callback before `QuiesceAsync`. Resolves once the broadcast arrives.
+12. `WaitFor_Timeout_Throws` — Nobody saves. Alice's `WaitFor` with 250ms timeout throws.
+13. `MixedTraffic_QuiesceAsync_WaitsForEverything` — 3 clients fire SaveDraft + UploadAttachment + StreamEdits + Whisper concurrently. `QuiesceAsync` returns; all per-client assertions pass with the expected counts.
+14. `Groups_Introspection_ReflectsLiveMembership` — Open / leave / open across multiple docs; `host.Groups["doc-design.md"]` reflects current set.
+15. `Groups_EmptyGroup_HasNoMembers` — Reused from old showcase, fits the new file.
+16. `ServerSide_AssertReceived_SaveDraft` — Use `host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", "v1"))`. Pins server recorder.
+17. `AssertReceived_TimesMismatch_DiagnosticIncludesArgs` — Save twice, assert once. Pin R7 contract: exception message lists actual arg values, e.g., `SaveDraft("design.md","v1"); SaveDraft("design.md","v2")` not `#1, #1`.
+18. `ArgMatchers_AnyAndPredicate` — `Arg.Any<string>()` and `Arg.Is<string>(s => s.StartsWith("v"))` against `DraftSaved`.
+
+### README / pr-body sample
+
+Short (~20 lines), drawn from test #1 above:
+
+```csharp
+await using var host = await NexusTestHost.CreateAsync<
+    EditorServerNexus, EditorServerNexus.ClientProxy,
+    EditorClientNexus, EditorClientNexus.ServerProxy>();
+
+var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+var bob   = await host.ConnectAsAsync(TestIdentity.Of("bob",   "Write"));
+var carol = await host.ConnectAsAsync(TestIdentity.Of("carol", "Read"));
+
+await alice.Server.OpenDocument("design.md");
+await bob.Server.OpenDocument("design.md");
+await carol.Server.OpenDocument("recipe.txt");
+
+await alice.Server.SaveDraft("design.md", "v1");
+await host.QuiesceAsync();
+
+bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "v1"));
+carol.AssertNotReceived<IEditorClientNexus>(
+    n => n.DraftSaved(Arg.Any<string>(), Arg.Any<string>()));
+Assert.That(host.Groups["doc-design.md"].Count, Is.EqualTo(2));
+```
+
+### Test plan for Phase 14
+
+The 18 new tests above ARE the tests for this phase. Existing `NexNet.Testing.Tests` (65 cases as of R12) must continue to pass after the rename — that's the regression bar. Adding the editor showcase brings the count to ~80 cases. Existing `NexNet.IntegrationTests` (2825 cases) is unaffected by this phase.
+
+### Method-ID treatment
+
+The generator assigns method IDs by declaration order in the interface. Current `IDemoServerNexus` IDs (1=Ping, 2=Notify, 3=JoinGroup, 4=BroadcastToGroup, 5=Upload, 6=Download, 7=CollectStrings, 8=PublishStrings) are pinned by `MethodIdMapTests`. The rewrite deletes `JoinGroup` and `BroadcastToGroup` (the passthrough methods the user called out), shifting Upload..PublishStrings from 5..8 to 3..6, then appends the editor methods (`OpenDocument`..`StreamEdits`) at 7..14. `MethodIdMapTests` gets a single coherent ID layout update covering both the shift and the new methods.
+
+### Sequencing
+
+14a. Build the new `EditorServerNexus`/`EditorClientNexus` in `EditorAppNexus.cs` (replacing `HarnessSampleNexus.cs`): all kept methods (Ping, Notify, Upload, Download, CollectStrings, PublishStrings) plus all new editor methods (OpenDocument, LeaveDocument, SaveDraft, Whisper, BroadcastSystemAnnouncement, ListActiveEditors, UploadAttachment, StreamEdits). Include `DocPermission` enum, `OnAuthorize` override, `EditOp` struct, static doc-state dictionary. JoinGroup/BroadcastToGroup deliberately omitted.
+
+14b. Update all dependent test files to use the new type names: `AssertionTests`, `NexusTestHostTests`, `ClientAssertionTests`, `StreamingExtensionsTests`, `MethodIdMapTests`. Update the expected-IDs map in `MethodIdMapTests` to reflect the new method layout. Delete `HarnessSampleNexus.cs`. Run full `NexNet.Testing.Tests` — expected outcome: 63/63 green (was 65 minus the two `HarnessShowcaseTests` cases to be dropped, since `HarnessShowcaseTests.cs` itself is replaced in 14c). Actually — 14b only renames; 14c handles the showcase replacement, so at end of 14b the suite is 65/65 with `HarnessShowcaseTests` updated to use new type names temporarily.
+
+14c. Replace `HarnessShowcaseTests.cs` with the new `EditorAppShowcaseTests.cs` containing tests 1–10 from the test list. Migrate `Groups_EmptyGroup_HasNoMembers` over. Drop the two superseded tests. Run tests.
+
+14d. Add tests 11–18 (WaitFor, mixed-traffic quiescence, server-side AssertReceived, times-mismatch diagnostic, ArgMatchers).
+
+14e. Update the README sample (search for current sample location) and `_sessions/add-nexnet-testing/pr-body.md` to use the new code shape.
+
+Each sub-step is independently committable. If quiescence or auth-flow integration surfaces unexpected behavior in 14c, that's the right moment to find it — well before later showcase tests bake in expectations.
+
 ## Out of scope (deferred)
 
 - **TimeProvider integration** — issue #75.
@@ -315,5 +442,6 @@ Add an end-to-end sample test class `HarnessShowcaseTests.cs` in `NexNet.Testing
 - **Channel factory hook in core.** v1 ships helpers-only.
 - **Test-framework-specific sugar** (NUnit/xUnit attributes). Core API throws standard exceptions; users wrap as needed.
 - **`FakeTimeProvider`-driven tests of auth-cache TTL, ping, reconnect.** Blocked on #75.
+- **`host.Clients` direct broadcast surface / `client.JoinGroupAsync` direct membership** — explicitly rejected in Phase 14 design as they would conflict with the "drive real business methods, observe callbacks" pattern.
 
-## Phases-total: 13
+## Phases-total: 14
