@@ -1,0 +1,222 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using MemoryPack;
+using NexNet;
+using NexNet.Invocation;
+using NexNet.Pipes;
+
+namespace NexNet.Testing.Tests;
+
+public enum DocPermission
+{
+    Read,
+    Write,
+    Admin,
+}
+
+[MemoryPackable]
+public partial record struct EditOp(int Position, string Inserted);
+
+internal sealed class DocState
+{
+    public byte[]? Attachment;
+    public ConcurrentQueue<EditOp> Edits { get; } = new();
+}
+
+[Nexus<IEditorServerNexus, IEditorClientNexus>(NexusType = NexusType.Server)]
+internal partial class EditorServerNexus : ServerNexusBase<EditorServerNexus.ClientProxy>, IEditorServerNexus
+{
+    public int PingCount;
+
+    // Cross-session shared state. Tests MUST clear via ResetAll() at the top of each [Test].
+    public static readonly ConcurrentDictionary<string, DocState> Documents = new();
+    public static readonly ConcurrentDictionary<string, ConcurrentDictionary<long, string>> ActiveEditors = new();
+    public static byte[]? LastUploadedBytes;
+    public static List<string>? LastCollectedItems;
+
+    public static void ResetAll()
+    {
+        Documents.Clear();
+        ActiveEditors.Clear();
+        LastUploadedBytes = null;
+        LastCollectedItems = null;
+    }
+
+    public ValueTask<int> Ping(int value)
+    {
+        Interlocked.Increment(ref PingCount);
+        return ValueTask.FromResult(value);
+    }
+
+    public ValueTask Notify(string message) => ValueTask.CompletedTask;
+
+    public async ValueTask Upload(INexusDuplexPipe pipe)
+    {
+        using var ms = new MemoryStream();
+        while (true)
+        {
+            var result = await pipe.Input.ReadAsync();
+            foreach (var segment in result.Buffer)
+                ms.Write(segment.Span);
+            pipe.Input.AdvanceTo(result.Buffer.End);
+            if (result.IsCompleted) break;
+        }
+        LastUploadedBytes = ms.ToArray();
+    }
+
+    public async ValueTask Download(INexusDuplexPipe pipe, int byteCount)
+    {
+        var buf = new byte[byteCount];
+        for (int i = 0; i < byteCount; i++) buf[i] = (byte)i;
+        await pipe.Output.WriteAsync(buf);
+        await pipe.CompleteAsync();
+    }
+
+    public async ValueTask CollectStrings(INexusDuplexPipe pipe)
+    {
+        var reader = await pipe.GetChannelReader<string>();
+        var items = new List<string>();
+        await foreach (var item in reader)
+            items.Add(item);
+        LastCollectedItems = items;
+    }
+
+    public async ValueTask PublishStrings(INexusDuplexPipe pipe, string[] items)
+    {
+        var writer = await pipe.GetChannelWriter<string>();
+        foreach (var item in items)
+            await writer.WriteAsync(item);
+        await writer.CompleteAsync();
+    }
+
+    public async ValueTask OpenDocument(string docId)
+    {
+        var name = Context.Identity?.DisplayName ?? "anonymous";
+        await Context.Groups.AddAsync(GroupName(docId));
+        var registry = ActiveEditors.GetOrAdd(docId, _ => new ConcurrentDictionary<long, string>());
+        registry[Context.Id] = name;
+        Documents.GetOrAdd(docId, _ => new DocState());
+        await Context.Clients.GroupExceptCaller(GroupName(docId)).EditorJoined(name);
+    }
+
+    public async ValueTask LeaveDocument(string docId)
+    {
+        var name = Context.Identity?.DisplayName ?? "anonymous";
+        await Context.Clients.GroupExceptCaller(GroupName(docId)).EditorLeft(name);
+        await Context.Groups.RemoveAsync(GroupName(docId));
+        if (ActiveEditors.TryGetValue(docId, out var registry))
+            registry.TryRemove(Context.Id, out _);
+    }
+
+    [NexusAuthorize<DocPermission>(DocPermission.Write)]
+    public async ValueTask SaveDraft(string docId, string content)
+    {
+        var name = Context.Identity?.DisplayName ?? "anonymous";
+        await Context.Clients.Group(GroupName(docId)).DraftSaved(name, content);
+    }
+
+    public async ValueTask Whisper(long targetSessionId, string text)
+    {
+        var name = Context.Identity?.DisplayName ?? "anonymous";
+        await Context.Clients.Client(targetSessionId).WhisperReceived(name, text);
+    }
+
+    [NexusAuthorize<DocPermission>(DocPermission.Admin)]
+    public async ValueTask BroadcastSystemAnnouncement(string message)
+    {
+        await Context.Clients.All.SystemAnnouncement(message);
+    }
+
+    public ValueTask<string[]> ListActiveEditors(string docId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!ActiveEditors.TryGetValue(docId, out var registry))
+            return ValueTask.FromResult(Array.Empty<string>());
+        return ValueTask.FromResult(registry.Values.ToArray());
+    }
+
+    public async ValueTask UploadAttachment(string docId, INexusDuplexPipe pipe)
+    {
+        var doc = Documents.GetOrAdd(docId, _ => new DocState());
+        using var ms = new MemoryStream();
+        while (true)
+        {
+            var result = await pipe.Input.ReadAsync();
+            foreach (var segment in result.Buffer)
+                ms.Write(segment.Span);
+            pipe.Input.AdvanceTo(result.Buffer.End);
+            if (result.IsCompleted) break;
+        }
+        doc.Attachment = ms.ToArray();
+    }
+
+    public async ValueTask StreamEdits(string docId, INexusDuplexChannel<EditOp> channel)
+    {
+        var doc = Documents.GetOrAdd(docId, _ => new DocState());
+        var reader = await channel.GetReaderAsync();
+        await foreach (var op in reader)
+            doc.Edits.Enqueue(op);
+    }
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        ServerSessionContext<EditorServerNexus.ClientProxy> context,
+        int methodId,
+        string methodName,
+        ReadOnlyMemory<int> requiredPermissions)
+    {
+        if (context.Identity is not TestIdentity id)
+            return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+        var span = requiredPermissions.Span;
+        for (int i = 0; i < span.Length; i++)
+        {
+            var roleName = ((DocPermission)span[i]).ToString();
+            if (!id.IsInRole(roleName))
+                return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+        }
+        return new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+    }
+
+    private static string GroupName(string docId) => $"doc-{docId}";
+}
+
+[Nexus<IEditorClientNexus, IEditorServerNexus>(NexusType = NexusType.Client)]
+internal partial class EditorClientNexus : ClientNexusBase<EditorClientNexus.ServerProxy>, IEditorClientNexus
+{
+    public ValueTask DraftSaved(string author, string content) => ValueTask.CompletedTask;
+    public ValueTask EditorJoined(string author) => ValueTask.CompletedTask;
+    public ValueTask EditorLeft(string author) => ValueTask.CompletedTask;
+    public ValueTask WhisperReceived(string from, string text) => ValueTask.CompletedTask;
+    public ValueTask SystemAnnouncement(string message) => ValueTask.CompletedTask;
+}
+
+internal partial interface IEditorServerNexus
+{
+    ValueTask<int> Ping(int value);
+    ValueTask Notify(string message);
+    ValueTask Upload(INexusDuplexPipe pipe);
+    ValueTask Download(INexusDuplexPipe pipe, int byteCount);
+    ValueTask CollectStrings(INexusDuplexPipe pipe);
+    ValueTask PublishStrings(INexusDuplexPipe pipe, string[] items);
+    ValueTask OpenDocument(string docId);
+    ValueTask LeaveDocument(string docId);
+    ValueTask SaveDraft(string docId, string content);
+    ValueTask Whisper(long targetSessionId, string text);
+    ValueTask BroadcastSystemAnnouncement(string message);
+    ValueTask<string[]> ListActiveEditors(string docId, CancellationToken cancellationToken);
+    ValueTask UploadAttachment(string docId, INexusDuplexPipe pipe);
+    ValueTask StreamEdits(string docId, INexusDuplexChannel<EditOp> channel);
+}
+
+internal partial interface IEditorClientNexus
+{
+    ValueTask DraftSaved(string author, string content);
+    ValueTask EditorJoined(string author);
+    ValueTask EditorLeft(string author);
+    ValueTask WhisperReceived(string from, string text);
+    ValueTask SystemAnnouncement(string message);
+}

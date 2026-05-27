@@ -6,11 +6,11 @@ remote: https://github.com/Dtronix/NexNet.git
 base-branch: master
 
 ## State
-phase: PLAN
-status: suspended
+phase: IMPLEMENT
+status: active
 issue: discussion
 pr: 77
-session: 6
+session: 7
 phases-total: 14
 phases-complete: 13
 
@@ -60,6 +60,7 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 - 2026-05-27 — **`EditOp` is a `record struct(int Position, string Inserted)` over `INexusDuplexChannel<EditOp>`** (managed channel; the unmanaged variant doesn't apply because the struct contains `string`). MemoryPack-attributed.
 - 2026-05-27 — **Drop two superseded HarnessShowcaseTests.** `Groups_ReflectMembershipAfterJoin` and `GroupBroadcast_DeliversToMembers` are covered by the new editor-app scenarios. `Groups_EmptyGroup_HasNoMembers` survives, renamed into the new showcase file.
 - 2026-05-27 — **No new harness API.** The fix is the demo + showcase, not new surface. `host.Clients`-style direct broadcast and `client.JoinGroupAsync`-style direct membership are explicitly NOT added — they would conflict with the "drive real business methods, observe callbacks" pattern that this rewrite is built around.
+- 2026-05-27 — **Phase 14 plan approved (Session 7).** User approved `plan.md` Phase 14 addendum as drafted. IMPLEMENT begins with sub-phase 14a (build `EditorAppNexus.cs`).
 
 ### Revisions after source verification (2026-05-06)
 - **Hook location:** Two nullable fields added to the `NexusSessionConfigurations` readonly struct (per user choice). Authoritative install point is on `ConfigBase` (so users set hooks once and all sessions inherit); the struct's session-construction site copies them in, giving `NexusSession` direct field access.
@@ -190,3 +191,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 6 | 2026-05-27 REMEDIATE (resumed) | 2026-05-27 DESIGN | Resumed at REMEDIATE step 8. User raised ergonomics feedback on PR sample: the `JoinGroup`/`BroadcastToGroup` passthrough methods on DemoServerNexus don't reflect real NexNet usage (typed callbacks via `Context.Clients.Group(...)`). Agreed to expand demo to showcase all harness features via a realistic document-editor domain. Folding into PR #77 rather than splitting. Stepping back from REMEDIATE → DESIGN; phases-total bumped 13 → 14 (one new showcase rewrite phase). Prior REMEDIATE state (review.md classifications, R1–R12 actions, PR #77 body) preserved intact. Session 6 begins. |
 | 6 | 2026-05-27 DESIGN | 2026-05-27 PLAN | DESIGN locked: document-editor domain, full auth story (NexusAuthorize + OnAuthorize matching TestIdentity.Roles case-sensitive ordinal against `((DocPermission)p).ToString()`), pipes + channels in unified showcase. Eight Phase 14 decisions recorded. Doc-state via static dict cleared per-test; ListActiveEditors returns string[] of names; EditOp is record struct over INexusDuplexChannel<T>; drop two superseded showcase tests. No new harness API added (explicit decision). |
 | 6 | 2026-05-27 PLAN | 2026-05-27 PLAN (suspended) | Phase 14 plan written into `plan.md`: 5 sub-phases (14a build EditorAppNexus.cs, 14b update dependent tests + MethodIdMapTests, 14c replace HarnessShowcaseTests with EditorAppShowcaseTests tests 1–10, 14d add tests 11–18, 14e update README + pr-body). Method-ID layout post-rewrite documented (deletion shifts Upload..PublishStrings; editor methods append at 7..14). 18 showcase tests enumerated. User issued handoff before plan approval. Suspended awaiting plan approval on resume. |
+| 7 | 2026-05-27 PLAN (resumed) | 2026-05-27 PLAN | Resumed at end of PLAN. Baseline tests re-verified green (65/65 NexNet.Testing.Tests). Awaiting user approval of the Phase 14 plan before transitioning to IMPLEMENT. WIP commit `933423a` will be amended into Phase 14a's first real commit when implementation begins. |
