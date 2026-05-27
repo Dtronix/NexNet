@@ -12,7 +12,7 @@ issue: discussion
 pr: 77
 session: 7
 phases-total: 14
-phases-complete: 13.4
+phases-complete: 13.6
 
 ## Problem Statement
 
@@ -194,3 +194,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 7 | 2026-05-27 PLAN (resumed) | 2026-05-27 PLAN | Resumed at end of PLAN. Baseline tests re-verified green (65/65 NexNet.Testing.Tests). Awaiting user approval of the Phase 14 plan before transitioning to IMPLEMENT. WIP commit `933423a` was already pushed, so 14a's commit will not amend it (safer to keep WIP as its own pushed commit than to force-push). |
 | 7 | 2026-05-27 PLAN | 2026-05-27 IMPLEMENT | User approved Phase 14 plan as drafted. Decision logged. Phase 14a complete (`aaa67c7`): EditorAppNexus.cs added alongside HarnessSampleNexus.cs (additive only). Verified APIs against actual source via Explore agent + direct grep: server methods CAN take INexusDuplexChannel<T> directly (agent missed; verified via ChannelSampleNexuses.cs). StreamEdits signature refined to `(string docId, INexusDuplexChannel<EditOp>)` so doc-state updates have a target. Build clean; 65/65 tests still pass. |
 | 7 | 2026-05-27 IMPLEMENT | 2026-05-27 IMPLEMENT | Phase 14b complete: bulk-renamed Demo*→Editor* across NexusTestHostTests, StreamingExtensionsTests, AssertionTests. Rewrote broadcast tests in AssertionTests (multi-arg) + ClientAssertionTests (all 5) + HarnessShowcaseTests (3) to drive `OpenDocument` + `SaveDraft` (Write-gated) and assert on `DraftSaved` callbacks instead of the synthetic `JoinGroup`/`BroadcastToGroup`. Updated MethodIdMapTests to pin the new 14-method server interface layout (0=Ping..13=StreamEdits) and 5-method client interface (0=DraftSaved..4=SystemAnnouncement). Deleted HarnessSampleNexus.cs. Build clean; 65/65 tests still pass. Test identities now include `"Write"` role where SaveDraft is invoked. |
+| 7 | 2026-05-27 IMPLEMENT | 2026-05-27 IMPLEMENT | Phase 14c complete: replaced HarnessShowcaseTests.cs with EditorAppShowcaseTests.cs (10 tests: SaveDraft broadcast + identity, LeaveDocument GroupExceptCaller, Whisper Client-by-id, BroadcastSystemAnnouncement AsNonAdmin throws / AsAdmin all-broadcast, SaveDraft AsReader throws, ListActiveEditors returns names, ListActiveEditors cancelled-token throws, UploadAttachment byte streaming, StreamEdits channel typed streaming) plus migrated Groups_EmptyGroup_HasNoMembers. **Behavior discovery:** the framework does NOT short-circuit pre-cancelled tokens — the cancel signal is only sent when the client-side CT FIRES during the call. ListActiveEditors gained an `await Task.Delay(200, ct)` so client-side CT cancellation has time to propagate to the server-side CT. 73/73 tests pass. |

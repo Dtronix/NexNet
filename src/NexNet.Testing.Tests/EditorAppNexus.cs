@@ -132,12 +132,17 @@ internal partial class EditorServerNexus : ServerNexusBase<EditorServerNexus.Cli
         await Context.Clients.All.SystemAnnouncement(message);
     }
 
-    public ValueTask<string[]> ListActiveEditors(string docId, CancellationToken cancellationToken)
+    public async ValueTask<string[]> ListActiveEditors(string docId, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        // Observable async point so callers passing a CancellationToken can actually observe
+        // cancellation. The framework only sends a cancel signal when the client-side CT
+        // FIRES during the call (pre-cancelled tokens are not short-circuited by the proxy),
+        // so the server needs an awaiting point long enough for that signal to arrive. 200ms
+        // gives ample headroom for in-process propagation.
+        await Task.Delay(200, cancellationToken);
         if (!ActiveEditors.TryGetValue(docId, out var registry))
-            return ValueTask.FromResult(Array.Empty<string>());
-        return ValueTask.FromResult(registry.Values.ToArray());
+            return Array.Empty<string>();
+        return registry.Values.ToArray();
     }
 
     public async ValueTask UploadAttachment(string docId, INexusDuplexPipe pipe)
