@@ -205,4 +205,155 @@ internal class EditorAppShowcaseTests
         Assert.That(EditorServerNexus.Documents.TryGetValue("design.md", out var doc), Is.True);
         Assert.That(doc!.Edits.ToArray(), Is.EqualTo(ops));
     }
+
+    [Test]
+    public async Task WaitFor_DraftSaved_ResolvesWhenInvoked()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+        var bob = await host.ConnectAsAsync(TestIdentity.Of("bob", "Write"));
+
+        await alice.Server.OpenDocument("design.md");
+        await bob.Server.OpenDocument("design.md");
+
+        var waiter = alice.WaitFor<IEditorClientNexus>(
+            n => n.DraftSaved("bob", "v1"), TimeSpan.FromSeconds(3));
+        await bob.Server.SaveDraft("design.md", "v1");
+        await waiter;
+    }
+
+    [Test]
+    public async Task WaitFor_Timeout_Throws()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice"));
+
+        Assert.ThrowsAsync<TimeoutException>(async () =>
+            await alice.WaitFor<IEditorClientNexus>(
+                n => n.DraftSaved("never", "never"),
+                TimeSpan.FromMilliseconds(250)));
+    }
+
+    [Test]
+    public async Task MixedTraffic_QuiesceAsync_WaitsForEverything()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+        var bob = await host.ConnectAsAsync(TestIdentity.Of("bob", "Write"));
+        var carol = await host.ConnectAsAsync(TestIdentity.Of("carol", "Write"));
+
+        await alice.Server.OpenDocument("design.md");
+        await bob.Server.OpenDocument("design.md");
+        await carol.Server.OpenDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        var attachment = new byte[256];
+        for (int i = 0; i < attachment.Length; i++) attachment[i] = (byte)(i & 0xFF);
+        var ops = Enumerable.Range(0, 5).Select(i => new EditOp(i, $"o{i}")).ToArray();
+
+        // Fire all four traffic shapes in flight at once.
+        var draftCall = alice.Server.SaveDraft("design.md", "draft-a").AsTask();
+        var whisperCall = carol.Server.Whisper(bob.Nexus.Context.Id, "ping").AsTask();
+
+        var pipe = alice.CreatePipe();
+        var uploadCall = alice.Server.UploadAttachment("design.md", pipe).AsTask();
+        var uploadDrive = pipe.PipeUploadAsync(attachment).AsTask();
+
+        var channel = bob.Nexus.Context.CreateChannel<EditOp>();
+        var streamCall = bob.Server.StreamEdits("design.md", channel).AsTask();
+        var streamDrive = Task.Run(async () =>
+        {
+            var writer = await channel.GetWriterAsync();
+            foreach (var op in ops) await writer.WriteAsync(op);
+            await writer.CompleteAsync();
+        });
+
+        await Task.WhenAll(draftCall, whisperCall, uploadDrive, uploadCall, streamDrive, streamCall)
+            .WaitAsync(TimeSpan.FromSeconds(5));
+        await pipe.DisposeAsync();
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Every callback delivered, every server-side append visible — no extra waits needed.
+        alice.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
+        bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
+        carol.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", "draft-a"));
+        bob.AssertReceived<IEditorClientNexus>(n => n.WhisperReceived("carol", "ping"));
+        Assert.That(EditorServerNexus.Documents["design.md"].Attachment, Is.EqualTo(attachment));
+        Assert.That(EditorServerNexus.Documents["design.md"].Edits.ToArray(), Is.EqualTo(ops));
+    }
+
+    [Test]
+    public async Task Groups_Introspection_ReflectsLiveMembership()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice"));
+        var bob = await host.ConnectAsAsync(TestIdentity.Of("bob"));
+        var carol = await host.ConnectAsAsync(TestIdentity.Of("carol"));
+
+        await alice.Server.OpenDocument("design.md");
+        await bob.Server.OpenDocument("design.md");
+        await carol.Server.OpenDocument("recipe.txt");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(host.Groups["doc-design.md"].Count, Is.EqualTo(2));
+        Assert.That(host.Groups["doc-recipe.txt"].Count, Is.EqualTo(1));
+
+        await bob.Server.LeaveDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(host.Groups["doc-design.md"].Count, Is.EqualTo(1));
+
+        await carol.Server.OpenDocument("design.md");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(host.Groups["doc-design.md"].Count, Is.EqualTo(2));
+    }
+
+    [Test]
+    public async Task ServerSide_AssertReceived_SaveDraft()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+
+        await alice.Server.OpenDocument("design.md");
+        await alice.Server.SaveDraft("design.md", "v1");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", "v1"));
+        host.AssertReceived<IEditorServerNexus>(n => n.OpenDocument("design.md"));
+    }
+
+    [Test]
+    public async Task AssertReceived_TimesMismatch_DiagnosticIncludesArgs()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+
+        await alice.Server.OpenDocument("design.md");
+        await alice.Server.SaveDraft("design.md", "v1");
+        await alice.Server.SaveDraft("design.md", "v2");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        var ex = Assert.Throws<NexusAssertionException>(
+            () => host.AssertReceived<IEditorServerNexus>(n => n.SaveDraft("design.md", "v3")));
+
+        Assert.That(ex!.Message, Does.Contain("v1"));
+        Assert.That(ex.Message, Does.Contain("v2"));
+        Assert.That(ex.Message, Does.Contain("SaveDraft"));
+    }
+
+    [Test]
+    public async Task ArgMatchers_AnyAndPredicate()
+    {
+        await using var host = await CreateHost();
+        var alice = await host.ConnectAsAsync(TestIdentity.Of("alice", "Write"));
+        var bob = await host.ConnectAsAsync(TestIdentity.Of("bob", "Write"));
+
+        await alice.Server.OpenDocument("design.md");
+        await bob.Server.OpenDocument("design.md");
+        await alice.Server.SaveDraft("design.md", "v2-final");
+        await host.QuiesceAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved("alice", Arg.Any<string>()));
+        bob.AssertReceived<IEditorClientNexus>(n => n.DraftSaved(
+            Arg.Any<string>(),
+            Arg.Is<string>(s => s.StartsWith("v"))));
+    }
 }
