@@ -10,6 +10,7 @@ using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Pipes;
+using NexNet.Pipes.NexusStream;
 
 namespace NexNet;
 
@@ -297,6 +298,14 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public INexusDuplexChannel<T> CreateChannel<T>()
     {
         return CreatePipe().GetChannel<T>();
+    }
+
+    /// <inheritdoc />
+    public IRentedNexusStreamTransport CreateStream()
+    {
+        var pipe = CreatePipe();
+        var transport = new NexusStreamTransport(pipe);
+        return new RentedNexusStreamTransport(transport, null);
     }
 
     private void PingTimer(object? state)
