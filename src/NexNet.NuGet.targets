@@ -20,8 +20,11 @@
   <Target Name="GenerateNuGetReadme" BeforeTargets="_GetPackageFiles" Condition="'$(IsPackable)' != 'false'">
     <PropertyGroup>
       <NuGetReadmePath>$(IntermediateOutputPath)README.nuget.md</NuGetReadmePath>
+      <!-- Source README a project packs. Defaults to the repo-root README; a project can override
+           it (e.g. NexNet.Testing sets its own README.md) by defining NuGetReadmeSource. -->
+      <NuGetReadmeSource Condition="'$(NuGetReadmeSource)' == ''">$(MSBuildThisFileDirectory)../README.md</NuGetReadmeSource>
     </PropertyGroup>
-    <StripHtmlImages InputFile="$(MSBuildThisFileDirectory)../README.md" OutputFile="$(NuGetReadmePath)" />
+    <StripHtmlImages InputFile="$(NuGetReadmeSource)" OutputFile="$(NuGetReadmePath)" />
     <ItemGroup>
       <_PackageFiles Include="$(NuGetReadmePath)" PackagePath="/README.md" />
     </ItemGroup>

@@ -4,6 +4,9 @@
     <Description>In-process transport and test harness primitives for NexNet. Test your nexus implementations without standing up sockets, ports, TLS, or fake auth providers.</Description>
     <Version>0.15.0</Version>
     <IsPackable>true</IsPackable>
+    <!-- Pack this project's own harness README rather than inheriting the core-NexNet README
+         (see NexNet.NuGet.targets / GenerateNuGetReadme). -->
+    <NuGetReadmeSource>$(MSBuildProjectDirectory)/README.md</NuGetReadmeSource>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
