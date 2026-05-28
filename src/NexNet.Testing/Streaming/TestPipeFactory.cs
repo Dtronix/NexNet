@@ -7,10 +7,11 @@ using NexNet.Testing.Quiescence;
 namespace NexNet.Testing.Streaming;
 
 /// <summary>
-/// Harness implementation of <see cref="IPipeFactory"/>. Wraps every pipe handed to user code
-/// with a <see cref="TappedNexusDuplexPipe"/> / <see cref="TappedRentedNexusDuplexPipe"/>,
-/// registers the resulting <see cref="PipeRecording"/> by id for later lookup, and brackets
-/// each pipe's lifetime with <c>OpenPipe</c>/<c>ClosePipe</c> on the shared counters.
+/// Harness implementation of <see cref="IPipeFactory"/>. Remote (incoming) pipes handed to user
+/// code are wrapped with a <see cref="TappedNexusDuplexPipe"/> and their <see cref="PipeRecording"/>
+/// registered by id for later lookup; locally-rented pipes pass through unwrapped (see
+/// <see cref="WrapLocal"/> for why). Either way each pipe's lifetime is bracketed with
+/// <c>OpenPipe</c>/<c>ClosePipe</c> on the shared counters.
 /// </summary>
 internal sealed class TestPipeFactory : IPipeFactory
 {

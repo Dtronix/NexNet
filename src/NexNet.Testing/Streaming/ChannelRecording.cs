@@ -12,7 +12,13 @@ namespace NexNet.Testing.Streaming;
 /// want when asserting on channel-based methods.
 /// </summary>
 /// <typeparam name="T">Item type produced or consumed on the channel.</typeparam>
-public sealed class ChannelRecording<T>
+/// <remarks>
+/// Internal in v1: the <c>TapChannel&lt;T&gt;</c> producer that would hand a populated instance to
+/// callers was deferred (see review.md), so there is no public way to obtain one wired to a live
+/// channel. Kept internal (rather than shipped as orphaned public surface) until that producer
+/// exists — promoting it later is a non-breaking change, demoting a shipped public type is not.
+/// </remarks>
+internal sealed class ChannelRecording<T>
 {
     private readonly object _gate = new();
     private readonly List<T> _items = new();

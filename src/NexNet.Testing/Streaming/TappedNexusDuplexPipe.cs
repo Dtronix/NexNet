@@ -40,31 +40,3 @@ internal sealed class TappedNexusDuplexPipe : INexusDuplexPipe
     NexusPipeWriter INexusDuplexPipe.WriterCore => _inner.WriterCore;
     NexusPipeReader INexusDuplexPipe.ReaderCore => _inner.ReaderCore;
 }
-
-internal sealed class TappedRentedNexusDuplexPipe : IRentedNexusDuplexPipe
-{
-    private readonly IRentedNexusDuplexPipe _inner;
-    private readonly TappingPipeReader _reader;
-    private readonly TappingPipeWriter _writer;
-
-    public PipeRecording Recording { get; }
-
-    public TappedRentedNexusDuplexPipe(IRentedNexusDuplexPipe inner)
-    {
-        _inner = inner;
-        Recording = new PipeRecording();
-        _reader = new TappingPipeReader(_inner.Input, Recording);
-        _writer = new TappingPipeWriter(_inner.Output, Recording);
-        // Completion forwarding is owned by TestPipeFactory.Track (see TappedNexusDuplexPipe).
-    }
-
-    public PipeReader Input => _reader;
-    public PipeWriter Output => _writer;
-    public ushort Id => _inner.Id;
-    public Task ReadyTask => _inner.ReadyTask;
-    public Task CompleteTask => _inner.CompleteTask;
-    public ValueTask CompleteAsync() => _inner.CompleteAsync();
-    public ValueTask DisposeAsync() => _inner.DisposeAsync();
-    NexusPipeWriter INexusDuplexPipe.WriterCore => _inner.WriterCore;
-    NexusPipeReader INexusDuplexPipe.ReaderCore => _inner.ReaderCore;
-}

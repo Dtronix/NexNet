@@ -1,3 +1,80 @@
+# Review: Full branch re-analysis (Session 8, PR #77)
+
+Analyzed: `origin/master...HEAD` (44 commits, 93 files, ~5,400 insertions). Date: 2026-05-28. Re-entered REVIEW from the FINALIZE gate at user request (full branch re-analysis). Build clean (0 warnings); `NexNet.Testing.Tests` 82/82 green; core-hook integration classes 16/16 on Tcp+InProcess; `dotnet pack` succeeds. **Regression check: all load-bearing prior fixes (R1–R12) survived the Session-7 rebase intact** (full list in the regression section below).
+
+## Classifications
+
+8 findings after consolidating cross-section overlaps (the `ChannelRecording<T>` orphan appears in Plan/Test/Consistency; the MethodIdMap parity gaps appear in Correctness/Test — each is one finding here). 1 Med, 7 Low. No High.
+
+| # | Class | Rec | Sev | Section | Finding | Action Taken |
+|---|-------|-----|-----|---------|---------|--------------|
+| 1 | A | A | Low | Plan/Test/Consistency | `ChannelRecording<T>` ships as public packaged surface with no producer — `TapChannel<T>` (Phase 11) was never built (R4 deferred it); only its own unit test constructs one. Orphaned public one-way-door. | Demoted `ChannelRecording<T>` from `public` to `internal` (no harness producer ships in v1; promoting later is non-breaking, demoting a shipped public type is not). Its internal unit test still compiles via the existing `InternalsVisibleTo("NexNet.Testing.Tests")` grant. Added an XML remark explaining the deferral. |
+| 2 | D | D | Low | Plan | Quiescence `QuiescenceCounters` are shared at session-key `0` (host ctor + every `ConnectAsAsync`), not per-session as plan/Decisions describe. `GetCountersFor(sessionId)` is effectively unused beyond key 0. Functionally nets to zero; inline comment at `NexusTestHost.cs:199-203` already acknowledges it. | Not actioned (D). The aggregate (key-0) counter model is functionally correct — increments/decrements net to zero across sessions — and the inline comment already documents it. Per-session counter isolation is not needed in v1; making it truly per-session is a refactor with no behavioral benefit today. |
+| 3 | A | A | Med | Correctness/Test | `MethodIdMap.Build` does not filter `[NexusMethod(Ignore=true)]` methods, but the generator's `NexusDataExtractor` filters them *before* `AssignMethodIds`. On an interface with an ignored method, runtime ids shift relative to the generator → `AssertReceived`/`AssertNotReceived` silently resolve the wrong method. Demo uses no ignored methods, so untested/latent. | `MethodIdMap.CollectDeclaredMethods` now filters `[NexusMethod(Ignore=true)]` (via `NotIgnored`) on both direct and inherited methods, matching the generator's pre-`AssignMethodIds` filter — ignored methods get no id and reserve no slot. New regression test `Build_ExcludesIgnoredMethods_AndDoesNotShiftFollowingIds` pins First=0/Third=1/Ignored-absent. |
+| 4 | A | C | Low | Correctness/Test | `MethodIdMap` orders inherited interfaces by `Type.FullName` (`:71`) while the generator orders by `INamedTypeSymbol.ToDisplayString()` (`NexusDataExtractor.cs:154`). Keys differ for *generic* inherited interfaces, shifting ids. Demo declares all methods directly, so untested/latent. | `MethodIdMap` now orders inherited interfaces by a C#-style display-name key (`GeneratorOrderingKey`/`AppendDisplayName`/`CSharpKeyword`) that matches the generator's `ToDisplayString()` ordinal — handles namespaces, nesting (`.`), generic args (`<>`, namespace-qualified), arrays, `Nullable<T>`, and special-type keywords. New test `Build_OrdersGenericInheritedInterfaces_ByDisplayName_NotFullName` uses `IGen<Guid>` vs `IGen<bool>` (a case where `FullName` and display-name ordering diverge) and fails on the old code. |
+| 5 | A | A | Low | Correctness/Consistency | `TappedRentedNexusDuplexPipe` (`TappedNexusDuplexPipe.cs:44-70`) is dead code — nothing constructs it since R4 made locally-rented pipes pass through unwrapped. Misleading (implies rented pipes are tapped). | Deleted the dead `TappedRentedNexusDuplexPipe` type from `TappedNexusDuplexPipe.cs`; corrected the now-inaccurate `TestPipeFactory` summary/see-cref (only remote pipes are wrapped; local pipes pass through). |
+| 6 | D | D | Low | Correctness | Raw `Task.Run` fire-and-forget inside a handler (after the interceptor's `finally` decrements `inDispatch`) is undetectable by `QuiesceAsync`. Documented known residual (workflow Decisions 2026-05-06); no suite test relies on it; not a regression. | Not actioned (D). Documented known residual (workflow Decisions 2026-05-06); no suite test depends on `QuiesceAsync` settling a `Task.Run`-spawned side effect. |
+| 7 | D | D | Low | Test | Several streaming/showcase tests are wall-clock-bound (`WaitAsync(2–5s)`; cancellation test's 10ms-CT-vs-200ms-delay ≈190ms headroom is the tightest). Acknowledged v1 limitation — fake time deferred to #75. | Not actioned (D). Wall-clock timing is an acknowledged v1 limitation; deterministic fake-time control is tracked by follow-up issue #75. |
+| 8 | A | C | Low | Consistency | Packed `NexNet.Testing` NuGet inherits the repo-root `README.md` (core NexNet docs) via `NexNet.NuGet.targets`; it never mentions the harness API. Pack succeeds — content-accuracy nit for the published package. |  |
+
+Rec totals: 3 A, 0 B, 2 C, 3 D. **Applied (user override C→A): 5 A, 0 B, 0 C, 3 D** — findings 4 and 8 promoted C→A; all A items fixed in-branch this REMEDIATE round; D items (#2, #6, #7) documented/tracked, no action.
+
+## Plan Compliance
+
+| Finding | Severity | Why It Matters |
+|---------|----------|----------------|
+| `TapChannel<T>` (Phase 11) never implemented; the public type it was meant to feed — `ChannelRecording<T>` — ships with no harness producer. Referenced only by itself + its own unit test. R4 deferred `TapChannel`, but the orphaned public `ChannelRecording<T>` remained shipped. | Low | Public packaged type with no way to obtain a populated instance from the harness. Promoting/demoting public surface post-ship is a one-way door — either wire `TapChannel<T>` or make it internal until demand exists. |
+| Quiescence documented as "three per-session counters," but every session shares one `QuiescenceCounters` keyed at id `0` (`NexusTestHost.cs:95`, `:205`). Functionally sound (nets to zero in aggregate; inline comment acknowledges it), but diverges from the per-session model the plan/Decisions describe; `GetCountersFor(long sessionId)` is effectively unused. | Low | Design drift. No correctness impact today, but a future change relying on per-session counter isolation (e.g., per-client quiescence) would build on a false premise. |
+
+## Correctness
+
+| Finding | Severity | Why It Matters |
+|---------|----------|----------------|
+| `MethodIdMap.Build` does not filter `[NexusMethod(Ignore = true)]` methods, but the generator's `NexusDataExtractor` does (`allMethodsList.Where(m => !m.MethodAttribute.Ignore)` at line 176, before `AssignMethodIds`). Ignored-method interfaces would get runtime ids that no longer line up with the generator's; assertions against any method declared after an ignored one resolve to the wrong id (or `Array.Empty` → false "not received"). Demo uses no ignored methods → latent. | Med | The map is load-bearing for the whole assertion API; a silent off-by-one on ignored-method interfaces makes `AssertReceived`/`AssertNotReceived` quietly match the wrong method. Not exercised by any test. |
+| `MethodIdMap` orders inherited interfaces by `Type.FullName` ordinal (`:71`) vs the generator's `ToDisplayString()` ordinal (`NexusDataExtractor.cs:154`). For a generic inherited interface these keys differ, shifting per-interface method grouping. XML doc acknowledges the metadata-token caveat but not this divergence. Demo declares all methods directly → untested. | Low | Latent generator-parity gap on inherited-generic-interface RPC shapes; same silently-wrong-id failure mode. |
+| Raw `Task.Run` after the interceptor's `finally` decrements `inDispatch` is undetectable by `QuiesceAsync`. Documented residual (workflow Decisions 2026-05-06); not a regression; no suite test depends on it. | Low | Documented limitation, not a defect. Tests leaning on `QuiesceAsync` to settle a `Task.Run`-spawned side effect would be racy; none do. |
+| `TappedRentedNexusDuplexPipe` (`TappedNexusDuplexPipe.cs:44-70`) is dead code — nothing constructs it after R4 (`TestPipeFactory.WrapLocal` returns `inner`); references limited to its own definition + a `<see cref>`. | Low | Unused internal type carrying a `TappingPipeReader`/`Writer` pair. Harmless but misleading — implies rented pipes are tapped. |
+
+## Security
+
+**No concerns.** `ServerNexusBase.Authenticate` pattern-matches `Config is ServerConfig` before reading `OnAuthenticateOverride` — safe (no mock sets `Config = null`; override is `internal`). `TestAuthenticationStore.OverrideDelegate` rejects null/empty/unknown tokens → handshake auth-disconnect, covered by `OnAuthenticateOverrideTests` + `Connect_WithoutIdentity_IsRejectedAtHandshake`. `InternalsVisibleTo` correctly scoped (core grants `NexNet.Testing` only; the `NexNet.Testing.Tests`-on-core grant stays removed per R9). `OnAuthorize` demo policy (AND-semantics, case-sensitive ordinal) documented inline. No present defects.
+
+## Test Quality
+
+| Finding | Severity | Why It Matters |
+|---------|----------|----------------|
+| `ChannelRecording<T>` is public but tested only in isolation (`ChannelRecordingTests.cs` uses `new` + `RecordItem` directly). No test — and no harness code — exercises it against a real tapped channel because `TapChannel<T>` was never built. Its intended use has zero coverage. | Low | Public API no end-to-end test validates in its real role. Couples to the Plan-Compliance orphan finding. |
+| `MethodIdMap` parity pinned only for the two demo interfaces (all methods direct, no `Ignore`). The two correctness gaps above (ignored methods; generic inherited interfaces) have no regression test. | Low | The map is the assertion API's foundation; its two known divergence modes from the generator are untested. |
+| Several tests gate on real-time `WaitAsync(2–5s)`; `ListActiveEditors_CancelledToken_PropagatesAndThrows` races a 10ms client CT against a 200ms server delay (~190ms headroom). Reliable here; exception loosened to `OperationCanceledException` (Phase-14 fix). Wall-clock-bound — fake time deferred to #75. | Low | Potential rare flakiness under extreme CI load; acknowledged design limitation. |
+
+## Codebase Consistency
+
+| Finding | Severity | Why It Matters |
+|---------|----------|----------------|
+| `NexNet.Testing.csproj` is `IsPackable=true` and inherits `<PackageReadmeFile>README.md</PackageReadmeFile>` via `NexNet.props`, sourced from repo-root `README.md` through `NexNet.NuGet.targets`. The published `NexNet.Testing` package ships the core-NexNet README, which doesn't describe the harness. Pack succeeds — content nit, not a build break. | Low | A consumer browsing `NexNet.Testing` on NuGet sees core docs with no mention of the harness they installed it for. |
+| `TappedRentedNexusDuplexPipe` (see Correctness) and `ChannelRecording<T>` (see Plan/Test) are shipped but unreferenced by any producing path. Otherwise the package follows repo conventions cleanly — file-scoped namespaces, `.ConfigureAwait(false)` on every await (analyzer-confirmed), `internal` hooks with scoped `InternalsVisibleTo`, XML docs on public surface, `Interlocked`/`Volatile` counter discipline. | Low | Two orphaned types are the only consistency drift. |
+
+## Integration / Breaking Changes
+
+**No concerns.** Core production-code changes are all additive + internal: `ConfigBase.InvocationInterceptor`/`PipeFactory`, `ServerConfig.OnAuthenticateOverride`, `ISessionInvocationStateManager.PendingInvocationCount`, `INexusSession.PipeFactory`, `NexusServer.SessionManagerInternal`. The interface additions are technically breaking only for *external implementers* of those interfaces — but both are `internal`, so no out-of-graph consumer can implement them; mocks updated. Null interceptor/factory on every non-harness path → identical dispatch. The 4-type-param `CreateAsync` shape is intentional + documented (R12). New deps minimal/trustworthy (`NexNet` project ref + build-time `ConfigureAwaitChecker.Analyzer`); no new runtime third-party packages.
+
+## Regression check (prior fixes intact?)
+
+All load-bearing prior fixes survived the Session-7 rebase on master (TimeProvider PR #76):
+- **bytesInTransit wiring (R1, finding 5):** INTACT — `CountingPipeWriter.Advance` (+) / `CountingPipeReader` on `AdvanceTo` (−), both halves; `QuiesceAsync_AwaitsRealActivityEndToEnd` passes.
+- **PendingInvocationCount probe (R1, findings 6/7):** INTACT — registered via `InternalOnSessionSetup` on both configs; object-keyed dictionary.
+- **Multi-client shared-nexus guard (R2, finding 4):** INTACT — `_seenClientNexuses` ReferenceEqualityComparer guard; both tests pass.
+- **MethodIdMap declaration-order fix (R6, findings 8/10/11/25):** INTACT — `DeclaredOnly`, no `.Distinct()`, pinned layout + determinism test. (The two new parity gaps above are pre-existing latent edges, not rebase regressions.)
+- **Local-pipe pass-through (R4/R8 finding 17):** INTACT — `WrapLocal` returns `inner`; single `CompleteTask` continuation in `Track`.
+- **OnAuthenticateOverride fallback (P4/R11 finding 39):** INTACT — covered on Tcp+InProcess.
+- **InternalsVisibleTo scope (R9 finding 20, R11/D finding 40):** INTACT — csproj grants `NexNet.Testing` only.
+- **NexusServer rebase merge (Session 7):** INTACT — master's `ITimer? _watchdogTimer` + branch's `SessionManagerInternal` both present.
+- **Predicate-exception surfacing (R9/21), monotonic WaitFor clock (R8/18), diagnostic-includes-args (R7/34), Rendezvous.Unregister (R11/31), cached OverrideDelegate (R11/32), DisposeAsync logging (R11/33):** all INTACT.
+
+No prior fix was broken by the rebase or by Phase 14.
+
+---
+
 # Review: Phase 14 (showcase rewrite, PR #77)
 
 ## Classifications

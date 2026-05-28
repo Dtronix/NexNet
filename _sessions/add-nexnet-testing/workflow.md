@@ -6,7 +6,7 @@ remote: https://github.com/Dtronix/NexNet.git
 base-branch: master
 
 ## State
-phase: REVIEW
+phase: REMEDIATE
 status: active
 issue: discussion
 pr: 77
@@ -202,3 +202,4 @@ Quiescence is the load-bearing primitive that makes negative assertions (`Assert
 | 7 | 2026-05-27 REMEDIATE | 2026-05-27 REMEDIATE | Rebased on `origin/master` (master had moved with TimeProvider PR #76). One conflict in `src/NexNet/NexusServer.cs` at R3 (Group introspection): master added `private ITimer? _watchdogTimer` (TimeProvider integration); R3 had added `internal SessionManagerInternal` + kept `private readonly Timer _watchdogTimer`. Resolution kept both — the `SessionManagerInternal` accessor + the new `ITimer? _watchdogTimer` field. Remaining 41 commits replayed clean. Full post-rebase suite: 149 Generator + 2834 Integration + 82 Testing = 3065 tests, all green (one flaky integration failure on first run cleared on rerun). Force-pushed (`--force-with-lease`); branch tip is now `a040eff`. CI watch in progress. |
 | 8 | 2026-05-28 REMEDIATE (resumed) | 2026-05-28 REMEDIATE | Resumed at REMEDIATE step 7 (CI verification). Confirmed CI green on current HEAD `c2ececd`: run #26537606515 (`Build, Pack & Publish`) concluded `success`; the prior run on `a040eff` (#26537546933) also succeeded. PR #77 is OPEN / MERGEABLE / mergeStateStatus CLEAN, base `master`, not draft. All 14 phases done, all review findings addressed. REMEDIATE step 8: prompting user for the finalize/merge decision. |
 | 8 | 2026-05-28 REMEDIATE | 2026-05-28 REVIEW | At the FINALIZE gate the user chose **(C) Back to REVIEW** instead of merging. Stepped back from FINALIZE → REVIEW (`status: active`); session directory left intact (no cleanup). Prompting user for the re-examination scope (full re-analysis vs. targeted concern) before running the analysis pass. |
+| 8 | 2026-05-28 REVIEW | 2026-05-28 REMEDIATE | User chose full branch re-analysis. Delegated a fresh 6-section analysis pass over `origin/master...HEAD` (44 commits, 93 files) to a general-purpose agent → 8 findings (1 Med, 7 Low) after consolidating cross-section overlaps; regression check confirmed all R1–R12 fixes survived the Session-7 rebase intact. Recs 3A/0B/2C/3D. **User override: C→A, implement all A/B/C now** → applied 5A/0B/0C/3D (findings 4, 8 promoted). New Session-8 review section + Classifications prepended to `review.md`; temp `_review-s8.md` folded in and removed. Transitioning to REMEDIATE to fix the 5 A items. |
