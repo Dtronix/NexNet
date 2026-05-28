@@ -9,6 +9,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
 {
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -25,6 +26,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -48,6 +50,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
 
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -68,6 +71,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
     
     [TestCase(Type.Tcp)]
     [TestCase(Type.Uds)]
+    [TestCase(Type.InProcess)]
     public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);

@@ -16,6 +16,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -48,6 +49,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -81,6 +83,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -110,6 +113,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -138,6 +142,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(

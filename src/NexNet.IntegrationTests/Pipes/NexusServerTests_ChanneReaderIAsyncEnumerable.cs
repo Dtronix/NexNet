@@ -11,6 +11,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task IAsyncEnumerable(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -58,6 +59,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task StopsOnCompletion(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -89,6 +91,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task CancelsRead(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -120,6 +123,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task CancelsAndResumesRead(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);

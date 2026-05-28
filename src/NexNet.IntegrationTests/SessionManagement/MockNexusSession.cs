@@ -74,6 +74,7 @@ internal class MockNexusSession : INexusSession
     public PoolManager PoolManager { get; set; } = null!;
     public NexusCollectionManager CollectionManager { get; set; } = null!;
     public ConfigBase Config { get; set; } = null!;
+    public IPipeFactory? PipeFactory { get; set; }
     public bool IsServer { get; set; } = true;
     public NexusPipeManager PipeManager { get; set; } = null!;
     public string? RemoteAddress { get; set; } = "127.0.0.1";
@@ -119,4 +120,6 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
     {
         // No-op for testing
     }
+
+    public int PendingInvocationCount => 0;
 }

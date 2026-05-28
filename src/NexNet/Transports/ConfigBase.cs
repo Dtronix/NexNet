@@ -192,4 +192,18 @@ public abstract class ConfigBase
     internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
+
+    /// <summary>
+    /// Optional hook that wraps the dispatch of incoming invocations on every session created
+    /// from this config. Used by the test harness for invocation recording and quiescence tracking.
+    /// When null, sessions invoke the nexus directly (the default production path).
+    /// </summary>
+    internal IInvocationInterceptor? InvocationInterceptor { get; set; }
+
+    /// <summary>
+    /// Optional factory that wraps duplex pipes at the boundary between the pipe manager and
+    /// user code. Used by the test harness to install tap wrappers for byte-level recording
+    /// and pipe-lifetime tracking. When null, pipes are returned to user code unwrapped.
+    /// </summary>
+    internal IPipeFactory? PipeFactory { get; set; }
 }

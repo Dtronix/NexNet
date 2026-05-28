@@ -20,6 +20,8 @@
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
+  <Project Path="NexNet.Testing\NexNet.Testing.csproj" />
+  <Project Path="NexNet.Testing.Tests\NexNet.Testing.Tests.csproj" />
   <Project Path="NexNetBenchmarks\NexNetBenchmarks.csproj" />
   <Project Path="NexNet\NexNet.csproj" />
 </Solution>

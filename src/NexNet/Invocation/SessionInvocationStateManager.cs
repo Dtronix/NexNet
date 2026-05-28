@@ -173,4 +173,6 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         //foreach (var invocationState in _waitingPipes)
         //    invocationState.Value.Pipe.UpstreamComplete(PipeCompleteMessage.Flags.Canceled);
     }
+
+    public int PendingInvocationCount => _invocationStates.Count;
 }

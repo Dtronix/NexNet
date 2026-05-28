@@ -14,6 +14,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Quic;
+using NexNet.Testing.Transports.InProcess;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
@@ -33,7 +34,8 @@ internal abstract class BaseTests
         TcpTls,
         Quic,
         WebSocket,
-        HttpSocket
+        HttpSocket,
+        InProcess
     }
 
     private int _counter;
@@ -41,6 +43,7 @@ internal abstract class BaseTests
     private UnixDomainSocketEndPoint? _currentUdsPath;
     private int? _currentTcpPort;
     private int? _currentUdpPort;
+    private string? _currentInProcessEndpoint;
     private List<INexusServer> Servers = new ();
     private List<INexusServerFactory> ServerFactories = new ();
     private List<INexusClient> Clients = new();
@@ -111,6 +114,7 @@ internal abstract class BaseTests
         CurrentUdsPath = null;
         _currentTcpPort = null;
         _currentUdpPort = null;
+        _currentInProcessEndpoint = null;
 
         _logger.LogEnabled = false;
 
@@ -243,6 +247,12 @@ internal abstract class BaseTests
             return new HttpSocketServerConfig() { Path = "/httpsocket-test", Logger = logger, };
         }
 
+        if (type == Type.InProcess)
+        {
+            _currentInProcessEndpoint ??= $"inproc-{Guid.NewGuid():N}";
+            return new InProcessServerConfig { Endpoint = _currentInProcessEndpoint, Logger = logger };
+        }
+
 
         throw new InvalidOperationException();
     }
@@ -331,12 +341,18 @@ internal abstract class BaseTests
             _currentTcpPort ??= FreeTcpPort();
             if(logger != null)
                 logger.Behaviors |= NexusLogBehaviors.LogTransportData;
-            
+
             return new HttpSocketClientConfig()
             {
-                Url = new Uri($"http://127.0.0.1:{_currentTcpPort}/httpsocket-test"), 
+                Url = new Uri($"http://127.0.0.1:{_currentTcpPort}/httpsocket-test"),
                 Logger = logger,
             };
+        }
+
+        if (type == Type.InProcess)
+        {
+            _currentInProcessEndpoint ??= $"inproc-{Guid.NewGuid():N}";
+            return new InProcessClientConfig { Endpoint = _currentInProcessEndpoint, Logger = logger };
         }
 
         throw new InvalidOperationException();

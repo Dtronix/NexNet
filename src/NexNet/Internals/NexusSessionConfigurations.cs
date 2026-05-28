@@ -42,4 +42,18 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// Rate limiter reference for release on disconnect.
     /// </summary>
     public IConnectionRateLimiter? RateLimiter { get; init; }
+
+    /// <summary>
+    /// Optional invocation interceptor copied from <see cref="ConfigBase.InvocationInterceptor"/>
+    /// at the construction site. Read directly by the session's invocation dispatcher; null in
+    /// production paths.
+    /// </summary>
+    public IInvocationInterceptor? InvocationInterceptor { get; init; }
+
+    /// <summary>
+    /// Optional pipe factory copied from <see cref="ConfigBase.PipeFactory"/> at the
+    /// construction site. Consulted by the session's pipe manager when wrapping pipes for
+    /// user code; null in production paths.
+    /// </summary>
+    public IPipeFactory? PipeFactory { get; init; }
 }

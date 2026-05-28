@@ -691,7 +691,16 @@ internal partial class NexusSession<TNexus, TProxy>
             try
             {
                 arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
-                await session._nexus.InvokeMethod(message).ConfigureAwait(false);
+                var interceptor = session._invocationInterceptor;
+                if (interceptor is null)
+                {
+                    await session._nexus.InvokeMethod(message).ConfigureAwait(false);
+                }
+                else
+                {
+                    await interceptor.WrapAsync(message,
+                        () => session._nexus.InvokeMethod(message)).ConfigureAwait(false);
+                }
             }
             catch (Exception e)
             {

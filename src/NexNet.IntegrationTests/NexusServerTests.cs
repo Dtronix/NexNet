@@ -18,6 +18,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -41,6 +42,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -176,6 +178,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task ServerFiresOnDisconnectedEvent(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -236,6 +239,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public void StopWithoutStartThrows(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
@@ -252,6 +256,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnConnectedEventFiresAfterAuthentication(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -287,12 +292,14 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls, true)]
     [TestCase(Type.WebSocket, true)]
     [TestCase(Type.HttpSocket, true)]
+    [TestCase(Type.InProcess, true)]
     [TestCase(Type.Quic, false)]
     [TestCase(Type.Uds, false)]
     [TestCase(Type.Tcp, false)]
     [TestCase(Type.TcpTls, false)]
     [TestCase(Type.WebSocket, false)]
     [TestCase(Type.HttpSocket, false)]
+    [TestCase(Type.InProcess, false)]
     public async Task ConnectAsyncThrowsAndOnConnectedNeverFiresWhenAuthHandlerThrows(Type type, bool authenticateClient)
     {
         // Arrange: force server to require auth, and make its auth handler throw
@@ -335,6 +342,7 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.InProcess)]
     public async Task OnDisconnectedEventExceptionDoesNotBreakServer(Type type)
     {
         var serverConfig = CreateServerConfig(type);

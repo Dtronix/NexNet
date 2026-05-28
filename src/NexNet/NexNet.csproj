@@ -8,6 +8,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />
     <InternalsVisibleTo Include="NexNet.Asp" />
+    <InternalsVisibleTo Include="NexNet.Testing" />
     <InternalsVisibleTo Include="NexNetBenchmarks" />
   </ItemGroup>
   <ItemGroup>

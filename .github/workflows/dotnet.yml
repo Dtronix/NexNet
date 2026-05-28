@@ -16,7 +16,7 @@ jobs:
                              
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         fetch-depth: 0
         submodules: 'recursive'
@@ -25,7 +25,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y libmsquic
 
     - name: Install .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v5
       with:
         dotnet-version: '10.*'
         source-url: https://api.nuget.org/v3/index.json
@@ -38,12 +38,20 @@ jobs:
     - name: Validate AOT compatibility
       run: dotnet build src/Samples/NexNetSample.Aot.Client -c Release --no-restore -p:TreatWarningsAsErrors=true -p:NoWarn=IL2104%3BIL3053%3BIL3050
 
+    # Test runs use --logger "console;verbosity=minimal" so individual passing tests are
+    # suppressed (the integration suite alone would dump thousands of lines per CI run).
+    # Each assembly still emits a single summary line ("Passed!  - Failed: 0, Passed: N,
+    # Total: N, Duration: X") and full failure details when tests fail. Step elapsed time in
+    # the GitHub Actions UI shows progress.
     - name: Execute integration tests
-      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
+      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=minimal --logger "console;verbosity=minimal"
 
     - name: Execute generator tests
-      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
-      
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=minimal --logger "console;verbosity=minimal"
+
+    - name: Execute testing-harness tests
+      run: dotnet test src/NexNet.Testing.Tests -c Release --no-build -v=minimal --logger "console;verbosity=minimal"
+
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts --maxcpucount:1
 
@@ -52,12 +60,15 @@ jobs:
 
     - name: Pack NexNet.Asp
       run: dotnet pack src/NexNet.Asp -c Release -o ./artifacts --maxcpucount:1
-      
+
+    - name: Pack NexNet.Testing
+      run: dotnet pack src/NexNet.Testing -c Release -o ./artifacts --maxcpucount:1
+
     - name: Pack NexNet.Generator
       run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts --maxcpucount:1
       
     - name: Export artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         path: artifacts/*
         

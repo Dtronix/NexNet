@@ -80,6 +80,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly string? _rateLimiterAddress;
     private readonly IConnectionRateLimiter? _rateLimiter;
 
+    // Optional invocation interceptor copied from the session configurations; null on the
+    // production hot path so dispatch is a direct call to the nexus.
+    internal readonly IInvocationInterceptor? _invocationInterceptor;
+
+    // Optional pipe factory copied from the session configurations; null in production paths.
+    internal readonly IPipeFactory? _pipeFactory;
+
     /// <summary>
     /// State of the connection that
     /// </summary>
@@ -142,6 +149,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
     
     public ConfigBase Config { get; }
+    public IPipeFactory? PipeFactory => _pipeFactory;
     public bool IsServer { get; }
 
     public DisconnectReason DisconnectReason { get; private set; } = DisconnectReason.None;
@@ -175,6 +183,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Store rate limiter info for release on disconnect
         _rateLimiterAddress = configurations.RateLimiterAddress;
         _rateLimiter = configurations.RateLimiter;
+
+        _invocationInterceptor = configurations.InvocationInterceptor;
+        _pipeFactory = configurations.PipeFactory;
 
         Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
