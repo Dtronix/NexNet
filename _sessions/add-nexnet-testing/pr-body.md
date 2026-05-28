@@ -2,7 +2,7 @@
 - Ships a new `NexNet.Testing` package: in-process transport, test host, recorders, server-side and per-client assertion APIs, streaming-helper extensions, and a quiescence primitive.
 - Adds three minimal optional internal hooks to `NexNet` core (`IInvocationInterceptor`, `IPipeFactory`, `ServerConfig.OnAuthenticateOverride`) so the harness can instrument dispatch and auth without touching production hot paths.
 - Demo + showcase nexus rewritten in Phase 14 from the original `JoinGroup`/`BroadcastToGroup` passthrough shape to a realistic `EditorServerNexus` document-editor domain that drives every harness feature through natural business verbs.
-- Driven by 14 plan phases + 12 remediation phases (R1–R12) addressing 40 findings from a structured review.
+- Driven by 14 plan phases + 12 remediation phases (R1–R12) addressing 40 findings from a structured review, plus a second full-branch review pass addressing 5 more findings.
 
 ## Reason for Change
 
@@ -48,7 +48,7 @@ Existing NexNet consumers are unaffected: every new hook is `internal` (with Int
 - **Phase 6** — `Type.InProcess` enum value + integration-test config branches (further expanded in R10).
 - **Phase 7** — Recorder primitives (`InvocationRecorder`, `Arg.Any<T>()`/`Arg.Is<T>(predicate)` sentinels, `ArgMatcher`, `ExpressionParser`, `NexusAssertionException`).
 - **Phase 8** — `TestInvocationInterceptor`, `QuiescenceCounters`, `QuiescenceTracker` with observe-zero/yield/re-observe pattern.
-- **Phase 9** — `PipeRecording`, `TappingPipeReader`/`TappingPipeWriter`, `TappedNexusDuplexPipe`/`TappedRentedNexusDuplexPipe`, `TestPipeFactory`.
+- **Phase 9** — `PipeRecording`, `TappingPipeReader`/`TappingPipeWriter`, `TappedNexusDuplexPipe`, `TestPipeFactory`.
 - **Phase 10** — `NexusTestHost.CreateAsync` static entry point, `NexusTestHost<...>`, `NexusTestClient<...>`, `TestIdentity.Of`, `TestAuthenticationStore`.
 - **Phase 12** — Server-side `AssertReceived`/`AssertNotReceived`/`WaitFor` on the host with `MethodIdMap` + `ArgumentDeserializer`.
 - **Phase 14** — Demo + showcase rewrite (added after first review pass). The old `DemoServerNexus` had passthrough methods (`JoinGroup`/`BroadcastToGroup`) that showed harness ergonomics in the worst light by forcing users to write passthrough plumbing just to test broadcasts. Replaced with a realistic `EditorServerNexus` document-editor domain (`OpenDocument`, `LeaveDocument`, `SaveDraft` [Write], `Whisper`, `BroadcastSystemAnnouncement` [Admin], `ListActiveEditors`, `UploadAttachment`, `StreamEdits`) that exercises every harness feature through natural business verbs. `OnAuthorize` override matches `TestIdentity.IsInRole` case-sensitive ordinal against `DocPermission` enum names. `EditorAppShowcaseTests.cs` adds 18 focused tests; existing dependent tests (`AssertionTests`, `ClientAssertionTests`, `NexusTestHostTests`, `StreamingExtensionsTests`, `MethodIdMapTests`) updated to the new domain; `HarnessSampleNexus.cs` + `HarnessShowcaseTests.cs` removed.
@@ -81,6 +81,18 @@ These were uncovered during REVIEW after the 13-phase IMPLEMENT pass and address
 
 See `_sessions/add-nexnet-testing/review.md` for the full 40-finding classification table and per-finding remediation notes.
 
+## Second review pass (full branch re-review)
+
+A second structured review over the full branch diff (after the first finalize gate) surfaced 8 findings (1 Med, 7 Low). The 5 actionable items were fixed in-branch; 3 are documented/tracked (no action). See `review.md` §"Full branch re-analysis (Session 8)" for the classification table.
+
+- **MethodIdMap ignored-method parity (Med).** The runtime map now filters `[NexusMethod(Ignore=true)]` methods before assigning ids, matching the generator's pre-`AssignMethodIds` filter — previously an ignored method would shift the ids of methods declared after it, silently misaligning `AssertReceived`/`AssertNotReceived`. Regression test added.
+- **MethodIdMap generic-interface ordering.** Inherited interfaces are now ordered by a C#-style display name matching the generator's `ToDisplayString()` ordinal, rather than `Type.FullName` (which diverges for generic/nested interfaces). Regression test added (`IGen<Guid>` vs `IGen<bool>`).
+- **Orphaned public surface.** `ChannelRecording<T>` was demoted from public to internal: no harness producer (`TapChannel<T>`) ships in v1, so it had no way to be populated. Internalizing keeps a non-breaking public promotion open for later.
+- **Dead code.** Deleted the unused `TappedRentedNexusDuplexPipe` (local pipes pass through unwrapped since R4) and corrected the `TestPipeFactory` doc.
+- **Package README.** `NexNet.Testing` now ships a harness-specific NuGet README instead of inheriting the core-NexNet README.
+
+Documented/tracked (no action): the aggregate (host-global) quiescence counter model; the `Task.Run` fire-and-forget quiescence residual; wall-clock-bound timing tests (deterministic time control tracked by #75).
+
 ## Migration Steps
 
 None for existing consumers. To adopt the harness:
@@ -108,7 +120,7 @@ None for existing consumers. To adopt the harness:
 
 ### Consumer-facing
 - None for application code.
-- **New public surface in `NexNet.Testing` is v1** — `NexusTestHost`, `NexusTestClient`, `NexusAssertionException`, `Arg.Any<T>()`, `Arg.Is<T>(...)`, `TestIdentity.Of(...)`, `PipeRecording`, `ChannelRecording<T>`, `GroupView`, `GroupIntrospector`, `StreamingExtensions`. Future iteration may add overloads non-breakingly.
+- **New public surface in `NexNet.Testing` is v1** — `NexusTestHost`, `NexusTestClient`, `NexusAssertionException`, `Arg.Any<T>()`, `Arg.Is<T>(...)`, `TestIdentity.Of(...)`, `PipeRecording`, `GroupView`, `GroupIntrospector`, `StreamingExtensions`. Future iteration may add overloads non-breakingly. (`ChannelRecording<T>` was demoted to internal in the second review pass — see below — until a public `TapChannel<T>` producer ships.)
 
 ### Internal
 - `ConfigBase` gains `internal IInvocationInterceptor?` and `internal IPipeFactory?` properties.
@@ -121,4 +133,4 @@ None for existing consumers. To adopt the harness:
 - [ ] CI matrix passes (Generator + IntegrationTests + Testing tests).
 - [ ] All hook tests run on both `Type.Tcp` and `Type.InProcess`.
 - [ ] All pipe/channel/collection/group tests now exercise `Type.InProcess`.
-- [ ] `NexNet.Testing.Tests` (80 tests) covers transport, recorder, MethodIdMap parity, quiescence under real load, host construction with multi-client connect and shared-instance detection, group introspection + broadcast, streaming helpers (upload/download/publish/collect), per-client assertions, and the 18-test `EditorAppShowcaseTests` covering identity flow, authorization (Write/Admin gates), `GroupExceptCaller`/`Client(id)`/`All` routing, pipe + channel streaming, mixed-traffic quiescence, and `Arg.Any`/`Arg.Is` matchers.
+- [ ] `NexNet.Testing.Tests` (84 tests) covers transport, recorder, MethodIdMap parity (declaration order, explicit ids, ignored-method filtering, and generic-inherited-interface ordering), quiescence under real load, host construction with multi-client connect and shared-instance detection, group introspection + broadcast, streaming helpers (upload/download/publish/collect), per-client assertions, and the 18-test `EditorAppShowcaseTests` covering identity flow, authorization (Write/Admin gates), `GroupExceptCaller`/`Client(id)`/`All` routing, pipe + channel streaming, mixed-traffic quiescence, and `Arg.Any`/`Arg.Is` matchers.
