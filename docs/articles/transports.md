@@ -40,6 +40,9 @@ QUIC is a reliable UDP-based protocol guaranteeing packet transmission, order in
 - `libmsquic` library on Linux (`sudo apt install libmsquic` on Ubuntu)
 - [Windows QUIC support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview) on Windows
 
+> [!IMPORTANT]
+> Always set `SslClientAuthenticationOptions.TargetHost` to a DNS name (for example the name on the server certificate). Starting with libmsquic 2.5.11 / 2.6.1, the TLS handshake fails with `QUIC_STATUS_TLS_ERROR` when `TargetHost` is unset or an IP address, even if `RemoteCertificateValidationCallback` accepts the certificate.
+
 ### WebSockets (ASP.NET Core)
 
 WebSockets enable real-time, bidirectional data exchange over persistent TCP connections. NexNet uses binary WebSocket streams, which introduce a minor overhead of 4 bytes per message header/data frame.

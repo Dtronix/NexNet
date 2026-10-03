@@ -122,6 +122,7 @@ public class SampleBase
                 Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
+                    TargetHost = "localhost",
                     EnabledSslProtocols = SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,

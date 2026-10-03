@@ -305,6 +305,8 @@ internal abstract class BaseTests
                 Logger = logger,
                 SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
                 {
+                    // msquic 2.5.11+/2.6.1+ fails the TLS handshake without a DNS server name (SNI).
+                    TargetHost = "localhost",
                     EnabledSslProtocols = SslProtocols.Tls13,
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                     AllowRenegotiation = false,

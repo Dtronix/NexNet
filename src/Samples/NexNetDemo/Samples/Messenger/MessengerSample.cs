@@ -31,6 +31,7 @@ public class MessengerSample : SampleBase
             //Logger = new SampleLogger("Client"),
             SslClientAuthenticationOptions = new SslClientAuthenticationOptions()
             {
+                TargetHost = "localhost",
                 EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
                 CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
                 AllowRenegotiation = false,
