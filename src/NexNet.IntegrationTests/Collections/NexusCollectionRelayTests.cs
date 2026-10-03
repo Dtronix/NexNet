@@ -208,13 +208,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
     }
     
     [Test]
@@ -432,13 +432,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(1);
 
         // Test all modification operations are blocked
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
 
         // Verify read operations still work
         Assert.DoesNotThrow(() => { var count = relayList.Count; });

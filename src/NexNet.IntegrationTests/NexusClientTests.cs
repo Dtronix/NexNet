@@ -735,7 +735,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.ThrowsAsync<ProxyRemoteInvocationException>(
+        await Assert.ThrowsAsync<ProxyRemoteInvocationException>(
             () => client.Proxy.ServerTaskValue().Timeout(1));
     }
     
@@ -745,14 +745,14 @@ internal partial class NexusClientTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public void DisconnectWithoutConnectDoesNotThrow(Type type)
+    public async Task DisconnectWithoutConnectDoesNotThrow(Type type)
     {
         var (_, client, _) = CreateServerClient(
             CreateServerConfig(type),
             CreateClientConfig(type));
         
         // Should complete without throwing
-        Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
+        await Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
     
@@ -796,7 +796,7 @@ internal partial class NexusClientTests : BaseTests
         await client.DisconnectAsync().Timeout(1);
         
         // Second disconnect should be a no-op
-        Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
+        await Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
         Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
     }
     
@@ -937,7 +937,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         // Second concurrent start should throw InvalidOperationException
-        Assert.ThrowsAsync<InvalidOperationException>(
+        await Assert.ThrowsAsync<InvalidOperationException>(
             () => server.StartAsync().Timeout(1));
     }
     

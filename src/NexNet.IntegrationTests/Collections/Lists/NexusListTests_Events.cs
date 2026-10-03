@@ -557,6 +557,6 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     {
         var (server, _, _) = await ConnectServerAndClient(Type.Uds);
         var serverNexus = server.NexusCreatedQueue.First();
-        Assert.ThrowsAsync<InvalidOperationException>(() => serverNexus.IntListBi.DisabledTask);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => serverNexus.IntListBi.DisabledTask);
     }
 }

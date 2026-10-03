@@ -770,7 +770,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(Type.Uds);
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.InsertAsync(-1, 0).Timeout(1));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.InsertAsync(-1, 0).Timeout(1));
     }
     
     [Test]
@@ -823,7 +823,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(Type.Uds);
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
-        Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.RemoveAtAsync(-1).Timeout(1));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Proxy.IntListBi.RemoveAtAsync(-1).Timeout(1));
     }
 
     [TestCase(Type.Quic)]

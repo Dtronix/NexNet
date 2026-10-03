@@ -1693,7 +1693,7 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var exception = Assert.ThrowsAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
+            var exception = await Assert.ThrowsAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
             Assert.That(exception.ConnectionResult.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication));
         }
         finally

@@ -146,25 +146,25 @@ internal partial class NexusServerTests : BaseTests
     }
     
     [Test]
-    public void ServerThrowsWhenTransportConfigReturnsNullListenerOnWrongMode()
+    public async Task ServerThrowsWhenTransportConfigReturnsNullListenerOnWrongMode()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Listener), () => null!);
-        Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
     }
     
     [Test]
-    public void ServerDoesntThrowWhenTransportConfigReturnsNullListenerOnCorrectMode()
+    public async Task ServerDoesntThrowWhenTransportConfigReturnsNullListenerOnCorrectMode()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
-        Assert.DoesNotThrowAsync(() => server.StartAsync());
+        await Assert.DoesNotThrowAsync(() => server.StartAsync());
     }
     
     [Test]
-    public void ServerThrowsWhenStartingTwiceWhileAlreadyRunning()
+    public async Task ServerThrowsWhenStartingTwiceWhileAlreadyRunning()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
-        Assert.DoesNotThrowAsync(() => server.StartAsync());
-        Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.DoesNotThrowAsync(() => server.StartAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
     }
     
     /// <summary>
@@ -236,10 +236,10 @@ internal partial class NexusServerTests : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public void StopWithoutStartThrows(Type type)
+    public async Task StopWithoutStartThrows(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
-        Assert.ThrowsAsync<InvalidOperationException>(() => server.StopAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StopAsync());
     }
     
     /// <summary>

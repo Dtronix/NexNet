@@ -371,7 +371,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void PreCanceledReportsCorrectly()
+        public async Task PreCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
             cancel.Cancel();
@@ -383,11 +383,11 @@ namespace NexNet.IntegrationTests.Sockets
 
             Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
         [Test]
-        public void DuringCanceledReportsCorrectly()
+        public async Task DuringCanceledReportsCorrectly()
         {
             using var cancel = new CancellationTokenSource();
 
@@ -411,7 +411,7 @@ namespace NexNet.IntegrationTests.Sockets
 
             Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
         [Test]
@@ -440,7 +440,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void ManualCanceledReportsCorrectly()
+        public async Task ManualCanceledReportsCorrectly()
         {
             ValueTask<LockToken> ct;
             using (var token = _timeoutMux.TryWait())
@@ -463,7 +463,7 @@ namespace NexNet.IntegrationTests.Sockets
 
             Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
         [Test]
@@ -493,7 +493,7 @@ namespace NexNet.IntegrationTests.Sockets
         }
 
         [Test]
-        public void ManualCancelOnPreCanceledDoesNothing()
+        public async Task ManualCancelOnPreCanceledDoesNothing()
         {
             // cancel it *before* issuing token
             using var cancel = new CancellationTokenSource();
@@ -509,7 +509,7 @@ namespace NexNet.IntegrationTests.Sockets
 
             Assert.Throws<TaskCanceledException>(() => { var _ = ct.Result; });
 
-            Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
+            await Assert.ThrowsAsync<TaskCanceledException>(async () => await ct);
         }
 
         [TestCase(1, 5000000)] // uncontested

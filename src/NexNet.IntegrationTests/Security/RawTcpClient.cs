@@ -66,7 +66,7 @@ internal class RawTcpClient : IDisposable
     public void Write(byte[] data)
     {
         _logger.LogTrace($"Sending: [{string.Join(",", data)}]");
-        Assert.DoesNotThrowAsync(async () => await _stream!.WriteAsync(data));
+        Assert.DoesNotThrow(() => _stream!.Write(data));
     }
 
     public async Task AssertVerify(string definition, object?[]? expectedValues)

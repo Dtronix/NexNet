@@ -135,7 +135,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedMethod("test").Timeout(1));
     }
 
@@ -375,7 +375,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedWithReturn(21).Timeout(1));
     }
 

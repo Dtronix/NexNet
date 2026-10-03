@@ -34,7 +34,7 @@ internal partial class AspClientServerTests : BaseAspTests
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
         await server.StartAsync().Timeout(1);
-        Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
+        await Assert.DoesNotThrowAsync(() => client.ConnectAsync().Timeout(1));
         await tcs.Task.Timeout(1);
     }
     
@@ -65,7 +65,7 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
         Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
     
@@ -91,7 +91,7 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
         Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
     
@@ -151,7 +151,7 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
         Assert.That(actual.Error, Is.EqualTo(TransportError.InternalError));
     }
     

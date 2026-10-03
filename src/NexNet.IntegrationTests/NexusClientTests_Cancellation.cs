@@ -29,13 +29,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
                 Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
-            client =>
+            async client =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                await Assert.ThrowsAsync<TaskCanceledException>(async () =>
                 {
                     await client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(100).Token);
                 });
-                return ValueTask.CompletedTask;
             }).Timeout(1);
 
         await tcs.Timeout(1);
@@ -61,14 +60,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
                 Assert.That(message.InvocationId, Is.EqualTo(1));
                 source.TrySetResult();
             },
-            client =>
+            async client =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                await Assert.ThrowsAsync<TaskCanceledException>(async () =>
                 {
                     await client.Proxy.ServerTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
                 });
-
-                return default;
             }).Timeout(1);
 
         await tcs.Timeout(1);
@@ -97,7 +94,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             async client =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async() => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token));
+                await Assert.ThrowsAsync<TaskCanceledException>(async() => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token));
             }).Timeout(1);
 
         await tcs.Timeout(1);
@@ -126,7 +123,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             async client =>
             {
-                Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
+                await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
             }).Timeout(1);
 
         await tcs.Timeout(1);
