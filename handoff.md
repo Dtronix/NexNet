@@ -51,8 +51,11 @@ the unmanaged-channel test files were deleted, as the plan requires.
   **MessagePack** build.
 - A master baseline worktree exists at `<scratchpad>/master-baseline` (detached at 57fef36, ported benchmark files
   uncommitted). Remove it with `git worktree remove --force <path>` when it is no longer needed.
-- Remaining before a go decision: a 24-hour fuzz run (§10.4; harness 3, the session receive loop, is not
-  implemented). If the 5% invocation margin matters, a full benchmark run on an idle machine.
+- **A 24-hour fuzz run is in progress.** A 24-hour libFuzzer run of all six harnesses started 2026-10-04 15:30 (ends about 2026-10-05 15:30), on
+commit `bee2bc8`, from `<scratchpad>/fuzzrun` (`start-24h.ps1`, `status.ps1`). Check it with
+  `pwsh -File status.ps1`. Crashing inputs land in `artifacts\<harness>\`; replay one with
+  `dotnet NexNet.Fuzz.dll --repro <harness> <hex> [count]`.
+- If the 5% invocation margin matters, run a full benchmark on an idle machine.
 
 ## 5. Key design points (details in impl-notes.md, "Deviations")
 

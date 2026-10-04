@@ -5,8 +5,8 @@ were built from the same tree with `-p:NexNetSerializer=MessagePack|MemoryPack`.
 release baseline (57fef36) built from a separate detached worktree.
 
 **Verdict: gate items 1–3 pass. Item 4 passes, except that fragmented IntArrays256 is 2% behind MemoryPack by minimum
-(1% ahead by median), which is inside the noise. Item 5 (fuzzing) is not measured.** The gate as written is not fully
-met because item 5 has never been run. Every performance criterion is met or within noise. Details are in
+(1% ahead by median), which is inside the noise. Item 5 (24-hour fuzzing) is in progress.** It started on
+2026-10-04 at 15:30. Every performance criterion is met or within noise. Details are in
 [Gate evaluation](#gate-evaluation). The previous (failed) evaluation is kept under
 [Before optimization](#before-optimization).
 
@@ -188,11 +188,11 @@ The gate is from `impl-plan.md` §11.3. The change proceeds to Phase 9 only if a
 | 2 | POCO serialize + deserialize within **25%** of MemoryPack | 0.85 / 0.89 (76.0 vs 89.2 ns min). NestedGraph 1.08; PersonList100 1.34 / 1.31. | **Pass.** |
 | 3 | Primitive arrays (ext 78) within **15%** | Doubles16 1.04 / 1.03, Doubles1K 1.03 / 1.03, Doubles64K 0.99 / 0.98. Channel IntArrays256 0.99 / 1.08 non-fragmented, 1.02 / 0.99 fragmented. | **Pass.** |
 | 4 | Channel throughput within **15%**, and fragmented **better** than branch-MemoryPack | Within 15%: all cases (max 1.03 / 1.09). Fragmented: Persons 0.98 / 0.95, Ints 0.95 / 0.95, IntArrays256 1.02 / 0.99. | **Pass, with one marginal case.** IntArrays256 fragmented is 2% behind by minimum and 1% ahead by median; that is noise. |
-| 5 | Fuzzing (§10.4) clean for 24 hours | Only the smoke run in `NexNet.Serialization.Tests` (clean). No 24-hour run; harness 3 (session receive loop) is not implemented. | **Not measured.** |
+| 5 | Fuzzing (§10.4) clean for 24 hours | All six libFuzzer harnesses, including the new session receive-loop harness, started 2026-10-04 15:30. Building the session harness found and fixed five session bugs that are also on master (impl-notes deviation 22). | **In progress.** |
 
 **Overall:** the performance criteria (1–4) are met, with item 4 marginal in one case that is within noise. The gate
-is not formally passed because item 5 (24-hour fuzzing) has not been run. That, and confirming items 1 and 4 on a
-quieter machine if the margins matter, are the remaining steps before a go decision. Phase 8 has not been started.
+is not formally passed until item 5 (the 24-hour fuzz run, started 2026-10-04 15:30) completes clean. That, and
+confirming items 1 and 4 on a quieter machine if the margins matter, are the remaining steps before a go decision. Phase 8 has not been started.
 
 ## Caveats
 

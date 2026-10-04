@@ -18,7 +18,7 @@ runs per backend):
 | 2 | POCO serialize + deserialize within 25% | **Pass.** 0.85 / 0.89 (was 1.25–1.30). |
 | 3 | Primitive arrays within 15% | **Pass.** Doubles16 1.04 / 1.03 (was 1.47–1.57), 1K 1.03, 64K 0.99. |
 | 4 | Channels within 15%, fragmented better | **Pass, one marginal case.** All within +3% (min) / +9% (median). Fragmented Persons 0.98 / 0.95 and Ints 0.95 / 0.95; IntArrays256 1.02 / 0.99. |
-| 5 | Fuzzing clean for 24 h | Not measured; smoke run only. |
+| 5 | Fuzzing clean for 24 h | **In progress.** All six harnesses, including the new `session` harness, started 2026-10-04 15:30. |
 
 The gate is not formally passed, because item 5 has not been run. Remaining outliers outside the gate:
 PersonList100 S+D 1.31–1.34 and Int32 2.7×, the latter a fixed ~12 ns per-call cost.
@@ -37,8 +37,9 @@ truncated UTF-8), extra members from a newer peer, out-of-range `DateTime`, and 
 optimistic path. Two of the channel tests, and the split-point test, are MessagePack-only. The split-point test hangs
 the legacy MemoryPack read path (deviation 13).
 
-**Next steps (for the user):** decide on the gate. Before a go decision: a 24-hour fuzz run (harness 3 is still
-missing), and if the 5% invocation margin matters, a full run on an idle machine.
+**Next steps (for the user):** decide on the gate. A 24-hour libFuzzer run of all six harnesses started 2026-10-04 15:30 (ends about 2026-10-05 15:30), on
+commit `bee2bc8`, from `<scratchpad>/fuzzrun` (`start-24h.ps1`, `status.ps1`). If it stays clean,
+gate item 5 passes. If the 5% invocation margin matters, do a full benchmark run on an idle machine.
 
 ## Status by phase
 
@@ -132,9 +133,26 @@ missing), and if the 5% invocation margin matters, a full run on an idle machine
     `TestSerialization`; framing still uses StreamStruct. Requirements are in `streamstruct-requirements.md`.
 
 ### Fuzzing and benchmarks
-22. **Fuzz harness 3 (the session receive loop over an in-memory pipe) is not implemented.** It needs the private
-    `ProcessMessages` path. Implemented: `reader`, `messages`, `channel`, `formatters`, `builtins`. The smoke run takes
-    about 45 s, mostly the channel harness's short read timeouts.
+22. **Fuzz harness 3 (`session`) drives a real `NexusServer` over an in-memory transport**, one connection per input,
+    instead of calling the private `ProcessMessages`. Byte 0 of the input selects whether a valid preamble and a valid
+    `ClientGreeting` are sent first. A failure is any of: an exception escaping the harness, a session still open 5 s
+    after the stream ends, or the server logging an exception type other than serialization or cancellation errors.
+    The fuzz nexus has methods taking primitives, strings, POCOs, unions, channels, a raw pipe and a
+    `CancellationToken`.
+    - **Tooling:** libFuzzer through `libfuzzer-dotnet` (Windows build). The harness is selected with the
+      `NEXNET_FUZZ_HARNESS` environment variable, and `--export-corpus` writes the seeds.
+    - **Instrumentation:** a module initializer points SharpFuzz's trace at a scratch buffer, because the generated
+      formatter registrations run NexNet code before the fuzzer starts.
+    - **Bugs found and fixed** (all also present on master):
+      - an unknown message type fell through to an out-of-range `Slice` (`breakLoop` was never set);
+      - a stream ending inside the preamble spun the read loop until the handshake timeout;
+      - pooled pipe managers were reused while the old session's invocations could still register pipes into them,
+        attaching pipes to another session;
+      - `RegisterPipe`/`RentPipe` raced with `CancelAll`;
+      - sends raced with disconnect: the output was nulled or completed by another thread, so `PipeWriter` was used
+        from two threads.
+    - The failing inputs are kept in `Corpus/session-regressions.hex`. The smoke run (in `FuzzSmokeTests`) now takes
+      about 50 s to 2.5 min.
 23. **The `master` baseline is a separate worktree** (`git worktree add --detach <scratchpad>/master-baseline 57fef36`).
     The branch's invocation and channel benchmarks were ported there, with MemoryPack-only versions of the bench
     types and no `Security` parameter (master has no serializer options). `CollectionBenchmarks` was not implemented.
@@ -203,7 +221,8 @@ The wire format is unchanged: golden vectors and wire sizes are identical before
 ## Outstanding work
 
 - Generator NuGet `build/*.props` carrying `CompilerVisibleProperty Include="NexNetSerializer"` (packaging).
-- Fuzz harness for the session receive loop; nightly libFuzzer CI job.
+- Nightly libFuzzer CI job. The channel fuzz harness is slow (about 10 inputs/s, from its 5 ms read timeouts).
+- Delete the now-unused `PipeManagerPool` (pipe managers are no longer reused).
 - `CollectionBenchmarks`. Optionally, a full run on an idle machine to settle the 5% invocation margin.
 - PersonList100 (S+D 1.31–1.34): profile `ListFormatter<T>` and the writer's per-member path.
 - Channel Ints allocates ~3.7 KB/op more than MemoryPack (not investigated).
