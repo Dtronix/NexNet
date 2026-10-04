@@ -350,10 +350,33 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Cancel all current invocations.
         SessionInvocationStateManager.CancelAll();
 
-        // ReSharper disable once MethodHasAsyncOverload
+        // Complete the output under the write lock: PipeWriter is not thread-safe, and invocations may still be
+        // sending results. A writer blocked on back pressure is released first so the lock can be taken.
+        var output = _pipeOutput;
+        MutexSlim.LockToken writeLock = default;
         try
         {
-            _pipeOutput!.Complete();
+            output?.CancelPendingFlush();
+        }
+        catch (Exception)
+        {
+            // Best effort: stream-backed writers throw once their transport has already closed.
+        }
+
+        try
+        {
+            using var lockTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            writeLock = await _writeMutex.TryWaitAsync(lockTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger?.LogWarning("Timed out waiting for the write lock while disconnecting; completing the output without it.");
+        }
+
+        try
+        {
+            // ReSharper disable once MethodHasAsyncOverload
+            output?.Complete();
         }
         catch (ObjectDisposedException)
         {
@@ -363,8 +386,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             Logger?.LogError(e, "Error while completing output pipe.");
         }
-
-        _pipeOutput = null;
+        finally
+        {
+            _pipeOutput = null;
+            writeLock.Dispose();
+        }
         try
         {
             await _transportConnection.CloseAsync(true).ConfigureAwait(false);

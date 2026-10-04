@@ -192,7 +192,8 @@ public static class SessionHarness
         public static Server Start()
         {
             var server = new Server();
-            var config = new FuzzServerConfig(server._listener) { Logger = server.Logger };
+            // No linger after sending a disconnect message: it only adds wall time per input.
+            var config = new FuzzServerConfig(server._listener) { Logger = server.Logger, DisconnectDelay = 0 };
             var nexusServer = FuzzServerNexus.CreateServer(config, static () => new FuzzServerNexus());
             nexusServer.StartAsync().GetAwaiter().GetResult();
 
