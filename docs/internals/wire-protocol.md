@@ -119,6 +119,18 @@ Each item is a union value: `[tag: uint16, body: array]`. The first element of e
 | 7 | Remove | `[flags, version: int, index: int]` |
 | 8 | Noop | `[flags]` |
 
+### 4.8 Typed channel items
+A typed channel (`INexusDuplexChannel<T>`) sends its items as the raw bytes of `DuplexPipeWrite` frames on its pipe:
+
+- Each item is exactly one embedded value (§5).
+- Items are concatenated with no length prefix or separator.
+- The byte stream is independent of frame boundaries. An item may be split across several frames, and one frame
+  may carry many items.
+
+A reader decodes every complete item it has buffered and keeps an incomplete trailing item until more bytes arrive.
+A buffered incomplete item larger than the configured limit (16 MiB by default, §6) is a protocol error. With the
+legacy MemoryPack payload format, each item is a MemoryPack value instead.
+
 ## 5. Payload encoding (MessagePack payload format)
 
 ### 5.1 Canonical encoding
