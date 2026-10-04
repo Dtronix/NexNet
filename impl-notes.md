@@ -146,6 +146,55 @@ candidate fixes are under "What would move the gate" in `benchmark-results.md`.
     imported by `NexNet.csproj`. The spec lives at `docs/internals/wire-protocol.md` (next to the existing v1 spec)
     instead of `docs/wire-protocol.md`.
 
+### Optimization pass (2026-10-03)
+The wire format is unchanged: golden vectors and wire sizes are identical before and after.
+27. **`MsgPackReader` no longer wraps `SequenceReader<byte>`.** The cursor is the current segment as a span plus an
+    index, with out-of-line slow paths for segment crossing (`MoveNextSegment`, `TryReadByteSlow`, `AdvanceSlow`,
+    `TryReadBigEndianSlow`, `TryCopyToSlow`). Reaching the end of a segment does not advance to the next one until
+    a read needs more bytes. Positions are computed from the current segment's `SequencePosition`.
+    - **Why the earlier "span fast path" measured slower:** it was not kept, so the cause can't be confirmed. The likely
+      reason is that it added a span alongside `SequenceReader` rather than replacing it, which grew the struct and
+      added a branch to every read. The rewrite replaces the cursor entirely; the struct is smaller and hot reads
+      touch only `_span`/`_index`.
+    - The `ReadOnlyMemory<byte>` constructor uses `MemoryMarshal.TryGetArray` to build the sequence and span without
+      the out-of-line `ReadOnlySequence(ReadOnlyMemory)` constructor.
+28. **String decoding** no longer goes through `Encoding.GetString`.
+    - ASCII is checked with `Ascii.IsValid` and widened straight into the new string (`string.Create`).
+    - Other text is transcoded once with `Utf8.ToUtf16` into a stack buffer (≤ 256 bytes) or a pooled one, then copied.
+    - Strict mode reports invalid or truncated UTF-8 as `NexusSerializationException` (inner `DecoderFallbackException`);
+      Trusted replaces it with U+FFFD, as before.
+29. **Generated object formatters read members in a straight line when `count` equals the expected array length**
+    (max key + 1). Gaps are skipped. The `for`/`switch` loop remains for older peers (fewer members) and newer peers
+    (extra members, skipped).
+30. **Inline fast paths:**
+    - `ReadDouble`/`ReadSingle` for float64/float32.
+    - `ReadInt32` for fixints. Its slow path decodes the uint8/16 and int8/16/32 forms straight from the span before
+      falling back to `ReadInt64`.
+31. **`DateTimeFormatter.Deserialize` decodes Utc and Unspecified values directly.** It validates the ticks and calls
+    `new DateTime(ticks, kind)`, which gives the same result as `FromBinary`. Local values still go through
+    `FromBinary`, which does the time-zone conversion. The `try`/`catch` moved to that slow path.
+32. **ext 78 writes for arrays up to 4096 bytes use one `GetSpan`** for header, kind byte and data
+    (`MsgPackWriter.WriteExtHeader(Span<byte>, …)`). Reads take the kind byte with `ReadRawByte` instead of a
+    stackalloc copy.
+33. **`TrySkip` walks the current span with locals (`SkipInSpan`)** and falls back to the segment-crossing version.
+    The old version copied the whole reader three times per call, and the copy back through `this` went through
+    GC write-barrier helpers. A 256-entry size table was tried and measured slower than the switch, so it was
+    reverted.
+34. **Channel reads are optimistic away from the end of the buffer.** `NexusChannelReader` remembers the largest item
+    it has read. While the bytes left exceed twice that plus 16, items are deserialized without probing.
+    - If such a read throws, the reader restarts at the item and probes it with `TryGetNextValueLength`. An
+      incomplete item waits for more data; a complete item is malformed, so the error is rethrown.
+    - The fallback needs an item more than twice the largest seen, so it can happen at most about
+      log2(`MaxBufferedItemSize`) times per channel.
+    - Items near the end of the buffer are probed first and still get the "consumed exactly one value" check;
+      optimistic items don't. A formatter that consumes the wrong amount corrupts the following items, which then fail.
+35. **Benchmark harness:**
+    - `NEXNET_BENCH_INPROC=1` runs the default (full) job in-process with a 30-minute toolchain timeout. The default
+      5-minute timeout killed full runs of the channel benchmarks.
+    - `NEXNET_BENCH_MEDIUM=1` runs 10 warmups and 15 iterations in-process, for A/B checks.
+    - The ShortRun "Persons is slower non-fragmented" anomaly was a warmup artifact: `Fragmented=False` always runs
+      first in the process. With proper warmup (or a full job) it disappears.
+
 ## Outstanding work
 
 - Generator NuGet `build/*.props` carrying `CompilerVisibleProperty Include="NexNetSerializer"` (packaging).

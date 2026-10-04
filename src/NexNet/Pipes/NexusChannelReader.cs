@@ -26,6 +26,13 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     private readonly NexusFormatter<T>? _formatter;
     private readonly NexusSerializerOptions _options;
 
+    // Largest item read so far. While the buffer holds well over this many bytes, items are deserialized without
+    // probing first (see ReadMessagePack).
+    private long _largestItem;
+
+    // Extra bytes required beyond twice the largest item before an item is read without probing.
+    private const int OptimisticSlack = 16;
+
     /// <inheritdoc/>
     public bool IsComplete => Reader.IsCompleted;
 
@@ -96,34 +103,74 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     }
 
     /// <summary>
-    /// Reads all complete items from the buffer. Each item is probed with <see cref="MsgPackReader.TrySkip"/> before
-    /// it is deserialized, so a partial trailing item never throws.
+    /// Reads all complete items from the buffer without ever failing on a partial trailing item.
     /// </summary>
+    /// <remarks>
+    /// Near the end of the buffer each item's length is probed first (the TrySkip walk, without consuming), so an
+    /// incomplete item just waits for more data. While the remaining bytes exceed twice the largest item seen so
+    /// far, items are deserialized directly. If such an item turns out to be larger and fails, the reader is
+    /// restored and the item is probed: an incomplete item waits for more data, a complete one is malformed and the
+    /// error is rethrown. That fallback needs an item more than twice the largest seen, so it happens at most about
+    /// log2(<see cref="NexusSerializerOptions.MaxBufferedItemSize"/>) times per channel.
+    /// </remarks>
     private long ReadMessagePack<TTo>(
         ReadOnlySequence<byte> buffer,
         List<TTo> list,
         Converter<T, TTo>? converter)
     {
         var reader = new MsgPackReader(buffer, _options);
+        var bufferLength = buffer.Length;
+        long offset = 0; // position of the reader's start within buffer (changes only after a failed optimistic read)
         long consumed = 0;
         var formatter = _formatter!;
+        var largest = _largestItem;
+        var optimisticLimit = largest > 0 ? bufferLength - (2 * largest + OptimisticSlack) : -1;
 
-        while (true)
+        while (consumed < bufferLength)
         {
-            var probe = reader; // snapshot
-            if (!probe.TrySkip())
-                break; // incomplete item: wait for more data
-
             T? item = default;
-            formatter.Deserialize(ref reader, ref item);
+            if (consumed <= optimisticLimit)
+            {
+                try
+                {
+                    formatter.Deserialize(ref reader, ref item);
+                }
+                catch (NexusSerializationException)
+                {
+                    // Larger than any item so far: it may just be incomplete. Restart at the item and probe it.
+                    offset = consumed;
+                    reader = new MsgPackReader(buffer.Slice(consumed), _options);
+                    if (!reader.TryGetNextValueLength(out _))
+                        break; // incomplete item: wait for more data
 
-            // A formatter must consume exactly one value.
-            if (reader.Consumed != probe.Consumed)
-                throw new NexusSerializationException("Channel formatter did not consume exactly one MessagePack value.");
+                    throw;
+                }
+            }
+            else
+            {
+                // An incomplete item stops the loop: wait for more data.
+                if (!reader.TryGetNextValueLength(out var length))
+                    break;
+
+                formatter.Deserialize(ref reader, ref item);
+
+                // A formatter must consume exactly one value.
+                if (offset + reader.Consumed - consumed != length)
+                    throw new NexusSerializationException("Channel formatter did not consume exactly one MessagePack value.");
+            }
+
+            var end = offset + reader.Consumed;
+            if (end - consumed > largest)
+            {
+                largest = end - consumed;
+                optimisticLimit = bufferLength - (2 * largest + OptimisticSlack);
+            }
 
             list.Add(converter == null ? Unsafe.As<T, TTo>(ref item!) : converter(item!));
-            consumed = reader.Consumed;
+            consumed = end;
         }
+
+        _largestItem = largest;
 
         var remaining = buffer.Length - consumed;
         if (remaining > _options.MaxBufferedItemSize)

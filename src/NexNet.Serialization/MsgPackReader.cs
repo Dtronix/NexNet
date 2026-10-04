@@ -549,13 +549,55 @@ public ref struct MsgPackReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int ReadInt32()
     {
-        // Fast path for positive fixint.
-        if (TryPeekByteCore(out var code) && code <= MsgPackCode.MaxFixPositive)
+        // Fast path for positive and negative fixint.
+        var span = _span;
+        var index = _index;
+        if ((uint)index < (uint)span.Length)
         {
-            AdvanceCore(1);
-            return code;
+            var code = span[index];
+            if (code <= MsgPackCode.MaxFixPositive || code >= MsgPackCode.MinFixNegative)
+            {
+                _index = index + 1;
+                return code <= MsgPackCode.MaxFixPositive ? code : unchecked((sbyte)code);
+            }
         }
 
+        return ReadInt32Slow();
+    }
+
+    private int ReadInt32Slow()
+    {
+        // Sized forms decoded from the span; anything else (segment boundary, 64-bit forms, errors) falls back.
+        var span = _span;
+        var index = _index;
+        if (span.Length - index >= 5)
+        {
+            var data = span.Slice(index + 1);
+            switch (span[index])
+            {
+                case MsgPackCode.UInt8:
+                    _index = index + 2;
+                    return data[0];
+                case MsgPackCode.UInt16:
+                    _index = index + 3;
+                    return BinaryPrimitives.ReadUInt16BigEndian(data);
+                case MsgPackCode.Int8:
+                    _index = index + 2;
+                    return unchecked((sbyte)data[0]);
+                case MsgPackCode.Int16:
+                    _index = index + 3;
+                    return BinaryPrimitives.ReadInt16BigEndian(data);
+                case MsgPackCode.Int32:
+                    _index = index + 5;
+                    return BinaryPrimitives.ReadInt32BigEndian(data);
+            }
+        }
+
+        return ReadInt32Fallback();
+    }
+
+    private int ReadInt32Fallback()
+    {
         var value = ReadInt64();
         if (value < int.MinValue || value > int.MaxValue)
             throw NexusSerializationException.Overflow("Int32", new OverflowException());
@@ -1008,8 +1050,166 @@ public ref struct MsgPackReader
     /// <remarks>
     /// Iterative, with a pending-value counter instead of recursion, so deeply nested input costs no stack.
     /// The loop is bounded by the input length because every pending value needs at least one byte.
+    /// A value inside the current segment is skipped on the span alone; one that crosses segments (or is
+    /// incomplete) takes the slower path that walks the sequence.
     /// </remarks>
     public bool TrySkip()
+    {
+        var end = SkipInSpan(_span, _index);
+        if (end >= 0)
+        {
+            _index = end;
+            return true;
+        }
+
+        return TrySkipAcrossSegments();
+    }
+
+    /// <summary>
+    /// Gets the length in bytes of the next value without consuming it. Returns false if the value is incomplete.
+    /// Throws on malformed data (e.g. 0xc1).
+    /// </summary>
+    internal readonly bool TryGetNextValueLength(out long length)
+    {
+        var end = SkipInSpan(_span, _index);
+        if (end >= 0)
+        {
+            length = end - _index;
+            return true;
+        }
+
+        var probe = this;
+        if (!probe.TrySkipAcrossSegments())
+        {
+            length = 0;
+            return false;
+        }
+
+        length = probe.ConsumedCore - ConsumedCore;
+        return true;
+    }
+
+    /// <summary>
+    /// Skips one value that lies entirely within <paramref name="span"/> starting at <paramref name="index"/>.
+    /// Returns the index after the value, or -1 if the value runs past the end of the span (it may be incomplete or
+    /// continue in the next segment). Throws on 0xc1.
+    /// </summary>
+    private static int SkipInSpan(ReadOnlySpan<byte> span, int index)
+    {
+        long pending = 1;
+        while (pending > 0)
+        {
+            if ((uint)index >= (uint)span.Length)
+                return -1;
+
+            var code = span[index++];
+            pending--;
+            long skipBytes;
+            switch (code)
+            {
+                case <= MsgPackCode.MaxFixPositive:
+                case >= MsgPackCode.MinFixNegative:
+                case MsgPackCode.Nil:
+                case MsgPackCode.False:
+                case MsgPackCode.True:
+                    continue;
+                case >= MsgPackCode.MinFixMap and <= MsgPackCode.MaxFixMap:
+                    pending += 2L * (code & 0x0f);
+                    continue;
+                case >= MsgPackCode.MinFixArray and <= MsgPackCode.MaxFixArray:
+                    pending += code & 0x0f;
+                    continue;
+                case >= MsgPackCode.MinFixStr and <= MsgPackCode.MaxFixStr:
+                    skipBytes = code & 0x1f;
+                    break;
+                case MsgPackCode.UInt8:
+                case MsgPackCode.Int8:
+                    skipBytes = 1;
+                    break;
+                case MsgPackCode.UInt16:
+                case MsgPackCode.Int16:
+                    skipBytes = 2;
+                    break;
+                case MsgPackCode.Float32:
+                case MsgPackCode.UInt32:
+                case MsgPackCode.Int32:
+                    skipBytes = 4;
+                    break;
+                case MsgPackCode.Float64:
+                case MsgPackCode.UInt64:
+                case MsgPackCode.Int64:
+                    skipBytes = 8;
+                    break;
+                case MsgPackCode.FixExt1: skipBytes = 2; break;
+                case MsgPackCode.FixExt2: skipBytes = 3; break;
+                case MsgPackCode.FixExt4: skipBytes = 5; break;
+                case MsgPackCode.FixExt8: skipBytes = 9; break;
+                case MsgPackCode.FixExt16: skipBytes = 17; break;
+                case MsgPackCode.Bin8:
+                case MsgPackCode.Str8:
+                    if (span.Length - index < 1) return -1;
+                    skipBytes = 1 + span[index];
+                    break;
+                case MsgPackCode.Bin16:
+                case MsgPackCode.Str16:
+                    if (span.Length - index < 2) return -1;
+                    skipBytes = 2 + BinaryPrimitives.ReadUInt16BigEndian(span.Slice(index));
+                    break;
+                case MsgPackCode.Bin32:
+                case MsgPackCode.Str32:
+                    if (span.Length - index < 4) return -1;
+                    skipBytes = 4L + BinaryPrimitives.ReadUInt32BigEndian(span.Slice(index));
+                    break;
+                case MsgPackCode.Ext8:
+                    if (span.Length - index < 1) return -1;
+                    skipBytes = 1 + 1 + span[index]; // length, ext type, data
+                    break;
+                case MsgPackCode.Ext16:
+                    if (span.Length - index < 2) return -1;
+                    skipBytes = 2 + 1 + BinaryPrimitives.ReadUInt16BigEndian(span.Slice(index));
+                    break;
+                case MsgPackCode.Ext32:
+                    if (span.Length - index < 4) return -1;
+                    skipBytes = 4L + 1 + BinaryPrimitives.ReadUInt32BigEndian(span.Slice(index));
+                    break;
+                case MsgPackCode.Array16:
+                    if (span.Length - index < 2) return -1;
+                    pending += BinaryPrimitives.ReadUInt16BigEndian(span.Slice(index));
+                    skipBytes = 2;
+                    break;
+                case MsgPackCode.Array32:
+                    if (span.Length - index < 4) return -1;
+                    pending += BinaryPrimitives.ReadUInt32BigEndian(span.Slice(index));
+                    skipBytes = 4;
+                    break;
+                case MsgPackCode.Map16:
+                    if (span.Length - index < 2) return -1;
+                    pending += 2L * BinaryPrimitives.ReadUInt16BigEndian(span.Slice(index));
+                    skipBytes = 2;
+                    break;
+                case MsgPackCode.Map32:
+                    if (span.Length - index < 4) return -1;
+                    pending += 2L * BinaryPrimitives.ReadUInt32BigEndian(span.Slice(index));
+                    skipBytes = 4;
+                    break;
+                default:
+                    throw NexusSerializationException.UnexpectedCode(code, "any"); // 0xc1
+            }
+
+            if (skipBytes > span.Length - index)
+                return -1;
+
+            index += (int)skipBytes;
+        }
+
+        return index;
+    }
+
+    /// <summary>
+    /// <see cref="TrySkip"/> for values that cross segment boundaries or may be incomplete.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TrySkipAcrossSegments()
     {
         var r = this;
         long pending = 1;

@@ -6,20 +6,6 @@ namespace NexNetBenchmarks
     {
         public static void Main(string[] args)
         {
-            if (args.Length > 0 && args[0] == "--probe")
-            {
-                Probe.Run(args).GetAwaiter().GetResult();
-                return;
-            }
-
-#if !NEXNET_MEMORYPACK
-            if (args.Length > 0 && args[0] == "--micro")
-            {
-                ProbeMicro.Run();
-                return;
-            }
-#endif
-
             if (args.Length > 0 && args[0] == "--sizes")
             {
                 SerializerBenchmarks.PrintWireSizes();
