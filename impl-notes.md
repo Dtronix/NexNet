@@ -3,39 +3,42 @@
 Companion to `impl-plan.md`. This records deviations from the plan, design decisions the plan did not cover, and
 outstanding work. Nothing is committed; all changes are in the `worktree-messagepack-eval` worktree.
 
-## Progress snapshot (updated 2026-10-03)
+## Progress snapshot (updated 2026-10-04)
 
-**Done:** Phases 0–7. The final benchmark pass is written up in **`benchmark-results.md`**. **Stopped at the
-§11.3 gate**, which fails as measured. Phase 8 has not been started; the go/no-go decision belongs to the user.
+**Done:** Phases 0–7, plus an optimization pass on the MessagePack backend (deviations 27–35). Benchmarks were rerun
+as full BenchmarkDotNet jobs with a master baseline; see **`benchmark-results.md`**. **Stopped at the §11.3 gate.**
+Phase 8 has not been started; the go/no-go decision belongs to the user.
 
-**Gate result** (details and numbers in `benchmark-results.md`):
+**Gate result after the optimization pass** (details in `benchmark-results.md`; ratios are min / median of two full
+runs per backend):
 
 | # | Criterion | Result |
 |---|---|---|
-| 1 | Invocation within 5%, allocations no higher | Fail (provisional). Allocations are lower in every case; Untrusted argument calls are +4–16% (min of runs), close to the noise floor. |
-| 2 | POCO serialize + deserialize within 25% | Fail, marginally: +25% to +30%. |
-| 3 | Primitive arrays within 15% | Partial: 1K and 64K pass (−2% to +7%); 16 elements fail (+47–57%). |
-| 4 | Channels within 15%, fragmented better | Fail. Persons +48–88%, Ints +37–40%; IntArrays256 at parity or better. |
+| 1 | Invocation within 5%, allocations no higher | **Pass.** 0.81–1.03 / 0.76–0.95 of branch-MemoryPack. Allocations are equal or lower for argument calls. The back-to-back run-2 pair has 3 of 14 rows at +6–7%, which is below run-to-run noise. |
+| 2 | POCO serialize + deserialize within 25% | **Pass.** 0.85 / 0.89 (was 1.25–1.30). |
+| 3 | Primitive arrays within 15% | **Pass.** Doubles16 1.04 / 1.03 (was 1.47–1.57), 1K 1.03, 64K 0.99. |
+| 4 | Channels within 15%, fragmented better | **Pass, one marginal case.** All within +3% (min) / +9% (median). Fragmented Persons 0.98 / 0.95 and Ints 0.95 / 0.95; IntArrays256 1.02 / 0.99. |
 | 5 | Fuzzing clean for 24 h | Not measured; smoke run only. |
 
-The root cause is deserialization: a fixed ~25 ns per-call reader overhead plus slower string and object decoding.
-Serialization speed and wire size are at or ahead of MemoryPack.
+The gate is not formally passed, because item 5 has not been run. Remaining outliers outside the gate:
+PersonList100 S+D 1.31–1.34 and Int32 2.7×, the latter a fixed ~12 ns per-call cost.
 
-**Tree state:** final code, unchanged since the last green run. The Phase 7 benchmark pass made no code changes.
-The `bin` folders hold the **MessagePack** build (rebuilt last, 0 errors). Last verified green, with 0 build errors
-in both backends:
+**Tree state:** committed and pushed to `origin/worktree-messagepack-eval` (WIP commits). The user asked for backups
+on the remote branch, which overrides the earlier no-commit rule for this branch. The `bin` folders hold the
+**MessagePack** build. Last verified green, with 0 build errors in both backends:
 
 | Backend | Serialization | Generator | Integration |
 |---|---|---|---|
-| MessagePack | 228/228 | 171/171 | 2562/2562 |
-| MemoryPack | 210/210 | 171/171 | 2562/2562 |
+| MessagePack | 249/249 | 171/171 | 2566/2566 |
+| MemoryPack | 230/230 | 171/171 | 2563/2563 |
 
-The `MsgPackReader` span fast path was reverted, because it measured slower. `InvocationMessage.ArgumentsOwner`
-(the pooled argument buffer, returned on dispose after sending) is kept.
+The new tests are `ReaderCursorTests` (segment boundaries, empty segments, every string decode path, and invalid or
+truncated UTF-8), extra members from a newer peer, out-of-range `DateTime`, and channel reader tests for the
+optimistic path. Two of the channel tests, and the split-point test, are MessagePack-only. The split-point test hangs
+the legacy MemoryPack read path (deviation 13).
 
-**Next steps (for the user):** decide on the gate. If more data is wanted, start with a full (non-short) benchmark run
-on an idle machine, plus profiling of the deserialize path and the non-fragmented Persons channel anomaly. The
-candidate fixes are under "What would move the gate" in `benchmark-results.md`.
+**Next steps (for the user):** decide on the gate. Before a go decision: a 24-hour fuzz run (harness 3 is still
+missing), and if the 5% invocation margin matters, a full run on an idle machine.
 
 ## Status by phase
 
@@ -48,7 +51,7 @@ candidate fixes are under "What would move the gate" in `benchmark-results.md`.
 | 4: Channels and pipes | Done. Channel reader probes with `TrySkip` (no exceptions on partial items). NEXNET038 analyzer. Unmanaged channel API removed. |
 | 5: Options and security | Done. `ConfigBase.SerializerOptions` (Untrusted default) reaches message pools, generated invokers, results, channels and collections. |
 | 6: Collections | Done. Union messages hand-written; values go through the active payload backend. |
-| 7: Benchmarks | Done. Final short in-process pass for both backends (invocation and channel runs repeated and interleaved); gate evaluated in `benchmark-results.md`. **Gate fails.** |
+| 7: Benchmarks | Done, plus an optimization pass. Full in-process jobs, 2 runs per backend plus master, interleaved; gate re-evaluated in `benchmark-results.md`. **Items 1–4 pass (4 marginal in one case); 5 not measured.** |
 | 8/9: Remove MemoryPack, docs and migration | **Not started**, by instruction (the gate decision belongs to the user). |
 
 ## Deviations from the plan
@@ -132,14 +135,16 @@ candidate fixes are under "What would move the gate" in `benchmark-results.md`.
 22. **Fuzz harness 3 (the session receive loop over an in-memory pipe) is not implemented.** It needs the private
     `ProcessMessages` path. Implemented: `reader`, `messages`, `channel`, `formatters`, `builtins`. The smoke run takes
     about 45 s, mostly the channel harness's short read timeouts.
-23. **No `master` baseline benchmark run.** Comparisons are branch-MemoryPack vs branch-MessagePack, built from the same
-    tree. `CollectionBenchmarks` was not implemented.
+23. **The `master` baseline is a separate worktree** (`git worktree add --detach <scratchpad>/master-baseline 57fef36`).
+    The branch's invocation and channel benchmarks were ported there, with MemoryPack-only versions of the bench
+    types and no `Security` parameter (master has no serializer options). `CollectionBenchmarks` was not implemented.
 24. **`BenchmarkConfig`** targeted `CoreRuntime.Core90` although the project is net10.0. It now uses the host runtime.
     `NEXNET_BENCH_SHORT=1` selects an in-process `ShortRun`, so the already built backend is measured.
-26. **Benchmark method for the gate:** other workloads were loading the machine during the final pass (50–75% CPU), so
-    the invocation and channel benchmarks were run 2× (MessagePack) and 3× (MemoryPack), interleaved by backend with a
-    rebuild between runs. The gate is judged on the **minimum across runs**, with the median also reported. The plan
-    assumed one run per build. Full (non-short) runs were not done.
+26. **Benchmark method for the gate:** the machine was under background load, so every benchmark was run twice per
+    backend as a full BenchmarkDotNet job, in-process, alternating MessagePack, MemoryPack and master, with a
+    rebuild before each backend switch. The gate is judged on the **minimum across runs**, with the median also
+    reported. The plan assumed one run per build. The earlier ShortRun pass is kept in `benchmark-results.md` under
+    "Before optimization".
 
 ### Other
 25. **The shared project (`.shproj`) is not in `NexNet.slnx`,** because the dotnet CLI cannot build `.shproj` files. It is
@@ -199,10 +204,10 @@ The wire format is unchanged: golden vectors and wire sizes are identical before
 
 - Generator NuGet `build/*.props` carrying `CompilerVisibleProperty Include="NexNetSerializer"` (packaging).
 - Fuzz harness for the session receive loop; nightly libFuzzer CI job.
-- `CollectionBenchmarks`; a benchmark run against `master` as a third baseline; full (non-short) benchmark runs on an
-  idle machine; profiling of the deserialize path and of the MessagePack non-fragmented Persons channel anomaly (it is
-  slower than the fragmented case; see `benchmark-results.md`).
+- `CollectionBenchmarks`. Optionally, a full run on an idle machine to settle the 5% invocation margin.
+- PersonList100 (S+D 1.31–1.34): profile `ListFormatter<T>` and the writer's per-member path.
+- Channel Ints allocates ~3.7 KB/op more than MemoryPack (not investigated).
 - Dedupe generated formatters per assembly.
-- Assume-ASCII string write variant and a span fast path in the reader that bypasses `SequenceReader` (§11 follow-ups).
+- Assume-ASCII string write variant (§11 follow-up). The span-based reader is done (deviation 27).
 - Phases 8–9 after the gate decision: remove MemoryPack, update `llm-usage.md`, `llm-dev.md` and DocFX, write the
   migration guide.
