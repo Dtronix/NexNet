@@ -379,9 +379,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         await _disconnectionCts.CancelAsync().ConfigureAwait(false);
         OnStateChanged?.Invoke(State);
 
-        // Cancel all pipes and return pipe manager to the cache.
+        // Cancel all pipes. The manager is not returned to the pool: invocations of this session can still be running
+        // (CancelAll above only signals them), and one that registers a pipe after a reuse would attach it to another
+        // session.
         PipeManager.CancelAll();
-        _poolManager.PipeManagerPool.Return(PipeManager);
 
         _nexus.Disconnected(reason);
         OnDisconnected?.Invoke();

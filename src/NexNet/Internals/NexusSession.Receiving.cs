@@ -61,7 +61,16 @@ internal partial class NexusSession<TNexus, TProxy>
                             await DisconnectCore(disconnect, true).ConfigureAwait(false);
                             return;
                         }
-                        
+
+                        // The stream ended before a full header arrived: no more data will come, so waiting would spin
+                        // until the handshake timeout.
+                        if (result.IsCompleted || result.IsCanceled)
+                        {
+                            Logger?.LogTrace("Stream ended before the protocol header was complete.");
+                            await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+                            return;
+                        }
+
                         _pipeInput?.AdvanceTo(result.Buffer.Start, result.Buffer.End);
                         continue;
                     }
@@ -192,6 +201,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             Logger?.LogInfo($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
                             // If we are outside the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
+                            breakLoop = true;
                             break;
                     }
 

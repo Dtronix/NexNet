@@ -8,7 +8,7 @@ public static class SmokeRunner
 {
     public static int Run(string corpusDirectory, TextWriter? log = null)
     {
-        var inputs = LoadCorpus(corpusDirectory).Concat(GeneratedSeeds()).ToList();
+        var inputs = LoadCorpus(corpusDirectory).Concat(GeneratedSeeds()).Concat(SessionHarness.Seeds()).ToList();
         var mutated = new List<byte[]>();
         var random = new Random(1234);
         foreach (var input in inputs)
@@ -35,7 +35,23 @@ public static class SmokeRunner
         foreach (var (name, harness) in Harnesses.All)
         {
             foreach (var input in mutated)
-                harness(input);
+            {
+                var started = System.Diagnostics.Stopwatch.GetTimestamp();
+                try
+                {
+                    harness(input);
+                }
+                catch (Exception e)
+                {
+                    // Print a reproducer: the harness name and the input as hex (a corpus line).
+                    log?.WriteLine($"  {name}: FAILED on input {Convert.ToHexString(input)}");
+                    throw new InvalidOperationException($"Harness '{name}' failed on input {Convert.ToHexString(input)}", e);
+                }
+
+                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+                if (elapsed > TimeSpan.FromSeconds(1))
+                    log?.WriteLine($"  {name}: slow input ({elapsed.TotalMilliseconds:F0} ms) {Convert.ToHexString(input)}");
+            }
 
             log?.WriteLine($"  {name}: {mutated.Count} inputs OK");
         }

@@ -21,6 +21,7 @@ public static class Harnesses
         ["channel"] = Channel,
         ["formatters"] = GeneratedFormatters,
         ["builtins"] = BuiltInFormatters,
+        ["session"] = SessionHarness.Run,
     };
 
     /// <summary>

@@ -29,6 +29,10 @@ internal class NexusPipeManager
             _currentId = 0;
             _usedIds.SetAll(false);
         }
+
+        // Managers are pooled. A registration that raced with CancelAll on the previous session can leave a stale
+        // entry behind, which would collide with this session's first pipe of the same ID.
+        _activePipes.Clear();
         _isCanceled = false;
         _session = session;
         _logger = session.Logger?.CreateLogger("PipeManager");
@@ -47,6 +51,13 @@ internal class NexusPipeManager
         };
 
         _activePipes.TryAdd(partialId, pipe);
+
+        // CancelAll may have run between the check above and the add; don't leave the pipe behind.
+        if (_isCanceled)
+        {
+            _activePipes.TryRemove(partialId, out _);
+            return null;
+        }
 
         return pipe;
     }
@@ -91,6 +102,14 @@ internal class NexusPipeManager
 
         if (!_activePipes.TryAdd(id, pipe))
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
+
+        // CancelAll may have run between the check above and the add; don't leave the pipe behind.
+        if (_isCanceled)
+        {
+            _activePipes.TryRemove(id, out _);
+            pipe.Dispose();
+            throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
+        }
 
         // Signal that the pipe is ready to receive and send messages.
         pipe.UpdateState(State.Ready);
