@@ -1,5 +1,6 @@
 using System.Buffers;
 using NexNet.Messages;
+using NexNet.Serialization;
 
 namespace NexNet.Pools;
 
@@ -17,8 +18,9 @@ internal interface IPooledMessage
     /// Deserializes the given sequence of bytes into a message.
     /// </summary>
     /// <param name="bodySequence">The sequence of bytes to be deserialized.</param>
+    /// <param name="options">Deserialization options.</param>
     /// <returns>The deserialized message.</returns>
-    IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence);
+    IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence, NexusSerializerOptions options);
 
     /// <summary>
     /// Returns the specified message item back to the pool.

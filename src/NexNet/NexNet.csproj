@@ -9,16 +9,19 @@
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />
     <InternalsVisibleTo Include="NexNet.Asp" />
     <InternalsVisibleTo Include="NexNetBenchmarks" />
+    <InternalsVisibleTo Include="NexNet.Serialization.Tests" />
+    <InternalsVisibleTo Include="NexNet.Fuzz" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
+    <PackageReference Include="MemoryPack" Version="1.21.4" Condition="'$(NexNetSerializer)' == 'MemoryPack'" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Internals\Pipelines\Arenas\Allocator.cs" />
   </ItemGroup>
+  <Import Project="..\NexNet.Serialization\NexNet.Serialization.projitems" Label="Shared" />
 </Project>

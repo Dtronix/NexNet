@@ -1,9 +1,9 @@
-﻿using System;
+using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using MemoryPack;
+using NexNet.Internals;
+using NexNet.Serialization;
 
 namespace NexNet.Collections;
 
@@ -12,17 +12,23 @@ internal abstract class NexusCollectionValueMessage<TMessage, TUnion> : NexusCol
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
     private bool _isArgumentPoolArray;
+    private NexusSerializerOptions _options = NexusSerializerOptions.Untrusted;
 
     protected Memory<byte> ValueCore;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TValue? DeserializeValue<TValue>()
     {
-        return MemoryPackSerializer.Deserialize<TValue>(ValueCore.Span);
+        return PayloadSerializer.Deserialize<TValue>(ValueCore, _options);
     }
 
-    protected void OnDeserializedCore()
+    /// <summary>
+    /// Reads the embedded value into a pooled buffer that is returned with the message.
+    /// </summary>
+    protected void ReadValueCore(ref MsgPackReader reader)
     {
+        _options = reader.Options;
+        ValueCore = PayloadSerializer.ReadEmbeddedToPooled(ref reader);
         _isArgumentPoolArray = true;
     }
 

@@ -109,8 +109,10 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
         ushort methodId,
         Memory<byte> serializedArguments,
         INexusSession session,
-        CancellationToken? cancellationToken = null)
+        CancellationToken? cancellationToken = null,
+        NexNet.Serialization.PooledArrayBufferWriter? argumentsOwner = null)
     {
+        argumentsOwner?.Return();
         // No-op for testing - return null
         return ValueTask.FromResult<RegisteredInvocationState?>(null);
     }

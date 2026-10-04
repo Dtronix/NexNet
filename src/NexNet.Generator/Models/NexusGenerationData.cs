@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using NexNet.Generator.Serialization;
 
 namespace NexNet.Generator.Models;
 
@@ -34,4 +35,16 @@ internal sealed record NexusGenerationData(
     // Diagnostic locations
     LocationData ClassLocation,
     LocationData IdentifierLocation
-);
+)
+{
+    /// <summary>
+    /// Generated MessagePack formatter classes and registrations for every type reachable from the nexus
+    /// (emitted only with the MessagePack serializer backend).
+    /// </summary>
+    public string SerializationCode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Serialization diagnostics (reported only with the MessagePack serializer backend).
+    /// </summary>
+    public ImmutableArray<SerializationDiagnostic> SerializationDiagnostics { get; init; } = ImmutableArray<SerializationDiagnostic>.Empty;
+}

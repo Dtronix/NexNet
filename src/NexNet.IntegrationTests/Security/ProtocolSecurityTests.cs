@@ -159,6 +159,44 @@ internal class ProtocolSecurityTests : BaseTests
     }
     
     [Test]
+    public async Task PayloadFormatMismatch_ShouldDisconnectWithProtocolError()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await client.ConnectAsync();
+
+        // Send a protocol header advertising the other payload serializer.
+        var otherFormat = RawTcpClient.PayloadFormat == (byte)NexNet.Internals.PayloadFormat.MessagePack
+            ? (byte)NexNet.Internals.PayloadFormat.MemoryPack
+            : (byte)NexNet.Internals.PayloadFormat.MessagePack;
+        await client.SendProtocolHeaderAsync(payloadFormat: otherFormat);
+        await client.ReadProtocolHeaderAsync();
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+    }
+
+    [Test]
+    public async Task ProtocolVersion1Header_ShouldDisconnectWithProtocolError()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await client.ConnectAsync();
+
+        // Legacy v1 header: reserved bytes zero, version 1.
+        await client.AssertWrite(RawTcpClient.ProtocolHeader,
+            [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', (byte)0, (byte)0, (byte)0, (byte)1]);
+        await client.ReadProtocolHeaderAsync();
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+    }
+
+    [Test]
     [Repeat(10)]
     public async Task MalformedMessageHeader_PreClientGreeting_ShouldDisconnectWithProtocolError()
     {

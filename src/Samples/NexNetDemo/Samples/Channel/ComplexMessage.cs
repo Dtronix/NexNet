@@ -1,17 +1,19 @@
 ﻿using MemoryPack;
+using NexNet.Serialization;
 
 namespace NexNetDemo.Samples.Channel;
 
 [MemoryPackable]
+[NexusObject]
 public partial class ComplexMessage
 {
-    public int Integer { get; set; }
-    public string String1 { get; set; } = null!;
-    public string? StringNull { get; set; }
+    [NexusKey(0)] public int Integer { get; set; }
+    [NexusKey(1)] public string String1 { get; set; } = null!;
+    [NexusKey(2)] public string? StringNull { get; set; }
 
-    public DateTime DateTime { get; set; }
-    public DateTimeOffset DateTimeOffset { get; set; }
-    public DateTimeOffset? DateTimeOffsetNull { get; set; }
+    [NexusKey(3)] public DateTime DateTime { get; set; }
+    [NexusKey(4)] public DateTimeOffset DateTimeOffset { get; set; }
+    [NexusKey(5)] public DateTimeOffset? DateTimeOffsetNull { get; set; }
 
     public static ComplexMessage Random()
     {

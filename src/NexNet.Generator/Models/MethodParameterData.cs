@@ -13,7 +13,6 @@ internal sealed record MethodParameterData(
     int SerializedId,                   // ID for serialization (0 if not serialized)
     bool IsCancellationToken,
     bool IsDuplexPipe,                  // INexusDuplexPipe parameter
-    bool IsDuplexUnmanagedChannel,      // INexusDuplexUnmanagedChannel<T> parameter
     bool IsDuplexChannel,               // INexusDuplexChannel<T> parameter
     bool UtilizesDuplexPipe,            // Any duplex pipe type
     string? ChannelType,                // Generic type argument for channel types

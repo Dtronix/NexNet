@@ -15,7 +15,7 @@ public class ChannelSample : SampleBase
     {
         var(server, client) = await Setup();
 
-        await using var channel = client.CreateUnmanagedChannel<int>();
+        await using var channel = client.CreateChannel<int>();
 
         await client.Proxy.IntegerChannel(channel);
 
@@ -34,7 +34,7 @@ public class ChannelSample : SampleBase
     {
         var (server, client) = await Setup();
 
-        await using var pipe = client.CreateUnmanagedChannel<ChannelSampleStruct>();
+        await using var pipe = client.CreateChannel<ChannelSampleStruct>();
 
         await client.Proxy.StructChannel(pipe);
 
@@ -77,7 +77,7 @@ public class ChannelSample : SampleBase
     {
         var (server, client) = await Setup();
 
-        await using var pipe = client.CreateUnmanagedChannel<ChannelSampleStruct>();
+        await using var pipe = client.CreateChannel<ChannelSampleStruct>();
 
 
         await client.Proxy.StructChannel(pipe);

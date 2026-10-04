@@ -1,6 +1,7 @@
 ﻿using System;
-using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
+
+using NexNet.Internals;
 
 namespace NexNet.Collections.Lists;
 
@@ -77,7 +78,7 @@ internal static class NexusListTransformers<T>
                 var message = NexusCollectionListInsertMessage.Rent();
                 message.Version = version;
                 message.Index = insert.Index;
-                message.Value = MemoryPackSerializer.Serialize(insert.Item);
+                message.Value = PayloadSerializer.Serialize(insert.Item);
                 return (message, NexusCollectionChangedAction.Add);
             }
             case ModifyOperation<T> modify:
@@ -85,7 +86,7 @@ internal static class NexusListTransformers<T>
                 var message = NexusCollectionListReplaceMessage.Rent();
                 message.Version = version;
                 message.Index = modify.Index;
-                message.Value = MemoryPackSerializer.Serialize(modify.Value);
+                message.Value = PayloadSerializer.Serialize(modify.Value);
                 return (message, NexusCollectionChangedAction.Replace);
             }
             case MoveOperation<T> move:

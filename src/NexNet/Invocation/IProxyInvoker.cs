@@ -7,6 +7,7 @@ using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Serialization;
 
 namespace NexNet.Invocation;
 
@@ -68,6 +69,54 @@ public interface IProxyInvoker
     /// <exception cref="ProxyRemoteInvocationException">Throws this exception if the remote invocation threw an exception.</exception>
     /// <exception cref="InvalidOperationException">Invocation returned invalid state data upon completion.</exception>
     ValueTask<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken = null);
+
+    /// <summary>
+    /// Invokes the specified method with arguments written into a pooled buffer. The buffer is returned to its pool
+    /// once the invocation message has been sent.
+    /// </summary>
+    async ValueTask ProxyInvokeMethodCore(ushort methodId, PooledArrayBufferWriter serializedArguments, InvocationFlags flags)
+    {
+        try
+        {
+            await ProxyInvokeMethodCore(methodId, serializedArguments.WrittenMemory, flags).ConfigureAwait(false);
+        }
+        finally
+        {
+            serializedArguments.Return();
+        }
+    }
+
+    /// <summary>
+    /// Invokes a method with arguments written into a pooled buffer and waits for completion.
+    /// The buffer is returned to its pool when the invocation completes.
+    /// </summary>
+    async ValueTask ProxyInvokeAndWaitForResultCore(ushort methodId, PooledArrayBufferWriter serializedArguments, CancellationToken? cancellationToken = null)
+    {
+        try
+        {
+            await ProxyInvokeAndWaitForResultCore(methodId, serializedArguments.WrittenMemory, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            serializedArguments.Return();
+        }
+    }
+
+    /// <summary>
+    /// Invokes a method with arguments written into a pooled buffer, waits for completion and returns the result.
+    /// The buffer is returned to its pool when the invocation completes.
+    /// </summary>
+    async ValueTask<TReturn> ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, PooledArrayBufferWriter serializedArguments, CancellationToken? cancellationToken = null)
+    {
+        try
+        {
+            return await ProxyInvokeAndWaitForResultCore<TReturn>(methodId, serializedArguments.WrittenMemory, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            serializedArguments.Return();
+        }
+    }
 
     /// <summary>
     /// Gets the Initial Id of the duplex pipe.

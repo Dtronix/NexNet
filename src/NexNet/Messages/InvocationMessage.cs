@@ -1,49 +1,58 @@
-﻿using System;
+using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MemoryPack;
 using NexNet.Pools;
+using NexNet.Serialization;
 
 namespace NexNet.Messages;
 
 /// <summary>
 /// Contains an invocation request message data.
+/// Body: <c>[invocationId (uint16), methodId (uint16), flags (uint8), arguments]</c>.
+/// With the MessagePack payload format the arguments are an embedded MessagePack array; with the MemoryPack payload
+/// format they are a bin value holding the MemoryPack bytes.
 /// </summary>
-[MemoryPackable(SerializeLayout.Explicit)]
 internal partial class InvocationMessage : IMessageBase, IInvocationMessage
 {
     /// <summary>
-    /// True if the message was deserialized from a pool.
+    /// True if the arguments were deserialized into a pooled array.
     /// </summary>
     private bool _isArgumentPoolArray;
     public static MessageType Type { get; } = MessageType.Invocation;
 
     private IPooledMessage? _messageCache = null!;
 
-    [MemoryPackIgnore]
     public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }
 
-    [MemoryPackOrder(0)]
     public ushort InvocationId { get; set; }
 
-    [MemoryPackOrder(1)]
     public ushort MethodId { get; set; }
 
-    [MemoryPackOrder(2)]
     public InvocationFlags Flags { get; set; } = InvocationFlags.None;
 
-    [MemoryPackOrder(3)]
-    [MemoryPoolFormatter<byte>]
     public Memory<byte> Arguments { get; set; }
+
+    /// <summary>
+    /// Pooled buffer that backs <see cref="Arguments"/> on the sending side; returned to its pool when this message
+    /// is disposed (after it has been sent to every target).
+    /// </summary>
+    internal PooledArrayBufferWriter? ArgumentsOwner;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
     {
-        return MemoryPackSerializer.Deserialize<T>(Arguments.Span);
+#if NEXNET_MEMORYPACK
+        return MemoryPack.MemoryPackSerializer.Deserialize<T>(Arguments.Span);
+#else
+        var reader = new MsgPackReader(Arguments);
+        T? value = default;
+        NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref value);
+        return value;
+#endif
     }
 
     /// <summary>
@@ -58,14 +67,49 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         return Arguments.Length <= IInvocationMessage.MaxArgumentSize;
     }
 
-    [MemoryPackOnDeserialized]
-    private void OnDeserialized()
+    public void Serialize(ref MsgPackWriter writer)
     {
+        writer.WriteArrayHeader(4);
+        writer.Write(InvocationId);
+        writer.Write(MethodId);
+        writer.Write((byte)Flags);
+#if NEXNET_MEMORYPACK
+        writer.WriteBinary(Arguments.Span);
+#else
+        if (Arguments.IsEmpty)
+            writer.WriteArrayHeader(0); // methods without serialized parameters still send an empty array
+        else
+            writer.WriteRaw(Arguments.Span); // already a MessagePack array produced by generated code
+#endif
+    }
+
+    public void Deserialize(ref MsgPackReader reader)
+    {
+        reader.ReadArrayHeader(4);
+        InvocationId = reader.ReadUInt16();
+        MethodId = reader.ReadUInt16();
+        Flags = (InvocationFlags)reader.ReadByte();
+#if NEXNET_MEMORYPACK
+        Arguments = reader.ReadBinaryToPooled(out _);
+#else
+        // An empty argument array (0x90) is the wire form of "no serialized arguments".
+        if (reader.PeekCode() == MsgPackCode.MinFixArray)
+        {
+            reader.ReadArrayHeader();
+            Arguments = Memory<byte>.Empty;
+            _isArgumentPoolArray = false;
+            return;
+        }
+
+        Arguments = IMessageBase.ReadEmbeddedValueToPooled(ref reader);
+#endif
         _isArgumentPoolArray = true;
     }
 
     public void Dispose()
     {
+        Interlocked.Exchange(ref ArgumentsOwner, null)?.Return();
+
         var cache = Interlocked.Exchange(ref _messageCache, null);
 
         if (cache == null)
@@ -75,10 +119,10 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         {
             // Reset the pool flag.
             _isArgumentPoolArray = false;
-            IMessageBase.ReturnMemoryPackMemory(Arguments);
-            Arguments = default;
+            IMessageBase.ReturnPooledMemory(Arguments);
         }
 
+        Arguments = default;
         cache.Return(this);
     }
 }

@@ -9,8 +9,8 @@ interface IChannelSampleClientNexus
 
 interface IChannelSampleServerNexus
 {
-    ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel);
-    ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel);
+    ValueTask IntegerChannel(INexusDuplexChannel<int> channel);
+    ValueTask StructChannel(INexusDuplexChannel<ChannelSampleStruct> channel);
     ValueTask ClassChannel(INexusDuplexChannel<ComplexMessage> channel);
     ValueTask ClassChannelBatch(INexusDuplexChannel<ComplexMessage> channel);
     ValueTask DifferentTypesChannel(INexusDuplexPipe pipe);
@@ -26,7 +26,7 @@ partial class ChannelSampleClientNexus
 [Nexus<IChannelSampleServerNexus, IChannelSampleClientNexus>(NexusType = NexusType.Server)]
 partial class ChannelSampleServerNexus
 {
-    public async ValueTask IntegerChannel(INexusDuplexUnmanagedChannel<int> channel)
+    public async ValueTask IntegerChannel(INexusDuplexChannel<int> channel)
     {
         var writer = await channel.GetWriterAsync();
         var count = 0;
@@ -37,7 +37,7 @@ partial class ChannelSampleServerNexus
         }
     }
 
-    public async ValueTask StructChannel(INexusDuplexUnmanagedChannel<ChannelSampleStruct> channel)
+    public async ValueTask StructChannel(INexusDuplexChannel<ChannelSampleStruct> channel)
     {
         var writer = await channel.GetWriterAsync();
         var count = 0;

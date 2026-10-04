@@ -1,5 +1,4 @@
 ﻿using System;
-using MemoryPack;
 using NexNet.Collections.Lists;
 using NexNet.Pipes.Broadcast;
 

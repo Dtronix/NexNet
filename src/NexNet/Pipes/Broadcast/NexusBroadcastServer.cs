@@ -38,7 +38,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
             return;
         }
         
-        var writer = new NexusChannelWriter<TUnion>(pipe);
+        var writer = new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>());
         var client = new NexusBroadcastSession<TUnion>(pipe, writer, session);
         _connectionManager.AddClientAsync(client);
         
@@ -60,7 +60,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         await writer.Writer.FlushAsync().ConfigureAwait(false);
         
         var reader = Mode == NexusCollectionMode.BiDirectional 
-            ? new NexusChannelReader<TUnion>(pipe) 
+            ? new NexusChannelReader<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) 
             : null;
 
         if (reader != null)

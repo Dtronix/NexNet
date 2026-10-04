@@ -221,6 +221,103 @@ internal static class DiagnosticDescriptors
         category: Category,
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
+
+    // ------------------------------------------------------------------ Serialization (MessagePack backend)
+
+    public static readonly DiagnosticDescriptor TypeNotSerializable = new(
+        id: "NEXNET028",
+        title: "Type is not serializable",
+        messageFormat: "The type '{0}' used by '{1}' has no NexNet formatter. Annotate it with [NexusObject], register a formatter with [assembly: NexusFormatter<TFormatter, T>] or use a supported built-in type.",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor DuplicateNexusKey = new(
+        id: "NEXNET029",
+        title: "Duplicate NexusKey",
+        messageFormat: "The type '{0}' has a duplicate or negative [NexusKey] on member '{1}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor MissingNexusKey = new(
+        id: "NEXNET030",
+        title: "Public member requires NexusKey or NexusIgnore",
+        messageFormat: "The public member '{1}' of [NexusObject] type '{0}' must have [NexusKey] or [NexusIgnore]",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor UnassignableMember = new(
+        id: "NEXNET031",
+        title: "Keyed member cannot be assigned",
+        messageFormat: "The member '{1}' of [NexusObject] type '{0}' cannot be assigned during deserialization (no setter, init accessor, matching constructor parameter or backing field)",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor NoUsableConstructor = new(
+        id: "NEXNET032",
+        title: "No usable constructor",
+        messageFormat: "The [NexusObject] type '{0}' has no usable constructor. Provide an accessible parameterless constructor, a single accessible constructor, or mark one with [NexusConstructor].",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidUnionCase = new(
+        id: "NEXNET033",
+        title: "Invalid union case",
+        messageFormat: "The union '{0}' has a duplicate tag or a case type that does not derive from it: '{1}'",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor AbstractWithoutUnion = new(
+        id: "NEXNET034",
+        title: "Abstract NexusObject requires union cases",
+        messageFormat: "The abstract or interface [NexusObject] type '{0}' must declare cases with [NexusUnion<T>(tag)]",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor NexusObjectNotAccessible = new(
+        id: "NEXNET036",
+        title: "NexusObject type is not accessible",
+        messageFormat: "The [NexusObject] type '{0}' is not accessible to generated code. Make it public or internal (with InternalsVisibleTo across assemblies).",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor LargeKeyGap = new(
+        id: "NEXNET037",
+        title: "Large NexusKey gap",
+        messageFormat: "The [NexusObject] type '{0}' has {1} unused key positions, each written as nil",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor ChannelTypeNotSerializable = new(
+        id: "NEXNET038",
+        title: "Channel type has no formatter",
+        messageFormat: "The channel type '{0}' has no NexNet formatter. Annotate it with [NexusObject] or declare it with [assembly: NexusSerializable<T>].",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor? FindSerializationDescriptor(string id) => id switch
+    {
+        "NEXNET028" => TypeNotSerializable,
+        "NEXNET029" => DuplicateNexusKey,
+        "NEXNET030" => MissingNexusKey,
+        "NEXNET031" => UnassignableMember,
+        "NEXNET032" => NoUsableConstructor,
+        "NEXNET033" => InvalidUnionCase,
+        "NEXNET034" => AbstractWithoutUnion,
+        "NEXNET036" => NexusObjectNotAccessible,
+        "NEXNET037" => LargeKeyGap,
+        "NEXNET038" => ChannelTypeNotSerializable,
+        _ => null
+    };
 }
 
 

@@ -1,5 +1,4 @@
-﻿using MemoryPack;
-using NexNet.Internals;
+﻿using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
@@ -151,7 +150,7 @@ internal partial class NexusClientTests : BaseTests
         clientConfig.Authenticate = () => new byte[] { 123 };
         FireOnSend(clientConfig, (_, bytes) =>
         {
-            var message = MemoryPackSerializer.Deserialize<ClientGreetingMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
+            var message = TestSerialization.DeserializeMessage<ClientGreetingMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
 
             if (message!.AuthenticationToken!.Span[0] == 123)
             {

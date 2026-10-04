@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.Runtime.CompilerServices;
-using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
@@ -27,7 +26,7 @@ internal class NexusChannelWriterTests
 
         await writer.WriteAsync(baseObject).Timeout(1);
 
-        var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
+        var message = TestSerialization.DeserializePayload<ComplexMessage>(bufferWriter.GetBuffer());
 
         Assert.That(message, Is.EqualTo(baseObject));
     }
@@ -48,7 +47,7 @@ internal class NexusChannelWriterTests
 
         await writer.WriteAsync(baseObject).Timeout(1);
 
-        var message = MemoryPackSerializer.Deserialize<ComplexMessage>(bufferWriter.GetBuffer());
+        var message = TestSerialization.DeserializePayload<ComplexMessage>(bufferWriter.GetBuffer());
 
         Assert.That(message, Is.EqualTo(baseObject));
     }

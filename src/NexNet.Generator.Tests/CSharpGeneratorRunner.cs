@@ -37,6 +37,15 @@ public static class CSharpGeneratorRunner
         baseCompilation = compilation;
     }
 
+    /// <summary>
+    /// Creates a compilation of <paramref name="source"/> with the standard test references (no generators run).
+    /// </summary>
+    public static Compilation CreateCompilation(string source)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13);
+        return baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));
+    }
+
     public static Diagnostic[] RunGenerator(
         string source, 
         string[]? preprocessorSymbols = null,

@@ -88,7 +88,7 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
-""");
+""", options: SerializerBackendOptions.MemoryPack);
         Assert.That(diagnostic, Is.Empty);
     }
     
@@ -128,7 +128,7 @@ partial class ServerNexus {
 partial class ServerNexus2 { 
     public void Update(Message2 data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Warning);
+""", minDiagnostic:DiagnosticSeverity.Warning, options: SerializerBackendOptions.MemoryPack);
         Assert.That(diagnostic, Is.Empty);
     }
 
@@ -165,7 +165,7 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(IMessageV1 data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Error);
+""", minDiagnostic:DiagnosticSeverity.Error, options: SerializerBackendOptions.MemoryPack);
         Assert.That(diagnostic, Is.Empty);
     }
     
@@ -208,7 +208,7 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Warning);
+""", minDiagnostic:DiagnosticSeverity.Warning, options: SerializerBackendOptions.MemoryPack);
         Assert.That(diagnostic, Is.Empty);
     }
     

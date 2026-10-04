@@ -1,6 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
-using MemoryPack;
+using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -89,14 +89,15 @@ internal class RawTcpClient : IDisposable
     public readonly string ProtocolMessageDefinition = "[type:byte][body_length:ushort][body:body_length]";
     
     public static readonly string ProtocolHeader =
-        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
+        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][payloadFormat:byte][reserved1:byte][reserved2:byte][version:byte]";
 
-    public static byte ProtocolVersion = 1;
+    public static byte ProtocolVersion = 2;
+    public static byte PayloadFormat = (byte)PayloadFormatInfo.Local;
     private static readonly object[] _protocolHeaderValues =
-        [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, ProtocolVersion];
-    public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false)
+        [(byte)'N', (byte)'n', (byte)'P', (byte)'', PayloadFormat, 0, 0, ProtocolVersion];
+    public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false, byte? payloadFormat = null)
     {
-        object[] values = [(byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, ProtocolVersion];
+        object[] values = [(byte)'N', (byte)'n', (byte)'P', (byte)'', payloadFormat ?? PayloadFormat, 0, 0, ProtocolVersion];
 
         if (badHeader)
             values[Random.Shared.NextInt64(0, 7)] = 255;
@@ -155,7 +156,7 @@ internal class RawTcpClient : IDisposable
     } 
     
     public async Task<TMessage?> AssertReceiveMessageAsync<TMessage>()
-        where TMessage : class, IMessageBase
+        where TMessage : class, IMessageBase, new()
     {
         
         var typeResult = await _streamProcessor!.ReadAsync("[type:byte]");
@@ -167,7 +168,7 @@ internal class RawTcpClient : IDisposable
         Assert.That(bodyResult.ErrorCode, Is.EqualTo(ParseError.Success));
         Assert.That(bodyResult.TryRead<byte[]>("body", out var bodyValue), Is.True);
         TMessage? message = null;
-        Assert.DoesNotThrow(() => message = MemoryPackSerializer.Deserialize<TMessage>(bodyValue));
+        Assert.DoesNotThrow(() => message = TestSerialization.DeserializeMessage<TMessage>(bodyValue));
 
         return message;
     }
@@ -192,7 +193,7 @@ internal class RawTcpClient : IDisposable
         if (Stream == null) 
             throw new InvalidOperationException("Not connected");
 
-        var messageBody = MemoryPackSerializer.Serialize(message);
+        var messageBody = TestSerialization.SerializeMessage(message);
         
         await AssertWrite(ProtocolMessageDefinition, [
             (byte)TMessage.Type,

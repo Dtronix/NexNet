@@ -1,5 +1,4 @@
-﻿using MemoryPack;
-using NexNet.IntegrationTests.TestInterfaces;
+﻿using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
 using NUnit.Framework;
 #pragma warning disable VSTHRD200
@@ -36,7 +35,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
         {
-            Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
+            Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.IgnoreReturn,
             InvocationId = 0, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 1
@@ -72,7 +71,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
         {
-            Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
+            Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 3
@@ -108,7 +107,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
         {
-            Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
+            Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 5
@@ -145,7 +144,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
         {
-            Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
+            Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 7
@@ -181,7 +180,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
     {
         return InvokeFromClientAndVerifySent(type, new InvocationMessage()
         {
-            Arguments = MemoryPackSerializer.Serialize(new ValueTuple<int>(54321)),
+            Arguments = TestSerialization.SerializeArguments(new ValueTuple<int>(54321)),
             Flags = InvocationFlags.None,
             InvocationId = 1, // Invocations for void area always 0 as there is not to be a returned value
             MethodId = 9
@@ -205,7 +204,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
                 if (bytes[0] != (byte)MessageType.Invocation)
                     return;
 
-                var message = MemoryPackSerializer.Deserialize<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
+                var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
                 Assert.That(message, Is.Not.Null);
 
                 if (message == null)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 
 namespace NexNet.Internals;
@@ -7,6 +8,9 @@ namespace NexNet.Internals;
 internal static class ReadingHelpers
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <summary>
+    /// Reads a little-endian ushort (framing fields are always little-endian).
+    /// </summary>
     public static bool TryReadUShort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ushort value)
     {
         if (!TryRead(sequence, buffer, ref position, 2, out var spanValue))
@@ -15,49 +19,10 @@ internal static class ReadingHelpers
             return false;
         }
 
-        value = BitConverter.ToUInt16(spanValue);
+        value = BinaryPrimitives.ReadUInt16LittleEndian(spanValue);
         return true;
     }
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryReadULong(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ulong value)
-    {
-        if (!TryRead(sequence, buffer, ref position, 8, out var spanValue))
-        {
-            value = 0;
-            return false;
-        }
-
-        value = BitConverter.ToUInt64(spanValue);
-        return true;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryReadInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out int value)
-    {
-        if (!TryRead(sequence, buffer, ref position, 4, out var spanValue))
-        {
-            value = 0;
-            return false;
-        }
-
-        value = BitConverter.ToInt32(spanValue);
-        return true;
-    }
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool TryReadUInt(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out uint value)
-    {
-        if (!TryRead(sequence, buffer, ref position, 4, out var spanValue))
-        {
-            value = 0;
-            return false;
-        }
-
-        value = BitConverter.ToUInt32(spanValue);
-        return true;
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryRead(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, int size, out ReadOnlySpan<byte> value)
     {

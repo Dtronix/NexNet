@@ -423,6 +423,28 @@ internal class NexusPipeReader : PipeReader, IDisposable
         }
     }
 
+    /// <summary>
+    /// Consumes <paramref name="consumed"/> bytes from the start of the current buffer and marks
+    /// <paramref name="examined"/> bytes (measured from the start of the current buffer) as examined.
+    /// Marking all buffered bytes as examined makes the next read wait for new data.
+    /// </summary>
+    internal void AdvanceToExamined(long consumed, long examined)
+    {
+        if (consumed > examined)
+            throw new ArgumentOutOfRangeException(nameof(consumed), "Consumed amount must be less than or equal to the examined amount.");
+
+        lock (_bufferLock)
+        {
+            var bufferStart = _bufferTailPosition - _buffer.Length;
+            var examinedAbsolute = bufferStart + examined;
+            if (examinedAbsolute > _examinedPosition)
+                _examinedPosition = examinedAbsolute;
+
+            if (consumed > 0)
+                _buffer.ReleaseTo((int)consumed);
+        }
+    }
+
     public override void CancelPendingRead()
     {
         _isCanceled = true;

@@ -5,20 +5,24 @@ namespace NexNet.Generator.Tests;
 class GeneratorChannelTests
 {
     [Test]
-    public void GeneratesUnmanagedChannel()
+    public void GeneratesChannelOfNexusObjectStruct()
     {
+        // INexusDuplexUnmanagedChannel<T> was removed; struct channels use INexusDuplexChannel<T> with [NexusObject].
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
 using NexNet.Pipes;
+using NexNet.Serialization;
 using System.Threading.Tasks;
 namespace NexNetDemo;
+[NexusObject]
+public struct Sample { [NexusKey(0)] public int Id { get; set; } [NexusKey(1)] public long Count { get; set; } }
 partial interface IClientNexus { }
-partial interface IServerNexus {  ValueTask Update(INexusDuplexUnmanagedChannel<int> pipe); }
+partial interface IServerNexus {  ValueTask Update(INexusDuplexChannel<Sample> pipe); }
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
 partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus {
-  public ValueTask Update(INexusDuplexUnmanagedChannel <int> pipe){ return default; }
+  public ValueTask Update(INexusDuplexChannel<Sample> pipe){ return default; }
   }
 ");
         Assert.That(diagnostic, Is.Empty);

@@ -1,0 +1,16 @@
+<Project>
+  <!--
+    Payload serializer backend switch (experiment).
+      MessagePack (default): NexNet's own MessagePack serializer (NexNet.Serialization).
+      MemoryPack: the legacy MemoryPack serializer.
+    Select with: dotnet build -p:NexNetSerializer=MemoryPack
+  -->
+  <PropertyGroup>
+    <NexNetSerializer Condition="'$(NexNetSerializer)' == ''">MessagePack</NexNetSerializer>
+    <DefineConstants Condition="'$(NexNetSerializer)' == 'MemoryPack'">$(DefineConstants);NEXNET_MEMORYPACK</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Makes the backend visible to the NexNet source generator as build_property.NexNetSerializer. -->
+    <CompilerVisibleProperty Include="NexNetSerializer" />
+  </ItemGroup>
+</Project>

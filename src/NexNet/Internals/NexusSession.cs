@@ -34,11 +34,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private readonly IServerSessionManager? _sessionManager;
     
     // NnP(DC4) = NexNetProtocol(Device Control Four)
-    // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
+    // [N] [n] [P] [(DC4)] [Payload Format] [RESERVED 1] [RESERVED 2] [Protocol Version]
+    private const byte ProtocolVersion = 2;
     // ReSharper disable twice StaticMemberInGenericType
-    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, 1 };
-    private static readonly uint ProtocolTag = BitConverter.ToUInt32(_protocolHeader.Slice(0, 4).Span);
-    private const byte ProtocolVersion = 1;
+    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'n', (byte)'P', (byte)'', (byte)PayloadFormatInfo.Local, 0, 0, ProtocolVersion };
     
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;

@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NexNet.Generator.Models;
+using NexNet.Generator.Serialization;
 
 namespace NexNet.Generator.Extraction;
 
@@ -79,6 +80,13 @@ internal static class NexusDataExtractor
             .Replace("<", "_")
             .Replace(">", "_");
 
+        // Serialization: walk every type reachable from both interfaces and generate formatters (MessagePack backend).
+        var serialization = new SerializationBuilder(context.SemanticModel.Compilation,
+            ((uint)_hash.ComputeHash(Encoding.UTF8.GetBytes(fullTypeName))).ToString("x8"));
+        AddSerializationRoots(serialization, nexusInterfaceSymbol);
+        AddSerializationRoots(serialization, proxyInterfaceSymbol);
+        serialization.AddAssemblyDeclaredRoots();
+
         return new NexusGenerationData(
             TypeName: symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
             FullTypeName: fullTypeName,
@@ -97,7 +105,56 @@ internal static class NexusDataExtractor
             ClassMethods: classMethods,
             ClassLocation: LocationData.FromSyntax(syntax)!,
             IdentifierLocation: LocationData.FromToken(syntax.Identifier)!
-        );
+        )
+        {
+            SerializationCode = serialization.Build(),
+            SerializationDiagnostics = SerializationBuilder.ToImmutable(serialization.Diagnostics)
+        };
+    }
+
+    private static void AddSerializationRoots(SerializationBuilder builder, INamedTypeSymbol interfaceSymbol)
+    {
+        foreach (var iface in new[] { interfaceSymbol }.Concat(interfaceSymbol.AllInterfaces))
+        {
+            foreach (var member in iface.GetMembers())
+            {
+                if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary } method)
+                {
+                    var context = iface.Name + "." + method.Name;
+                    var location = LocationData.FromSymbol(method);
+                    foreach (var parameter in method.Parameters)
+                    {
+                        var type = parameter.Type;
+                        if (type.Name == "CancellationToken")
+                            continue;
+
+                        var typeName = SymbolUtilities.GetFullSymbolType(type, false);
+                        if (typeName == "global::NexNet.Pipes.INexusDuplexPipe")
+                            continue;
+
+                        if (typeName.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<")
+                            && type is INamedTypeSymbol channel)
+                        {
+                            builder.Require(channel.TypeArguments[0], context, location);
+                            continue;
+                        }
+
+                        builder.Require(type, context, location);
+                    }
+
+                    if (method.ReturnType is INamedTypeSymbol { Arity: 1 } returnType
+                        && returnType.ConstructedFrom.MetadataName == "ValueTask`1")
+                    {
+                        builder.Require(returnType.TypeArguments[0], context, location);
+                    }
+                }
+                else if (member is IPropertySymbol { Type: INamedTypeSymbol { Arity: 1 } collectionType } property
+                         && collectionType.OriginalDefinition.Name == "INexusList")
+                {
+                    builder.Require(collectionType.TypeArguments[0], iface.Name + "." + property.Name, LocationData.FromSymbol(property));
+                }
+            }
+        }
     }
 
     private static NexusAttributeData? ExtractNexusAttribute(
@@ -429,9 +486,8 @@ internal static class NexusDataExtractor
         var paramType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         var isCancellationToken = symbol.Type.Name == "CancellationToken";
         var isDuplexPipe = paramType == "global::NexNet.Pipes.INexusDuplexPipe";
-        var isDuplexUnmanagedChannel = paramType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
         var isDuplexChannel = paramType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
-        var utilizesDuplexPipe = isDuplexPipe || isDuplexUnmanagedChannel || isDuplexChannel;
+        var utilizesDuplexPipe = isDuplexPipe || isDuplexChannel;
 
         string? serializedType = null;
         string? serializedValue = null;
@@ -445,7 +501,7 @@ internal static class NexusDataExtractor
             serializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({symbol.Name})";
             assignedSerializedId = serializedId++;
         }
-        else if (isDuplexUnmanagedChannel || isDuplexChannel)
+        else if (isDuplexChannel)
         {
             // Extract the channel type from the generic type argument
             var returnSymbol = symbol.Type as INamedTypeSymbol;
@@ -472,7 +528,6 @@ internal static class NexusDataExtractor
             SerializedId: assignedSerializedId,
             IsCancellationToken: isCancellationToken,
             IsDuplexPipe: isDuplexPipe,
-            IsDuplexUnmanagedChannel: isDuplexUnmanagedChannel,
             IsDuplexChannel: isDuplexChannel,
             UtilizesDuplexPipe: utilizesDuplexPipe,
             ChannelType: channelType,

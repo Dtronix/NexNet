@@ -16,6 +16,15 @@ public class InvocationBenchmarks
     private NexusServer<ServerNexus, ServerNexus.ClientProxy> _server = null!;
     private ReadOnlyMemory<byte> _uploadBuffer;
     private ConsoleLogger _log = null!;
+    private readonly BenchPerson _person = BenchPerson.Create(1);
+    private readonly BenchOrder _order = BenchOrder.Create(1);
+
+    /// <summary>
+    /// Untrusted (default hardening) vs trusted deserialization options.
+    /// </summary>
+    [Params(NexNet.Serialization.SerializerSecurity.Untrusted, NexNet.Serialization.SerializerSecurity.Trusted)]
+    public NexNet.Serialization.SerializerSecurity Security { get; set; }
+
     [GlobalSetup]
     public async Task GlobalSetup()
     {
@@ -36,6 +45,12 @@ public class InvocationBenchmarks
             EndPoint = new UnixDomainSocketEndPoint(path),
             //Logger = _log.CreateLogger(null, "CL"),
         };
+
+        var options = Security == NexNet.Serialization.SerializerSecurity.Trusted
+            ? NexNet.Serialization.NexusSerializerOptions.Trusted
+            : NexNet.Serialization.NexusSerializerOptions.Untrusted;
+        serverConfig.SerializerOptions = options;
+        clientConfig.SerializerOptions = options;
 
         _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
         _server = ServerNexus.CreateServer(serverConfig, static () => new ServerNexus());
@@ -66,6 +81,18 @@ public class InvocationBenchmarks
     public async ValueTask InvocationUnmanagedMultipleArguments()
     {
         await _client.Proxy.InvocationUnmanagedMultipleArguments(12345, 128475129847, 24812, 298471920875185871, 19818479124.12871924821d);
+    }
+
+    [Benchmark]
+    public async ValueTask InvocationPocoArgument()
+    {
+        await _client.Proxy.InvocationPocoArgument(_person);
+    }
+
+    [Benchmark]
+    public async ValueTask InvocationNestedRoundTrip()
+    {
+        await _client.Proxy.InvocationNestedRoundTrip(_order);
     }
 
     [Benchmark]

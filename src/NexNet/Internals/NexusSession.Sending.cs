@@ -4,9 +4,10 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using MemoryPack;
+using NexNet.Serialization;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
 
@@ -56,13 +57,15 @@ internal partial class NexusSession<TNexus, TProxy>
 
         var header = _bufferWriter.GetMemory(3);
         _bufferWriter.Advance(3);
-        MemoryPackSerializer.Serialize(_bufferWriter, body);
+        var bodyWriter = new MsgPackWriter(_bufferWriter);
+        body.Serialize(ref bodyWriter);
+        bodyWriter.Flush();
 
         var contentLength = checked((ushort)(_bufferWriter.Length - 3));
 
         header.Span[0] = (byte)TMessage.Type;
 
-        BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
 
         var length = (int)_bufferWriter.Length;
         var buffer = _bufferWriter.GetBuffer();
@@ -160,7 +163,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
         var header = _pipeOutput.GetMemory(headerLength);
         header.Span[0] = (byte)type;
-        BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
 
         // Copy the message header
         messageHeader?.CopyTo(header.Slice(3));
@@ -173,7 +176,7 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             var debugCopy = new byte[body.Length + 3];
             debugCopy[0] = (byte)type;
-            BitConverter.TryWriteBytes(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
             body.CopyTo(new Span<byte>(debugCopy).Slice(3));
             _config.InternalOnSend?.Invoke(this, debugCopy);
         }

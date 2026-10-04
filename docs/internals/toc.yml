@@ -1,2 +1,4 @@
-- name: Protocol Specification
+- name: Wire Protocol v2 (MessagePack)
+  href: wire-protocol.md
+- name: Protocol Specification (v1, MemoryPack)
   href: protocol-specification.md

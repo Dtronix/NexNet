@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using MemoryPack;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
 using NUnit.Framework;
@@ -17,7 +16,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var baseObject = ComplexMessage.Random();
         var bufferWriter = BufferWriter<byte>.Create();
 
-        var bytes = MemoryPackSerializer.Serialize(baseObject);
+        var bytes = TestSerialization.SerializePayload(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
         //bufferWriter.Write(header);
         bufferWriter.Write(bytes);
@@ -54,7 +53,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var baseObject = ComplexMessage.Random();
         var bufferWriter = BufferWriter<byte>.Create();
 
-        var bytes = MemoryPackSerializer.Serialize(baseObject);
+        var bytes = TestSerialization.SerializePayload(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
         //bufferWriter.Write(header);
         bufferWriter.Write(bytes);
@@ -133,7 +132,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
-        var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
+        var bytes = new ReadOnlySequence<byte>(TestSerialization.SerializePayload(baseObject));
         _ = Task.Run(async () =>
         {
             await tcs.Task.Timeout(1);
@@ -156,7 +155,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
-        var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
+        var bytes = new ReadOnlySequence<byte>(TestSerialization.SerializePayload(baseObject));
 
         for (var i = 0; i < iterations; i++)
         {

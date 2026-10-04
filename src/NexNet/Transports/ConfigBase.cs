@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Internals;
 using NexNet.Logging;
+using NexNet.Serialization;
 
 namespace NexNet.Transports;
 
@@ -41,6 +42,12 @@ public abstract class ConfigBase
     /// continuations retain the provider that was active when they were created.
     /// </remarks>
     public TimeProvider Time { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// Options applied when deserializing data received from the remote peer.
+    /// Defaults to <see cref="NexusSerializerOptions.Untrusted"/> (hardening for hostile peers).
+    /// </summary>
+    public NexusSerializerOptions SerializerOptions { get; set; } = NexusSerializerOptions.Untrusted;
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.

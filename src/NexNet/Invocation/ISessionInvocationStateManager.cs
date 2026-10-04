@@ -34,12 +34,14 @@ internal interface ISessionInvocationStateManager
     /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="session">The session to invoke on.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <param name="argumentsOwner">Optional pooled buffer backing the arguments; returned once the message is sent.</param>
     /// <returns>The registered invocation state, or null if cancelled.</returns>
     ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
         Memory<byte> serializedArguments,
         INexusSession session,
-        CancellationToken? cancellationToken = null);
+        CancellationToken? cancellationToken = null,
+        NexNet.Serialization.PooledArrayBufferWriter? argumentsOwner = null);
 
     /// <summary>
     /// Cancels all pending invocations.

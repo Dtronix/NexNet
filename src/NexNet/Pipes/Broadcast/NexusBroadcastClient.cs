@@ -84,7 +84,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             null,
             $"Connecting Proxy Collection[{Id}];");
         var __args = new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe));
-        await _invoker.ProxyInvokeMethodCore(Id, MemoryPack.MemoryPackSerializer.Serialize(__args),
+        await _invoker.ProxyInvokeMethodCore(Id, NexNet.Internals.PayloadSerializer.Serialize(__args),
             InvocationFlags.DuplexPipe).ConfigureAwait(false);
 
         await pipe.ReadyTask.ConfigureAwait(false);
@@ -94,7 +94,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         _ = pipe.CompleteTask.ContinueWith((s, state) =>
             Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
 
-        var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe) : null;
+        var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) : null;
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
         
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -115,7 +115,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             if(logger != null)
                 logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster.Id}";
 
-            var reader = new NexusChannelReader<TUnion>(clientState.Pipe);
+            var reader = new NexusChannelReader<TUnion>(clientState.Pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>());
             try
             {
                 // Read through all the messages received until complete.

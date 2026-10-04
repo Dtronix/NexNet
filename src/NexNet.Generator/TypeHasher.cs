@@ -202,12 +202,12 @@ internal sealed class TypeHasher
         if (IsSystemNamespace(type))
             return false;
 
-        // Only MemoryPackable types can self-reference through their members
-        // Also include interfaces (for MemoryPackUnion) and enums
+        // Only MemoryPackable / NexusObject types can self-reference through their members
+        // Also include interfaces (for unions) and enums
         if (type.TypeKind == TypeKind.Interface || type.TypeKind == TypeKind.Enum)
             return true;
 
-        return IsMemoryPackable(type);
+        return IsMemoryPackable(type) || IsNexusObject(type);
     }
 
     private static void ProcessType(
@@ -221,6 +221,13 @@ internal sealed class TypeHasher
         if (type.TypeKind == TypeKind.Enum)
         {
             ProcessEnum(type, depth, ref hasher, walkBuilder);
+            return;
+        }
+
+        // [NexusObject] unions (interfaces or abstract classes with [NexusUnion<T>(tag)])
+        if (IsNexusObject(type) && HasNexusUnions(type))
+        {
+            ProcessNexusUnion(type, depth, ref hasher, stack, walkBuilder);
             return;
         }
 
@@ -335,6 +342,8 @@ internal sealed class TypeHasher
                     walkBuilder.Append('?');
                 if (IsSystemNamespace(type))
                     walkBuilder.Append(" [CLR]");
+                else if (IsNexusObject(type))
+                    walkBuilder.Append(" [NexusObject]");
                 else if (IsMemoryPackable(type))
                     walkBuilder.Append(" [MemoryPackable]");
                 walkBuilder.AppendLine();
@@ -364,6 +373,13 @@ internal sealed class TypeHasher
                     walkBuilder.Append('?');
                 walkBuilder.AppendLine(" [CLR]");
             }
+            return;
+        }
+
+        // [NexusObject] user-defined types: walk keyed members in key order (keys decide wire positions)
+        if (IsNexusObject(type))
+        {
+            ProcessNexusObject(type, depth, ref hasher, stack, walkBuilder);
             return;
         }
 
@@ -398,6 +414,161 @@ internal sealed class TypeHasher
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Checks if a type has the NexNet [NexusObject] attribute.
+    /// </summary>
+    private static bool IsNexusObject(ITypeSymbol type)
+    {
+        foreach (var attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass?.Name == "NexusObjectAttribute"
+                && attr.AttributeClass.ContainingNamespace?.ToDisplayString() == "NexNet.Serialization")
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasNexusUnions(ITypeSymbol type)
+    {
+        foreach (var attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass is { IsGenericType: true, Name: "NexusUnionAttribute" })
+                return true;
+        }
+        return false;
+    }
+
+    private static void ProcessNexusUnion(
+        ITypeSymbol type,
+        int depth,
+        ref IncrementalHasher hasher,
+        Stack<(ITypeSymbol type, int depth)> stack,
+        StringBuilder? walkBuilder)
+    {
+        var unions = new List<(ushort tag, ITypeSymbol type)>();
+        foreach (var attr in type.GetAttributes())
+        {
+            if (attr.AttributeClass is not { IsGenericType: true, Name: "NexusUnionAttribute" } cls
+                || cls.TypeArguments.Length != 1
+                || attr.ConstructorArguments.Length == 0)
+                continue;
+
+            var tagValue = attr.ConstructorArguments[0].Value;
+            var tag = tagValue is ushort us ? us : Convert.ToUInt16(tagValue);
+            unions.Add((tag, cls.TypeArguments[0]));
+        }
+
+        unions.Sort((a, b) => a.tag.CompareTo(b.tag));
+
+        hasher.AddString("_NU");
+        if (walkBuilder != null)
+        {
+            AppendIndent(walkBuilder, depth);
+            walkBuilder.Append(type.Name);
+            walkBuilder.Append(" [NexusUnion:");
+            walkBuilder.Append(unions.Count);
+            walkBuilder.AppendLine("]");
+        }
+
+        foreach (var (tag, unionType) in unions)
+        {
+            hasher.Add(tag);
+            hasher.AddString(unionType.Name);
+
+            if (walkBuilder != null)
+            {
+                AppendIndent(walkBuilder, depth + 1);
+                walkBuilder.Append("[Tag:");
+                walkBuilder.Append(tag);
+                walkBuilder.Append("] ");
+                walkBuilder.AppendLine(unionType.Name);
+            }
+        }
+
+        for (int i = unions.Count - 1; i >= 0; i--)
+            stack.Push((unions[i].type, depth + 2));
+    }
+
+    private static void ProcessNexusObject(
+        ITypeSymbol type,
+        int depth,
+        ref IncrementalHasher hasher,
+        Stack<(ITypeSymbol type, int depth)> stack,
+        StringBuilder? walkBuilder)
+    {
+        if (walkBuilder != null)
+        {
+            AppendIndent(walkBuilder, depth);
+            walkBuilder.Append(type.Name);
+            if (type.NullableAnnotation == NullableAnnotation.Annotated)
+                walkBuilder.Append('?');
+            walkBuilder.AppendLine(" [NexusObject]");
+        }
+
+        hasher.AddString("_NO");
+
+        var keyed = new List<(int key, string name, ITypeSymbol type, NullableAnnotation nullable)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var current = type; current != null && current.SpecialType != SpecialType.System_Object
+             && current.SpecialType != SpecialType.System_ValueType; current = current.BaseType)
+        {
+            foreach (var member in current.GetMembers())
+            {
+                if (member.IsStatic || !seen.Add(member.Name))
+                    continue;
+
+                int? key = null;
+                foreach (var attr in member.GetAttributes())
+                {
+                    if (attr.AttributeClass?.Name == "NexusKeyAttribute"
+                        && attr.ConstructorArguments.Length > 0
+                        && attr.ConstructorArguments[0].Value is int k)
+                        key = k;
+                }
+
+                if (key == null)
+                    continue;
+
+                if (member is IPropertySymbol prop)
+                    keyed.Add((key.Value, prop.Name, prop.Type, prop.NullableAnnotation));
+                else if (member is IFieldSymbol field)
+                    keyed.Add((key.Value, field.Name, field.Type, field.NullableAnnotation));
+            }
+        }
+
+        keyed.Sort((a, b) => a.key.CompareTo(b.key));
+
+        foreach (var (key, name, memberType, nullable) in keyed)
+        {
+            hasher.Add(key);
+            hasher.AddString(memberType.Name);
+            hasher.Add((byte)(nullable == NullableAnnotation.Annotated ? 1 : 0));
+
+            if (memberType is IArrayTypeSymbol arr)
+                hasher.Add(arr.Rank);
+            else if (memberType is INamedTypeSymbol { Arity: > 0 } named)
+                hasher.Add(named.Arity);
+
+            if (walkBuilder != null)
+            {
+                AppendIndent(walkBuilder, depth + 1);
+                walkBuilder.Append(name);
+                walkBuilder.Append(": ");
+                AppendTypeName(walkBuilder, memberType, nullable);
+                walkBuilder.Append(" [Key:");
+                walkBuilder.Append(key);
+                walkBuilder.AppendLine("]");
+            }
+        }
+
+        for (int i = keyed.Count - 1; i >= 0; i--)
+        {
+            var memberType = keyed[i].type;
+            if (memberType.SpecialType == SpecialType.None)
+                stack.Push((memberType, depth + 2));
+        }
     }
 
     private static void ProcessEnum(

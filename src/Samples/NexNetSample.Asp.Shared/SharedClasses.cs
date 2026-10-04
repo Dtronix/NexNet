@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet;
 using NexNet.Collections;
 using NexNet.Collections.Lists;

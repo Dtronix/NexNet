@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
+using NexNet.Serialization;
 
 namespace NexNet.Pools;
 
@@ -98,9 +99,9 @@ internal class PoolManager
     /// <summary>
     /// Deserializes a message from the buffer.
     /// </summary>
-    public IMessageBase Deserialize(MessageType type, ReadOnlySequence<byte> sequence)
+    public IMessageBase Deserialize(MessageType type, ReadOnlySequence<byte> sequence, NexusSerializerOptions options)
     {
-        return _messagePools[((int)type) - MessagePoolOffsetModifier]!.DeserializeInterface(sequence);
+        return _messagePools[((int)type) - MessagePoolOffsetModifier]!.DeserializeInterface(sequence, options);
     }
 
     /// <summary>

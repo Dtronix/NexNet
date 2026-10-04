@@ -13,10 +13,10 @@ internal static class NexusEmitter
     /// <summary>
     /// Emits the complete generated code for a Nexus.
     /// </summary>
-    public static string Emit(NexusGenerationData data, LanguageVersion langVersion)
+    public static string Emit(NexusGenerationData data, LanguageVersion langVersion, SerializerBackend backend = SerializerBackend.MessagePack)
     {
         var sb = new StringBuilder();
-        EmitNexus(sb, data);
+        EmitNexus(sb, data, backend);
         return sb.ToString();
     }
 
@@ -43,7 +43,7 @@ internal static class NexusEmitter
         }
     }
 
-    private static void EmitNexus(StringBuilder sb, NexusGenerationData data)
+    private static void EmitNexus(StringBuilder sb, NexusGenerationData data, SerializerBackend backend)
     {
         var collections = data.NexusAttribute.IsServer
             ? data.NexusInterface.AllCollections
@@ -139,6 +139,12 @@ internal static class NexusEmitter
             }
         }
 
+        if (backend == SerializerBackend.MessagePack)
+        {
+            foreach (var method in data.NexusInterface.AllMethods)
+                MethodEmitter.EmitArgumentReader(sb, method);
+        }
+
         sb.AppendLine($$"""
 
                                 protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
@@ -165,7 +171,7 @@ internal static class NexusEmitter
                                                     // {{MethodEmitter.ToStringRepresentation(method)}}
 
                             """);
-                MethodEmitter.EmitNexusInvocation(sb, method, data.ProxyInterface);
+                MethodEmitter.EmitNexusInvocation(sb, method, data.ProxyInterface, backend);
                 sb.AppendLine("""
                                                       break;
                                                   }
@@ -329,7 +335,8 @@ internal static class NexusEmitter
             sb,
             data.ProxyInterface,
             data.NexusAttribute,
-            data.NexusAttribute.IsServer ? null : data.ProxyInterface);
+            data.NexusAttribute.IsServer ? null : data.ProxyInterface,
+            backend);
 
         sb.AppendLine($$"""
                             }
