@@ -193,7 +193,11 @@ public static class SessionHarness
         {
             var server = new Server();
             // No linger after sending a disconnect message: it only adds wall time per input.
-            var config = new FuzzServerConfig(server._listener) { Logger = server.Logger, DisconnectDelay = 0 };
+            // Short idle timeout: when a connection's invocation slots are full (MaxConcurrentConnectionInvocations),
+            // the receive loop stops reading by design, so it can't see the stream end and only the idle timeout
+            // closes it. 2 s (checked every Timeout / 4) keeps that inside SessionTimeout; a session still open
+            // after it is a real hang.
+            var config = new FuzzServerConfig(server._listener) { Logger = server.Logger, DisconnectDelay = 0, Timeout = 2000 };
             var nexusServer = FuzzServerNexus.CreateServer(config, static () => new FuzzServerNexus());
             nexusServer.StartAsync().GetAwaiter().GetResult();
 
@@ -298,8 +302,15 @@ public static class SessionHarness
         public string FormattedPath => "fuzz";
         public string? PathSegment { get; set; }
 
+        // NEXNET_FUZZ_VERBOSE=1 prints every server log line with a timestamp (for investigating a reproducer).
+        private static readonly bool Verbose = Environment.GetEnvironmentVariable("NEXNET_FUZZ_VERBOSE") == "1";
+        private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
+
         public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
         {
+            if (Verbose)
+                Console.WriteLine($"[{Clock.Elapsed.TotalSeconds,8:F3}] {logLevel,-11} {category}: {message}{(exception == null ? "" : " | " + exception.GetType().Name + ": " + exception.Message)}");
+
             if (logLevel < NexusLogLevel.Error || exception is null || IsExpected(exception))
                 return;
 
