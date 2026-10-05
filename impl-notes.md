@@ -18,7 +18,7 @@ runs per backend):
 | 2 | POCO serialize + deserialize within 25% | **Pass.** 0.85 / 0.89 (was 1.25–1.30). |
 | 3 | Primitive arrays within 15% | **Pass.** Doubles16 1.04 / 1.03 (was 1.47–1.57), 1K 1.03, 64K 0.99. |
 | 4 | Channels within 15%, fragmented better | **Pass, one marginal case.** All within +3% (min) / +9% (median). Fragmented Persons 0.98 / 0.95 and Ints 0.95 / 0.95; IntArrays256 1.02 / 0.99. |
-| 5 | Fuzzing clean for 24 h | **In progress.** All six harnesses, including the new `session` harness, started 2026-10-04 15:30. |
+| 5 | Fuzzing clean for 24 h | **In progress, 5 of 6 clean.** `reader`, `messages`, `formatters`, `builtins` and `channel` completed 24 h clean on 2026-10-05 15:30 (0.9–1.5 billion executions each; `channel` 85,663). `session` (restarted after a harness fix) is due around 20:49. Details in `benchmark-results.md`. |
 
 The gate is not formally passed, because item 5 has not been run. Remaining outliers outside the gate:
 PersonList100 S+D 1.31–1.34 and Int32 2.7×, the latter a fixed ~12 ns per-call cost.
@@ -151,6 +151,12 @@ gate item 5 passes. If the 5% invocation margin matters, do a full benchmark run
       - `RegisterPipe`/`RentPipe` raced with `CancelAll`;
       - sends raced with disconnect: the output was nulled or completed by another thread, so `PipeWriter` was used
         from two threads.
+    - **False positive during the 24 h run:** the first `session` run stopped after 19 min on a connection that
+      closed only at the 30 s idle timeout. The cause is the per-connection invocation limit
+      (`MaxConcurrentConnectionInvocations` = 2). With both slots held by calls blocked on channels, the receive loop
+      waits for a slot and stops reading by design, so it can't see the stream end. That is the same as master, and
+      not a vulnerability: an idle client can hold a connection that long anyway. The fuzz server now uses
+      `Timeout = 2000`, so these connections close inside the 5 s bound.
     - The failing inputs are kept in `Corpus/session-regressions.hex`. The smoke run (in `FuzzSmokeTests`) now takes
       about 50 s to 2.5 min.
 23. **The `master` baseline is a separate worktree** (`git worktree add --detach <scratchpad>/master-baseline 57fef36`).
