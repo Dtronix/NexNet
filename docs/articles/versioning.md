@@ -34,9 +34,23 @@ Every method and `[NexusCollection]` property must have a `[NexusMethod]` attrib
 
 ### 3. Use HashLock for Stability
 
-The `HashLock` property ensures an interface cannot be changed unintentionally after release. If any arguments, MemoryPack members (including union changes), return values, or method types are modified, the source generator emits a compile error.
+The `HashLock` property ensures an interface cannot be changed unintentionally after release. If any arguments, return values, or method types are modified, or the structure of a serialized type used by a parameter changes, the source generator emits a compile error.
 
 During development, omit `HashLock` so you can iterate freely. Set it when the API is ready for release.
+
+### How Serialized Types Are Hashed
+
+The hash of each method includes a structural description of its parameter types. For every [`[NexusObject]`](serialization.md) type reachable from a parameter, the hash covers:
+
+- each member's `[NexusKey]` value, type and nullability, in key order;
+- for unions, every `[NexusUnion<T>(tag)]` tag and case type, in tag order;
+- for enums, their member names and values.
+
+Member names are not part of the hash, so renaming a property does not change it. Types serialized by a built-in or custom formatter are hashed by name only.
+
+As a consequence, **changing keys changes the `HashLock`**: adding, removing or renumbering a key, or changing a keyed member's type, on a type used by a released version produces a compile error until the `HashLock` is updated. Because clients present the hash of their version when they connect, updating it also means clients built against the old contract can no longer connect to that version.
+
+Adding a member with a new, previously unused key is the compatible way to extend a type at the serialization level: older readers skip the extra element, and newer readers leave the member at its default when an older peer omits it. Never reuse or renumber a key. To extend data used by an already released version, add the new member to a new type, or to a type only used by the new version, and expose it through methods in a new version interface. See [Serialization](serialization.md#evolving-types).
 
 ## Server Implementation
 
@@ -120,9 +134,11 @@ Versioning includes runtime enforcement to prevent unauthorized method access:
 1. All versioned interfaces must have a version string, which is used during connection
 2. All methods and `[NexusCollection]` properties must have `[NexusMethod]` with a unique ID
 3. Methods and collections must not be changed in an interface after setting a version
-4. `HashLock` is strongly recommended for released interfaces but optional during development
+4. `[NexusObject]` types used by parameters of a released version must keep their keys and member types
+5. `HashLock` is strongly recommended for released interfaces but optional during development
 
 ## See Also
 
 - [Hub Invocations](hub-invocations.md) — Method patterns and return types
 - [Getting Started](getting-started.md) — Basic nexus setup without versioning
+- [Serialization](serialization.md) — `[NexusObject]` keys and evolving types

@@ -51,7 +51,8 @@ Beyond RPC, NexNet provides synchronized collections that keep data in sync acro
 - **[Bidirectional method invocation](https://dtronix.github.io/NexNet/articles/hub-invocations.html)** — server-to-client and client-to-server calls with void, ValueTask, and ValueTask&lt;T&gt; returns
 - **[Synchronized collections](https://dtronix.github.io/NexNet/articles/synchronized-collections.html)** — INexusList with server-to-client, bidirectional, and relay modes
 - **[Duplex pipes](https://dtronix.github.io/NexNet/articles/duplex-pipes.html)** — bidirectional byte streaming with built-in congestion control
-- **[Typed channels](https://dtronix.github.io/NexNet/articles/channels.html)** — INexusDuplexChannel&lt;T&gt; and INexusDuplexUnmanagedChannel&lt;T&gt; with IAsyncEnumerable support
+- **[Typed channels](https://dtronix.github.io/NexNet/articles/channels.html)** — INexusDuplexChannel&lt;T&gt; with IAsyncEnumerable support; primitive arrays use a compact bulk encoding
+- **[Serialization](https://dtronix.github.io/NexNet/articles/serialization.html)** — NexNet MessagePack serializer (no external serializer dependency), generated formatters, Native AOT compatible
 - **[Session management](https://dtronix.github.io/NexNet/articles/sessions-and-lifetimes.html)** — per-session hub instances, named groups for targeted broadcasting, automatic reconnection
 - **[Authentication](https://dtronix.github.io/NexNet/articles/authentication.html)** — token-based connection authentication with IIdentity
 - **[Authorization](https://dtronix.github.io/NexNet/articles/authorization.html)** — declarative `[NexusAuthorize<TPermission>]` with caching and compile-time diagnostics
@@ -66,14 +67,21 @@ Beyond RPC, NexNet provides synchronized collections that keep data in sync acro
 ## Quick Start
 
 ```csharp
-// Shared interfaces
+// Shared types
+[NexusObject]
+public class UserStatus
+{
+    [NexusKey(0)] public int UserId { get; set; }
+    [NexusKey(1)] public string? Message { get; set; }
+}
+
 public interface IClientNexus
 {
     ValueTask<string> GetUserName();
 }
 public interface IServerNexus
 {
-    ValueTask<int> GetStatus(int userId);
+    ValueTask<UserStatus> GetStatus(int userId);
 }
 
 // Client nexus
@@ -88,8 +96,8 @@ partial class ClientNexus
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus
 {
-    public ValueTask<int> GetStatus(int userId)
-        => new(1);
+    public ValueTask<UserStatus> GetStatus(int userId)
+        => new(new UserStatus { UserId = userId, Message = "Online" });
 }
 
 // Usage
@@ -101,7 +109,7 @@ await client.ConnectAsync();
 var status = await client.Proxy.GetStatus(42);
 ```
 
-The generator emits all hub and proxy classes at compile time. See [Getting Started](https://dtronix.github.io/NexNet/articles/getting-started.html) for the full walkthrough.
+The generator emits all hub and proxy classes, and a MessagePack formatter for every `[NexusObject]` type they use, at compile time. See [Getting Started](https://dtronix.github.io/NexNet/articles/getting-started.html) for the full walkthrough.
 
 ---
 
@@ -142,7 +150,7 @@ Platform=X64  Runtime=.NET 9.0
 
 ## Dependencies
 
-- [MemoryPack](https://github.com/Cysharp/MemoryPack) for message serialization.
+- No external serializer: NexNet includes its own [MessagePack](https://msgpack.org) serializer (`NexNet.Serialization`).
 - Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for pipeline socket transports.
 - QUIC transport requires `libmsquic` on Linux. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
 
