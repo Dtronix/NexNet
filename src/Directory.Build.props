@@ -1,0 +1,7 @@
+<Project>
+  <!-- Every warning is an error, including NuGet audit advisories (NU1901-NU1904). Do not add NoWarn or
+       WarningsNotAsErrors to get a build through; fix the cause. -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

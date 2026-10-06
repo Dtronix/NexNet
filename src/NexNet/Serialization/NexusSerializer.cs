@@ -4,7 +4,7 @@ using System.Buffers;
 namespace NexNet.Serialization;
 
 /// <summary>
-/// Convenience entry points that serialize through the registered formatter for <typeparamref name="T"/>.
+/// Convenience entry points that serialize through the registered formatter for the value's type.
 /// Usable from async methods, which cannot hold <see cref="MsgPackWriter"/>/<see cref="MsgPackReader"/> locals before C# 13.
 /// </summary>
 public static class NexusSerializer

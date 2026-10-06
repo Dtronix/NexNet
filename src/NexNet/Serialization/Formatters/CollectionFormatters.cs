@@ -447,13 +447,13 @@ internal static class DictionaryCore
         var dictionary = new Dictionary<TKey, TValue>(count, CollectionComparers.Get<TKey>(reader.Options));
         for (var i = 0; i < count; i++)
         {
-            TKey key = default!;
-            TValue item = default!;
-            keyFormatter.Deserialize(ref reader, ref key!);
+            TKey? key = default;
+            TValue? item = default;
+            keyFormatter.Deserialize(ref reader, ref key);
             valueFormatter.Deserialize(ref reader, ref item);
             if (key is null)
                 throw new NexusSerializationException("Dictionary keys cannot be nil.");
-            dictionary[key] = item;
+            dictionary[key] = item!; // a nil value is a valid value for a nullable TValue
         }
 
         reader.Exit();

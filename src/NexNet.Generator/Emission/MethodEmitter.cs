@@ -140,6 +140,7 @@ internal static class MethodEmitter
     /// <param name="sb">StringBuilder to append to.</param>
     /// <param name="method">Method data.</param>
     /// <param name="forLog">Change the output to write the output params. Used for logging.</param>
+    /// <param name="argPrefix">Prefix of the local variables holding deserialized arguments (<c>__arg</c>).</param>
     private static void EmitNexusMethodInvocation(StringBuilder sb, MethodData method, bool forLog, string argPrefix)
     {
         sb.Append(method.Name).Append("(");

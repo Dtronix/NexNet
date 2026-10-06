@@ -37,12 +37,13 @@ jobs:
 
     - name: Native AOT publish (zero trim/AOT warnings)
       # A real ILCompiler run: `dotnet build` does not run the AOT analysis, so warnings only surface on publish.
-      # The final grep is the dependable check, because some ILCompiler warnings bypass TreatWarningsAsErrors.
+      # TreatWarningsAsErrors comes from src/Directory.Build.props. The final grep is the dependable check,
+      # because some ILCompiler warnings bypass TreatWarningsAsErrors.
       # `shell: bash` runs with pipefail, so a failed publish is not hidden by tee.
       shell: bash
       run: |
         dotnet publish src/Samples/NexNetSample.Aot.Client -c Release -r linux-x64 -o ./aot-out \
-          -p:TreatWarningsAsErrors=true -p:WarningsAsErrors=IL2026%3BIL2046%3BIL2055%3BIL2057%3BIL2067%3BIL2070%3BIL2072%3BIL2075%3BIL2080%3BIL2087%3BIL2091%3BIL2104%3BIL3050%3BIL3051%3BIL3053 \
+          -p:WarningsAsErrors=IL2026%3BIL2046%3BIL2055%3BIL2057%3BIL2067%3BIL2070%3BIL2072%3BIL2075%3BIL2080%3BIL2087%3BIL2091%3BIL2104%3BIL3050%3BIL3051%3BIL3053 \
           2>&1 | tee aot.log
         ! grep -E "warning IL[0-9]+" aot.log
 

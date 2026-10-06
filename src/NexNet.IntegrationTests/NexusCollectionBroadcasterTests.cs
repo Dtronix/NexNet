@@ -102,7 +102,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
 
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.BufferWrites.Count == 1));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.BufferWrites.Count == 1));
     }
 
     [TestCase(true)]
@@ -126,12 +126,12 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         {
             Assert.That(clients[0].Sends[0].Flags, Is.EqualTo(NexusCollectionMessageFlags.Ack));
             Assert.That(clients[1..], Has.All.Matches<TestBroadcastSession>(
-                c => c.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
+                c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
         }
         else
         {
             Assert.That(clients, Has.All.Matches<TestBroadcastSession>(
-                c => c.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
+                c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
         }
     }
 
@@ -157,7 +157,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
 
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
     }
 
     [TestCase(true)]
@@ -182,7 +182,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
 
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
     }
 
     [TestCase(true)]
@@ -207,7 +207,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
 
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
     }
 
     [Test]
@@ -227,7 +227,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         
         await Task.WhenAll(clientComplete).Timeout(1);
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c.CompletePipeFired));
+        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
     }
 
 

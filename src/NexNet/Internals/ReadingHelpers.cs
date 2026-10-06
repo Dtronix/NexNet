@@ -7,10 +7,10 @@ namespace NexNet.Internals;
 
 internal static class ReadingHelpers
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     /// <summary>
     /// Reads a little-endian ushort (framing fields are always little-endian).
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryReadUShort(in ReadOnlySequence<byte> sequence, Span<byte> buffer, ref int position, out ushort value)
     {
         if (!TryRead(sequence, buffer, ref position, 2, out var spanValue))
