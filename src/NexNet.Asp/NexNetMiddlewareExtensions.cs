@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,7 +20,10 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     /// <param name="services">The <see cref="IServiceCollection"/> to add the service to.</param>
     /// <returns>A reference to this instance after the operation has completed.</returns>
-    public static IServiceCollection AddNexusServer<TServerNexus, TClientProxy>(this IServiceCollection services)
+    public static IServiceCollection AddNexusServer<
+        // The DI container constructs the nexus for every connection.
+        [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TServerNexus,
+        TClientProxy>(this IServiceCollection services)
         where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
         where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
