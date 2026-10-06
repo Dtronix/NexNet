@@ -122,7 +122,7 @@ public static class SessionHarness
 
         // Own preamble (flag bit 0): truncated, wrong magic, wrong version, valid without a greeting.
         yield return [1, 0x4E, 0x6E, 0x50];
-        yield return [1, 0x4E, 0x6E, 0x50, 0x15, 2, 0, 0, 2];
+        yield return [1, 0x4E, 0x6E, 0x50, 0x15, 0, 0, 0, 1];
         yield return [1, .. Server.Preamble.AsSpan(0, 7), 9];
         yield return [1, .. Server.Preamble];
 
@@ -176,14 +176,7 @@ public static class SessionHarness
 
     private sealed class Server
     {
-        public static readonly byte[] Preamble = [0x4E, 0x6E, 0x50, 0x14, (byte)PayloadFormatValue, 0, 0, 2];
-
-        // Payload format byte of this build (2 = MessagePack, 1 = MemoryPack).
-#if NEXNET_MEMORYPACK
-        private const int PayloadFormatValue = 1;
-#else
-        private const int PayloadFormatValue = 2;
-#endif
+        public static readonly byte[] Preamble = [0x4E, 0x6E, 0x50, 0x14, 0, 0, 0, 1];
 
         private readonly FuzzListener _listener = new();
         public FuzzLogger Logger { get; } = new();

@@ -89,15 +89,14 @@ internal class RawTcpClient : IDisposable
     public readonly string ProtocolMessageDefinition = "[type:byte][body_length:ushort][body:body_length]";
     
     public static readonly string ProtocolHeader =
-        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][payloadFormat:byte][reserved1:byte][reserved2:byte][version:byte]";
+        "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
 
-    public static byte ProtocolVersion = 2;
-    public static byte PayloadFormat = (byte)PayloadFormatInfo.Local;
+    public static byte ProtocolVersion = 1;
     private static readonly object[] _protocolHeaderValues =
-        [(byte)'N', (byte)'n', (byte)'P', (byte)'', PayloadFormat, 0, 0, ProtocolVersion];
-    public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false, byte? payloadFormat = null)
+        [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, ProtocolVersion];
+    public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false)
     {
-        object[] values = [(byte)'N', (byte)'n', (byte)'P', (byte)'', payloadFormat ?? PayloadFormat, 0, 0, ProtocolVersion];
+        object[] values = [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, ProtocolVersion];
 
         if (badHeader)
             values[Random.Shared.NextInt64(0, 7)] = 255;

@@ -394,9 +394,9 @@ internal partial class NexusSession<TNexus, TProxy>
         var headerSlice = sequence.Slice(0, 8);
         Span<byte> header = stackalloc byte[8]; 
         headerSlice.CopyTo(header);
-        var receivedPayloadFormat = header[4];
-        var reserved1 = header[5]; // Reserved for future
-        var reserved2 = header[6]; // Reserved for future
+        var reserved1 = header[4]; // Reserved for future
+        var reserved2 = header[5]; // Reserved for future
+        var reserved3 = header[6]; // Reserved for future
         var receivedProtocolVersion = header[7];
         
         // Compare the magic bytes directly; this is independent of host byte order.
@@ -408,7 +408,7 @@ internal partial class NexusSession<TNexus, TProxy>
         }
         
         // Ensure the reserved values are 0.
-        if (reserved1 != 0 || reserved2 != 0)
+        if (reserved1 != 0 || reserved2 != 0 || reserved3 != 0)
         {
             Logger?.LogTrace("Reserved data is not empty as required for NexNet stream.");
             disconnect = DisconnectReason.ProtocolError;
@@ -418,13 +418,6 @@ internal partial class NexusSession<TNexus, TProxy>
         if (receivedProtocolVersion != ProtocolVersion)
         {
             Logger?.LogTrace("Transport version is out of the range of valid versions.");
-            disconnect = DisconnectReason.ProtocolError;
-            return false;
-        }
-
-        if (receivedPayloadFormat != (byte)PayloadFormatInfo.Local)
-        {
-            Logger?.LogTrace($"Payload format mismatch: local {PayloadFormatInfo.Local}, remote {receivedPayloadFormat}.");
             disconnect = DisconnectReason.ProtocolError;
             return false;
         }
