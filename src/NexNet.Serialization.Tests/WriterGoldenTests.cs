@@ -205,14 +205,6 @@ public class WriterGoldenTests
         Assert.That(Hex(Write((ref MsgPackWriter w) => w.WriteExtHeader(42, length))), Is.EqualTo(Hex(expected)));
     }
 
-    [Test]
-    public void FixedWidthModeWritesFullWidth()
-    {
-        Assert.That(Hex(Write((ref MsgPackWriter w) => w.Write(5), fixedWidth: true)), Is.EqualTo("d200000005"));
-        Assert.That(Hex(Write((ref MsgPackWriter w) => w.Write(5L), fixedWidth: true)), Is.EqualTo("d30000000000000005"));
-        Assert.That(Hex(Write((ref MsgPackWriter w) => w.Write((ushort)5), fixedWidth: true)), Is.EqualTo("cd0005"));
-    }
-
     internal delegate void ReferenceOp(ref MessagePackWriter writer);
 
     private static byte[] WriteReference(ReferenceOp op)

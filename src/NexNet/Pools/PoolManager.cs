@@ -25,11 +25,6 @@ internal class PoolManager
     public readonly ResettablePool<RegisteredInvocationState> RegisteredInvocationStatePool = new(128);
 
     /// <summary>
-    /// Pool for pipe managers.
-    /// </summary>
-    public readonly PipeManagerPool PipeManagerPool = new();
-
-    /// <summary>
     /// Pool for cancellation token sources.
     /// </summary>
     public readonly CancellationTokenSourcePool CancellationTokenSourcePool = new();
@@ -113,6 +108,5 @@ internal class PoolManager
 
         RegisteredInvocationStatePool.Clear();
         CancellationTokenSourcePool.Clear();
-        PipeManagerPool.Clear();
     }
 }

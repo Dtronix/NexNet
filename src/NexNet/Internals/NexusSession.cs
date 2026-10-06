@@ -182,7 +182,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
         
-        PipeManager = _poolManager.PipeManagerPool.Rent(this);
+        PipeManager = new NexusPipeManager();
         PipeManager.Setup(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
@@ -407,9 +407,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         await _disconnectionCts.CancelAsync().ConfigureAwait(false);
         OnStateChanged?.Invoke(State);
 
-        // Cancel all pipes. The manager is not returned to the pool: invocations of this session can still be running
-        // (CancelAll above only signals them), and one that registers a pipe after a reuse would attach it to another
-        // session.
+        // Cancel all pipes. Each session creates its own manager and never reuses one: invocations of this session can
+        // still be running (CancelAll above only signals them), and one that registers a pipe after a reuse would attach
+        // it to another session.
         PipeManager.CancelAll();
 
         _nexus.Disconnected(reason);

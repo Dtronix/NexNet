@@ -8,10 +8,10 @@ internal delegate T ReadFunc<out T>(ref MsgPackReader reader);
 
 internal static class TestHelpers
 {
-    public static byte[] Write(WriteAction action, bool fixedWidth = false)
+    public static byte[] Write(WriteAction action)
     {
         var buffer = new ArrayBufferWriter<byte>();
-        var writer = new MsgPackWriter(buffer) { FixedWidth = fixedWidth };
+        var writer = new MsgPackWriter(buffer);
         action(ref writer);
         writer.Flush();
         return buffer.WrittenSpan.ToArray();

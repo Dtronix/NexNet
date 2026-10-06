@@ -28,12 +28,6 @@ public ref struct MsgPackWriter
     private int _buffered;
 
     /// <summary>
-    /// Benchmark-only mode: integers are always written in the full-width form of their .NET type.
-    /// The output is still valid MessagePack.
-    /// </summary>
-    internal bool FixedWidth;
-
-    /// <summary>
     /// Creates a writer over the specified output.
     /// </summary>
     /// <param name="output">Destination buffer writer.</param>
@@ -42,7 +36,6 @@ public ref struct MsgPackWriter
         _output = output;
         _span = default;
         _buffered = 0;
-        FixedWidth = false;
     }
 
     /// <summary>
@@ -117,12 +110,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(byte value)
     {
-        if (FixedWidth)
-        {
-            WriteUInt8Forced(value);
-            return;
-        }
-
         if (value <= MsgPackCode.MaxFixPositive)
         {
             GetSpan(1)[0] = value;
@@ -139,12 +126,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(ushort value)
     {
-        if (FixedWidth)
-        {
-            WriteUInt16Forced(value);
-            return;
-        }
-
         WriteUInt32Compact(value);
     }
 
@@ -153,12 +134,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(uint value)
     {
-        if (FixedWidth)
-        {
-            WriteUInt32Forced(value);
-            return;
-        }
-
         WriteUInt32Compact(value);
     }
 
@@ -167,12 +142,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(ulong value)
     {
-        if (FixedWidth)
-        {
-            WriteUInt64Forced(value);
-            return;
-        }
-
         if (value <= uint.MaxValue)
             WriteUInt32Compact((uint)value);
         else
@@ -219,12 +188,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(sbyte value)
     {
-        if (FixedWidth)
-        {
-            WriteInt8Forced(value);
-            return;
-        }
-
         WriteInt32Compact(value);
     }
 
@@ -233,12 +196,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(short value)
     {
-        if (FixedWidth)
-        {
-            WriteInt16Forced(value);
-            return;
-        }
-
         WriteInt32Compact(value);
     }
 
@@ -247,12 +204,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(int value)
     {
-        if (FixedWidth)
-        {
-            WriteInt32Forced(value);
-            return;
-        }
-
         WriteInt32Compact(value);
     }
 
@@ -261,12 +212,6 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(long value)
     {
-        if (FixedWidth)
-        {
-            WriteInt64Forced(value);
-            return;
-        }
-
         if (value >= 0)
         {
             if (value <= uint.MaxValue)
@@ -329,7 +274,7 @@ public ref struct MsgPackWriter
     /// </summary>
     public void Write(char value) => Write((ushort)value);
 
-    // ---------------------------------------------------------------- Forced (fixed-width) integers
+    // ---------------------------------------------------------------- Full-width integers
 
     /// <summary>Writes <c>uint8</c> (0xcc) regardless of value.</summary>
     public void WriteUInt8Forced(byte value)
@@ -340,24 +285,6 @@ public ref struct MsgPackWriter
         _buffered += 2;
     }
 
-    /// <summary>Writes <c>uint16</c> (0xcd) regardless of value.</summary>
-    public void WriteUInt16Forced(ushort value)
-    {
-        var s = GetSpan(3);
-        s[0] = MsgPackCode.UInt16;
-        BinaryPrimitives.WriteUInt16BigEndian(s.Slice(1), value);
-        _buffered += 3;
-    }
-
-    /// <summary>Writes <c>uint32</c> (0xce) regardless of value.</summary>
-    public void WriteUInt32Forced(uint value)
-    {
-        var s = GetSpan(5);
-        s[0] = MsgPackCode.UInt32;
-        BinaryPrimitives.WriteUInt32BigEndian(s.Slice(1), value);
-        _buffered += 5;
-    }
-
     /// <summary>Writes <c>uint64</c> (0xcf) regardless of value.</summary>
     public void WriteUInt64Forced(ulong value)
     {
@@ -365,33 +292,6 @@ public ref struct MsgPackWriter
         s[0] = MsgPackCode.UInt64;
         BinaryPrimitives.WriteUInt64BigEndian(s.Slice(1), value);
         _buffered += 9;
-    }
-
-    /// <summary>Writes <c>int8</c> (0xd0) regardless of value.</summary>
-    public void WriteInt8Forced(sbyte value)
-    {
-        var s = GetSpan(2);
-        s[0] = MsgPackCode.Int8;
-        s[1] = unchecked((byte)value);
-        _buffered += 2;
-    }
-
-    /// <summary>Writes <c>int16</c> (0xd1) regardless of value.</summary>
-    public void WriteInt16Forced(short value)
-    {
-        var s = GetSpan(3);
-        s[0] = MsgPackCode.Int16;
-        BinaryPrimitives.WriteInt16BigEndian(s.Slice(1), value);
-        _buffered += 3;
-    }
-
-    /// <summary>Writes <c>int32</c> (0xd2) regardless of value.</summary>
-    public void WriteInt32Forced(int value)
-    {
-        var s = GetSpan(5);
-        s[0] = MsgPackCode.Int32;
-        BinaryPrimitives.WriteInt32BigEndian(s.Slice(1), value);
-        _buffered += 5;
     }
 
     /// <summary>Writes <c>int64</c> (0xd3) regardless of value.</summary>
