@@ -141,11 +141,15 @@ public static class Harnesses
                 using (var buffer = writer.Flush())
                     pipeReader.BufferData(buffer).AsTask().GetAwaiter().GetResult();
 
-                // Read whatever is complete; an incomplete item makes the reader wait, so bound it with a short timeout.
-                using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(5));
+                // Decode whatever is complete without waiting; an incomplete item stays buffered for the next chunk.
                 list.Clear();
-                reader.ReadAsync(list, null, cts.Token).AsTask().GetAwaiter().GetResult();
+                reader.ReadAvailable(list, null);
             }
+
+            // Complete the pipe and read once more so the completion path is covered too.
+            pipeReader.CompleteNoNotify();
+            list.Clear();
+            reader.ReadAvailable(list, null);
         });
     }
 
@@ -193,10 +197,6 @@ public static class Harnesses
         catch (NexusSerializationException)
         {
             // Expected rejection of malformed input.
-        }
-        catch (OperationCanceledException)
-        {
-            // The channel harness waits for more data on incomplete input; a timeout is not a defect.
         }
     }
 }

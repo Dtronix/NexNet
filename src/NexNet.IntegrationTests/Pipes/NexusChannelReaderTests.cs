@@ -113,6 +113,32 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
     }
 
     [Test]
+    public async Task ReadAvailableDecodesOnlyCompleteItemsWithoutWaiting()
+    {
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+        var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
+        var item = ComplexMessage.Random();
+        var bytes = TestSerialization.SerializePayload(item);
+        var half = bytes.Length / 2;
+        var list = new List<ComplexMessage>();
+
+        // Partial data: nothing decoded, nothing consumed.
+        await Buffer(pipeReader, bytes[..half]);
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
+        Assert.That(list, Is.Empty);
+
+        // The rest of the data completes the buffered half into one item.
+        await Buffer(pipeReader, bytes[half..]);
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(bytes.Length));
+        Assert.That(list.Single(), Is.EqualTo(item));
+
+        // No new data: nothing more to read.
+        list.Clear();
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
+        Assert.That(list, Is.Empty);
+    }
+
+    [Test]
     public async Task ReadsManyItemsAcrossEverySplitPoint()
     {
         var items = Enumerable.Range(0, 40).Select(i => new string((char)('a' + i % 26), i * 7)).ToArray();

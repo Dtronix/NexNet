@@ -65,6 +65,22 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     private static NexusSerializerOptions? GetOptions(INexusDuplexPipe pipe)
         => (pipe as NexusDuplexPipe)?.Session?.Config.SerializerOptions;
 
+    /// <summary>
+    /// Decodes every complete item currently buffered, without waiting for more data. Returns the number of bytes
+    /// consumed. For tests and fuzzing.
+    /// </summary>
+    /// <remarks>
+    /// Everything buffered is marked examined (see <see cref="ReadItems{TTo}"/>), so a later call returns 0 until new
+    /// bytes arrive.
+    /// </remarks>
+    internal long ReadAvailable<TTo>(List<TTo> list, Converter<T, TTo>? converter)
+    {
+        if (!Reader.TryRead(out var result) || result.Buffer.Length == 0)
+            return 0;
+
+        return ReadItems(result.Buffer, list, converter);
+    }
+
     /// <inheritdoc/>
     public virtual async ValueTask<bool> ReadAsync<TTo>(List<TTo> list, Converter<T, TTo>? converter, CancellationToken cancellationToken = default)
     {
