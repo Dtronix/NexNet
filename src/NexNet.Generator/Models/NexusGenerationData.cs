@@ -38,13 +38,13 @@ internal sealed record NexusGenerationData(
 )
 {
     /// <summary>
-    /// Generated MessagePack formatter classes and registrations for every type reachable from the nexus
-    /// (emitted only with the MessagePack serializer backend).
+    /// Formatter specs for every type reachable from the nexus. They are merged with the specs of the other producers
+    /// into the single per-assembly formatter file.
     /// </summary>
-    public string SerializationCode { get; init; } = string.Empty;
+    public EquatableArray<FormatterSpec> Formatters { get; init; } = EquatableArray<FormatterSpec>.Empty;
 
     /// <summary>
-    /// Serialization diagnostics (reported only with the MessagePack serializer backend).
+    /// Serialization diagnostics.
     /// </summary>
     public ImmutableArray<SerializationDiagnostic> SerializationDiagnostics { get; init; } = ImmutableArray<SerializationDiagnostic>.Empty;
 }

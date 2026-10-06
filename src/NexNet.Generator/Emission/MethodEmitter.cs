@@ -16,10 +16,9 @@ internal static class MethodEmitter
     public static void EmitNexusInvocation(
         StringBuilder sb,
         MethodData method,
-        InvocationInterfaceData proxyImplementation,
-        SerializerBackend backend = SerializerBackend.MessagePack)
+        InvocationInterfaceData proxyImplementation)
     {
-        var argPrefix = backend == SerializerBackend.MessagePack ? "__arg" : "arguments.Item";
+        const string argPrefix = "__arg";
 
         // Emit auth guard before any deserialization
         if (method.AuthorizeData != null)
@@ -43,7 +42,7 @@ internal static class MethodEmitter
         }
 
         // Deserialize the arguments.
-        if (method.SerializedParameterCount > 0 && backend == SerializerBackend.MessagePack)
+        if (method.SerializedParameterCount > 0)
         {
             // Arguments are a MessagePack array written inline by the proxy (no ValueTuple). They are read by a
             // generated static helper because ref struct readers cannot be locals of async methods before C# 13.
@@ -56,20 +55,6 @@ internal static class MethodEmitter
             }
 
             sb.AppendLine(");");
-        }
-        else if (method.SerializedParameterCount > 0)
-        {
-            sb.Append("                        var arguments = message.DeserializeArguments<global::System.ValueTuple<");
-            for (var i = 0; i < method.Parameters.Length; i++)
-            {
-                if (method.Parameters[i].SerializedType == null)
-                    continue;
-
-                sb.Append(method.Parameters[i].SerializedType).Append(", ");
-            }
-
-            sb.Remove(sb.Length - 2, 2);
-            sb.AppendLine(">>();");
         }
 
         // Register the duplex pipe if we have one.
@@ -103,30 +88,22 @@ internal static class MethodEmitter
             {
                 sb.Append("var result = await ");
                 EmitNexusMethodInvocation(sb, method, false, argPrefix);
-                if (backend == SerializerBackend.MessagePack)
-                {
-                    sb.AppendLine("                        if (returnBuffer != null)");
-                    sb.Append("                            global::NexNet.Serialization.NexusSerializer.Serialize<").Append(method.ReturnType).AppendLine(">(returnBuffer, result);");
-                }
-                else
-                {
-                    sb.AppendLine("""
-                        if (returnBuffer != null)
-                            global::MemoryPack.MemoryPackSerializer.Serialize(returnBuffer, result);
-""");
-                }
+                sb.AppendLine("                        if (returnBuffer != null)");
+                sb.Append("                            global::NexNet.Serialization.NexusSerializer.Serialize<").Append(method.ReturnType).AppendLine(">(returnBuffer, result);");
             }
         }
     }
 
     /// <summary>
-    /// Emits the static helper that reads the MessagePack argument array of a method (MessagePack backend).
+    /// Emits the static helper that reads the MessagePack argument array of a method.
     /// </summary>
     public static void EmitArgumentReader(StringBuilder sb, MethodData method)
     {
         if (method.SerializedParameterCount == 0)
             return;
 
+        // Formatters read into `ref T?`; a peer may send nil for a non-nullable reference argument, as before.
+        sb.AppendLine("#pragma warning disable CS8601");
         sb.Append("        private static void __ReadArguments_").Append(method.Id)
             .Append("(global::System.Memory<byte> __arguments, global::NexNet.Serialization.NexusSerializerOptions __options");
         foreach (var p in method.Parameters)
@@ -153,6 +130,7 @@ internal static class MethodEmitter
         }
 
         sb.AppendLine("        }");
+        sb.AppendLine("#pragma warning restore CS8601");
         sb.AppendLine();
     }
 
@@ -248,138 +226,10 @@ internal static class MethodEmitter
     }
 
     /// <summary>
-    /// Emits the proxy method implementation (making calls).
+    /// Emits the proxy method implementation (making calls): arguments are written inline as a MessagePack array
+    /// into a pooled buffer that the invoker returns after sending.
     /// </summary>
-    public static void EmitProxyMethodInvocation(StringBuilder sb, MethodData method, SerializerBackend backend = SerializerBackend.MessagePack)
-    {
-        if (backend == SerializerBackend.MessagePack)
-        {
-            EmitProxyMethodInvocationMessagePack(sb, method);
-            return;
-        }
-
-        sb.Append("             public ");
-
-        if (method.IsReturnVoid)
-        {
-            sb.Append("void ");
-        }
-        else if (method.IsAsync)
-        {
-            if (method.ReturnType != null)
-            {
-                sb.Append("global::System.Threading.Tasks.ValueTask<").Append(method.ReturnType).Append("> ");
-            }
-            else
-            {
-                sb.Append("global::System.Threading.Tasks.ValueTask ");
-            }
-        }
-
-        sb.Append(method.Name).Append("(");
-
-        foreach (var parameter in method.Parameters)
-        {
-            sb.Append(parameter.Type).Append(" ").Append(parameter.Name).Append(", ");
-        }
-
-        if (method.Parameters.Length > 0)
-            sb.Remove(sb.Length - 2, 2);
-
-        sb.AppendLine(")");
-        sb.AppendLine("             {");
-        sb.AppendLine("                 var __proxyInvoker = global::System.Runtime.CompilerServices.Unsafe.As<global::NexNet.Invocation.IProxyInvoker>(this);");
-
-        if (method.SerializedParameterCount > 0)
-        {
-            sb.Append("                 var __proxyInvocationArguments = new global::System.ValueTuple<");
-
-            foreach (var p in method.Parameters)
-            {
-                if (p.SerializedType == null)
-                    continue;
-
-                sb.Append(p.SerializedType).Append(", ");
-            }
-
-            sb.Remove(sb.Length - 2, 2);
-
-            sb.Append(">(");
-            foreach (var p in method.Parameters)
-            {
-                if (p.SerializedValue == null)
-                    continue;
-
-                sb.Append(p.SerializedValue).Append(", ");
-            }
-
-            sb.Remove(sb.Length - 2, 2);
-
-            sb.AppendLine(");");
-
-            // Serialize the arguments to bytes at the call site (AOT-safe: concrete type known at compile time).
-            sb.AppendLine("                 var __serializedArgs = global::MemoryPack.MemoryPackSerializer.Serialize(__proxyInvocationArguments);");
-        }
-
-        // Logging
-        sb.Append("                 __proxyInvoker.Logger?.ProxyLog($\"Proxy Invoking Method: ");
-        sb.Append(method.Name).Append("(");
-        for (var i = 0; i < method.Parameters.Length; i++)
-        {
-            if (method.Parameters[i].IsCancellationToken)
-            {
-                sb.Append(method.Parameters[i].Name).Append(", ");
-            }
-            else
-            {
-                sb.Append(method.Parameters[i].Name)
-                    .Append(" = ")
-                    .Append("{__proxyInvocationArguments.Item").Append(i + 1)
-                    .Append("}, ");
-            }
-        }
-
-        if (method.Parameters.Length > 0)
-            sb.Remove(sb.Length - 2, 2);
-
-        sb.AppendLine(");\");");
-        sb.Append("                 ");
-
-        if (method.IsReturnVoid || method.DuplexPipeParameter != null)
-        {
-            // If we are a void method, we need to invoke the method and then ignore the return
-            // If we have a duplex pipe parameter, we need to invoke the method and then return the invocation result.
-            sb.Append(method.DuplexPipeParameter == null ? "_ = " : "return ");
-
-            sb.Append("__proxyInvoker.ProxyInvokeMethodCore(").Append(method.Id).Append(", ");
-            sb.Append(method.SerializedParameterCount > 0 ? "__serializedArgs, " : "global::System.Memory<byte>.Empty, ");
-
-            // If we have a duplex pipe parameter, we need to pass the duplex pipe invocation flag.
-            sb.Append("global::NexNet.Messages.InvocationFlags.")
-                .Append(method.DuplexPipeParameter == null ? "None" : "DuplexPipe").AppendLine(");");
-        }
-        else if (method.IsAsync)
-        {
-            sb.Append("return __proxyInvoker.ProxyInvokeAndWaitForResultCore");
-            if (method.ReturnType != null)
-            {
-                sb.Append("<").Append(method.ReturnType).Append(">");
-            }
-
-            sb.Append("(").Append(method.Id).Append(", "); // methodId
-            sb.Append(method.SerializedParameterCount > 0 ? "__serializedArgs, " : "global::System.Memory<byte>.Empty, "); // arguments
-            sb.Append(method.CancellationTokenParameter != null ? method.CancellationTokenParameter.Name : "null")
-                .AppendLine(");");
-        }
-
-        sb.AppendLine("             }");
-    }
-
-    /// <summary>
-    /// Emits the proxy method implementation for the MessagePack backend: arguments are written inline as a
-    /// MessagePack array into a pooled buffer that the invoker returns after sending.
-    /// </summary>
-    private static void EmitProxyMethodInvocationMessagePack(StringBuilder sb, MethodData method)
+    public static void EmitProxyMethodInvocation(StringBuilder sb, MethodData method)
     {
         sb.Append("             public ");
 

@@ -65,21 +65,21 @@ partial class ServerNexus
     }
     
     [Test]
-    public void MemoryPackableObjects()
+    public void NexusObjects()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using System;
 using System.Collections.Generic;
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 namespace NexNetDemo;
-[MemoryPackable]
+[NexusObject]
 partial class DataObject { 
-    public string Value1 { get; set; } 
-    public int Value2 { get; set; } 
+    [NexusKey(0)] public string Value1 { get; set; } 
+    [NexusKey(1)] public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=-866266143)]
+[NexusVersion(Version = "v2", HashLock = 599612741)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2);
@@ -88,34 +88,35 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
 }
-""", options: SerializerBackendOptions.MemoryPack);
+""");
         Assert.That(diagnostic, Is.Empty);
     }
     
     [Test]
-    public void VersionLock_MemoryPack_ObjectsWithSameContentsProduceSameHash()
+    public void VersionLock_ObjectsWithSameContentsProduceSameHash()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 using System;
 namespace NexNetDemo;
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class Message {
-    [MemoryPackOrder(0)] public int Version { get; set; }
-    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [NexusKey(0)] public int Version { get; set; }
+    [NexusKey(1)] public int TotalValues { get; set; }
 }
+[NexusObject]
 internal partial class Message2 {
-    [MemoryPackOrder(0)] public int VersionDiff { get; set; }
-    [MemoryPackOrder(1)] public int TotalValuesDiff { get; set; }
+    [NexusKey(0)] public int VersionDiff { get; set; }
+    [NexusKey(1)] public int TotalValuesDiff { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -1823135581)]
+[NexusVersion(Version = "v1", HashLock = 1018129979)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(Message data);
 }
-[NexusVersion(Version = "v1", HashLock = -1716870845)]
+[NexusVersion(Version = "v1", HashLock = 22491956)]
 partial interface IServerNexus2 {
     [NexusMethod(100)]
     void Update(Message2 data);
@@ -128,32 +129,32 @@ partial class ServerNexus {
 partial class ServerNexus2 { 
     public void Update(Message2 data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Warning, options: SerializerBackendOptions.MemoryPack);
+""", minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic, Is.Empty);
     }
 
 
     
     [Test]
-    public void MemoryPackable_Interface()
+    public void NexusUnion_Interface()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 namespace NexNetDemo;
-[MemoryPackable]
-[MemoryPackUnion(1, typeof(VersionMessage))]         
-[MemoryPackUnion(0, typeof(ValuesMessage))]        
+[NexusObject]
+[NexusUnion<VersionMessage>(1)]
+[NexusUnion<ValuesMessage>(0)]
 internal partial interface IMessageV1 { 
 }
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class VersionMessage : IMessageV1 {
-    [MemoryPackOrder(0)] public int Version { get; set; }
-    [MemoryPackOrder(1)] public int TotalValues { get; set; }
+    [NexusKey(0)] public int Version { get; set; }
+    [NexusKey(1)] public int TotalValues { get; set; }
 }
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class ValuesMessage : IMessageV1 {
-    [MemoryPackOrder(0)] public byte[] Values { get; set; }
+    [NexusKey(0)] public byte[] Values { get; set; }
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v1")]
@@ -165,41 +166,41 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(IMessageV1 data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Error, options: SerializerBackendOptions.MemoryPack);
+""", minDiagnostic:DiagnosticSeverity.Error);
         Assert.That(diagnostic, Is.Empty);
     }
     
     [Test]
-    public void MemoryPackable_NestedCreation()
+    public void NexusObject_NestedCreation()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 using System;
 namespace NexNetDemo;
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class Message {
-    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+    [NexusKey(0)] public VersionMessage[] Messages { get; set; }
 }
 
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class VersionMessage {
-    [MemoryPackOrder(0)] public int Version { get; set; }
-    [MemoryPackOrder(1)] public int TotalValues { get; set; }
-    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+    [NexusKey(0)] public int Version { get; set; }
+    [NexusKey(1)] public int TotalValues { get; set; }
+    [NexusKey(2)] public ValuesMessage Values { get; set; }
 }
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class ValuesMessage {
-    [MemoryPackOrder(0)] public byte[] Values { get; set; }
-    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+    [NexusKey(0)] public byte[] Values { get; set; }
+    [NexusKey(1)] public ValueObjects ValueObjects { get; set; }
 }
 
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class ValueObjects {
-    [MemoryPackOrder(0)] public string[] Values { get; set; }
+    [NexusKey(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -429959377)]
+[NexusVersion(Version = "v1", HashLock = 256031809)]
 partial interface IServerNexus {
     [NexusMethod(100)]
     void Update(ValueTuple<Message> data);
@@ -208,7 +209,7 @@ partial interface IServerNexus {
 partial class ServerNexus : IServerNexus { 
     public void Update(ValueTuple<Message> data) { }
 }
-""", minDiagnostic:DiagnosticSeverity.Warning, options: SerializerBackendOptions.MemoryPack);
+""", minDiagnostic:DiagnosticSeverity.Warning);
         Assert.That(diagnostic, Is.Empty);
     }
     
@@ -219,16 +220,19 @@ partial class ServerNexus : IServerNexus {
 using System;
 using System.Collections.Generic;
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 namespace NexNetDemo;
-[MemoryPackable]
+[NexusObject]
 partial class DataObject { 
-    public string Value1 { get; set; } 
-    public short Value2 { get; set; } 
+    [NexusKey(0)] public string Value1 { get; set; } 
+    [NexusKey(1)] public short Value2 { get; set; } 
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v2", HashLock=-1605840564)]
-partial interface IServerNexus { void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2); }
+[NexusVersion(Version = "v2", HashLock = 599612741)]
+partial interface IServerNexus {
+    [NexusMethod(100)]
+    void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2);
+}
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
     public void Update(DataObject data, List<ValueTuple<Tuple<DataObject, int>>> data2) { }
@@ -242,34 +246,35 @@ partial class ServerNexus : IServerNexus {
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 using System;
 namespace NexNetDemo;
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class Message {
-    [MemoryPackOrder(0)] public VersionMessage[] Messages { get; set; }
+    [NexusKey(0)] public VersionMessage[] Messages { get; set; }
 }
 
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class VersionMessage {
-    [MemoryPackOrder(0)] public int Version { get; set; }
-    [MemoryPackOrder(1)] public int TotalValues { get; set; }
-    [MemoryPackOrder(2)] public ValuesMessage Values { get; set; }
+    [NexusKey(0)] public int Version { get; set; }
+    [NexusKey(1)] public int TotalValues { get; set; }
+    [NexusKey(2)] public ValuesMessage Values { get; set; }
 }
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class ValuesMessage {
-    [MemoryPackOrder(0)] public int[] Values { get; set; }
-    [MemoryPackOrder(1)] public ValueObjects ValueObjects { get; set; }
+    [NexusKey(0)] public int[] Values { get; set; }
+    [NexusKey(1)] public ValueObjects ValueObjects { get; set; }
 }
 
-[MemoryPackable(SerializeLayout.Explicit)]
+[NexusObject]
 internal partial class ValueObjects {
-    [MemoryPackOrder(0)] public string[] Values { get; set; }
+    [NexusKey(0)] public string[] Values { get; set; }
 }
 partial interface IClientNexus { }
-[NexusVersion(Version = "v1", HashLock = -764721642)]
-partial interface IServerNexus { 
-    void Update(ValueTuple<Message> data); 
+[NexusVersion(Version = "v1", HashLock = 256031809)]
+partial interface IServerNexus {
+    [NexusMethod(100)]
+    void Update(ValueTuple<Message> data);
 }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { 
@@ -483,12 +488,12 @@ partial class ServerNexus
 using System;
 using System.Collections.Generic;
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 namespace NexNetDemo;
-[MemoryPackable]
+[NexusObject]
 partial class DataObject {
-    public string Value1 { get; set; }
-    public int Value2 { get; set; }
+    [NexusKey(0)] public string Value1 { get; set; }
+    [NexusKey(1)] public int Value2 { get; set; }
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v1", HashLock = 0)]
@@ -528,12 +533,12 @@ partial class ServerNexus : IServerNexus {
 using System;
 using System.Collections.Generic;
 using NexNet;
-using MemoryPack;
+using NexNet.Serialization;
 namespace NexNetDemo;
-[MemoryPackable]
+[NexusObject]
 partial class DataObject { 
-    public string Value1 { get; set; } 
-    public int Value2 { get; set; } 
+    [NexusKey(0)] public string Value1 { get; set; } 
+    [NexusKey(1)] public int Value2 { get; set; } 
 }
 partial interface IClientNexus { }
 [NexusVersion(Version = "v2")]

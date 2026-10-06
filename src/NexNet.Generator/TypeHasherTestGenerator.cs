@@ -6,7 +6,7 @@ namespace NexNet.Generator;
 
 /// <summary>
 /// Test generator for TypeHasher. Used to validate the hasher implementation.
-/// Uses [GenerateStructureHashV2] attribute with expected WalkString value.
+/// Uses [GenerateStructureHash] attribute with expected WalkString value.
 /// </summary>
 [Generator(LanguageNames.CSharp)]
 [SuppressMessage("MicrosoftCodeAnalysisReleaseTracking", "RS2008:Enable analyzer release tracking")]
@@ -36,9 +36,9 @@ internal class TypeHasherTestGenerator : IIncrementalGenerator
                     if (symbol == null)
                         return null;
 
-                    // Look for [GenerateStructureHashV2] attribute
+                    // Look for [GenerateStructureHash] attribute
                     if (symbol.GetAttributes()
-                        .Any(ad => ad.AttributeClass?.Name == "GenerateStructureHashV2Attribute"))
+                        .Any(ad => ad.AttributeClass?.Name == "GenerateStructureHashAttribute"))
                         return symbol;
                     return null;
                 })
@@ -62,7 +62,7 @@ internal class TypeHasherTestGenerator : IIncrementalGenerator
 
                     // Get expected walk string from attribute
                     var attribute = typeSymbol.GetAttributes()
-                        .First(a => a.AttributeClass?.Name == "GenerateStructureHashV2Attribute");
+                        .First(a => a.AttributeClass?.Name == "GenerateStructureHashAttribute");
 
                     var expectedWalkArg = attribute.NamedArguments
                         .FirstOrDefault(a => a.Key == "ExpectedWalk");
@@ -121,26 +121,26 @@ internal class TypeHasherTestGenerator : IIncrementalGenerator
     }
 
     private static readonly DiagnosticDescriptor _testInfo001 = new DiagnosticDescriptor(
-        id: "TESTV2_INFO001",
+        id: "TEST_INFO001",
         title: "TypeHasher Result",
         messageFormat: "Type '{0}' hash={1} walk='{2}'",
-        category: "GENERATOR_TESTS_V2",
+        category: "GENERATOR_TESTS",
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     private static readonly DiagnosticDescriptor _testFail001 = new DiagnosticDescriptor(
-        id: "TESTV2_FAIL001",
+        id: "TEST_FAIL001",
         title: "TypeHasher Walk Mismatch",
         messageFormat: "Type '{0}' walk mismatch.\nActual:   '{1}'\nExpected: '{2}'",
-        category: "GENERATOR_TESTS_V2",
+        category: "GENERATOR_TESTS",
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 
     private static readonly DiagnosticDescriptor _testFail999 = new DiagnosticDescriptor(
-        id: "TESTV2_FAIL999",
+        id: "TEST_FAIL999",
         title: "TypeHasher Exception",
         messageFormat: "Exception processing type '{0}': {1}",
-        category: "GENERATOR_TESTS_V2",
+        category: "GENERATOR_TESTS",
         defaultSeverity: DiagnosticSeverity.Info,
         isEnabledByDefault: true);
 }

@@ -80,9 +80,8 @@ internal static class NexusDataExtractor
             .Replace("<", "_")
             .Replace(">", "_");
 
-        // Serialization: walk every type reachable from both interfaces and generate formatters (MessagePack backend).
-        var serialization = new SerializationBuilder(context.SemanticModel.Compilation,
-            ((uint)_hash.ComputeHash(Encoding.UTF8.GetBytes(fullTypeName))).ToString("x8"));
+        // Serialization: walk every type reachable from both interfaces and generate formatters.
+        var serialization = new SerializationBuilder(context.SemanticModel.Compilation);
         AddSerializationRoots(serialization, nexusInterfaceSymbol);
         AddSerializationRoots(serialization, proxyInterfaceSymbol);
         serialization.AddAssemblyDeclaredRoots();
@@ -107,7 +106,7 @@ internal static class NexusDataExtractor
             IdentifierLocation: LocationData.FromToken(syntax.Identifier)!
         )
         {
-            SerializationCode = serialization.Build(),
+            Formatters = serialization.Build(),
             SerializationDiagnostics = SerializationBuilder.ToImmutable(serialization.Diagnostics)
         };
     }

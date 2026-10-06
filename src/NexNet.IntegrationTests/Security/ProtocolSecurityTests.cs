@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Text;
-using MemoryPack;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
@@ -213,7 +212,7 @@ internal class ProtocolSecurityTests : BaseTests
         await client.SendProtocolHeaderAsync();
         await client.ReadProtocolHeaderAsync();
 
-        // MemoryPack-style object: member count followed by raw little-endian fields. Not a greeting array.
+        // A pre-0.17 style body: member count followed by raw little-endian fields. Not a greeting array.
         await client.SendMessageWithBodyAsync(MessageType.ClientGreeting,
             [0x04, 0xFF, 0xFF, 0xFF, 0xFF, 0x2A, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00]);
 

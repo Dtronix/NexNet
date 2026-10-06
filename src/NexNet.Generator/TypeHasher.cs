@@ -82,11 +82,18 @@ internal readonly struct TypeHashResult
 
 /// <summary>
 /// High-performance type hasher that generates deterministic hashes for method parameters
-/// reflecting the complete structure of MemoryPack-serialized types.
+/// reflecting the complete serialized structure of their types.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <c>[NexusObject]</c> types are walked member by member in <c>[NexusKey]</c> order, and <c>[NexusObject]</c> unions
+/// case by case in tag order. Any other user type (one serialized by a custom or built-in formatter) is hashed by
+/// name only.
+/// </para>
+/// <para>
 /// Uses single-pass streaming with FNV-1a algorithm for efficient hashing.
 /// Supports optional walk string generation for debugging/testing.
+/// </para>
 /// </remarks>
 internal sealed class TypeHasher
 {
@@ -136,7 +143,7 @@ internal sealed class TypeHasher
     private static TypeHashResult ComputeHash(ITypeSymbol rootType, bool generateWalkString)
     {
         var hasher = new IncrementalHasher();
-        // Only track MemoryPackable types in visited set - they're the only ones that can be self-referencing.
+        // Only track [NexusObject] types in the visited set - they're the only ones that can be self-referencing.
         // Primitive types like String, Int32, and CLR types cannot self-reference.
         var visited = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
         var stack = new Stack<(ITypeSymbol type, int depth)>();
@@ -152,8 +159,8 @@ internal sealed class TypeHasher
             if (type is null)
                 continue;
 
-            // Only check visited for types that can self-reference (MemoryPackable types)
-            // SpecialTypes (int, string, etc.), CLR types, and non-MemoryPackable types cannot self-reference
+            // Only check visited for types that can self-reference ([NexusObject] types and unions).
+            // SpecialTypes (int, string, etc.), CLR types, and other user types cannot self-reference.
             bool canSelfReference = CanTypeSelfReference(type);
 
             if (canSelfReference)
@@ -180,8 +187,8 @@ internal sealed class TypeHasher
 
     /// <summary>
     /// Determines if a type can potentially self-reference (create cycles in the type graph).
-    /// Only MemoryPackable types, enums (for consistency), and union interfaces can self-reference.
-    /// Primitive types, CLR types, and non-MemoryPackable user types cannot.
+    /// Only [NexusObject] types and [NexusObject] unions can self-reference through their members or cases.
+    /// Primitive types, CLR types, enums, and other user types cannot.
     /// </summary>
     private static bool CanTypeSelfReference(ITypeSymbol type)
     {
@@ -202,12 +209,7 @@ internal sealed class TypeHasher
         if (IsSystemNamespace(type))
             return false;
 
-        // Only MemoryPackable / NexusObject types can self-reference through their members
-        // Also include interfaces (for unions) and enums
-        if (type.TypeKind == TypeKind.Interface || type.TypeKind == TypeKind.Enum)
-            return true;
-
-        return IsMemoryPackable(type) || IsNexusObject(type);
+        return IsNexusObject(type);
     }
 
     private static void ProcessType(
@@ -228,13 +230,6 @@ internal sealed class TypeHasher
         if (IsNexusObject(type) && HasNexusUnions(type))
         {
             ProcessNexusUnion(type, depth, ref hasher, stack, walkBuilder);
-            return;
-        }
-
-        // Interface with MemoryPackUnion
-        if (type.TypeKind == TypeKind.Interface)
-        {
-            ProcessUnionInterface(type, depth, ref hasher, stack, walkBuilder);
             return;
         }
 
@@ -344,8 +339,6 @@ internal sealed class TypeHasher
                     walkBuilder.Append(" [CLR]");
                 else if (IsNexusObject(type))
                     walkBuilder.Append(" [NexusObject]");
-                else if (IsMemoryPackable(type))
-                    walkBuilder.Append(" [MemoryPackable]");
                 walkBuilder.AppendLine();
             }
 
@@ -383,37 +376,17 @@ internal sealed class TypeHasher
             return;
         }
 
-        // Non-MemoryPackable user types: treat as CLR (name only)
-        if (!IsMemoryPackable(type))
+        // Other user types (custom or built-in formatter): treat as CLR (name only)
+        hasher.AddString(type.Name);
+
+        if (walkBuilder != null)
         {
-            hasher.AddString(type.Name);
-
-            if (walkBuilder != null)
-            {
-                AppendIndent(walkBuilder, depth);
-                walkBuilder.Append(type.Name);
-                if (type.NullableAnnotation == NullableAnnotation.Annotated)
-                    walkBuilder.Append('?');
-                walkBuilder.AppendLine(" [NotMemoryPackable]");
-            }
-            return;
+            AppendIndent(walkBuilder, depth);
+            walkBuilder.Append(type.Name);
+            if (type.NullableAnnotation == NullableAnnotation.Annotated)
+                walkBuilder.Append('?');
+            walkBuilder.AppendLine(" [NotNexusObject]");
         }
-
-        // MemoryPackable user-defined types: walk members in order
-        ProcessUserType(type, depth, ref hasher, stack, walkBuilder);
-    }
-
-    /// <summary>
-    /// Checks if a type has the [MemoryPackable] attribute.
-    /// </summary>
-    private static bool IsMemoryPackable(ITypeSymbol type)
-    {
-        foreach (var attr in type.GetAttributes())
-        {
-            if (attr.AttributeClass?.Name == "MemoryPackableAttribute")
-                return true;
-        }
-        return false;
     }
 
     /// <summary>
@@ -626,166 +599,6 @@ internal sealed class TypeHasher
         }
     }
 
-    private static void ProcessUnionInterface(
-        ITypeSymbol type,
-        int depth,
-        ref IncrementalHasher hasher,
-        Stack<(ITypeSymbol type, int depth)> stack,
-        StringBuilder? walkBuilder)
-    {
-        var attrs = type.GetAttributes();
-        var unions = new List<(ushort order, ITypeSymbol type)>();
-
-        foreach (var attr in attrs)
-        {
-            if (attr.AttributeClass?.Name != "MemoryPackUnionAttribute")
-                continue;
-
-            if (attr.ConstructorArguments.Length >= 2
-                && attr.ConstructorArguments[0].Value is ushort order
-                && attr.ConstructorArguments[1].Value is ITypeSymbol unionType)
-            {
-                unions.Add((order, unionType));
-            }
-        }
-
-        if (walkBuilder != null)
-        {
-            AppendIndent(walkBuilder, depth);
-            walkBuilder.Append(type.Name);
-            walkBuilder.Append(" [MemoryPackUnion");
-            if (unions.Count > 0)
-            {
-                walkBuilder.Append(':');
-                walkBuilder.Append(unions.Count);
-            }
-            walkBuilder.AppendLine("]");
-        }
-
-        if (unions.Count == 0)
-            return;
-
-        unions.Sort((a, b) => a.order.CompareTo(b.order));
-
-        // Output in forward order for walk string
-        foreach (var (order, unionType) in unions)
-        {
-            hasher.Add(order);
-            hasher.AddString(unionType.Name);
-
-            if (walkBuilder != null)
-            {
-                AppendIndent(walkBuilder, depth + 1);
-                walkBuilder.Append("[MPUID:");
-                walkBuilder.Append(order);
-                walkBuilder.Append("] ");
-                walkBuilder.AppendLine(unionType.Name);
-            }
-        }
-
-        // Push to stack in reverse order so they process in forward order
-        for (int i = unions.Count - 1; i >= 0; i--)
-        {
-            stack.Push((unions[i].type, depth + 2));
-        }
-    }
-
-    private static void ProcessUserType(
-        ITypeSymbol type,
-        int depth,
-        ref IncrementalHasher hasher,
-        Stack<(ITypeSymbol type, int depth)> stack,
-        StringBuilder? walkBuilder)
-    {
-        if (walkBuilder != null)
-        {
-            AppendIndent(walkBuilder, depth);
-            walkBuilder.Append(type.Name);
-            if (type.NullableAnnotation == NullableAnnotation.Annotated)
-                walkBuilder.Append('?');
-            walkBuilder.AppendLine(" [MemoryPackable]");
-        }
-
-        var members = type.GetMembers();
-        var ordered = new List<(int order, string name, ITypeSymbol type, NullableAnnotation nullable)>();
-        bool hasExplicitOrder = false;
-        int declOrder = 0;
-
-        foreach (var member in members)
-        {
-            ITypeSymbol? memberType = null;
-            NullableAnnotation nullable = NullableAnnotation.None;
-            int order = declOrder;
-            string? memberName = null;
-
-            if (member is IPropertySymbol { DeclaredAccessibility: Accessibility.Public, IsStatic: false } prop)
-            {
-                memberType = prop.Type;
-                nullable = prop.NullableAnnotation;
-                memberName = prop.Name;
-                order = GetMemoryPackOrder(prop, declOrder, ref hasExplicitOrder);
-            }
-            else if (member is IFieldSymbol { DeclaredAccessibility: Accessibility.Public, IsStatic: false } field)
-            {
-                memberType = field.Type;
-                nullable = field.NullableAnnotation;
-                memberName = field.Name;
-                order = GetMemoryPackOrder(field, declOrder, ref hasExplicitOrder);
-            }
-
-            if (memberType != null && memberName != null)
-            {
-                ordered.Add((order, memberName, memberType, nullable));
-            }
-            declOrder++;
-        }
-
-        if (hasExplicitOrder)
-        {
-            ordered.Sort((a, b) => a.order.CompareTo(b.order));
-        }
-
-        // Process in forward order for correct output, then push to stack in reverse
-        foreach (var (order, name, memberType, nullable) in ordered)
-        {
-            hasher.AddString(memberType.Name);
-            hasher.Add((byte)(nullable == NullableAnnotation.Annotated ? 1 : 0));
-
-            // Include structural info
-            if (memberType is IArrayTypeSymbol arr)
-            {
-                hasher.Add(arr.Rank);
-            }
-            else if (memberType is INamedTypeSymbol { Arity: > 0 } named)
-            {
-                hasher.Add(named.Arity);
-            }
-
-            if (walkBuilder != null)
-            {
-                AppendIndent(walkBuilder, depth + 1);
-                walkBuilder.Append(name);
-                walkBuilder.Append(": ");
-                AppendTypeName(walkBuilder, memberType, nullable);
-                if (hasExplicitOrder)
-                {
-                    walkBuilder.Append(" [Order:");
-                    walkBuilder.Append(order);
-                    walkBuilder.Append(']');
-                }
-                walkBuilder.AppendLine();
-            }
-        }
-
-        // Push to stack in reverse order so they process in forward order
-        for (int i = ordered.Count - 1; i >= 0; i--)
-        {
-            var (_, _, memberType, _) = ordered[i];
-            if (memberType.SpecialType == SpecialType.None)
-                stack.Push((memberType, depth + 2));
-        }
-    }
-
     private static void AppendTypeName(StringBuilder sb, ITypeSymbol type, NullableAnnotation nullable)
     {
         if (type is IArrayTypeSymbol arr)
@@ -832,21 +645,6 @@ internal sealed class TypeHasher
             if (nullable == NullableAnnotation.Annotated)
                 sb.Append('?');
         }
-    }
-
-    private static int GetMemoryPackOrder(ISymbol member, int defaultOrder, ref bool hasExplicit)
-    {
-        foreach (var attr in member.GetAttributes())
-        {
-            if (attr.AttributeClass?.Name == "MemoryPackOrderAttribute"
-                && attr.ConstructorArguments.Length > 0
-                && attr.ConstructorArguments[0].Value is int order)
-            {
-                hasExplicit = true;
-                return order;
-            }
-        }
-        return defaultOrder;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

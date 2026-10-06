@@ -5,7 +5,7 @@ using NUnit.Framework;
 namespace NexNet.Generator.Tests;
 
 /// <summary>
-/// MessagePack backend: [NexusObject] formatter generation and serialization diagnostics.
+/// [NexusObject] formatter generation and serialization diagnostics.
 /// Every test compiles the generated code, so emitted formatter errors surface as diagnostics.
 /// </summary>
 class GeneratorSerializationTests
@@ -28,7 +28,7 @@ partial interface IServerNexus { {{serverMethods}} }
 partial class ClientNexus : IClientNexus { }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { {{implementation}} }
-""", minDiagnostic: min, options: SerializerBackendOptions.MessagePack);
+""", minDiagnostic: min);
     }
 
     [Test]
@@ -155,7 +155,7 @@ public sealed class ThirdPartyFormatter : NexusFormatter<ThirdParty>
     public override void Serialize(ref MsgPackWriter writer, ThirdParty? value) => writer.Write(value?.Value ?? 0);
     public override void Deserialize(ref MsgPackReader reader, ref ThirdParty? value) => value = new ThirdParty { Value = reader.ReadInt32() };
 }
-""", options: SerializerBackendOptions.MessagePack);
+""");
         Assert.That(diagnostics, Is.Empty);
     }
 
@@ -180,7 +180,7 @@ partial interface IServerNexus { void Update(ThirdParty value); }
 partial class ClientNexus : IClientNexus { }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { public void Update(ThirdParty value) { } }
-""", options: SerializerBackendOptions.MessagePack);
+""");
         Assert.That(diagnostics, Is.Empty);
     }
 
@@ -191,25 +191,6 @@ partial class ServerNexus : IServerNexus { public void Update(ThirdParty value) 
     {
         var diagnostics = Run("public class Plain { public int Id { get; set; } }", "void Update(Plain p);", "public void Update(Plain p) { }");
         Assert.That(diagnostics.Any(d => d.Id == "NEXNET028"), Is.True);
-    }
-
-    [Test]
-    public void MemoryPackOnlyTypeIsAcceptedByMemoryPackBackend()
-    {
-        var diagnostics = CSharpGeneratorRunner.RunGenerator("""
-using NexNet;
-using MemoryPack;
-namespace NexNetDemo;
-[MemoryPackable]
-public partial class Plain { public int Id { get; set; } }
-partial interface IClientNexus { }
-partial interface IServerNexus { void Update(Plain p); }
-[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
-partial class ClientNexus : IClientNexus { }
-[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
-partial class ServerNexus : IServerNexus { public void Update(Plain p) { } }
-""", options: SerializerBackendOptions.MemoryPack);
-        Assert.That(diagnostics, Is.Empty);
     }
 
     [Test]
@@ -289,13 +270,13 @@ public interface IU { }
 
     // ------------------------------------------------------------------ Channel analyzer (NEXNET038)
 
-    private static Diagnostic[] RunChannelAnalyzer(string source, SerializerBackendOptions backend)
+    private static Diagnostic[] RunChannelAnalyzer(string source)
     {
         var compilation = CSharpGeneratorRunner.CreateCompilation(source);
         var analyzers = System.Collections.Immutable.ImmutableArray.Create<Microsoft.CodeAnalysis.Diagnostics.DiagnosticAnalyzer>(
             new NexNet.Generator.Serialization.ChannelTypeAnalyzer());
         var options = new Microsoft.CodeAnalysis.Diagnostics.AnalyzerOptions(
-            System.Collections.Immutable.ImmutableArray<AdditionalText>.Empty, backend);
+            System.Collections.Immutable.ImmutableArray<AdditionalText>.Empty);
         return compilation.WithAnalyzers(analyzers, options).GetAnalyzerDiagnosticsAsync().GetAwaiter().GetResult().ToArray();
     }
 
@@ -325,18 +306,11 @@ public static class Usage
     [Test]
     public void ChannelAnalyzerReportsUnregisteredTypes()
     {
-        var diagnostics = RunChannelAnalyzer(ChannelSource, SerializerBackendOptions.MessagePack);
+        var diagnostics = RunChannelAnalyzer(ChannelSource);
         var reported = diagnostics.Where(d => d.Id == "NEXNET038").Select(d => d.GetMessage()).ToArray();
         Assert.That(reported.Length, Is.EqualTo(2), string.Join("; ", reported));
         Assert.That(reported.Any(m => m.Contains("Plain")), Is.True);
         Assert.That(reported.Any(m => m.Contains("Item[]")), Is.True);
-    }
-
-    [Test]
-    public void ChannelAnalyzerIsInactiveForMemoryPackBackend()
-    {
-        var diagnostics = RunChannelAnalyzer(ChannelSource, SerializerBackendOptions.MemoryPack);
-        Assert.That(diagnostics.Where(d => d.Id == "NEXNET038"), Is.Empty);
     }
 
     // ------------------------------------------------------------------ Hashing
@@ -358,5 +332,81 @@ using NexNet.Serialization;
         Assert.That(h1.Hash, Is.Not.EqualTo(h2.Hash));
         Assert.That(h1.WalkString, Does.Contain("[NexusObject]"));
         Assert.That(h1.WalkString, Does.Contain("[Key:1]"));
+    }
+
+    // ------------------------------------------------------------------ Formatter output (one file per assembly)
+
+    private const string SharedTypeSource = """
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using NexNet;
+using NexNet.Serialization;
+namespace NexNetDemo;
+[NexusObject]
+public class Person { [NexusKey(0)] public int Id { get; set; } [NexusKey(1)] public string? Name { get; set; } [NexusKey(2)] public Address? Home { get; set; } }
+[NexusObject]
+public class Address { [NexusKey(0)] public string? City { get; set; } }
+public partial interface IClientNexus { ValueTask<Person> GetPerson(); }
+public partial interface IServerNexus { void Update(Person p); ValueTask<List<Person>> All(); }
+public partial interface IOtherClientNexus { }
+public partial interface IOtherServerNexus { void Store(Person p, Address a); }
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+public partial class ClientNexus : IClientNexus { public ValueTask<Person> GetPerson() => new(new Person()); }
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+public partial class ServerNexus : IServerNexus { public void Update(Person p) { } public ValueTask<List<Person>> All() => new(new List<Person>()); }
+[Nexus<IOtherServerNexus, IOtherClientNexus>(NexusType = NexusType.Server)]
+public partial class OtherServerNexus : IOtherServerNexus { public void Store(Person p, Address a) { } }
+""";
+
+    [Test]
+    public void TypeReachedFromSeveralProducersHasOneFormatter()
+    {
+        // Person is reached from two nexus pairs and is also declared locally: one formatter class, one registration.
+        var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(CSharpGeneratorRunner.CreateCompilation(SharedTypeSource));
+        Assert.That(errors, Is.Empty, string.Join("\n", errors.Select(e => e.ToString())));
+
+        var sources = result.Results.Single().GeneratedSources;
+        var formatterFiles = sources.Where(s => s.HintName == NexusGenerator.FormattersFileName).ToArray();
+        Assert.That(formatterFiles.Length, Is.EqualTo(1));
+
+        var code = formatterFiles[0].SourceText.ToString();
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Person_").Count, Is.EqualTo(1));
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"file sealed class __NexusFormatter_Address_").Count, Is.EqualTo(1));
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"Register<global::NexNetDemo\.Person>\(").Count, Is.EqualTo(1));
+        Assert.That(System.Text.RegularExpressions.Regex.Matches(code, @"ModuleInitializer").Count, Is.EqualTo(1));
+
+        // Nexus files hold only nexus code and argument readers.
+        foreach (var nexusFile in sources.Where(s => s.HintName != NexusGenerator.FormattersFileName))
+            Assert.That(nexusFile.SourceText.ToString(), Does.Not.Contain("__NexusFormatter_"), nexusFile.HintName);
+    }
+
+    [Test]
+    public void GeneratedSourcesAreByteIdenticalAcrossRuns()
+    {
+        var compilation = CSharpGeneratorRunner.CreateCompilation(SharedTypeSource);
+        var first = CSharpGeneratorRunner.RunGeneratorWithResult(compilation).Result.Results.Single().GeneratedSources;
+        var second = CSharpGeneratorRunner.RunGeneratorWithResult(compilation).Result.Results.Single().GeneratedSources;
+
+        Assert.That(second.Select(s => s.HintName), Is.EqualTo(first.Select(s => s.HintName)));
+        for (var i = 0; i < first.Length; i++)
+            Assert.That(second[i].SourceText.ToString(), Is.EqualTo(first[i].SourceText.ToString()), first[i].HintName);
+    }
+
+    [Test]
+    public void UnrelatedEditDoesNotRegenerateFormatters()
+    {
+        var compilation = CSharpGeneratorRunner.CreateCompilation(SharedTypeSource);
+        var (driver, _, _) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
+
+        var edited = compilation.AddSyntaxTrees(Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(
+            "namespace Unrelated; public static class Helper { public static int Twice(int x) => x * 2; }",
+            new Microsoft.CodeAnalysis.CSharp.CSharpParseOptions(Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp13)));
+        var (_, result, _) = CSharpGeneratorRunner.RunGeneratorWithResult(edited, driver);
+
+        var steps = result.Results.Single().TrackedSteps[NexusGenerator.FormattersTrackingName];
+        var reasons = steps.SelectMany(s => s.Outputs).Select(o => o.Reason).ToArray();
+        Assert.That(reasons, Is.Not.Empty);
+        Assert.That(reasons.All(r => r is IncrementalStepRunReason.Unchanged or IncrementalStepRunReason.Cached), Is.True,
+            string.Join(", ", reasons));
     }
 }

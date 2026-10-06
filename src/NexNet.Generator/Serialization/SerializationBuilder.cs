@@ -6,14 +6,15 @@ using NexNet.Generator.Models;
 namespace NexNet.Generator.Serialization;
 
 /// <summary>
-/// A serialization diagnostic produced during extraction and reported during output (MessagePack backend only).
+/// A serialization diagnostic produced during extraction and reported during output.
 /// </summary>
 internal sealed record SerializationDiagnostic(string Id, string Arg0, string Arg1, LocationData? Location);
 
 /// <summary>
-/// Walks the closure of types reachable from serialization roots and generates file-scoped formatter classes
-/// plus a module initializer that registers every formatter needed at runtime.
-/// Runs in the transform phase (symbol access) and produces plain strings for the output phase.
+/// Walks the closure of types reachable from serialization roots and produces a <see cref="FormatterSpec"/> for every
+/// formatter needed at runtime: generated file-scoped formatter classes for <c>[NexusObject]</c> types and
+/// registrations of built-in or user formatters. Runs in the transform phase (symbol access) and produces plain
+/// strings; <see cref="EmitSource"/> merges the specs of all producers into one file with one module initializer.
 /// </summary>
 internal sealed class SerializationBuilder
 {
@@ -34,19 +35,17 @@ internal sealed class SerializationBuilder
     };
 
     private readonly Compilation _compilation;
-    private readonly string _uniqueSuffix;
     private readonly Dictionary<ITypeSymbol, string> _userFormatters = new(SymbolEqualityComparer.Default);
     private readonly HashSet<ITypeSymbol> _visited = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<ITypeSymbol, string> _formatterClassNames = new(SymbolEqualityComparer.Default);
-    private readonly StringBuilder _classes = new();
-    private readonly List<string> _registrations = new();
-    private readonly HashSet<string> _registrationSet = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _classCode = new(StringComparer.Ordinal);
+    private readonly List<(string TypeKey, string ClassName, string Registration)> _registrations = new();
+    private readonly HashSet<string> _registeredTypes = new(StringComparer.Ordinal);
     private readonly List<SerializationDiagnostic> _diagnostics = new();
 
-    public SerializationBuilder(Compilation compilation, string uniqueSuffix)
+    public SerializationBuilder(Compilation compilation)
     {
         _compilation = compilation;
-        _uniqueSuffix = uniqueSuffix;
         CollectAssemblyAttributes();
     }
 
@@ -323,11 +322,10 @@ internal sealed class SerializationBuilder
         return MetadataFullName(type) == "System.Half";
     }
 
-    private void AddRegistration(string typeName, string expression)
+    private void AddRegistration(string typeName, string expression, string className = "")
     {
-        var statement = $"{Ns}.NexusFormatterRegistry.Register<{typeName}>({expression});";
-        if (_registrationSet.Add(statement))
-            _registrations.Add(statement);
+        if (_registeredTypes.Add(typeName))
+            _registrations.Add((typeName, className, $"{Ns}.NexusFormatterRegistry.Register<{typeName}>({expression});"));
     }
 
     private void Report(string id, string arg0, string arg1, LocationData? location)
@@ -378,13 +376,13 @@ internal sealed class SerializationBuilder
 
         if (!_formatterClassNames.TryGetValue(definition, out var className))
         {
-            className = "__NexusFormatter_" + Sanitize(definition.Name) + "_" + _formatterClassNames.Count + "_" + _uniqueSuffix;
+            className = FormatterClassName(definition);
             _formatterClassNames[definition] = className;
-            EmitFormatterClass(definition, className);
+            _classCode[className] = EmitFormatterClass(definition, className);
         }
 
         var typeArgs = type.IsGenericType ? "<" + string.Join(", ", type.TypeArguments.Select(TypeName)) + ">" : "";
-        AddRegistration(name, $"new {className}{typeArgs}()");
+        AddRegistration(name, $"new {className}{typeArgs}()", className);
 
         // Walk the closure of member and union case types using the constructed type (substituted members).
         if (TryGetUnionCases(type, out var cases))
@@ -400,6 +398,17 @@ internal sealed class SerializationBuilder
     }
 
     private bool IsAccessible(ISymbol symbol) => _compilation.IsSymbolAccessibleWithin(symbol, _compilation.Assembly);
+
+    /// <summary>
+    /// Stable per-type formatter class name: the same type gets the same name from every producer, so the merged
+    /// output can deduplicate classes by name.
+    /// </summary>
+    private static string FormatterClassName(INamedTypeSymbol definition)
+    {
+        var key = MetadataFullName(definition);
+        var hash = (uint)new XxHash32().ComputeHash(Encoding.UTF8.GetBytes(key));
+        return "__NexusFormatter_" + Sanitize(definition.Name) + "_" + hash.ToString("x8");
+    }
 
     private static string Sanitize(string name)
     {
@@ -543,7 +552,7 @@ internal sealed class SerializationBuilder
         return cases.Count > 0;
     }
 
-    private void EmitFormatterClass(INamedTypeSymbol definition, string className)
+    private string EmitFormatterClass(INamedTypeSymbol definition, string className)
     {
         var typeName = TypeName(definition);
         var typeParams = definition.IsGenericType
@@ -551,7 +560,7 @@ internal sealed class SerializationBuilder
             : "";
         var location = LocationData.FromSymbol(definition);
 
-        var sb = _classes;
+        var sb = new StringBuilder();
         sb.Append("file sealed class ").Append(className).Append(typeParams)
             .Append(" : ").Append(Ns).Append(".NexusFormatter<").Append(typeName).AppendLine(">");
         sb.AppendLine("{");
@@ -572,6 +581,7 @@ internal sealed class SerializationBuilder
 
         sb.AppendLine("}");
         sb.AppendLine();
+        return sb.ToString();
     }
 
     private static void EmitThrowingBody(StringBuilder sb, string typeName)
@@ -963,24 +973,66 @@ internal sealed class SerializationBuilder
     }
 
     /// <summary>
-    /// Builds the generated serialization source: file-scoped formatter classes and the registering module initializer.
+    /// Returns the formatter specs collected so far, ordered by type key.
     /// </summary>
-    public string Build()
+    public EquatableArray<FormatterSpec> Build()
     {
         if (_registrations.Count == 0)
+            return EquatableArray<FormatterSpec>.Empty;
+
+        return new EquatableArray<FormatterSpec>(_registrations
+            .OrderBy(r => r.TypeKey, StringComparer.Ordinal)
+            .Select(r => new FormatterSpec(r.TypeKey, r.ClassName, r.ClassName.Length > 0 ? _classCode[r.ClassName] : "", r.Registration))
+            .ToArray());
+    }
+
+    /// <summary>
+    /// Merges the specs of every producer: one registration per type and one class per formatter, in ordinal key
+    /// order so the output is deterministic.
+    /// </summary>
+    public static EquatableArray<FormatterSpec> Merge(IEnumerable<FormatterSpec> specs)
+    {
+        var byType = new Dictionary<string, FormatterSpec>(StringComparer.Ordinal);
+        foreach (var spec in specs)
+        {
+            // The same type always yields the same spec; on a conflict keep the ordinally smallest for determinism.
+            if (!byType.TryGetValue(spec.TypeKey, out var existing)
+                || StringComparer.Ordinal.Compare(spec.Registration, existing.Registration) < 0)
+                byType[spec.TypeKey] = spec;
+        }
+
+        return new EquatableArray<FormatterSpec>(byType.Values
+            .OrderBy(s => s.TypeKey, StringComparer.Ordinal)
+            .ToArray());
+    }
+
+    /// <summary>
+    /// Builds the generated serialization source: file-scoped formatter classes and the registering module initializer.
+    /// </summary>
+    public static string EmitSource(EquatableArray<FormatterSpec> specs)
+    {
+        if (specs.Length == 0)
             return string.Empty;
 
         var sb = new StringBuilder();
+        sb.AppendLine("// <auto-generated/>");
         sb.AppendLine("#nullable disable");
         sb.AppendLine("#pragma warning disable CS0618, CS8019, CA2255");
-        sb.Append(_classes);
-        sb.Append("file static class __NexusSerializationRegistration_").AppendLine(_uniqueSuffix);
+
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var spec in specs.Where(s => s.ClassName.Length > 0).OrderBy(s => s.ClassName, StringComparer.Ordinal))
+        {
+            if (emitted.Add(spec.ClassName))
+                sb.Append(spec.Code);
+        }
+
+        sb.AppendLine("file static class __NexusFormatterRegistration");
         sb.AppendLine("{");
         sb.AppendLine("    [global::System.Runtime.CompilerServices.ModuleInitializer]");
         sb.AppendLine("    internal static void Register()");
         sb.AppendLine("    {");
-        foreach (var registration in _registrations)
-            sb.Append("        ").AppendLine(registration);
+        foreach (var spec in specs)
+            sb.Append("        ").AppendLine(spec.Registration);
         sb.AppendLine("    }");
         sb.AppendLine("}");
         sb.AppendLine("#pragma warning restore CS0618, CS8019, CA2255");

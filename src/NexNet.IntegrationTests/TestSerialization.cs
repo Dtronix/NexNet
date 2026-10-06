@@ -7,7 +7,7 @@ namespace NexNet.IntegrationTests;
 
 /// <summary>
 /// Serialization helpers for tests that build or inspect raw protocol bytes.
-/// Protocol messages are always MessagePack; payloads use the active backend (MessagePack or MemoryPack).
+/// Protocol messages and payloads are both MessagePack; payloads use the registered formatters.
 /// </summary>
 internal static class TestSerialization
 {
@@ -40,38 +40,30 @@ internal static class TestSerialization
     }
 
     /// <summary>
-    /// Serializes a payload value with the active backend.
+    /// Serializes a payload value with its registered formatter.
     /// </summary>
     public static byte[] SerializePayload<T>(T value)
     {
-#if NEXNET_MEMORYPACK
-        return MemoryPack.MemoryPackSerializer.Serialize(value);
-#else
         var buffer = new ArrayBufferWriter<byte>();
         var writer = new MsgPackWriter(buffer);
         NexusFormatterRegistry.Get<T>().Serialize(ref writer, value);
         writer.Flush();
         return buffer.WrittenSpan.ToArray();
-#endif
     }
 
     /// <summary>
-    /// Deserializes a payload value with the active backend.
+    /// Deserializes a payload value with its registered formatter.
     /// </summary>
     public static T? DeserializePayload<T>(in ReadOnlySequence<byte> bytes)
     {
-#if NEXNET_MEMORYPACK
-        return MemoryPack.MemoryPackSerializer.Deserialize<T>(bytes);
-#else
         var reader = new MsgPackReader(bytes);
         T? value = default;
         NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref value);
         return value;
-#endif
     }
 
     /// <summary>
-    /// Serializes invocation arguments with the active backend.
+    /// Serializes invocation arguments (a ValueTuple, written as a MessagePack array).
     /// </summary>
     public static byte[] SerializeArguments<T>(T arguments) => SerializePayload(arguments);
 }

@@ -1,9 +1,7 @@
-﻿using MemoryPack;
-using NexNet.Serialization;
+﻿using NexNet.Serialization;
 
 namespace NexNet.IntegrationTests.Pipes;
 
-[MemoryPackable]
 [NexusObject]
 public partial class ComplexMessage
 {
@@ -57,7 +55,6 @@ public partial class ComplexMessage
 
 }
 
-[MemoryPackable]
 [NexusObject]
 public partial class SimpleMessage
 {

@@ -94,7 +94,6 @@ public class ProtocolMessageTests
         Assert.That(parsed.State, Is.EqualTo(NexusDuplexPipe.State.Ready));
     }
 
-#if !NEXNET_MEMORYPACK
     [Test]
     public void InvocationEmbedsArgumentArray()
     {
@@ -152,7 +151,6 @@ public class ProtocolMessageTests
         var body = new byte[] { 0x94, 0x01, 0x02, 0x00, 0x92, 0x05 };
         Assert.Throws<NexusSerializationException>(() => Parse<InvocationMessage>(body));
     }
-#endif
 
     [Test]
     public void WrongArrayCountIsRejected()

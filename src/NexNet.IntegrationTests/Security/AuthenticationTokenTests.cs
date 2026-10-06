@@ -1,4 +1,3 @@
-using MemoryPack;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;

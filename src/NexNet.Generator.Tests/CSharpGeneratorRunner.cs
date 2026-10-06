@@ -1,5 +1,4 @@
 ﻿using System.Runtime.CompilerServices;
-using MemoryPack;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -25,7 +24,6 @@ public static class CSharpGeneratorRunner
 
         var references = systemAssemblies
             .Append(typeof(NexusAttribute<,>).Assembly.Location) // System Assemblies 
-            .Append(typeof(MemoryPackableAttribute).Assembly.Location) // System Assemblies 
             .Append(typeof(System.IO.Pipelines.IDuplexPipe).Assembly.Location) // System Assemblies 
             .Select(x => MetadataReference.CreateFromFile(x))
             .ToArray();
@@ -68,30 +66,27 @@ public static class CSharpGeneratorRunner
         var compilationDiagnostics = newCompilation.GetDiagnostics();
         return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
     }
-    
-    public static Diagnostic[] RunTypeWalkerGenerator(
-        string source,
-        string[]? preprocessorSymbols = null,
-        DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error,
-        AnalyzerConfigOptionsProvider? options = null)
+
+    /// <summary>
+    /// Runs the NexNet generator with incremental step tracking and returns the driver (for re-runs), the run
+    /// result (generated sources and tracked steps) and the error diagnostics of the updated compilation.
+    /// </summary>
+    public static (GeneratorDriver Driver, GeneratorDriverRunResult Result, Diagnostic[] Errors) RunGeneratorWithResult(
+        Compilation compilation,
+        GeneratorDriver? driver = null)
     {
-        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp13, preprocessorSymbols: preprocessorSymbols);
+        driver ??= CSharpGeneratorDriver.Create(
+            new[] { new NexusGenerator().AsSourceGenerator() },
+            parseOptions: new CSharpParseOptions(LanguageVersion.CSharp13),
+            driverOptions: new GeneratorDriverOptions(IncrementalGeneratorOutputKind.None, trackIncrementalGeneratorSteps: true));
 
-        var driver = CSharpGeneratorDriver.Create(new TypeHasherTestGenerator()).WithUpdatedParseOptions(parseOptions);
-        if (options != null)
-        {
-            driver = (CSharpGeneratorDriver)driver.WithUpdatedAnalyzerConfigOptions(options);
-        }
-
-        var compilation = baseCompilation.AddSyntaxTrees(CSharpSyntaxTree.ParseText(source, parseOptions));
-
-        driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
-
-        var compilationDiagnostics = newCompilation.GetDiagnostics();
-        return diagnostics.Concat(compilationDiagnostics).Where(x => x.Severity >= minDiagnostic).ToArray();
+        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out var newCompilation, out var diagnostics);
+        var errors = diagnostics.Concat(newCompilation.GetDiagnostics())
+            .Where(x => x.Severity >= DiagnosticSeverity.Error).ToArray();
+        return (driver, driver.GetRunResult(), errors);
     }
 
-    public static Diagnostic[] RunTypeHasherV2Generator(
+    public static Diagnostic[] RunTypeHasherGenerator(
         string source,
         string[]? preprocessorSymbols = null,
         DiagnosticSeverity minDiagnostic = DiagnosticSeverity.Error,

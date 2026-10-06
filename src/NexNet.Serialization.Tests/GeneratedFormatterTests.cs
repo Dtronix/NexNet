@@ -1,5 +1,3 @@
-#if !NEXNET_MEMORYPACK
-// Generated formatters exist only with the MessagePack payload backend.
 using MessagePack;
 using NexNet.Serialization;
 using static NexNet.Serialization.Tests.TestHelpers;
@@ -259,4 +257,3 @@ public class GeneratedFormatterTests
         Assert.That(TestHelpers.Deserialize<ThirdParty>(bytes)!.Value, Is.EqualTo(77));
     }
 }
-#endif

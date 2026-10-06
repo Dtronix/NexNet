@@ -112,9 +112,6 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         Assert.That(second, Is.EqualTo(new[] { large }));
     }
 
-#if !NEXNET_MEMORYPACK
-    // MessagePack only: the legacy MemoryPack read path spins on repeated partial reads (impl-notes deviation 13)
-    // and is removed in Phase 8.
     [Test]
     public async Task ReadsManyItemsAcrossEverySplitPoint()
     {
@@ -165,7 +162,6 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         await Buffer(pipeReader, data);
         await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
     }
-#endif
 
     [Test]
     public async Task CancelsReadDelayed()

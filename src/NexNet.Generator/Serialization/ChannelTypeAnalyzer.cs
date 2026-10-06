@@ -7,7 +7,7 @@ namespace NexNet.Generator.Serialization;
 
 /// <summary>
 /// Reports channel call sites (<c>CreateChannel&lt;T&gt;</c>, <c>GetChannel*&lt;T&gt;</c>) whose <c>T</c> will have no
-/// registered formatter at runtime (NEXNET038). Active only with the MessagePack payload backend.
+/// registered formatter at runtime (NEXNET038).
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 internal sealed class ChannelTypeAnalyzer : DiagnosticAnalyzer
@@ -26,12 +26,6 @@ internal sealed class ChannelTypeAnalyzer : DiagnosticAnalyzer
         context.EnableConcurrentExecution();
         context.RegisterCompilationStartAction(start =>
         {
-            var isMemoryPack = start.Options.AnalyzerConfigOptionsProvider.GlobalOptions
-                                   .TryGetValue("build_property.NexNetSerializer", out var backend)
-                               && string.Equals(backend, "MemoryPack", StringComparison.OrdinalIgnoreCase);
-            if (isMemoryPack)
-                return;
-
             var declared = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
             var userFormatted = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
             foreach (var attr in start.Compilation.Assembly.GetAttributes())

@@ -222,7 +222,7 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
-    // ------------------------------------------------------------------ Serialization (MessagePack backend)
+    // ------------------------------------------------------------------ Serialization
 
     public static readonly DiagnosticDescriptor TypeNotSerializable = new(
         id: "NEXNET028",

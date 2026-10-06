@@ -16,8 +16,7 @@ internal static class InvocationInterfaceEmitter
         StringBuilder sb,
         InvocationInterfaceData interfaceData,
         NexusAttributeData nexusAttribute,
-        InvocationInterfaceData? proxyInterface,
-        SerializerBackend backend = SerializerBackend.MessagePack)
+        InvocationInterfaceData? proxyInterface)
     {
         sb.AppendLine($$"""
 
@@ -39,7 +38,7 @@ internal static class InvocationInterfaceEmitter
 
         foreach (var method in interfaceData.AllMethods)
         {
-            MethodEmitter.EmitProxyMethodInvocation(sb, method, backend);
+            MethodEmitter.EmitProxyMethodInvocation(sb, method);
         }
 
         sb.Append($$"""

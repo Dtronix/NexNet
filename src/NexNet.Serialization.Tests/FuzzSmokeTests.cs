@@ -1,4 +1,3 @@
-#if !NEXNET_MEMORYPACK
 using NexNet.Fuzz;
 
 namespace NexNet.Serialization.Tests;
@@ -30,4 +29,3 @@ public class FuzzSmokeTests
         }
     }
 }
-#endif
