@@ -8,7 +8,7 @@ public class TypeHasherTests
     [Test]
     public void SimpleType_WithSpecialTypes()
     {
-        // Types without [NexusObject] are hashed by name only; their members are not walked
+        // Types without [NexusObject] are named (unsupported) types, hashed by .NET identity; their members are not walked
         AssertWalk("""
             using System;
             class SimpleMessage {
@@ -22,7 +22,7 @@ public class TypeHasherTests
     [Test]
     public void NexusObjectType_WithSpecialTypes()
     {
-        // SpecialTypes are terminal nodes - they're only shown as member types, not recursively walked
+        // Special types are named leaves: shown by name, not walked
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -38,7 +38,7 @@ public class TypeHasherTests
     [Test]
     public void NullableTypes()
     {
-        // Nullable<T> is unwrapped and shown as InnerType?, string? is a SpecialType so not recursively walked
+        // Nullable<T> is shown as InnerType?; reference nullability (string?) is not part of the shape
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -233,7 +233,7 @@ public class TypeHasherTests
     [Test]
     public void CyclicReference_SelfReferencing()
     {
-        // Self-referencing type shows [seen] on second encounter
+        // A reference back to a type already on the walk is written as its index
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -285,7 +285,7 @@ public class TypeHasherTests
     public void CLRType_SystemNamespace()
     {
         // DateTime is a SpecialType in Roslyn (terminal, not walked)
-        // Guid and TimeSpan are CLR types (walked, shown as [CLR])
+        // Guid and TimeSpan are CLR types, hashed by .NET identity
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -645,7 +645,7 @@ public class TypeHasherTests
     [Test]
     public void Array_OfArrays_JaggedArrays()
     {
-        // Jagged arrays: the outer array type displays without full element type in the walk string
+        // Jagged arrays: an array whose element is an array
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -659,7 +659,7 @@ public class TypeHasherTests
     [Test]
     public void Array_OfNullableElements()
     {
-        // string? in an array shows the nullability annotation
+        // int? elements keep their ?, string? elements lose it (reference nullability is not hashed)
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -1031,7 +1031,7 @@ public class TypeHasherTests
     [Test]
     public void BuiltInLeafTypes()
     {
-        // Types with built-in formatters are hashed by name; System types are not walked
+        // Types with built-in formatters are hashed by .NET identity; their members are not walked
         AssertWalk("""
             using System;
             using System.Numerics;
@@ -1087,7 +1087,7 @@ public class TypeHasherTests
     [Test]
     public void Enum_MembersSortedByValue()
     {
-        // Enum members are walked in value order, not declaration order
+        // Enums list their values in ascending order, not declaration order; names are not part of the shape
         AssertWalk("""
             using System;
             using NexNet.Serialization;
@@ -1117,7 +1117,7 @@ public class TypeHasherTests
     [Test]
     public void CyclicReference_SeenMultipleTimes()
     {
-        // Every repeated [NexusObject] is marked [seen], including references back to the root
+        // Every repeated [NexusObject] is written as its index (#i), including references back to the root
         AssertWalk("""
             using System;
             using NexNet.Serialization;
