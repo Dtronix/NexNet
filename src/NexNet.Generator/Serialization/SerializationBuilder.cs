@@ -187,6 +187,35 @@ internal sealed class SerializationBuilder
         Report("NEXNET028", name, context, location);
     }
 
+    /// <summary>
+    /// Generic definitions (other than <c>Nullable&lt;T&gt;</c>) handled by <see cref="TryRequireGenericBuiltIn"/>.
+    /// Keep in sync with its switch.
+    /// </summary>
+    internal static readonly HashSet<string> BuiltInGenericDefinitions = new(StringComparer.Ordinal)
+    {
+        "System.Collections.Generic.List`1",
+        "System.Collections.Generic.IList`1",
+        "System.Collections.Generic.IReadOnlyList`1",
+        "System.Collections.Generic.ICollection`1",
+        "System.Collections.Generic.IReadOnlyCollection`1",
+        "System.Collections.Generic.IEnumerable`1",
+        "System.Collections.Generic.HashSet`1",
+        "System.Collections.Generic.Queue`1",
+        "System.Collections.Generic.Stack`1",
+        "System.Collections.Generic.Dictionary`2",
+        "System.Collections.Generic.IDictionary`2",
+        "System.Collections.Generic.IReadOnlyDictionary`2",
+        "System.Collections.Generic.KeyValuePair`2",
+        "System.ValueTuple`1", "System.ValueTuple`2", "System.ValueTuple`3", "System.ValueTuple`4",
+        "System.ValueTuple`5", "System.ValueTuple`6", "System.ValueTuple`7",
+        "System.Tuple`1", "System.Tuple`2", "System.Tuple`3", "System.Tuple`4",
+        "System.Tuple`5", "System.Tuple`6", "System.Tuple`7",
+        "System.Memory`1",
+        "System.ReadOnlyMemory`1",
+        "System.ArraySegment`1",
+        "System.Buffers.ReadOnlySequence`1",
+    };
+
     private bool TryRequireGenericBuiltIn(INamedTypeSymbol named, string name, string context, LocationData? location)
     {
         var def = MetadataFullName(named.OriginalDefinition);
