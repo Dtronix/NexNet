@@ -35,18 +35,20 @@ internal sealed class SerializationBuilder
     };
 
     private readonly Compilation _compilation;
-    private readonly Dictionary<ITypeSymbol, string> _userFormatters = new(SymbolEqualityComparer.Default);
-    private readonly HashSet<ITypeSymbol> _visited = new(SymbolEqualityComparer.Default);
+    private readonly ShapeBuilder _shapes;
+    private readonly HashSet<TypeShape> _visited = new(ReferenceEqualityComparer<TypeShape>.Instance);
     private readonly Dictionary<ITypeSymbol, string> _formatterClassNames = new(SymbolEqualityComparer.Default);
     private readonly Dictionary<string, string> _classCode = new(StringComparer.Ordinal);
     private readonly List<(string TypeKey, string ClassName, string Registration)> _registrations = new();
     private readonly HashSet<string> _registeredTypes = new(StringComparer.Ordinal);
     private readonly List<SerializationDiagnostic> _diagnostics = new();
 
-    public SerializationBuilder(Compilation compilation)
+    /// <param name="compilation">The producer's compilation (accessibility checks and conversions).</param>
+    /// <param name="shapes">The producer's shape builder; every type decision comes from its shapes.</param>
+    public SerializationBuilder(Compilation compilation, ShapeBuilder shapes)
     {
         _compilation = compilation;
-        CollectAssemblyAttributes();
+        _shapes = shapes;
     }
 
     public IReadOnlyList<SerializationDiagnostic> Diagnostics => _diagnostics;
@@ -59,22 +61,6 @@ internal sealed class SerializationBuilder
     public static string TypeName(ITypeSymbol type)
     {
         return type.WithNullableAnnotation(NullableAnnotation.NotAnnotated).ToDisplayString(TypeFormat);
-    }
-
-    private void CollectAssemblyAttributes()
-    {
-        foreach (var attr in _compilation.Assembly.GetAttributes())
-        {
-            var cls = attr.AttributeClass;
-            if (cls is not { IsGenericType: true })
-                continue;
-
-            if (cls.Name == "NexusFormatterAttribute" && cls.TypeArguments.Length == 2
-                && cls.ContainingNamespace?.ToDisplayString() == "NexNet.Serialization")
-            {
-                _userFormatters[cls.TypeArguments[1]] = TypeName(cls.TypeArguments[0]);
-            }
-        }
     }
 
     /// <summary>
@@ -92,7 +78,7 @@ internal sealed class SerializationBuilder
             }
         }
 
-        foreach (var pair in _userFormatters)
+        foreach (var pair in _shapes.UserFormatters)
             Require(pair.Key, "[assembly: NexusFormatter]", null);
     }
 
@@ -100,88 +86,73 @@ internal sealed class SerializationBuilder
     /// Ensures a formatter for <paramref name="type"/> (and everything it contains) is registered.
     /// </summary>
     public void Require(ITypeSymbol type, string context, LocationData? location)
+        => Require(_shapes.Get(type), context, location);
+
+    private void Require(TypeShape shape, string context, LocationData? location)
     {
-        if (type is ITypeParameterSymbol)
+        if (shape is TypeParameterShape)
             return; // Open generic parameters are resolved at runtime through the registry.
 
-        var normalized = type.WithNullableAnnotation(NullableAnnotation.NotAnnotated);
-        if (!_visited.Add(normalized))
+        if (!_visited.Add(shape))
             return;
 
-        var name = TypeName(normalized);
+        var name = TypeName(shape.Type);
 
-        if (_userFormatters.TryGetValue(normalized, out var userFormatter))
+        switch (shape)
         {
-            AddRegistration(name, $"new {userFormatter}()");
-            return;
-        }
+            case NamedShape { Kind: NamedKind.UserFormatter }:
+                AddRegistration(name, $"new {_shapes.UserFormatters[shape.Type]}()");
+                return;
 
-        switch (normalized.SpecialType)
-        {
-            case SpecialType.System_Boolean:
-            case SpecialType.System_Char:
-            case SpecialType.System_SByte:
-            case SpecialType.System_Byte:
-            case SpecialType.System_Int16:
-            case SpecialType.System_UInt16:
-            case SpecialType.System_Int32:
-            case SpecialType.System_UInt32:
-            case SpecialType.System_Int64:
-            case SpecialType.System_UInt64:
-            case SpecialType.System_Single:
-            case SpecialType.System_Double:
-            case SpecialType.System_Decimal:
-            case SpecialType.System_String:
-            case SpecialType.System_DateTime:
+            case NamedShape { Kind: NamedKind.Special }:
+                if (shape.Type.SpecialType == SpecialType.System_Object)
+                    Report("NEXNET028", name, context, location);
                 return; // Built in.
-        }
 
-        if (normalized.TypeKind == TypeKind.Enum)
-        {
-            AddRegistration(name, $"{FormattersNs}.EnumFormatter<{name}>.Instance");
-            return;
-        }
+            case EnumShape:
+                AddRegistration(name, $"{FormattersNs}.EnumFormatter<{name}>.Instance");
+                return;
 
-        if (normalized is IArrayTypeSymbol array)
-        {
-            if (array.Rank != 1)
+            case ArrayShape array:
             {
-                Report("NEXNET028", name, context, location);
+                if (array.Rank != 1)
+                {
+                    Report("NEXNET028", name, context, location);
+                    return;
+                }
+
+                var element = array.Element.Type;
+                var elementName = TypeName(element);
+                if (element.SpecialType == SpecialType.System_Byte)
+                    return; // byte[] is bin.
+
+                if (IsPrimitiveKind(element))
+                {
+                    AddRegistration(name, $"{Ns}.PrimitiveArrayFormatter<{elementName}>.Instance");
+                    return;
+                }
+
+                AddRegistration(name, $"new {FormattersNs}.ArrayFormatter<{elementName}>()");
+                Require(array.Element, context, location);
                 return;
             }
 
-            var element = array.ElementType;
-            var elementName = TypeName(element);
-            if (element.SpecialType == SpecialType.System_Byte)
-                return; // byte[] is bin.
-
-            if (IsPrimitiveKind(element))
-            {
-                AddRegistration(name, $"{Ns}.PrimitiveArrayFormatter<{elementName}>.Instance");
+            case NullableShape nullable:
+                if (!TryRequireGenericBuiltIn((INamedTypeSymbol)shape.Type, new[] { nullable.Inner }, name, context, location))
+                    Report("NEXNET028", name, context, location);
                 return;
-            }
 
-            AddRegistration(name, $"new {FormattersNs}.ArrayFormatter<{elementName}>()");
-            Require(element, context, location);
-            return;
-        }
+            case NamedShape { Kind: NamedKind.BuiltInGeneric } named:
+                if (!TryRequireGenericBuiltIn((INamedTypeSymbol)shape.Type, named.Arguments, name, context, location))
+                    Report("NEXNET028", name, context, location);
+                return;
 
-        if (normalized is not INamedTypeSymbol named)
-        {
-            Report("NEXNET028", name, context, location);
-            return;
-        }
+            case ObjectShape or UnionShape:
+                RequireNexusObject(shape, name, context, location);
+                return;
 
-        if (BuiltInLeafTypes.Contains(MetadataFullName(named)))
-            return;
-
-        if (named.IsGenericType && TryRequireGenericBuiltIn(named, name, context, location))
-            return;
-
-        if (HasAttribute(named, "NexusObjectAttribute"))
-        {
-            RequireNexusObject(named, name, context, location);
-            return;
+            case NamedShape leaf when BuiltInLeafTypes.Contains(leaf.MetadataName):
+                return;
         }
 
         Report("NEXNET028", name, context, location);
@@ -216,7 +187,7 @@ internal sealed class SerializationBuilder
         "System.Buffers.ReadOnlySequence`1",
     };
 
-    private bool TryRequireGenericBuiltIn(INamedTypeSymbol named, string name, string context, LocationData? location)
+    private bool TryRequireGenericBuiltIn(INamedTypeSymbol named, TypeShape[] argShapes, string name, string context, LocationData? location)
     {
         var def = MetadataFullName(named.OriginalDefinition);
         var args = named.TypeArguments;
@@ -224,7 +195,7 @@ internal sealed class SerializationBuilder
 
         void RequireArgs()
         {
-            foreach (var a in args)
+            foreach (var a in argShapes)
                 Require(a, context, location);
         }
 
@@ -392,8 +363,9 @@ internal sealed class SerializationBuilder
 
     // ------------------------------------------------------------------ [NexusObject] types
 
-    private void RequireNexusObject(INamedTypeSymbol type, string name, string context, LocationData? location)
+    private void RequireNexusObject(TypeShape shape, string name, string context, LocationData? location)
     {
+        var type = (INamedTypeSymbol)shape.Type;
         var definition = type.OriginalDefinition;
         var location2 = LocationData.FromSymbol(definition) ?? location;
 
@@ -407,21 +379,21 @@ internal sealed class SerializationBuilder
         {
             className = FormatterClassName(definition);
             _formatterClassNames[definition] = className;
-            _classCode[className] = EmitFormatterClass(definition, className);
+            _classCode[className] = EmitFormatterClass(definition, _shapes.Get(definition), className);
         }
 
         var typeArgs = type.IsGenericType ? "<" + string.Join(", ", type.TypeArguments.Select(TypeName)) + ">" : "";
         AddRegistration(name, $"new {className}{typeArgs}()", className);
 
-        // Walk the closure of member and union case types using the constructed type (substituted members).
-        if (TryGetUnionCases(type, out var cases))
+        // Walk the closure of member and union case types using the constructed shape (substituted members).
+        if (shape is UnionShape union)
         {
-            foreach (var (_, caseType) in cases)
-                Require(caseType, TypeName(type), location2);
+            foreach (var (_, caseShape) in union.Cases)
+                Require(caseShape, TypeName(type), location2);
         }
         else
         {
-            foreach (var member in GetKeyedMembers(type, out _))
+            foreach (var member in ((ObjectShape)shape).Members)
                 Require(member.Type, TypeName(type) + "." + member.Name, location2);
         }
     }
@@ -447,141 +419,7 @@ internal sealed class SerializationBuilder
         return sb.ToString();
     }
 
-    private sealed class KeyedMember
-    {
-        public ISymbol Symbol = null!;
-        public string Name = null!;
-        public ITypeSymbol Type = null!;
-        public int Key;
-        public bool IsField;
-        public bool CanGet;
-        public bool CanSet;
-        public bool IsInitOnly;
-        public bool IsRequired;
-        public IFieldSymbol? BackingField;
-        public string LocalName = null!;
-    }
-
-    private List<KeyedMember> GetKeyedMembers(INamedTypeSymbol type, out List<SerializationDiagnostic> problems)
-    {
-        problems = new List<SerializationDiagnostic>();
-        var result = new List<KeyedMember>();
-        var seenNames = new HashSet<string>(StringComparer.Ordinal);
-
-        for (INamedTypeSymbol? current = type; current != null && current.SpecialType != SpecialType.System_Object
-             && current.SpecialType != SpecialType.System_ValueType; current = current.BaseType)
-        {
-            foreach (var member in current.GetMembers())
-            {
-                if (member.IsStatic)
-                    continue;
-
-                ITypeSymbol? memberType;
-                bool isField;
-                if (member is IPropertySymbol prop && !prop.IsIndexer)
-                {
-                    memberType = prop.Type;
-                    isField = false;
-                }
-                else if (member is IFieldSymbol { AssociatedSymbol: null } field)
-                {
-                    memberType = field.Type;
-                    isField = true;
-                }
-                else
-                {
-                    continue;
-                }
-
-                if (!seenNames.Add(member.Name))
-                    continue; // Overridden/hidden members are handled once.
-
-                var keyAttr = member.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "NexusKeyAttribute"
-                    && a.AttributeClass.ContainingNamespace?.ToDisplayString() == "NexNet.Serialization");
-                var ignored = HasAttribute(member, "NexusIgnoreAttribute");
-
-                if (keyAttr == null)
-                {
-                    if (!ignored && !member.IsImplicitlyDeclared && member.DeclaredAccessibility == Accessibility.Public && IsSerializableShape(member))
-                        problems.Add(new SerializationDiagnostic("NEXNET030", TypeName(type), member.Name, LocationData.FromSymbol(member)));
-                    continue;
-                }
-
-                if (ignored)
-                    continue;
-
-                var km = new KeyedMember
-                {
-                    Symbol = member,
-                    Name = member.Name,
-                    Type = memberType,
-                    Key = keyAttr.ConstructorArguments.Length > 0 && keyAttr.ConstructorArguments[0].Value is int k ? k : 0,
-                    IsField = isField,
-                };
-
-                if (member is IPropertySymbol p)
-                {
-                    km.CanGet = p.GetMethod != null && IsAccessible(p.GetMethod);
-                    km.IsInitOnly = p.SetMethod?.IsInitOnly == true;
-                    km.CanSet = p.SetMethod != null && IsAccessible(p.SetMethod);
-                    km.IsRequired = p.IsRequired;
-                    km.BackingField = p.ContainingType.GetMembers().OfType<IFieldSymbol>()
-                        .FirstOrDefault(f => SymbolEqualityComparer.Default.Equals(f.AssociatedSymbol, p));
-                }
-                else
-                {
-                    var f = (IFieldSymbol)member;
-                    var accessible = IsAccessible(f);
-                    km.CanGet = accessible;
-                    km.CanSet = accessible && !f.IsReadOnly && !f.IsConst;
-                    km.IsRequired = f.IsRequired;
-                }
-
-                result.Add(km);
-            }
-        }
-
-        result.Sort((a, b) => a.Key.CompareTo(b.Key));
-        for (var i = 0; i < result.Count; i++)
-            result[i].LocalName = "__m" + i;
-
-        return result;
-    }
-
-    private static bool IsSerializableShape(ISymbol member)
-    {
-        // Computed get-only properties are not data and do not need a key.
-        if (member is IPropertySymbol p)
-        {
-            if (p.SetMethod != null)
-                return true;
-            return p.ContainingType.GetMembers().OfType<IFieldSymbol>()
-                .Any(f => SymbolEqualityComparer.Default.Equals(f.AssociatedSymbol, p));
-        }
-
-        return member is IFieldSymbol { IsConst: false };
-    }
-
-    private bool TryGetUnionCases(INamedTypeSymbol type, out List<(ushort Tag, ITypeSymbol Type)> cases)
-    {
-        cases = new List<(ushort, ITypeSymbol)>();
-        foreach (var attr in type.OriginalDefinition.GetAttributes())
-        {
-            var cls = attr.AttributeClass;
-            if (cls is { IsGenericType: true, Name: "NexusUnionAttribute" } && cls.TypeArguments.Length == 1
-                && cls.ContainingNamespace?.ToDisplayString() == "NexNet.Serialization"
-                && attr.ConstructorArguments.Length > 0)
-            {
-                var tagValue = attr.ConstructorArguments[0].Value;
-                var tag = tagValue is ushort us ? us : Convert.ToUInt16(tagValue);
-                cases.Add((tag, cls.TypeArguments[0]));
-            }
-        }
-
-        return cases.Count > 0;
-    }
-
-    private string EmitFormatterClass(INamedTypeSymbol definition, string className)
+    private string EmitFormatterClass(INamedTypeSymbol definition, TypeShape shape, string className)
     {
         var typeName = TypeName(definition);
         var typeParams = definition.IsGenericType
@@ -594,9 +432,9 @@ internal sealed class SerializationBuilder
             .Append(" : ").Append(Ns).Append(".NexusFormatter<").Append(typeName).AppendLine(">");
         sb.AppendLine("{");
 
-        if (TryGetUnionCases(definition, out var cases))
+        if (shape is UnionShape union)
         {
-            EmitUnion(sb, definition, typeName, cases, location);
+            EmitUnion(sb, definition, typeName, union.Cases, location);
         }
         else if (definition.IsAbstract || definition.TypeKind == TypeKind.Interface)
         {
@@ -605,7 +443,7 @@ internal sealed class SerializationBuilder
         }
         else
         {
-            EmitObject(sb, definition, typeName, location);
+            EmitObject(sb, definition, (ObjectShape)shape, typeName, location);
         }
 
         sb.AppendLine("}");
@@ -622,8 +460,9 @@ internal sealed class SerializationBuilder
     }
 
     private void EmitUnion(StringBuilder sb, INamedTypeSymbol definition, string typeName,
-        List<(ushort Tag, ITypeSymbol Type)> cases, LocationData? location)
+        List<(ushort Tag, TypeShape Case)> caseShapes, LocationData? location)
     {
+        var cases = caseShapes.Select(c => (c.Tag, c.Case.Type)).ToList();
         var seenTags = new HashSet<ushort>();
         foreach (var (tag, caseType) in cases)
         {
@@ -704,10 +543,10 @@ internal sealed class SerializationBuilder
         return depth;
     }
 
-    private void EmitObject(StringBuilder sb, INamedTypeSymbol definition, string typeName, LocationData? location)
+    private void EmitObject(StringBuilder sb, INamedTypeSymbol definition, ObjectShape shape, string typeName, LocationData? location)
     {
-        var members = GetKeyedMembers(definition, out var problems);
-        foreach (var p in problems)
+        var members = shape.Members;
+        foreach (var p in shape.Problems)
             Report(p.Id, p.Arg0, p.Arg1, p.Location ?? location);
 
         // Duplicate keys and large gaps.
@@ -756,8 +595,8 @@ internal sealed class SerializationBuilder
             ctor = null;
 
         // Map constructor parameters to members.
-        var ctorArgs = new List<KeyedMember?>();
-        var ctorMembers = new HashSet<KeyedMember>();
+        var ctorArgs = new List<MemberShape?>();
+        var ctorMembers = new HashSet<MemberShape>();
         if (ctor != null)
         {
             if (!IsAccessible(ctor))
@@ -807,7 +646,7 @@ internal sealed class SerializationBuilder
 
             var declaring = TypeName(m.Symbol.ContainingType);
             var declaringParam = (isStruct ? "ref " : "") + declaring + " o";
-            var mt = TypeName(m.Type);
+            var mt = TypeName(m.DeclaredType);
             if (!m.CanGet)
             {
                 if (m.IsField)
@@ -866,7 +705,7 @@ internal sealed class SerializationBuilder
                 : m.IsField
                     ? "__acc_" + m.Name + "(" + (isStruct ? "ref " : "") + "value)"
                     : "__get_" + m.Name + "(" + (isStruct ? "ref " : "") + "value)";
-            sb.Append("        ").AppendLine(PrimitiveCodec.WriteStatement(TypeName(m.Type), getter, "writer"));
+            sb.Append("        ").AppendLine(PrimitiveCodec.WriteStatement(TypeName(m.DeclaredType), getter, "writer"));
             next++;
         }
 
@@ -888,12 +727,12 @@ internal sealed class SerializationBuilder
         sb.AppendLine("        var count = reader.ReadArrayHeader();");
         sb.AppendLine("        reader.Enter();");
         foreach (var m in members)
-            sb.Append("        ").Append(TypeName(m.Type)).Append(' ').Append(m.LocalName).AppendLine(" = default;");
+            sb.Append("        ").Append(TypeName(m.DeclaredType)).Append(' ').Append(m.LocalName).AppendLine(" = default;");
 
         // Fast path: the peer wrote exactly the members this version knows, so read them in key order without
         // the per-member dispatch. Gaps in the keys are nil on the wire and are skipped.
         var expectedCount = members.Count == 0 ? 0 : members[members.Count - 1].Key + 1;
-        var membersByKey = new Dictionary<int, KeyedMember>();
+        var membersByKey = new Dictionary<int, MemberShape>();
         foreach (var m in members)
         {
             if (!membersByKey.ContainsKey(m.Key))
@@ -908,7 +747,7 @@ internal sealed class SerializationBuilder
             {
                 sb.Append("            ");
                 if (membersByKey.TryGetValue(key, out var m))
-                    sb.AppendLine(PrimitiveCodec.ReadStatement(TypeName(m.Type), m.LocalName, "reader"));
+                    sb.AppendLine(PrimitiveCodec.ReadStatement(TypeName(m.DeclaredType), m.LocalName, "reader"));
                 else
                     sb.AppendLine("reader.Skip();");
             }
@@ -925,7 +764,7 @@ internal sealed class SerializationBuilder
         foreach (var m in membersByKey.Values.OrderBy(m => m.Key))
         {
             sb.Append("                case ").Append(m.Key).Append(": ")
-                .Append(PrimitiveCodec.ReadStatement(TypeName(m.Type), m.LocalName, "reader")).AppendLine(" break;");
+                .Append(PrimitiveCodec.ReadStatement(TypeName(m.DeclaredType), m.LocalName, "reader")).AppendLine(" break;");
         }
 
         sb.AppendLine("                default: reader.Skip(); break;");

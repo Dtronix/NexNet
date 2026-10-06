@@ -68,7 +68,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
         var assemblyDeclarations = context.CompilationProvider
             .Select(static (compilation, _) =>
             {
-                var builder = new SerializationBuilder(compilation);
+                var builder = new SerializationBuilder(compilation, new ShapeBuilder(compilation));
                 builder.AddAssemblyDeclaredRoots();
                 return new SerializationOutput(builder.Build(), new EquatableArray<SerializationDiagnostic>(builder.Diagnostics.ToArray()));
             });
@@ -112,7 +112,8 @@ internal partial class NexusGenerator : IIncrementalGenerator
         if (ctx.TargetSymbol is not INamedTypeSymbol symbol || symbol.IsGenericType)
             return null;
 
-        var builder = new SerializationBuilder(ctx.SemanticModel.Compilation);
+        var compilation = ctx.SemanticModel.Compilation;
+        var builder = new SerializationBuilder(compilation, new ShapeBuilder(compilation));
         builder.Require(symbol, symbol.Name, LocationData.FromSymbol(symbol));
         return new SerializationOutput(builder.Build(), new EquatableArray<SerializationDiagnostic>(builder.Diagnostics.ToArray()));
     }

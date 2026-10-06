@@ -35,6 +35,10 @@ internal static class NexusDataExtractor
 
         var typeHasher = new TypeHasher();
 
+        // One shape walk per producer: code generation reads these shapes.
+        var compilation = context.SemanticModel.Compilation;
+        var shapes = new ShapeBuilder(compilation);
+
         // Extract nexus attribute data
         var nexusAttributeData = symbol.GetAttributes()
             .FirstOrDefault(att => att.AttributeClass?.Name == "NexusAttribute");
@@ -81,7 +85,7 @@ internal static class NexusDataExtractor
             .Replace(">", "_");
 
         // Serialization: walk every type reachable from both interfaces and generate formatters.
-        var serialization = new SerializationBuilder(context.SemanticModel.Compilation);
+        var serialization = new SerializationBuilder(compilation, shapes);
         AddSerializationRoots(serialization, nexusInterfaceSymbol);
         AddSerializationRoots(serialization, proxyInterfaceSymbol);
         serialization.AddAssemblyDeclaredRoots();
