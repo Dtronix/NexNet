@@ -4,9 +4,10 @@ Branch `worktree-messagepack-eval`, after the optimization pass (commit `56ae92c
 were built from the same tree with `-p:NexNetSerializer=MessagePack|MemoryPack`. A third column, **master**, is the
 release baseline (57fef36) built from a separate detached worktree.
 
-**Verdict: gate items 1–3 pass. Item 4 passes, except that fragmented IntArrays256 is 2% behind MemoryPack by minimum
-(1% ahead by median), which is inside the noise. Item 5 (24-hour fuzzing): five of six harnesses are clean after 24 h; `session` is still running.** It started on
-2026-10-04 at 15:30. Every performance criterion is met or within noise. Details are in
+**Verdict: the §11.3 gate passes.** Items 1–3 pass. Item 4 passes, except that fragmented IntArrays256 is 2% behind
+MemoryPack by minimum (1% ahead by median), which is inside the noise. Item 5 passes: all six fuzz harnesses ran
+24 hours clean (4.67 billion executions in total, 2026-10-04/05). The go/no-go decision on Phase 8 belongs to the
+user. Details are in
 [Gate evaluation](#gate-evaluation). The previous (failed) evaluation is kept under
 [Before optimization](#before-optimization).
 
@@ -188,11 +189,11 @@ The gate is from `impl-plan.md` §11.3. The change proceeds to Phase 9 only if a
 | 2 | POCO serialize + deserialize within **25%** of MemoryPack | 0.85 / 0.89 (76.0 vs 89.2 ns min). NestedGraph 1.08; PersonList100 1.34 / 1.31. | **Pass.** |
 | 3 | Primitive arrays (ext 78) within **15%** | Doubles16 1.04 / 1.03, Doubles1K 1.03 / 1.03, Doubles64K 0.99 / 0.98. Channel IntArrays256 0.99 / 1.08 non-fragmented, 1.02 / 0.99 fragmented. | **Pass.** |
 | 4 | Channel throughput within **15%**, and fragmented **better** than branch-MemoryPack | Within 15%: all cases (max 1.03 / 1.09). Fragmented: Persons 0.98 / 0.95, Ints 0.95 / 0.95, IntArrays256 1.02 / 0.99. | **Pass, with one marginal case.** IntArrays256 fragmented is 2% behind by minimum and 1% ahead by median; that is noise. |
-| 5 | Fuzzing (§10.4) clean for 24 hours | Five of six harnesses completed 24 h clean (4.67 billion executions in total). `session` is due to finish around 2026-10-05 20:49. Building the session harness found and fixed five session bugs that are also on master (impl-notes deviation 22). | **In progress** (5 of 6 clean). |
+| 5 | Fuzzing (§10.4) clean for 24 hours | All six harnesses completed 24 h with no crash, hang, timeout or OOM: 4.67 billion executions in total, including 5.0 million full server sessions. Building the session harness found and fixed five session bugs that are also on master (impl-notes deviation 22). | **Pass.** |
 
-**Overall:** the performance criteria (1–4) are met, with item 4 marginal in one case that is within noise. The gate
-is not formally passed until item 5 (the 24-hour fuzz run, started 2026-10-04 15:30) completes clean. That, and
-confirming items 1 and 4 on a quieter machine if the margins matter, are the remaining steps before a go decision. Phase 8 has not been started.
+**Overall: pass.** All five criteria are met. Item 4 is marginal in one case that is within noise, and items 1 and 4 can
+be re-confirmed on a quieter machine if those margins matter. Phase 8 (removing MemoryPack) has not been started:
+the go/no-go decision belongs to the user.
 
 
 ### Fuzzing (gate item 5)
@@ -208,9 +209,15 @@ was restarted on `0875319`, after a harness fix; the library code is identical i
 | `formatters` | same | 1,193,729,959 | 13,816 | 11,267 | 31 MB | **Clean** |
 | `builtins` | same | 930,063,191 | 10,764 | 1,222 | 29 MB | **Clean** |
 | `channel` | same (86,403 s) | 85,663 | ~1 | 1,702 | 31 MB | **Clean** (two slow-unit records, 10–12 s; informational) |
-| `session` | 10-04 20:49 → ~10-05 20:49 | (running) | | | | Pending |
+| `session` | 10-04 20:49 → 10-05 20:49 (86,415 s) | 5,026,621 | 58 | 35,986 | 160 MB | **Clean** |
 
-`channel` is slow by design: its harness waits 5 ms for each chunk that can't complete an item. Its first `session`
+Final corpus sizes (files): `reader` 6,731, `messages` 489, `formatters` 770, `builtins` 305, `channel` 1,277,
+`session` 67,522. Every input runs a full server connection in `session`, which explains its lower rate.
+
+`channel` is slow by design: its harness waits 5 ms for each chunk that can't complete an item, and on Windows such a
+timer fires at the 15.6 ms tick. Its two slow-unit records (4–5 s uninstrumented, 10–12 s under instrumentation and
+load) are 1-byte-chunk inputs made of ~316 such waits, not a slow path in the reader. Making that harness detect "no
+more data" without a timer would speed it up by orders of magnitude next time. Its first `session`
 run stopped after 19 minutes on a connection that closed only at the 30 s idle timeout. That was a harness false
 positive (invocation back-pressure, see impl-notes deviation 22), and the harness was fixed and restarted.
 

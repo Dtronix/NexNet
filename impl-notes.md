@@ -3,7 +3,7 @@
 Companion to `impl-plan.md`. This records deviations from the plan, design decisions the plan did not cover, and
 outstanding work. Nothing is committed; all changes are in the `worktree-messagepack-eval` worktree.
 
-## Progress snapshot (updated 2026-10-04)
+## Progress snapshot (updated 2026-10-05)
 
 **Done:** Phases 0–7, plus an optimization pass on the MessagePack backend (deviations 27–35). Benchmarks were rerun
 as full BenchmarkDotNet jobs with a master baseline; see **`benchmark-results.md`**. **Stopped at the §11.3 gate.**
@@ -18,9 +18,9 @@ runs per backend):
 | 2 | POCO serialize + deserialize within 25% | **Pass.** 0.85 / 0.89 (was 1.25–1.30). |
 | 3 | Primitive arrays within 15% | **Pass.** Doubles16 1.04 / 1.03 (was 1.47–1.57), 1K 1.03, 64K 0.99. |
 | 4 | Channels within 15%, fragmented better | **Pass, one marginal case.** All within +3% (min) / +9% (median). Fragmented Persons 0.98 / 0.95 and Ints 0.95 / 0.95; IntArrays256 1.02 / 0.99. |
-| 5 | Fuzzing clean for 24 h | **In progress, 5 of 6 clean.** `reader`, `messages`, `formatters`, `builtins` and `channel` completed 24 h clean on 2026-10-05 15:30 (0.9–1.5 billion executions each; `channel` 85,663). `session` (restarted after a harness fix) is due around 20:49. Details in `benchmark-results.md`. |
+| 5 | Fuzzing clean for 24 h | **Pass.** All six harnesses ran 24 h with no crash, hang, timeout or OOM (2026-10-04/05). Executions: `reader` 1.48 billion, `formatters` 1.19 billion, `messages` 1.06 billion, `builtins` 0.93 billion, `session` 5.03 million, `channel` 85,663. Corpus files: 6,731 / 770 / 489 / 305 / 67,522 / 1,277. Details in `benchmark-results.md`. |
 
-The gate is not formally passed, because item 5 has not been run. Remaining outliers outside the gate:
+**The gate passes.** The go/no-go decision on Phase 8 belongs to the user. Remaining outliers outside the gate:
 PersonList100 S+D 1.31–1.34 and Int32 2.7×, the latter a fixed ~12 ns per-call cost.
 
 **Tree state:** committed and pushed to `origin/worktree-messagepack-eval` (WIP commits). The user asked for backups
@@ -37,9 +37,8 @@ truncated UTF-8), extra members from a newer peer, out-of-range `DateTime`, and 
 optimistic path. Two of the channel tests, and the split-point test, are MessagePack-only. The split-point test hangs
 the legacy MemoryPack read path (deviation 13).
 
-**Next steps (for the user):** decide on the gate. A 24-hour libFuzzer run of all six harnesses started 2026-10-04 15:30 (ends about 2026-10-05 15:30), on
-commit `bee2bc8`, from `<scratchpad>/fuzzrun` (`start-24h.ps1`, `status.ps1`). If it stays clean,
-gate item 5 passes. If the 5% invocation margin matters, do a full benchmark run on an idle machine.
+**Next steps (for the user):** the go/no-go decision. If it's go, Phase 8 removes MemoryPack and Phase 9 covers the
+docs and migration guide. If the 5% invocation margin matters, do a full benchmark run on an idle machine first.
 
 ## Status by phase
 
@@ -157,7 +156,9 @@ gate item 5 passes. If the 5% invocation margin matters, do a full benchmark run
       waits for a slot and stops reading by design, so it can't see the stream end. That is the same as master, and
       not a vulnerability: an idle client can hold a connection that long anyway. The fuzz server now uses
       `Timeout = 2000`, so these connections close inside the 5 s bound.
-    - The failing inputs are kept in `Corpus/session-regressions.hex`. The smoke run (in `FuzzSmokeTests`) now takes
+    - The failing inputs are kept in `Corpus/session-regressions.hex`.
+    - **The 24-hour run is clean** (gate item 5 passes). The five other harnesses ran on `bee2bc8`, 10-04 15:30 to 10-05 15:30;
+      `session` ran on `0875319`, 10-04 20:49 to 10-05 20:49. The library code is identical in both commits. The smoke run (in `FuzzSmokeTests`) now takes
       about 50 s to 2.5 min.
 23. **The `master` baseline is a separate worktree** (`git worktree add --detach <scratchpad>/master-baseline 57fef36`).
     The branch's invocation and channel benchmarks were ported there, with MemoryPack-only versions of the bench

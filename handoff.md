@@ -21,7 +21,7 @@ Nothing is committed; all changes are in the working tree.
 | 4: Channels (`TrySkip` probing), NEXNET038 analyzer, unmanaged-channel removal | Done |
 | 5: Options and security plumbing | Done |
 | 6: Collections | Done |
-| 7: Benchmarks | **Done, plus an optimization pass** (impl-notes deviations 27–35). Full benchmark runs and the gate re-evaluation are in `benchmark-results.md`: **items 1–4 pass (item 4 marginal in one case), item 5 (24 h fuzzing) not measured.** Work is stopped at the gate. |
+| 7: Benchmarks | **Done, plus an optimization pass** (impl-notes deviations 27–35). Full benchmark runs and the gate re-evaluation are in `benchmark-results.md`: **the gate passes**: items 1–4 pass (item 4 marginal in one case), and item 5 passes because all six fuzz harnesses ran 24 h clean. Work is stopped at the gate pending the user's go/no-go. |
 | 8: Remove MemoryPack | Not started. **Do not start**; the gate decision belongs to the user. |
 | 9: Docs and migration | Not started (comes after the gate). |
 
@@ -51,9 +51,9 @@ the unmanaged-channel test files were deleted, as the plan requires.
   **MessagePack** build.
 - A master baseline worktree exists at `<scratchpad>/master-baseline` (detached at 57fef36, ported benchmark files
   uncommitted). Remove it with `git worktree remove --force <path>` when it is no longer needed.
-- **A 24-hour fuzz run is in progress.** A 24-hour libFuzzer run of all six harnesses started 2026-10-04 15:30 (ends about 2026-10-05 15:30), on
-commit `bee2bc8`, from `<scratchpad>/fuzzrun` (`start-24h.ps1`, `status.ps1`). Check it with
-  `pwsh -File status.ps1`. Crashing inputs land in `artifacts\<harness>\`; replay one with
+- **The 24-hour fuzz run is complete and clean** (2026-10-04/05; results in `benchmark-results.md`). The run
+  folder `<scratchpad>/fuzzrun` has the instrumented builds, the grown corpora (`corpus\<harness>\`) and the
+  launch/status scripts. The grown corpora make good seeds for a future CI fuzz job. To reproduce an input:
   `dotnet NexNet.Fuzz.dll --repro <harness> <hex> [count]`.
 - If the 5% invocation margin matters, run a full benchmark on an idle machine.
 
