@@ -4,7 +4,7 @@ namespace NexNet.Generator.Serialization;
 
 /// <summary>
 /// How one type is serialized. Built once per producer by <see cref="ShapeBuilder"/> and read by both code generation
-/// (<see cref="SerializationBuilder"/>) and hashing. Holds symbols, so it never leaves the
+/// (<see cref="SerializationBuilder"/>) and hashing (<see cref="ShapeHasher"/>). Holds symbols, so it never leaves the
 /// transform phase. Shapes reference other shapes, so the shape graph can contain cycles.
 /// </summary>
 internal abstract class TypeShape

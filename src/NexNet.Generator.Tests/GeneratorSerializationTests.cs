@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
+using NexNet.Generator.Serialization;
 using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
@@ -327,11 +328,11 @@ using NexNet.Serialization;
 [NexusObject] public class A { [NexusKey(1)] public int X { get; set; } [NexusKey(0)] public string? Y { get; set; } }
 """);
 
-        var h1 = new TypeHasher(generateWalkString: true).GetHashResult(compilation1.GetTypeByMetadataName("A")!);
-        var h2 = new TypeHasher(generateWalkString: true).GetHashResult(compilation2.GetTypeByMetadataName("A")!);
+        var h1 = ShapeHasher.HashWithListing(new ShapeBuilder(compilation1).Get(compilation1.GetTypeByMetadataName("A")!));
+        var h2 = ShapeHasher.HashWithListing(new ShapeBuilder(compilation2).Get(compilation2.GetTypeByMetadataName("A")!));
         Assert.That(h1.Hash, Is.Not.EqualTo(h2.Hash));
-        Assert.That(h1.WalkString, Does.Contain("[NexusObject]"));
-        Assert.That(h1.WalkString, Does.Contain("[Key:1]"));
+        Assert.That(h1.Listing, Does.Contain("#0 object A"));
+        Assert.That(h1.Listing, Does.Contain("0: "));
     }
 
     // ------------------------------------------------------------------ Formatter output (one file per assembly)

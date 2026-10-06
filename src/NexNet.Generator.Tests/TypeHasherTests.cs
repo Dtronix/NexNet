@@ -1,4 +1,4 @@
-using Microsoft.CodeAnalysis;
+using NexNet.Generator.Serialization;
 using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
@@ -9,105 +9,98 @@ public class TypeHasherTests
     public void SimpleType_WithSpecialTypes()
     {
         // Types without [NexusObject] are hashed by name only; their members are not walked
-        Run("""
+        AssertWalk("""
             using System;
-            [GenerateStructureHash(ExpectedWalk = "SimpleMessage [NotNexusObject]")]
             class SimpleMessage {
                 public int Value1;
                 public string Value2;
                 public bool Value3;
             }
-            """);
+            """, "SimpleMessage", "root: SimpleMessage");
     }
 
     [Test]
     public void NexusObjectType_WithSpecialTypes()
     {
         // SpecialTypes are terminal nodes - they're only shown as member types, not recursively walked
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "SimpleMessage [NexusObject]\n  Value1: Int32 [Key:0]\n  Value2: String [Key:1]\n  Value3: Boolean [Key:2]")]
             [NexusObject]
             partial class SimpleMessage {
                 [NexusKey(0)] public int Value1;
                 [NexusKey(1)] public string Value2;
                 [NexusKey(2)] public bool Value3;
             }
-            """);
+            """, "SimpleMessage", "root: #0\n#0 object SimpleMessage\n  0: Int32\n  1: String\n  2: Boolean");
     }
 
     [Test]
     public void NullableTypes()
     {
         // Nullable<T> is unwrapped and shown as InnerType?, string? is a SpecialType so not recursively walked
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Int32? [Key:0]\n  Value2: String? [Key:1]\n    Int32? [Nullable]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int? Value1;
                 [NexusKey(1)] public string? Value2;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?\n  1: String");
     }
 
     [Test]
     public void ArrayTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Int32[] [Key:0]\n  Value2: Int32[,] [Key:1]\n  Value3: Int32[,,] [Key:2]\n    Int32[] [Array]\n      Int32 [SpecialType]\n    Int32[,] [Array]\n      Int32 [SpecialType]\n    Int32[,,] [Array]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int[] Value1;
                 [NexusKey(1)] public int[,] Value2;
                 [NexusKey(2)] public int[,,] Value3;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32[]\n  1: Int32[,]\n  2: Int32[,,]");
     }
 
     [Test]
     public void NullableArrayTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Int32?[]? [Key:0]\n  Value2: Int32[]? [Key:1]\n    Int32?[]? [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]\n    Int32[]? [Array]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int?[]? Value1;
                 [NexusKey(1)] public int[]? Value2;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?[]\n  1: Int32[]");
     }
 
     [Test]
     public void GenericTypes_CLR()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Items: List<1> [Key:0]\n    List<1> [CLR]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<int> Items;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<Int32>");
     }
 
     [Test]
     public void GenericTypes_WithUserClass()
     {
         // UserData is walked because it's a [NexusObject], but its Int32 member is terminal
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Items: List<1> [Key:0]\n    List<1> [CLR]\n      UserData [NexusObject]\n        Value: Int32 [Key:0]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<UserData> Items;
@@ -116,77 +109,72 @@ public class TypeHasherTests
             partial class UserData {
                 [NexusKey(0)] public int Value;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<#1>\n#1 object UserData\n  0: Int32");
     }
 
     [Test]
     public void DictionaryType()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: Dictionary<2> [Key:0]\n    Dictionary<2> [CLR]\n      String [SpecialType]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Dictionary<string, int> Data;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Dictionary<String, Int32>");
     }
 
     [Test]
     public void EnumType()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Status: Status [Key:0]\n    Status [Enum]\n      Pending = 0\n      Running = 1\n      Complete = 2\n      Failed = 3")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Status Status;
             }
             enum Status { Pending, Running, Complete, Failed }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: enum Int32 {0, 1, 2, 3}");
     }
 
     [Test]
     public void EnumType_WithExplicitValues()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Status: Status [Key:0]\n    Status [Enum]\n      None = 0\n      Warning = 10\n      Error = 100\n      Critical = 500")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Status Status;
             }
             enum Status { None = 0, Warning = 10, Error = 100, Critical = 500 }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: enum Int32 {0, 10, 100, 500}");
     }
 
     [Test]
     public void EnumType_WithFlags()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Flags: Permissions [Key:0]\n    Permissions [Enum]\n      None = 0\n      Read = 1\n      Write = 2\n      Execute = 4\n      All = 7")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Permissions Flags;
             }
             [Flags]
             enum Permissions { None = 0, Read = 1, Write = 2, Execute = 4, All = Read | Write | Execute }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: enum Int32 {0, 1, 2, 4, 7}");
     }
 
     [Test]
     public void NexusUnion()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "IMessage [NexusUnion:2]\n  [Tag:0] MessageA\n  [Tag:1] MessageB\n    MessageA [NexusObject]\n      Value: Int32 [Key:0]\n    MessageB [NexusObject]\n      Text: String [Key:0]")]
             [NexusObject]
             [NexusUnion<MessageA>(0)]
             [NexusUnion<MessageB>(1)]
@@ -200,17 +188,16 @@ public class TypeHasherTests
             partial class MessageB : IMessage {
                 [NexusKey(0)] public string Text;
             }
-            """);
+            """, "IMessage", "root: #0\n#0 union IMessage\n  tag 0: #1\n  tag 1: #2\n#1 object MessageA\n  0: Int32\n#2 object MessageB\n  0: String");
     }
 
     [Test]
     public void NexusUnion_SortsByTag()
     {
         // Even though attributes are in reverse order, output is sorted by union tag
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "IMessage [NexusUnion:2]\n  [Tag:0] MessageA\n  [Tag:1] MessageB\n    MessageA [NexusObject]\n      Value: Int32 [Key:0]\n    MessageB [NexusObject]\n      Text: String [Key:0]")]
             [NexusObject]
             [NexusUnion<MessageB>(1)]
             [NexusUnion<MessageA>(0)]
@@ -224,49 +211,46 @@ public class TypeHasherTests
             partial class MessageB : IMessage {
                 [NexusKey(0)] public string Text;
             }
-            """);
+            """, "IMessage", "root: #0\n#0 union IMessage\n  tag 0: #1\n  tag 1: #2\n#1 object MessageA\n  0: Int32\n#2 object MessageB\n  0: String");
     }
 
     [Test]
     public void NexusKey_MembersSortedByKey()
     {
         // Members are sorted by NexusKey, not declaration order; SpecialTypes are terminal
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  First: Int16 [Key:0]\n  Second: Int32 [Key:1]\n  Third: Int64 [Key:2]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(2)] public long Third;
                 [NexusKey(1)] public int Second;
                 [NexusKey(0)] public short First;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int16\n  1: Int32\n  2: Int64");
     }
 
     [Test]
     public void CyclicReference_SelfReferencing()
     {
         // Self-referencing type shows [seen] on second encounter
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Node [NexusObject]\n  Value: Int32 [Key:0]\n  Next: Node? [Key:1]\n    Node [seen]")]
             [NexusObject]
             partial class Node {
                 [NexusKey(0)] public int Value;
                 [NexusKey(1)] public Node? Next;
             }
-            """);
+            """, "Node", "root: #0\n#0 object Node\n  0: Int32\n  1: #0");
     }
 
     [Test]
     public void CyclicReference_MutualReference()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "NodeA [NexusObject]\n  Value: Int32 [Key:0]\n  Other: NodeB? [Key:1]\n    NodeB? [NexusObject]\n      Value: String [Key:0]\n      Other: NodeA? [Key:1]\n        NodeA [seen]")]
             [NexusObject]
             partial class NodeA {
                 [NexusKey(0)] public int Value;
@@ -277,16 +261,15 @@ public class TypeHasherTests
                 [NexusKey(0)] public string Value;
                 [NexusKey(1)] public NodeA? Other;
             }
-            """);
+            """, "NodeA", "root: #0\n#0 object NodeA\n  0: Int32\n  1: #1\n#1 object NodeB\n  0: String\n  1: #0");
     }
 
     [Test]
     public void NonNexusObject_UserType()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: NonSerializable [Key:0]\n    NonSerializable [NotNexusObject]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public NonSerializable Data;
@@ -295,7 +278,7 @@ public class TypeHasherTests
                 public int Value1;
                 public string Value2;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: NonSerializable");
     }
 
     [Test]
@@ -303,26 +286,24 @@ public class TypeHasherTests
     {
         // DateTime is a SpecialType in Roslyn (terminal, not walked)
         // Guid and TimeSpan are CLR types (walked, shown as [CLR])
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Time: DateTime [Key:0]\n  Id: Guid [Key:1]\n  Span: TimeSpan [Key:2]\n    Guid [CLR]\n    TimeSpan [CLR]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public DateTime Time;
                 [NexusKey(1)] public Guid Id;
                 [NexusKey(2)] public TimeSpan Span;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: DateTime\n  1: Guid\n  2: TimeSpan");
     }
 
     [Test]
     public void NestedTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Outer [NexusObject]\n  Inner: InnerType [Key:0]\n    InnerType [NexusObject]\n      Value: Int32 [Key:0]")]
             [NexusObject]
             partial class Outer {
                 [NexusKey(0)] public InnerType Inner;
@@ -331,17 +312,16 @@ public class TypeHasherTests
             partial class InnerType {
                 [NexusKey(0)] public int Value;
             }
-            """);
+            """, "Outer", "root: #0\n#0 object Outer\n  0: #1\n#1 object InnerType\n  0: Int32");
     }
 
     [Test]
     public void ComplexNestedGenerics()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: Dictionary<2> [Key:0]\n    Dictionary<2> [CLR]\n      String [SpecialType]\n      List<1> [CLR]\n        UserData [NexusObject]\n          Id: Int32 [Key:0]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Dictionary<string, List<UserData>> Data;
@@ -350,16 +330,15 @@ public class TypeHasherTests
             partial class UserData {
                 [NexusKey(0)] public int Id;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Dictionary<String, List<#1>>\n#1 object UserData\n  0: Int32");
     }
 
     [Test]
     public void IgnoresPrivateMembers()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  PublicValue: Int32 [Key:0]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int PublicValue;
@@ -367,37 +346,35 @@ public class TypeHasherTests
                 protected int ProtectedValue;
                 internal int InternalValue;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32");
     }
 
     [Test]
     public void IgnoresStaticMembers()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  InstanceValue: Int32 [Key:0]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int InstanceValue;
                 public static int StaticValue;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32");
     }
 
     [Test]
     public void StructType()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  X: Int32 [Key:0]\n  Y: Int32 [Key:1]")]
             [NexusObject]
             partial struct Message {
                 [NexusKey(0)] public int X;
                 [NexusKey(1)] public int Y;
             }
-            """);
+            """, "Message", "root: #0\n#0 struct Message\n  0: Int32\n  1: Int32");
     }
 
     #region Deep Nested and Complex Type Tests
@@ -405,10 +382,9 @@ public class TypeHasherTests
     [Test]
     public void DeepNested_ThreeLevels()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Level1 [NexusObject]\n  Value: Int32 [Key:0]\n  Child: Level2 [Key:1]\n    Level2 [NexusObject]\n      Value: String [Key:0]\n      Child: Level3 [Key:1]\n        Level3 [NexusObject]\n          Value: Boolean [Key:0]")]
             [NexusObject]
             partial class Level1 {
                 [NexusKey(0)] public int Value;
@@ -423,16 +399,15 @@ public class TypeHasherTests
             partial class Level3 {
                 [NexusKey(0)] public bool Value;
             }
-            """);
+            """, "Level1", "root: #0\n#0 object Level1\n  0: Int32\n  1: #1\n#1 object Level2\n  0: String\n  1: #2\n#2 object Level3\n  0: Boolean");
     }
 
     [Test]
     public void DeepNested_FiveLevels_WithNullables()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Root [NexusObject]\n  Id: Int32 [Key:0]\n  A: LevelA? [Key:1]\n    LevelA? [NexusObject]\n      Name: String [Key:0]\n      B: LevelB? [Key:1]\n        LevelB? [NexusObject]\n          Count: Int64 [Key:0]\n          C: LevelC? [Key:1]\n            LevelC? [NexusObject]\n              Flag: Boolean [Key:0]\n              D: LevelD? [Key:1]\n                LevelD? [NexusObject]\n                  Data: Double [Key:0]")]
             [NexusObject]
             partial class Root {
                 [NexusKey(0)] public int Id;
@@ -457,33 +432,31 @@ public class TypeHasherTests
             partial class LevelD {
                 [NexusKey(0)] public double Data;
             }
-            """);
+            """, "Root", "root: #0\n#0 object Root\n  0: Int32\n  1: #1\n#1 object LevelA\n  0: String\n  1: #2\n#2 object LevelB\n  0: Int64\n  1: #3\n#3 object LevelC\n  0: Boolean\n  1: #4\n#4 object LevelD\n  0: Double");
     }
 
     [Test]
     public void SelfReferencing_LinkedList()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "LinkedNode [NexusObject]\n  Value: Int32 [Key:0]\n  Next: LinkedNode? [Key:1]\n  Prev: LinkedNode? [Key:2]\n    LinkedNode [seen]\n    LinkedNode [seen]")]
             [NexusObject]
             partial class LinkedNode {
                 [NexusKey(0)] public int Value;
                 [NexusKey(1)] public LinkedNode? Next;
                 [NexusKey(2)] public LinkedNode? Prev;
             }
-            """);
+            """, "LinkedNode", "root: #0\n#0 object LinkedNode\n  0: Int32\n  1: #0\n  2: #0");
     }
 
     [Test]
     public void SelfReferencing_TreeStructure()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "TreeNode [NexusObject]\n  Id: Int32 [Key:0]\n  Name: String [Key:1]\n  Parent: TreeNode? [Key:2]\n  Children: List<1>? [Key:3]\n    TreeNode [seen]\n    List<1>? [CLR]\n      TreeNode [seen]")]
             [NexusObject]
             partial class TreeNode {
                 [NexusKey(0)] public int Id;
@@ -491,23 +464,22 @@ public class TypeHasherTests
                 [NexusKey(2)] public TreeNode? Parent;
                 [NexusKey(3)] public List<TreeNode>? Children;
             }
-            """);
+            """, "TreeNode", "root: #0\n#0 object TreeNode\n  0: Int32\n  1: String\n  2: #0\n  3: List<#0>");
     }
 
     [Test]
     public void SelfReferencing_DeepChain_WithArrays()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "ChainNode [NexusObject]\n  Data: Int32 [Key:0]\n  Next: ChainNode? [Key:1]\n  Siblings: ChainNode[]? [Key:2]\n    ChainNode [seen]\n    ChainNode[]? [Array]\n      ChainNode [seen]")]
             [NexusObject]
             partial class ChainNode {
                 [NexusKey(0)] public int Data;
                 [NexusKey(1)] public ChainNode? Next;
                 [NexusKey(2)] public ChainNode[]? Siblings;
             }
-            """);
+            """, "ChainNode", "root: #0\n#0 object ChainNode\n  0: Int32\n  1: #0\n  2: #0[]");
     }
 
     #endregion
@@ -517,41 +489,38 @@ public class TypeHasherTests
     [Test]
     public void Arity_SingleGeneric()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Items: List<1> [Key:0]\n    List<1> [CLR]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<int> Items;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<Int32>");
     }
 
     [Test]
     public void Arity_DoubleGeneric()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Map: Dictionary<2> [Key:0]\n    Dictionary<2> [CLR]\n      String [SpecialType]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Dictionary<string, int> Map;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Dictionary<String, Int32>");
     }
 
     [Test]
     public void Arity_TripleGeneric()
     {
         // Generic types always walk their type arguments, even if the generic itself is not a [NexusObject]
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: MyTriple<3> [Key:0]\n    MyTriple<3>\n      Int32 [SpecialType]\n      String [SpecialType]\n      Boolean [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public MyTriple<int, string, bool> Data;
@@ -561,59 +530,55 @@ public class TypeHasherTests
                 public T2 Second;
                 public T3 Third;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: MyTriple<Int32, String, Boolean>");
     }
 
     [Test]
     public void Arity_DifferentArities_DifferentHashes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "MessageWithList [NexusObject]\n  Data: List<1> [Key:0]\n    List<1> [CLR]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class MessageWithList {
                 [NexusKey(0)] public List<int> Data;
             }
-            """);
+            """, "MessageWithList", "root: #0\n#0 object MessageWithList\n  0: List<Int32>");
 
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "MessageWithDict [NexusObject]\n  Data: Dictionary<2> [Key:0]\n    Dictionary<2> [CLR]\n      Int32 [SpecialType]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class MessageWithDict {
                 [NexusKey(0)] public Dictionary<int, int> Data;
             }
-            """);
+            """, "MessageWithDict", "root: #0\n#0 object MessageWithDict\n  0: Dictionary<Int32, Int32>");
     }
 
     [Test]
     public void Arity_NestedGenerics_DifferentArities()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Level1: List<1> [Key:0]\n  Level2: Dictionary<2> [Key:1]\n    List<1> [CLR]\n      Dictionary<2> [CLR]\n        String [SpecialType]\n        Int32 [SpecialType]\n    Dictionary<2> [CLR]\n      String [SpecialType]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<Dictionary<string, int>> Level1;
                 [NexusKey(1)] public Dictionary<string, int> Level2;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<Dictionary<String, Int32>>\n  1: Dictionary<String, Int32>");
     }
 
     [Test]
     public void Arity_GenericWithNexusObject()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Items: List<1> [Key:0]\n  Map: Dictionary<2> [Key:1]\n    List<1> [CLR]\n      Inner [NexusObject]\n        Value: Int32 [Key:0]\n    Dictionary<2> [CLR]\n      String [SpecialType]\n      Inner [seen]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<Inner> Items;
@@ -623,7 +588,7 @@ public class TypeHasherTests
             partial class Inner {
                 [NexusKey(0)] public int Value;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<#1>\n  1: Dictionary<String, #1>\n#1 object Inner\n  0: Int32");
     }
 
     #endregion
@@ -633,24 +598,22 @@ public class TypeHasherTests
     [Test]
     public void Array_SingleDimension()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: Int32[] [Key:0]\n    Int32[] [Array]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int[] Data;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32[]");
     }
 
     [Test]
     public void Array_MultiDimension_AllRanks()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Rank1: Int32[] [Key:0]\n  Rank2: Int32[,] [Key:1]\n  Rank3: Int32[,,] [Key:2]\n  Rank4: Int32[,,,] [Key:3]\n    Int32[] [Array]\n      Int32 [SpecialType]\n    Int32[,] [Array]\n      Int32 [SpecialType]\n    Int32[,,] [Array]\n      Int32 [SpecialType]\n    Int32[,,,] [Array]\n      Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int[] Rank1;
@@ -658,16 +621,15 @@ public class TypeHasherTests
                 [NexusKey(2)] public int[,,] Rank3;
                 [NexusKey(3)] public int[,,,] Rank4;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32[]\n  1: Int32[,]\n  2: Int32[,,]\n  3: Int32[,,,]");
     }
 
     [Test]
     public void Array_OfNexusObject()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Items: Item[] [Key:0]\n    Item[] [Array]\n      Item [NexusObject]\n        Id: Int32 [Key:0]\n        Name: String [Key:1]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Item[] Items;
@@ -677,66 +639,62 @@ public class TypeHasherTests
                 [NexusKey(0)] public int Id;
                 [NexusKey(1)] public string Name;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: #1[]\n#1 object Item\n  0: Int32\n  1: String");
     }
 
     [Test]
     public void Array_OfArrays_JaggedArrays()
     {
         // Jagged arrays: the outer array type displays without full element type in the walk string
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Jagged: [] [Key:0]\n    [] [Array]\n      Int32[] [Array]\n        Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int[][] Jagged;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32[][]");
     }
 
     [Test]
     public void Array_OfNullableElements()
     {
         // string? in an array shows the nullability annotation
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  NullableInts: Int32?[] [Key:0]\n  NullableStrings: String?[] [Key:1]\n    Int32?[] [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]\n    String?[] [Array]\n      String? [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int?[] NullableInts;
                 [NexusKey(1)] public string?[] NullableStrings;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?[]\n  1: String[]");
     }
 
     [Test]
     public void Array_NullableArray_OfNullableElements()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Data: Int32?[]? [Key:0]\n    Int32?[]? [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int?[]? Data;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?[]");
     }
 
     [Test]
     public void Array_MultiDim_Nullable()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Matrix: Int32?[,]? [Key:0]\n    Int32?[,]? [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int?[,]? Matrix;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?[,]");
     }
 
     #endregion
@@ -746,10 +704,9 @@ public class TypeHasherTests
     [Test]
     public void Nullable_PrimitiveTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  NInt: Int32? [Key:0]\n  NLong: Int64? [Key:1]\n  NBool: Boolean? [Key:2]\n  NDouble: Double? [Key:3]\n  NDecimal: Decimal? [Key:4]\n    Int32? [Nullable]\n      Int32 [SpecialType]\n    Int64? [Nullable]\n      Int64 [SpecialType]\n    Boolean? [Nullable]\n      Boolean [SpecialType]\n    Double? [Nullable]\n      Double [SpecialType]\n    Decimal? [Nullable]\n      Decimal [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public int? NInt;
@@ -758,31 +715,29 @@ public class TypeHasherTests
                 [NexusKey(3)] public double? NDouble;
                 [NexusKey(4)] public decimal? NDecimal;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?\n  1: Int64?\n  2: Boolean?\n  3: Double?\n  4: Decimal?");
     }
 
     [Test]
     public void Nullable_ReferenceTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  NullableString: String? [Key:0]\n  NullableObject: Object? [Key:1]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public string? NullableString;
                 [NexusKey(1)] public object? NullableObject;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: String\n  1: Object");
     }
 
     [Test]
     public void Nullable_NexusObjectTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Item: InnerItem? [Key:0]\n    InnerItem? [NexusObject]\n      Value: Int32 [Key:0]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public InnerItem? Item;
@@ -791,39 +746,37 @@ public class TypeHasherTests
             partial class InnerItem {
                 [NexusKey(0)] public int Value;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: #1\n#1 object InnerItem\n  0: Int32");
     }
 
     [Test]
     public void Nullable_InGenerics()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  NullableList: List<1>? [Key:0]\n  ListOfNullable: List<1> [Key:1]\n    List<1>? [CLR]\n      Int32 [SpecialType]\n    List<1> [CLR]\n      Int32? [Nullable]\n        Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public List<int>? NullableList;
                 [NexusKey(1)] public List<int?> ListOfNullable;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<Int32>\n  1: List<Int32?>");
     }
 
     [Test]
     public void Nullable_DictionaryVariations()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Dict1: Dictionary<2>? [Key:0]\n  Dict2: Dictionary<2> [Key:1]\n    Dictionary<2>? [CLR]\n      String [SpecialType]\n      Int32 [SpecialType]\n    Dictionary<2> [CLR]\n      String? [SpecialType]\n      Int32? [Nullable]\n        Int32 [SpecialType]")]
             [NexusObject]
             partial class Message {
                 [NexusKey(0)] public Dictionary<string, int>? Dict1;
                 [NexusKey(1)] public Dictionary<string?, int?> Dict2;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Dictionary<String, Int32>\n  1: Dictionary<String, Int32?>");
     }
 
     #endregion
@@ -833,11 +786,10 @@ public class TypeHasherTests
     [Test]
     public void ComplexDeepWalk_TreeWithCollections()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Organization [NexusObject]\n  Id: Int32 [Key:0]\n  Name: String [Key:1]\n  Root: Department? [Key:2]\n    Department? [NexusObject]\n      Id: Int32 [Key:0]\n      Name: String [Key:1]\n      Parent: Department? [Key:2]\n      SubDepartments: List<1>? [Key:3]\n      Employees: Employee[]? [Key:4]\n        Department [seen]\n        List<1>? [CLR]\n          Department [seen]\n        Employee[]? [Array]\n          Employee [NexusObject]\n            Id: Int32 [Key:0]\n            Name: String [Key:1]\n            Manager: Employee? [Key:2]\n              Employee [seen]")]
             [NexusObject]
             partial class Organization {
                 [NexusKey(0)] public int Id;
@@ -858,17 +810,16 @@ public class TypeHasherTests
                 [NexusKey(1)] public string Name;
                 [NexusKey(2)] public Employee? Manager;
             }
-            """);
+            """, "Organization", "root: #0\n#0 object Organization\n  0: Int32\n  1: String\n  2: #1\n#1 object Department\n  0: Int32\n  1: String\n  2: #1\n  3: List<#1>\n  4: #2[]\n#2 object Employee\n  0: Int32\n  1: String\n  2: #2");
     }
 
     [Test]
     public void ComplexDeepWalk_GraphWithAllTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Graph [NexusObject]\n  Id: Guid [Key:0]\n  Name: String? [Key:1]\n  Metadata: Dictionary<2>? [Key:2]\n  Nodes: GraphNode[]? [Key:3]\n    Guid [CLR]\n    Dictionary<2>? [CLR]\n      String [SpecialType]\n      Object [SpecialType]\n    GraphNode[]? [Array]\n      GraphNode [NexusObject]\n        Id: Int32 [Key:0]\n        Label: String? [Key:1]\n        Weight: Double? [Key:2]\n        Tags: String[]? [Key:3]\n        Edges: List<1>? [Key:4]\n        Data: NodeData? [Key:5]\n          Double? [Nullable]\n            Double [SpecialType]\n          String[]? [Array]\n            String [SpecialType]\n          List<1>? [CLR]\n            Edge [NexusObject]\n              Source: GraphNode? [Key:0]\n              Target: GraphNode? [Key:1]\n              Weight: Decimal? [Key:2]\n                GraphNode [seen]\n                GraphNode [seen]\n                Decimal? [Nullable]\n                  Decimal [SpecialType]\n          NodeData? [NexusObject]\n            Values: Int32[]? [Key:0]\n            Matrix: Double[,]? [Key:1]\n            Flags: NodeFlags? [Key:2]\n              Int32[]? [Array]\n                Int32 [SpecialType]\n              Double[,]? [Array]\n                Double [SpecialType]\n              NodeFlags? [Nullable]\n                NodeFlags [Enum]\n                  None = 0\n                  Active = 1\n                  Visited = 2\n                  Processed = 4")]
             [NexusObject]
             partial class Graph {
                 [NexusKey(0)] public Guid Id;
@@ -899,17 +850,16 @@ public class TypeHasherTests
             }
             [Flags]
             enum NodeFlags { None = 0, Active = 1, Visited = 2, Processed = 4 }
-            """);
+            """, "Graph", "root: #0\n#0 object Graph\n  0: Guid\n  1: String\n  2: Dictionary<String, Object>\n  3: #1[]\n#1 object GraphNode\n  0: Int32\n  1: String\n  2: Double?\n  3: String[]\n  4: List<#2>\n  5: #3\n#2 object Edge\n  0: #1\n  1: #1\n  2: Decimal?\n#3 object NodeData\n  0: Int32[]\n  1: Double[,]\n  2: enum Int32 {0, 1, 2, 4}?");
     }
 
     [Test]
     public void ComplexDeepWalk_UnionWithDeepTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "IEvent [NexusUnion:3]\n  [Tag:0] UserEvent\n  [Tag:1] SystemEvent\n  [Tag:2] DataEvent\n    UserEvent [NexusObject]\n      UserId: Int32 [Key:0]\n      Action: String [Key:1]\n      Timestamp: DateTime [Key:2]\n      Metadata: Dictionary<2>? [Key:3]\n        Dictionary<2>? [CLR]\n          String [SpecialType]\n          String [SpecialType]\n    SystemEvent [NexusObject]\n      Level: LogLevel [Key:0]\n      Message: String [Key:1]\n      Source: String? [Key:2]\n      StackTrace: String[]? [Key:3]\n        LogLevel [Enum]\n          Debug = 0\n          Info = 1\n          Warning = 2\n          Error = 3\n        String[]? [Array]\n          String [SpecialType]\n    DataEvent [NexusObject]\n      EntityId: Guid [Key:0]\n      Changes: FieldChange[]? [Key:1]\n        Guid [CLR]\n        FieldChange[]? [Array]\n          FieldChange [NexusObject]\n            FieldName: String [Key:0]\n            OldValue: Object? [Key:1]\n            NewValue: Object? [Key:2]")]
             [NexusObject]
             [NexusUnion<UserEvent>(0)]
             [NexusUnion<SystemEvent>(1)]
@@ -942,17 +892,16 @@ public class TypeHasherTests
                 [NexusKey(1)] public object? OldValue;
                 [NexusKey(2)] public object? NewValue;
             }
-            """);
+            """, "IEvent", "root: #0\n#0 union IEvent\n  tag 0: #1\n  tag 1: #2\n  tag 2: #3\n#1 object UserEvent\n  0: Int32\n  1: String\n  2: DateTime\n  3: Dictionary<String, String>\n#2 object SystemEvent\n  0: enum Int32 {0, 1, 2, 3}\n  1: String\n  2: String\n  3: String[]\n#3 object DataEvent\n  0: Guid\n  1: #4[]\n#4 object FieldChange\n  0: String\n  1: Object\n  2: Object");
     }
 
     [Test]
     public void ComplexDeepWalk_AllNullableVariants()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "NullableShowcase [NexusObject]\n  NullableInt: Int32? [Key:0]\n  NullableGuid: Guid? [Key:1]\n  NullableEnum: Status? [Key:2]\n  NullableArray: Int32[]? [Key:3]\n  NullableArrayOfNullable: Int32?[]? [Key:4]\n  NullableList: List<1>? [Key:5]\n  NullableDict: Dictionary<2>? [Key:6]\n  NullableNested: NestedNullable? [Key:7]\n    Int32? [Nullable]\n      Int32 [SpecialType]\n    Guid? [Nullable]\n      Guid [CLR]\n    Status? [Nullable]\n      Status [Enum]\n        Pending = 0\n        Active = 1\n        Complete = 2\n    Int32[]? [Array]\n      Int32 [SpecialType]\n    Int32?[]? [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]\n    List<1>? [CLR]\n      String? [SpecialType]\n    Dictionary<2>? [CLR]\n      String [SpecialType]\n      Inner? [NexusObject]\n        Value: Int32? [Key:0]\n          Int32? [Nullable]\n            Int32 [SpecialType]\n    NestedNullable? [NexusObject]\n      Deep: DeepNullable? [Key:0]\n        DeepNullable? [NexusObject]\n          Values: Int32?[]? [Key:0]\n            Int32?[]? [Array]\n              Int32? [Nullable]\n                Int32 [SpecialType]")]
             [NexusObject]
             partial class NullableShowcase {
                 [NexusKey(0)] public int? NullableInt;
@@ -977,17 +926,16 @@ public class TypeHasherTests
             partial class DeepNullable {
                 [NexusKey(0)] public int?[]? Values;
             }
-            """);
+            """, "NullableShowcase", "root: #0\n#0 object NullableShowcase\n  0: Int32?\n  1: Guid?\n  2: enum Int32 {0, 1, 2}?\n  3: Int32[]\n  4: Int32?[]\n  5: List<String>\n  6: Dictionary<String, #1>\n  7: #2\n#1 object Inner\n  0: Int32?\n#2 object NestedNullable\n  0: #3\n#3 object DeepNullable\n  0: Int32?[]");
     }
 
     [Test]
     public void ComplexDeepWalk_SelfReferencingTree_WithAllFeatures()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Document [NexusObject]\n  Id: Guid [Key:0]\n  Title: String [Key:1]\n  Root: Section? [Key:2]\n    Guid [CLR]\n    Section? [NexusObject]\n      Id: Int32 [Key:0]\n      Title: String [Key:1]\n      Content: String? [Key:2]\n      Parent: Section? [Key:3]\n      Children: Section[]? [Key:4]\n      Annotations: Dictionary<2>? [Key:5]\n      Tags: List<1>? [Key:6]\n      Metadata: SectionMeta? [Key:7]\n        Section [seen]\n        Section[]? [Array]\n          Section [seen]\n        Dictionary<2>? [CLR]\n          String [SpecialType]\n          Annotation [NexusObject]\n            Type: AnnotationType [Key:0]\n            Text: String [Key:1]\n            Range: TextRange? [Key:2]\n              AnnotationType [Enum]\n                Comment = 0\n                Highlight = 1\n                Bookmark = 2\n              TextRange? [NexusObject]\n                Start: Int32 [Key:0]\n                End: Int32? [Key:1]\n                  Int32? [Nullable]\n                    Int32 [SpecialType]\n        List<1>? [CLR]\n          String [SpecialType]\n        SectionMeta? [NexusObject]\n          CreatedAt: DateTime [Key:0]\n          ModifiedAt: DateTime? [Key:1]\n          Author: String? [Key:2]\n          Flags: SectionFlags? [Key:3]\n            DateTime? [Nullable]\n              DateTime [SpecialType]\n            SectionFlags? [Nullable]\n              SectionFlags [Enum]\n                None = 0\n                Draft = 1\n                Published = 2\n                Archived = 4")]
             [NexusObject]
             partial class Document {
                 [NexusKey(0)] public Guid Id;
@@ -1026,7 +974,7 @@ public class TypeHasherTests
             }
             [Flags]
             enum SectionFlags { None = 0, Draft = 1, Published = 2, Archived = 4 }
-            """);
+            """, "Document", "root: #0\n#0 object Document\n  0: Guid\n  1: String\n  2: #1\n#1 object Section\n  0: Int32\n  1: String\n  2: String\n  3: #1\n  4: #1[]\n  5: Dictionary<String, #2>\n  6: List<String>\n  7: #4\n#2 object Annotation\n  0: enum Int32 {0, 1, 2}\n  1: String\n  2: #3\n#3 object TextRange\n  0: Int32\n  1: Int32?\n#4 object SectionMeta\n  0: DateTime\n  1: DateTime?\n  2: String\n  3: enum Int32 {0, 1, 2, 4}?");
     }
 
     #endregion
@@ -1037,10 +985,9 @@ public class TypeHasherTests
     public void NullableOfT_AndQuestionMark_WalkTheSame()
     {
         // Nullable<int> and int? are the same type; both spellings produce the same member lines
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Int32?[] [Key:0]\n  Value2: Int32?[] [Key:1]\n  Value3: Int32? [Key:2]\n  Value4: Int32? [Key:3]\n    Int32?[] [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]\n    Int32?[] [Array]\n      Int32? [Nullable]\n        Int32 [SpecialType]\n    Int32? [Nullable]\n      Int32 [SpecialType]\n    Int32? [Nullable]\n      Int32 [SpecialType]")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public Nullable<int>[] Value1;
@@ -1048,16 +995,15 @@ public class TypeHasherTests
                 [NexusKey(2)] public Nullable<int> Value3;
                 [NexusKey(3)] public int? Value4;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Int32?[]\n  1: Int32?[]\n  2: Int32?\n  3: Int32?");
     }
 
     [Test]
     public void Tuples_WalkTypeArguments()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: ValueTuple<1> [Key:0]\n  Value2: ValueTuple<1> [Key:1]\n  Value3: Tuple<2> [Key:2]\n  Value4: Tuple<1> [Key:3]\n    ValueTuple<1> [CLR]\n      Int32 [SpecialType]\n    ValueTuple<1> [CLR]\n      Tuple<1> [CLR]\n        Int32 [SpecialType]\n    Tuple<2> [CLR]\n      Int32 [SpecialType]\n      String [SpecialType]\n    Tuple<1> [CLR]\n      ValueTuple<2> [CLR]\n        Int32 [SpecialType]\n        Int64 [SpecialType]")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public ValueTuple<int> Value1;
@@ -1065,33 +1011,31 @@ public class TypeHasherTests
                 [NexusKey(2)] public Tuple<int, string> Value3;
                 [NexusKey(3)] public Tuple<ValueTuple<int, long>> Value4;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: ValueTuple<Int32>\n  1: ValueTuple<Tuple<Int32>>\n  2: Tuple<Int32, String>\n  3: Tuple<ValueTuple<Int32, Int64>>");
     }
 
     [Test]
     public void NestedCollectionsAndTuples()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: List<1> [Key:0]\n    List<1> [CLR]\n      ValueTuple<4> [CLR]\n        List<1> [CLR]\n          Dictionary<2> [CLR]\n            Byte [SpecialType]\n            Int32 [SpecialType]\n        String? [SpecialType]\n        Int32[] [Array]\n          Int32 [SpecialType]\n        Int32[]? [Array]\n          Int32 [SpecialType]")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public List<ValueTuple<List<Dictionary<byte, int>>, string?, int[], int[]?>> Value1;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: List<ValueTuple<List<Dictionary<Byte, Int32>>, String, Int32[], Int32[]>>");
     }
 
     [Test]
     public void BuiltInLeafTypes()
     {
         // Types with built-in formatters are hashed by name; System types are not walked
-        Run("""
+        AssertWalk("""
             using System;
             using System.Numerics;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: String [Key:0]\n  Value2: Decimal [Key:1]\n  Value3: DateTime [Key:2]\n  Value4: DateTimeOffset [Key:3]\n  Value5: TimeSpan [Key:4]\n  Value6: DateOnly [Key:5]\n  Value7: TimeOnly [Key:6]\n  Value8: Guid [Key:7]\n  Value9: Half [Key:8]\n  Value10: BigInteger [Key:9]\n  Value11: Uri [Key:10]\n  Value12: Version [Key:11]\n  Value13: Byte[] [Key:12]\n    DateTimeOffset [CLR]\n    TimeSpan [CLR]\n    DateOnly [CLR]\n    TimeOnly [CLR]\n    Guid [CLR]\n    Half [CLR]\n    BigInteger [CLR]\n    Uri [CLR]\n    Version [CLR]\n    Byte[] [Array]\n      Byte [SpecialType]")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public string Value1;
@@ -1108,18 +1052,17 @@ public class TypeHasherTests
                 [NexusKey(11)] public Version Value12;
                 [NexusKey(12)] public byte[] Value13;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: String\n  1: Decimal\n  2: DateTime\n  3: DateTimeOffset\n  4: TimeSpan\n  5: DateOnly\n  6: TimeOnly\n  7: Guid\n  8: Half\n  9: BigInteger\n  10: Uri\n  11: Version\n  12: Byte[]");
     }
 
     [Test]
     public void BuiltInGenericTypes()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using System.Buffers;
             using System.Collections.Generic;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Memory<1> [Key:0]\n  Value2: ReadOnlyMemory<1> [Key:1]\n  Value3: ArraySegment<1> [Key:2]\n  Value4: ReadOnlySequence<1> [Key:3]\n  Value5: KeyValuePair<2> [Key:4]\n  Value6: HashSet<1> [Key:5]\n  Value7: Queue<1> [Key:6]\n  Value8: Stack<1> [Key:7]\n  Value9: IList<1> [Key:8]\n  Value10: IReadOnlyList<1> [Key:9]\n  Value11: ICollection<1> [Key:10]\n  Value12: IReadOnlyCollection<1> [Key:11]\n  Value13: IEnumerable<1> [Key:12]\n  Value14: IDictionary<2> [Key:13]\n  Value15: IReadOnlyDictionary<2> [Key:14]\n    Memory<1> [CLR]\n      Byte [SpecialType]\n    ReadOnlyMemory<1> [CLR]\n      Int32 [SpecialType]\n    ArraySegment<1> [CLR]\n      Byte [SpecialType]\n    ReadOnlySequence<1> [CLR]\n      Byte [SpecialType]\n    KeyValuePair<2> [CLR]\n      Byte [SpecialType]\n      Int32 [SpecialType]\n    HashSet<1> [CLR]\n      Int32 [SpecialType]\n    Queue<1> [CLR]\n      Int32 [SpecialType]\n    Stack<1> [CLR]\n      Int32 [SpecialType]\n    IList<1> [CLR]\n      Int32 [SpecialType]\n    IReadOnlyList<1> [CLR]\n      Int32 [SpecialType]\n    ICollection<1> [CLR]\n      Int32 [SpecialType]\n    IReadOnlyCollection<1> [CLR]\n      Int32 [SpecialType]\n    IEnumerable<1> [CLR]\n      Int32 [SpecialType]\n    IDictionary<2> [CLR]\n      Int32 [SpecialType]\n      Int64 [SpecialType]\n    IReadOnlyDictionary<2> [CLR]\n      Int32 [SpecialType]\n      Int64 [SpecialType]")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public Memory<byte> Value1;
@@ -1138,49 +1081,46 @@ public class TypeHasherTests
                 [NexusKey(13)] public IDictionary<int, long> Value14;
                 [NexusKey(14)] public IReadOnlyDictionary<int, long> Value15;
             }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: Memory<Byte>\n  1: ReadOnlyMemory<Int32>\n  2: ArraySegment<Byte>\n  3: ReadOnlySequence<Byte>\n  4: KeyValuePair<Byte, Int32>\n  5: HashSet<Int32>\n  6: Queue<Int32>\n  7: Stack<Int32>\n  8: IList<Int32>\n  9: IReadOnlyList<Int32>\n  10: ICollection<Int32>\n  11: IReadOnlyCollection<Int32>\n  12: IEnumerable<Int32>\n  13: IDictionary<Int32, Int64>\n  14: IReadOnlyDictionary<Int32, Int64>");
     }
 
     [Test]
     public void Enum_MembersSortedByValue()
     {
         // Enum members are walked in value order, not declaration order
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Status [Key:0]\n    Status [Enum]\n      Unset = 0\n      EOF = 1\n      Running = 10\n      Stopped = 20\n      Error = 100")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public Status Value1;
             }
             enum Status { Unset = 0, Running = 10, Stopped = 20, Error = 100, EOF = 1 }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: enum Int32 {0, 1, 10, 20, 100}");
     }
 
     [Test]
     public void Enum_FlagsWithCombinedValues()
     {
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Message [NexusObject]\n  Value1: Status [Key:0]\n    Status [Enum]\n      Unset = 0\n      Running = 1\n      Stopped = 4\n      Error = 8\n      Critical = 9")]
             [NexusObject]
             class Message {
                 [NexusKey(0)] public Status Value1;
             }
             [Flags]
             enum Status { Unset = 0, Running = 1 << 0, Stopped = 1 << 2, Error = 1 << 3, Critical = Running | Error }
-            """);
+            """, "Message", "root: #0\n#0 object Message\n  0: enum Int32 {0, 1, 4, 8, 9}");
     }
 
     [Test]
     public void CyclicReference_SeenMultipleTimes()
     {
         // Every repeated [NexusObject] is marked [seen], including references back to the root
-        Run("""
+        AssertWalk("""
             using System;
             using NexNet.Serialization;
-            [GenerateStructureHash(ExpectedWalk = "Container [NexusObject]\n  Value1: Message [Key:0]\n  Value2: Container [Key:1]\n  Value3: Values [Key:2]\n  Value4: Message [Key:3]\n    Message [NexusObject]\n      Value1: Int32 [Key:0]\n      Value2: Values [Key:1]\n        Values [NexusObject]\n          Value1: Byte[] [Key:0]\n          Value2: Message [Key:1]\n            Byte[] [Array]\n              Byte [SpecialType]\n            Message [seen]\n    Container [seen]\n    Values [seen]\n    Message [seen]")]
             [NexusObject]
             class Container {
                 [NexusKey(0)] public Message Value1;
@@ -1198,7 +1138,7 @@ public class TypeHasherTests
                 [NexusKey(0)] public byte[] Value1;
                 [NexusKey(1)] public Message Value2;
             }
-            """);
+            """, "Container", "root: #0\n#0 object Container\n  0: #1\n  1: #0\n  2: #2\n  3: #1\n#1 object Message\n  0: Int32\n  1: #2\n#2 object Values\n  0: Byte[]\n  1: #1");
     }
 
     #endregion
@@ -1301,27 +1241,146 @@ public class TypeHasherTests
 
     #endregion
 
+    #region Hash Rules
+
+    [Test]
+    public void RenamingType_KeepsHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }");
+        var b = HashOf("[NexusObject] class Envelope { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }", "Envelope");
+        Assert.That(b, Is.EqualTo(a));
+    }
+
+    [Test]
+    public void RenamingMember_KeepsHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)] public string Value2; }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Count; [NexusKey(1)] public string Text; }");
+        Assert.That(b, Is.EqualTo(a));
+    }
+
+    [Test]
+    public void RenamingEnumMember_KeepsHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A, B }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { X, Y }");
+        Assert.That(b, Is.EqualTo(a));
+    }
+
+    [Test]
+    public void ChangingEnumValue_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A = 0, B = 1 }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind { A = 0, B = 2 }");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void ChangingEnumUnderlyingType_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind : int { A, B }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public Kind Value; } enum Kind : long { A, B }");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void ReferenceNullability_KeepsHash()
+    {
+        var a = HashOf("""
+            #nullable enable
+            [NexusObject] class Message { [NexusKey(0)] public string Text = ""; [NexusKey(1)] public Inner Value = new(); }
+            [NexusObject] class Inner { [NexusKey(0)] public int Value1; }
+            """);
+        var b = HashOf("""
+            #nullable enable
+            [NexusObject] class Message { [NexusKey(0)] public string? Text; [NexusKey(1)] public Inner? Value; }
+            [NexusObject] class Inner { [NexusKey(0)] public int Value1; }
+            """);
+        Assert.That(b, Is.EqualTo(a));
+    }
+
+    [Test]
+    public void ValueNullability_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int? Value1; }");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void ClassToStruct_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
+        var b = HashOf("[NexusObject] struct Message { [NexusKey(0)] public int Value1; }");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void StructurallyIdenticalTypes_HashEqual()
+    {
+        const string source = """
+            [NexusObject] class Order { [NexusKey(0)] public int Id; [NexusKey(1)] public string Note; }
+            [NexusObject] class Invoice { [NexusKey(0)] public int Number; [NexusKey(1)] public string Memo; }
+            """;
+        Assert.That(HashOf(source, "Invoice"), Is.EqualTo(HashOf(source, "Order")));
+    }
+
+    [Test]
+    public void GenericNexusObjectMemberChange_ChangesHash()
+    {
+        var a = HashOf("""
+            [NexusObject] class Message { [NexusKey(0)] public Envelope<int> Value; }
+            [NexusObject] class Envelope<T> { [NexusKey(0)] public T Value; }
+            """);
+        var b = HashOf("""
+            [NexusObject] class Message { [NexusKey(0)] public Envelope<int> Value; }
+            [NexusObject] class Envelope<T> { [NexusKey(0)] public T Value; [NexusKey(1)] public int Extra; }
+            """);
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void NexusIgnoredKeyedMember_KeepsHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int Value1; [NexusKey(1)][NexusIgnore] public int X; }");
+        Assert.That(b, Is.EqualTo(a));
+    }
+
+    [Test]
+    public void CycleShape_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Node { [NexusKey(0)] public int Value; [NexusKey(1)] public Node? Next; }", "Node");
+        var b = HashOf("[NexusObject] class Node { [NexusKey(0)] public int Value; [NexusKey(1)] public int Next; }", "Node");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    [Test]
+    public void ListToArray_ChangesHash()
+    {
+        var a = HashOf("[NexusObject] class Message { [NexusKey(0)] public System.Collections.Generic.List<int> Values; }");
+        var b = HashOf("[NexusObject] class Message { [NexusKey(0)] public int[] Values; }");
+        Assert.That(b, Is.Not.EqualTo(a));
+    }
+
+    #endregion
+
+    private static (int Hash, string Listing) Walk(string source, string typeName)
+    {
+        var compilation = CSharpGeneratorRunner.CreateCompilation(source);
+        var type = compilation.GetTypeByMetadataName(typeName)
+                   ?? throw new AssertionException($"Type '{typeName}' not found.");
+        return ShapeHasher.HashWithListing(new ShapeBuilder(compilation).Get(type));
+    }
+
+    private static void AssertWalk(string source, string typeName, string expected)
+    {
+        var actual = Walk(source, typeName).Listing;
+        // On a mismatch, print the full listing as a C# literal (NUnit truncates long strings in its own message).
+        Assert.That(actual, Is.EqualTo(expected.ReplaceLineEndings("\n")),
+            "Actual listing: \"" + actual.Replace("\n", "\\n") + "\"");
+    }
+
     private static int HashOf(string source, string typeName = "Message")
-    {
-        var compilation = CSharpGeneratorRunner.CreateCompilation("using NexNet.Serialization;\n" + source);
-        return new TypeHasher().GetHash(compilation.GetTypeByMetadataName(typeName)!);
-    }
-
-    private void Run(string code)
-    {
-        var diagnostics = CSharpGeneratorRunner.RunTypeHasherGenerator(
-            code + GenerateStructureHashAttribute,
-            minDiagnostic: DiagnosticSeverity.Info);
-
-        var failures = diagnostics.Where(d => d.Id.StartsWith("TEST_FAIL")).ToArray();
-        Assert.That(failures, Is.Empty, string.Join("\n", failures.Select(d => d.GetMessage())));
-    }
-
-    private const string GenerateStructureHashAttribute
-        = """
-          public class GenerateStructureHashAttribute : Attribute
-          {
-              public string ExpectedWalk { get; set; }
-          }
-          """;
+        => Walk("using NexNet.Serialization;\n" + source, typeName).Hash;
 }
