@@ -11,30 +11,6 @@ on:
       - '*'
 
 jobs:
-  # Experiment: the legacy MemoryPack payload backend must keep passing until the go/no-go decision.
-  memorypack-backend:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-
-    - name: Install msquic
-      run: sudo apt-get update && sudo apt-get install -y libmsquic
-
-    - name: Install .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: '10.*'
-
-    - name: Build (MemoryPack payloads)
-      run: dotnet build src -c Release --maxcpucount:1 -p:NexNetSerializer=MemoryPack
-
-    - name: Execute integration tests (MemoryPack payloads)
-      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -p:NexNetSerializer=MemoryPack
-
-    - name: Execute generator tests (MemoryPack payloads)
-      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -p:NexNetSerializer=MemoryPack
-
   build:
     runs-on: ubuntu-latest
                              
