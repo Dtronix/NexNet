@@ -22,5 +22,4 @@
   <ItemGroup>
     <Compile Remove="Internals\Pipelines\Arenas\Allocator.cs" />
   </ItemGroup>
-  <Import Project="..\NexNet.Serialization\NexNet.Serialization.projitems" Label="Shared" />
 </Project>
