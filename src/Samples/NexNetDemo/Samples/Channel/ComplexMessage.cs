@@ -1,9 +1,7 @@
-﻿using MemoryPack;
-using NexNet.Serialization;
+﻿using NexNet.Serialization;
 
 namespace NexNetDemo.Samples.Channel;
 
-[MemoryPackable]
 [NexusObject]
 public partial class ComplexMessage
 {

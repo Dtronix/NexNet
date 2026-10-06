@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using MemoryPack;
 using NexNet.Serialization;
 
 // Used only at runtime by SerializerBenchmarks (not in any nexus signature), so it must be declared.
@@ -9,9 +8,8 @@ using NexNet.Serialization;
 namespace NexNetBenchmarks;
 
 /// <summary>
-/// Small POCO (5 members), annotated for both serializers so they can be compared in one process.
+/// Small POCO (5 members).
 /// </summary>
-[MemoryPackable]
 [NexusObject]
 public partial class BenchPerson
 {
@@ -34,7 +32,6 @@ public partial class BenchPerson
 /// <summary>
 /// Nested graph.
 /// </summary>
-[MemoryPackable]
 [NexusObject]
 public partial class BenchOrder
 {
@@ -52,7 +49,6 @@ public partial class BenchOrder
     };
 }
 
-[MemoryPackable]
 [NexusObject]
 public partial class BenchLine
 {
@@ -61,18 +57,13 @@ public partial class BenchLine
     [NexusKey(2)] public double Price { get; set; }
 }
 
-[MemoryPackable]
-[MemoryPackUnion(0, typeof(BenchCircle))]
-[MemoryPackUnion(1, typeof(BenchSquare))]
 [NexusObject]
 [NexusUnion<BenchCircle>(0)]
 [NexusUnion<BenchSquare>(1)]
 public partial interface IBenchShape { }
 
-[MemoryPackable]
 [NexusObject]
 public partial class BenchCircle : IBenchShape { [NexusKey(0)] public double Radius { get; set; } }
 
-[MemoryPackable]
 [NexusObject]
 public partial class BenchSquare : IBenchShape { [NexusKey(0)] public double Side { get; set; } }

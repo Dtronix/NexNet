@@ -18,7 +18,6 @@
     <ProjectReference Include="..\..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
     <ProjectReference Include="..\..\NexNet.Quic\NexNet.Quic.csproj" />
     <ProjectReference Include="..\..\NexNet\NexNet.csproj" />
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
   </ItemGroup>
 
 </Project>

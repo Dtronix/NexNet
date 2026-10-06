@@ -3,14 +3,12 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using BenchmarkDotNet.Attributes;
-using MemoryPack;
 using NexNet.Serialization;
 
 namespace NexNetBenchmarks;
 
 /// <summary>
-/// In-process comparison of NexNet's MessagePack serializer (compact and fixed-width integer modes) against MemoryPack.
-/// Requires the MessagePack build (generated NexNet formatters).
+/// In-process serialize and deserialize benchmarks of NexNet's MessagePack serializer over representative payloads.
 /// </summary>
 [MemoryDiagnoser]
 public class SerializerBenchmarks
@@ -36,10 +34,7 @@ public class SerializerBenchmarks
 
     private readonly ArrayBufferWriter<byte> _buffer = new(1024 * 1024);
     private Action<IBufferWriter<byte>> _nexusWrite = null!;
-    private Action<IBufferWriter<byte>> _nexusWriteFixed = null!;
-    private Action<IBufferWriter<byte>> _memoryPackWrite = null!;
     private Action _nexusRead = null!;
-    private Action _memoryPackRead = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -69,31 +64,22 @@ public class SerializerBenchmarks
             formatter.Serialize(ref writer, value);
             writer.Flush();
         };
-        _nexusWriteFixed = output =>
-        {
-            var writer = new MsgPackWriter(output) { FixedWidth = true };
-            formatter.Serialize(ref writer, value);
-            writer.Flush();
-        };
-        _memoryPackWrite = output => MemoryPackSerializer.Serialize(output, value);
 
         var nexusBytes = Serialize(_nexusWrite);
-        var memoryPackBytes = Serialize(_memoryPackWrite);
         _nexusRead = () =>
         {
             var reader = new MsgPackReader(nexusBytes, NexusSerializerOptions.Untrusted);
             T? result = default;
             formatter.Deserialize(ref reader, ref result);
         };
-        _memoryPackRead = () => MemoryPackSerializer.Deserialize<T>(memoryPackBytes);
 
-        WireSizes[Kind] = (nexusBytes.Length, Serialize(_nexusWriteFixed).Length, memoryPackBytes.Length);
+        WireSizes[Kind] = nexusBytes.Length;
     }
 
     /// <summary>
-    /// Bytes on the wire per payload: (NexNet compact, NexNet fixed-width, MemoryPack).
+    /// Bytes on the wire per payload.
     /// </summary>
-    public static readonly Dictionary<Payload, (int Compact, int Fixed, int MemoryPack)> WireSizes = new();
+    public static readonly Dictionary<Payload, int> WireSizes = new();
 
     private static byte[] Serialize(Action<IBufferWriter<byte>> write)
     {
@@ -103,28 +89,11 @@ public class SerializerBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public void MemoryPack_Serialize()
-    {
-        _buffer.ResetWrittenCount();
-        _memoryPackWrite(_buffer);
-    }
-
-    [Benchmark]
     public void NexNet_Serialize()
     {
         _buffer.ResetWrittenCount();
         _nexusWrite(_buffer);
     }
-
-    [Benchmark]
-    public void NexNet_SerializeFixedWidth()
-    {
-        _buffer.ResetWrittenCount();
-        _nexusWriteFixed(_buffer);
-    }
-
-    [Benchmark]
-    public void MemoryPack_Deserialize() => _memoryPackRead();
 
     [Benchmark]
     public void NexNet_Deserialize() => _nexusRead();
@@ -135,14 +104,13 @@ public class SerializerBenchmarks
     public static void PrintWireSizes()
     {
         var bench = new SerializerBenchmarks();
-        Console.WriteLine("| Payload | NexNet compact (B) | NexNet fixed-width (B) | MemoryPack (B) |");
-        Console.WriteLine("|---|---|---|---|");
+        Console.WriteLine("| Payload | NexNet (B) |");
+        Console.WriteLine("|---|---|");
         foreach (var kind in Enum.GetValues<Payload>())
         {
             bench.Kind = kind;
             bench.Setup();
-            var (compact, fixedWidth, memoryPack) = WireSizes[kind];
-            Console.WriteLine($"| {kind} | {compact} | {fixedWidth} | {memoryPack} |");
+            Console.WriteLine($"| {kind} | {WireSizes[kind]} |");
         }
     }
 }

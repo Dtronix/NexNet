@@ -20,8 +20,8 @@ namespace NexNetBenchmarks
         {
             // NEXNET_BENCH_SHORT=1 selects a short run (fewer iterations) for quick comparisons.
             // NEXNET_BENCH_INPROC=1 selects the default (full) job.
-            // Both run in-process so the already built backend (MessagePack or MemoryPack) is measured as-is; an
-            // out-of-process job would rebuild the project with the default backend.
+            // Both run in-process, so the already built benchmark assembly is measured as-is without rebuilding the
+            // project for an out-of-process job.
             var inProcess = BenchmarkDotNet.Toolchains.InProcess.Emit.InProcessEmitToolchain.Instance;
             var job = System.Environment.GetEnvironmentVariable("NEXNET_BENCH_SHORT") == "1"
                 ? Job.ShortRun.WithToolchain(inProcess)
