@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using NexNet.Messages;
@@ -14,7 +13,7 @@ namespace NexNet.Pools;
 /// Handles both same-thread and cross-thread rent/return patterns efficiently.
 /// </summary>
 /// <typeparam name="T">Message type to pool.</typeparam>
-internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T> : IPooledMessage
+internal class MessagePool<T> : IPooledMessage
     where T : class, IMessageBase, new()
 {
     /// <summary>

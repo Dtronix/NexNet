@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using NexNet.Pools;
@@ -10,8 +9,7 @@ namespace NexNet.Messages;
 /// <summary>
 /// Contains an invocation request message data.
 /// Body: <c>[invocationId (uint16), methodId (uint16), flags (uint8), arguments]</c>.
-/// With the MessagePack payload format the arguments are an embedded MessagePack array; with the MemoryPack payload
-/// format they are a bin value holding the MemoryPack bytes.
+/// The arguments are an embedded MessagePack array.
 /// </summary>
 internal partial class InvocationMessage : IMessageBase, IInvocationMessage
 {
@@ -22,6 +20,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     public static MessageType Type { get; } = MessageType.Invocation;
 
     private IPooledMessage? _messageCache = null!;
+    private NexusSerializerOptions _options = NexusSerializerOptions.Untrusted;
 
     public IPooledMessage? MessageCache
     {
@@ -43,16 +42,12 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     internal PooledArrayBufferWriter? ArgumentsOwner;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T? DeserializeArguments<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+    public T? DeserializeArguments<T>()
     {
-#if NEXNET_MEMORYPACK
-        return MemoryPack.MemoryPackSerializer.Deserialize<T>(Arguments.Span);
-#else
-        var reader = new MsgPackReader(Arguments);
+        var reader = new MsgPackReader(Arguments, _options);
         T? value = default;
         NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref value);
         return value;
-#endif
     }
 
     /// <summary>
@@ -73,14 +68,10 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         writer.Write(InvocationId);
         writer.Write(MethodId);
         writer.Write((byte)Flags);
-#if NEXNET_MEMORYPACK
-        writer.WriteBinary(Arguments.Span);
-#else
         if (Arguments.IsEmpty)
             writer.WriteArrayHeader(0); // methods without serialized parameters still send an empty array
         else
             writer.WriteRaw(Arguments.Span); // already a MessagePack array produced by generated code
-#endif
     }
 
     public void Deserialize(ref MsgPackReader reader)
@@ -89,9 +80,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         InvocationId = reader.ReadUInt16();
         MethodId = reader.ReadUInt16();
         Flags = (InvocationFlags)reader.ReadByte();
-#if NEXNET_MEMORYPACK
-        Arguments = reader.ReadBinaryToPooled(out _);
-#else
+        _options = reader.Options;
         // An empty argument array (0x90) is the wire form of "no serialized arguments".
         if (reader.PeekCode() == MsgPackCode.MinFixArray)
         {
@@ -102,7 +91,6 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         }
 
         Arguments = IMessageBase.ReadEmbeddedValueToPooled(ref reader);
-#endif
         _isArgumentPoolArray = true;
     }
 

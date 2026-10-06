@@ -1,6 +1,5 @@
 using System;
 using System.Buffers;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using NexNet.Pools;
 using NexNet.Serialization;
@@ -11,8 +10,7 @@ namespace NexNet.Messages;
 /// Result of an invocation.
 /// Body: <c>[invocationId (uint16), state (uint8)]</c> when there is no result, or
 /// <c>[invocationId (uint16), state (uint8), result]</c> when a result is present (the result may itself be nil).
-/// With the MessagePack payload format the result is an embedded MessagePack value; with the MemoryPack payload
-/// format it is a bin value holding the MemoryPack bytes.
+/// The result is an embedded MessagePack value.
 /// </summary>
 internal partial class InvocationResultMessage : IMessageBase
 {
@@ -46,7 +44,7 @@ internal partial class InvocationResultMessage : IMessageBase
         set => _result = value;
     }
 
-    public bool TryGetResult<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>(out T? result)
+    public bool TryGetResult<T>(out T? result)
     {
         if (_result == null)
         {
@@ -54,13 +52,9 @@ internal partial class InvocationResultMessage : IMessageBase
             return false;
         }
 
-#if NEXNET_MEMORYPACK
-        result = MemoryPack.MemoryPackSerializer.Deserialize<T>(_result.Value);
-#else
         var reader = new MsgPackReader(_result.Value, _options);
         result = default;
         NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref result);
-#endif
         return true;
     }
 
@@ -77,11 +71,7 @@ internal partial class InvocationResultMessage : IMessageBase
         writer.WriteArrayHeader(3);
         writer.Write(InvocationId);
         writer.Write((byte)State);
-#if NEXNET_MEMORYPACK
-        writer.WriteBinary(_result.Value);
-#else
         writer.WriteRaw(_result.Value);
-#endif
     }
 
     public void Deserialize(ref MsgPackReader reader)
@@ -100,11 +90,7 @@ internal partial class InvocationResultMessage : IMessageBase
             return;
         }
 
-#if NEXNET_MEMORYPACK
-        _pooledResult = reader.ReadBinaryToPooled(out _);
-#else
         _pooledResult = IMessageBase.ReadEmbeddedValueToPooled(ref reader);
-#endif
         _result = new ReadOnlySequence<byte>(_pooledResult);
     }
 
