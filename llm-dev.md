@@ -20,7 +20,9 @@ src/
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
 ```
 
-Build: `dotnet build src -c Release`
+Build: `dotnet build src -c Release`. `src/Directory.Build.props` sets `TreatWarningsAsErrors` for every project under
+`src/` (libraries, generator, tests, fuzz, benchmarks, samples), NuGet audit advisories (NU1901-NU1904) and warnings in
+generated code included. Fix the cause of a warning; do not add `NoWarn` or `WarningsNotAsErrors`.
 Test (all three suites must pass):
 ```
 dotnet test src/NexNet.Serialization.Tests -c Release
@@ -232,12 +234,17 @@ Generated formatters for user types register from a `[ModuleInitializer]` in the
 
 ### 2.3 Utilities
 
-- `TypeHasher.cs` - Structural hashing of parameter types for nexus hashes and `HashLock`; `[NexusObject]` types walked in key order, unions in tag order, other user types by name
+- `IncrementalHasher.cs` - FNV-1a hasher used for method, collection, interface and shape hashes
 - `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization
 - `SymbolUtilities.cs` - Symbol inspection helpers
 
 ### 2.4 Serialization (Serialization/)
 
+One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[NexusObject]`, the assembly attributes) creates one `ShapeBuilder`; code generation and hashing both read its shapes, so the `HashLock` is a function of exactly what goes on the wire. Shapes hold symbols and never leave the transform phase.
+
+- `TypeShape.cs` - The shape model: how one type is serialized. `ObjectShape` (members by key, `[NexusIgnore]` excluded, plus NEXNET030 problems), `UnionShape` (cases), `EnumShape` (underlying type and values), `NullableShape` (`Nullable<T>`), `ArrayShape`, `NamedShape` (built-in, CLR, user-formatter or unsupported type by .NET identity), `TypeParameterShape`
+- `ShapeBuilder.cs` - Builds shapes from symbols, cached per producer (nullable reference annotations ignored); a shape is cached before its members are filled, so cycles terminate. Generic `[NexusObject]` types get their constructed (substituted) members. Collects `[assembly: NexusFormatter]` user formatters
+- `ShapeHasher.cs` - Canonical hash walk: pre-order over a shape from one root, object members by key, union cases by tag, type arguments by position; objects and unions get an index on first visit and later references hash `Ref #i`. FNV-1a over the token stream. Names of types, members and enum members and reference nullability are not hashed; built-in/CLR/user-formatter types hash their metadata name and arguments. `HashWithListing` also renders the walk as a shape listing (tests). `NexusDataExtractor` hashes parameter types, the return kind plus `ValueTask<T>`'s `T`, and the collection kind plus item type with it
 - `SerializationBuilder.cs` - Walks every type reachable from nexus signatures (methods, collections, channels), from non-generic `[NexusObject]` types declared in the assembly, and from the assembly attributes (`NexusSerializable`, `NexusFormatter`); emits a `file sealed class __NexusFormatter_*` per `[NexusObject]` type plus registrations for built-in closed generics and user formatters; reports NEXNET028-034, 036, 037
 - `FormatterSpec.cs` - Equatable per-formatter output (class code + registration); specs from every producer are deduplicated by `Merge` and written by `EmitSource` into one `NexNet.Formatters.g.cs` per assembly with one module initializer
 - `PrimitiveCodec.cs` - Types written/read with direct `MsgPackWriter`/`MsgPackReader` calls instead of a formatter object
@@ -374,7 +381,8 @@ await client.ConnectAsync().Timeout(1);
 - `GeneratorChannelTests.cs` - Channel parameter generation
 - `GeneratorPipeTests.cs` - Pipe parameter generation
 - `GeneratorCollectionTests.cs` - Collection property generation
-- `TypeHasherTests.cs` - Type hashing for method IDs
+- `TypeHasherTests.cs` - Shape listings (`AssertWalk`) and hash rules (`HashOf`) of `ShapeBuilder` + `ShapeHasher`, called directly (no test generator)
+- `ShapeBuilderTests.cs` - Shape model: key order, `[NexusIgnore]`, constructed generics, cycles, nullability
 - `VersioningTests.cs` - Version string parsing, [NexusVersion] + [NexusMethod(id)] validation
 - `GeneratorAuthorizationTests.cs` - Authorization attribute validation: client nexus error, missing OnAuthorize, mixed enums, non-int enum, cache duration, collection auth
 

@@ -105,9 +105,11 @@ Rules:
   peer omits it.
 - Never reuse or renumber a key, and never change a keyed member's type. Retire a member by removing it and leaving its
   key unused.
-- The keys, member types and union tags of `[NexusObject]` types reachable from method parameters are part of the nexus
-  hash (and `HashLock`). Peers compare these hashes when connecting, so such a change still requires both sides to be
-  rebuilt; for released versions add new types and methods in a new version interface (see Versioning).
+- The keys, member types, class vs struct, union tags and enum values of `[NexusObject]` types reachable from method
+  parameters, `ValueTask<T>` results and `[NexusCollection]` items are part of the nexus hash (and `HashLock`). Names of
+  types, members and enum members are not, so renaming keeps the hash. Peers compare these hashes when connecting, so a
+  structural change still requires both sides to be rebuilt; for released versions add new types and methods in a new
+  version interface (see Versioning).
 
 ### Types used only at runtime / third-party types
 
@@ -568,15 +570,19 @@ var relayServer = RelayNexus.CreateServer(config, () => new RelayNexus(),
 ## Versioning
 
 Server-only. All methods need `[NexusMethod(id)]` with unique IDs. `HashLock` prevents accidental changes. The hash covers
-method signatures and the `[NexusObject]` types reachable from parameters (keys, member types, nullability, union tags; not
-member names). Adding, removing or renumbering a key changes it.
+what goes on the wire, structurally: parameter types, the return kind (`void`/`ValueTask`/`ValueTask<T>`) and `T`, and
+each collection's kind and item type. For `[NexusObject]` types: keys, member types, class vs struct, union tags. Enums:
+underlying type and values. `Nullable<T>` is hashed; built-in/CLR/custom-formatter types by .NET identity (`List<int>` to
+`int[]` changes it). Not hashed: names of types, members and enum members, and reference nullability (`string?`). So
+renaming keeps the `HashLock`; adding, removing or renumbering a key, or changing a member type, enum value or returned
+type's structure, changes it.
 
 ```csharp
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+[NexusVersion(Version = "v1.0", HashLock = 1408991834)]
 public interface IServerV1 {
     [NexusMethod(1)] ValueTask<bool> GetStatus();
 }
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+[NexusVersion(Version = "v2.0", HashLock = 325983114)]
 public interface IServerV2 : IServerV1 {
     [NexusMethod(2)] ValueTask<string> GetInfo();
 }

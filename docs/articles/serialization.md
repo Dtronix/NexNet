@@ -88,7 +88,7 @@ Readers accept arrays that are shorter or longer than the keys they know: elemen
 - **Never reuse or renumber** a key, and do not change the type of a keyed member.
 - To retire a member, remove it and leave its key unused.
 
-The keys and member types of `[NexusObject]` types used by method parameters are also part of the nexus hash that peers compare when they connect, and of the `HashLock` of versioned interfaces. See [Versioning](versioning.md#how-serialized-types-are-hashed) for what that means for released versions.
+The structure of `[NexusObject]` types used by method parameters, return values (`ValueTask<T>`) and `[NexusCollection]` items is also part of the nexus hash that peers compare when they connect, and of the `HashLock` of versioned interfaces: keys, member types, class vs struct, union tags and enum values. Names are not: renaming a type, a member or an enum member keeps the hash. See [Versioning](versioning.md#how-serialized-types-are-hashed) for the full rules and what they mean for released versions.
 
 ## Built-in Types
 

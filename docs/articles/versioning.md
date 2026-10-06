@@ -13,14 +13,14 @@ Versioning is a server-only feature — client nexus interfaces cannot be versio
 ### 1. Decorate with NexusVersion
 
 ```csharp
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+[NexusVersion(Version = "v1.0", HashLock = 1408991834)]
 public interface IServerNexusV1
 {
     [NexusMethod(1)]
     ValueTask<bool> GetStatus();
 }
 
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+[NexusVersion(Version = "v2.0", HashLock = 325983114)]
 public interface IServerNexusV2 : IServerNexusV1
 {
     [NexusMethod(2)]
@@ -34,21 +34,29 @@ Every method and `[NexusCollection]` property must have a `[NexusMethod]` attrib
 
 ### 3. Use HashLock for Stability
 
-The `HashLock` property ensures an interface cannot be changed unintentionally after release. If any arguments, return values, or method types are modified, or the structure of a serialized type used by a parameter changes, the source generator emits a compile error.
+The `HashLock` property ensures an interface cannot be changed unintentionally after release. If any arguments, return values, or method types are modified, or the structure of a serialized type used by a parameter, a return value or a collection changes, the source generator emits a compile error.
 
 During development, omit `HashLock` so you can iterate freely. Set it when the API is ready for release.
 
 ### How Serialized Types Are Hashed
 
-The hash of each method includes a structural description of its parameter types. For every [`[NexusObject]`](serialization.md) type reachable from a parameter, the hash covers:
+The hash describes what goes on the wire, and only that. Everything that travels is hashed structurally:
 
-- each member's `[NexusKey]` value, type and nullability, in key order;
-- for unions, every `[NexusUnion<T>(tag)]` tag and case type, in tag order;
-- for enums, their member names and values.
+- the parameter types of each method;
+- the return kind (`void`, `ValueTask` or `ValueTask<T>`) and, for `ValueTask<T>`, the type `T`;
+- the kind of each `[NexusCollection]` and its item type.
 
-Member names are not part of the hash, so renaming a property does not change it. Types serialized by a built-in or custom formatter are hashed by name only.
+For every [`[NexusObject]`](serialization.md) type reachable from one of these, the hash covers:
 
-As a consequence, **changing keys changes the `HashLock`**: adding, removing or renumbering a key, or changing a keyed member's type, on a type used by a released version produces a compile error until the `HashLock` is updated. Because clients present the hash of their version when they connect, updating it also means clients built against the old contract can no longer connect to that version.
+- each member's `[NexusKey]` value and member type, in key order (members with `[NexusIgnore]` are excluded);
+- whether the type is a class or a struct;
+- for unions, every `[NexusUnion<T>(tag)]` tag and case type, in tag order.
+
+Enums are hashed by their underlying type and their values. `Nullable<T>` (`int?`) is hashed, because it changes what a reader accepts. Built-in, CLR and custom-formatter types (`int`, `string`, `Guid`, `List<T>`, a type with an `[assembly: NexusFormatter]`) are hashed by their .NET identity: full type name plus type arguments, so changing `int` to `long` or `List<T>` to `T[]` changes the hash.
+
+Names never travel on the wire, so they are not hashed: not the names of `[NexusObject]` types, unions, members or enum members. Reference-type nullability (`string?`, `Customer?`) is not hashed either, because it does not change the bytes.
+
+As a consequence, **renaming a DTO, a member or an enum member keeps the `HashLock`**, and so does adding or removing `?` on a reference type. **Changing keys, member types, enum values or the structure of a returned type changes it**: adding, removing or renumbering a key, or changing a keyed member's type, on a type used by a released version produces a compile error until the `HashLock` is updated. Because clients present the hash of their version when they connect, updating it also means clients built against the old contract can no longer connect to that version.
 
 Adding a member with a new, previously unused key is the compatible way to extend a type at the serialization level: older readers skip the extra element, and newer readers leave the member at its default when an older peer omits it. Never reuse or renumber a key. To extend data used by an already released version, add the new member to a new type, or to a type only used by the new version, and expose it through methods in a new version interface. See [Serialization](serialization.md#evolving-types).
 
@@ -134,7 +142,7 @@ Versioning includes runtime enforcement to prevent unauthorized method access:
 1. All versioned interfaces must have a version string, which is used during connection
 2. All methods and `[NexusCollection]` properties must have `[NexusMethod]` with a unique ID
 3. Methods and collections must not be changed in an interface after setting a version
-4. `[NexusObject]` types used by parameters of a released version must keep their keys and member types
+4. `[NexusObject]` types used by parameters, return values or collections of a released version must keep their keys and member types
 5. `HashLock` is strongly recommended for released interfaces but optional during development
 
 ## See Also
