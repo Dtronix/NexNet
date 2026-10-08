@@ -13,7 +13,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-                             
+    permissions:
+      contents: write  # create GitHub release on tags
+      id-token: write  # GitHub OIDC token for NuGet trusted publishing
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -82,6 +85,13 @@ jobs:
           artifacts/*.nupkg
           artifacts/*.snupkg
       
+    - name: NuGet login (OIDC → temp API key)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: NuGet/login@v1
+      id: nuget-login
+      with:
+        user: ${{ secrets.NUGET_USER }}
+
     - name: Push NuGet packages
       if: startsWith(github.ref, 'refs/tags/')
-      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ secrets.ORG_NUGET_AUTH_TOKEN }} --skip-duplicate
+      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
