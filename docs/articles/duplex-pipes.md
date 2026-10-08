@@ -1,11 +1,11 @@
 # Duplex Pipes
 
-NexNet has a limitation where the total serialized argument size cannot exceed 65,535 bytes. For larger data transfers, NexNet provides built-in duplex pipe support via the `INexusDuplexPipe` argument, allowing bidirectional byte streaming between server and client.
+NexNet has a limitation where the total serialized argument size cannot exceed 65,526 bytes. For larger data transfers, NexNet provides built-in duplex pipe support via the `INexusDuplexPipe` argument, allowing bidirectional byte streaming between server and client.
 
 ## When to Use Duplex Pipes
 
 Use duplex pipes when you need to:
-- Transfer data larger than the 65,535 byte argument limit
+- Transfer data larger than the 65,526-byte argument limit
 - Stream data continuously (e.g., file transfers)
 - Send and receive byte data simultaneously
 

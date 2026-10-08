@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
@@ -296,7 +295,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
                         var message = NexusCollectionListInsertMessage.Rent();
                         message.Version = _itemList.Version;
                         message.Index = addedIndex;
-                        message.Value = MemoryPackSerializer.Serialize(addedItem);
+                        message.Value = PayloadSerializer.Serialize(addedItem);
                         _ = ProcessMessage(message);
                     }
                     break;
@@ -344,7 +343,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
                             var message = NexusCollectionListReplaceMessage.Rent();
                             message.Version = _itemList.Version;
                             message.Index = replacedIndex;
-                            message.Value = MemoryPackSerializer.Serialize(newValue);
+                            message.Value = PayloadSerializer.Serialize(newValue);
                             _ = ProcessMessage(message);
                         }
                     }
@@ -527,7 +526,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         foreach (var item in state.List.MemoryChunk(bufferSize))
         {
             var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = MemoryPackSerializer.Serialize(item);
+            message.Values = PayloadSerializer.Serialize(item);
             yield return message.Wrap();
         }
     }

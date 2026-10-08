@@ -1,18 +1,22 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals.Threading;
+using NexNet.Serialization;
 
 namespace NexNet.Pipes;
 
 /// <summary>
-/// The NexusChannelWriterUnmanaged class is a generic class that provides functionality for writing unmanaged types to a NexusPipeWriter.
+/// Writes typed items to a NexusPipeWriter. Each item is written as exactly one MessagePack value by the item
+/// type's formatter.
 /// </summary>
-/// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter. This type must be unmanaged.</typeparam>
+/// <typeparam name="T">The type of the data that will be written to the NexusPipeWriter.</typeparam>
 internal class NexusChannelWriter<T> : INexusChannelWriter<T>
 {
     internal NexusPipeWriter Writer;
+
+    // Resolved once at construction so a missing formatter fails at channel creation rather than at the first write.
+    private readonly NexusFormatter<T> _formatter;
     
     // Semaphore to ensure the underlying channel does not get used concurrently.
     protected readonly SemaphoreSlim ModificationSemaphore = new SemaphoreSlim(1, 1);
@@ -23,31 +27,40 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     public bool IsComplete { get; set; }
 
     /// <summary>
-    /// Initializes a new instance of the NexusChannelWriterUnmanaged class with the specified pipe.
+    /// Initializes a new instance of the <see cref="NexusChannelWriter{T}"/> class with the specified pipe.
     /// </summary>
     /// <param name="pipe">The duplex pipe to be used for writing.</param>
     public NexusChannelWriter(INexusDuplexPipe pipe)
+        : this(pipe.WriterCore)
     {
-        Writer = pipe.WriterCore;
     }
 
-    internal NexusChannelWriter(NexusPipeWriter writer)
+    /// <summary>
+    /// Initializes a writer that always uses the specified NexNet formatter (used for internal protocol unions).
+    /// </summary>
+    internal NexusChannelWriter(INexusDuplexPipe pipe, NexusFormatter<T> formatter)
+        : this(pipe.WriterCore, formatter)
+    {
+    }
+
+    internal NexusChannelWriter(NexusPipeWriter writer, NexusFormatter<T>? formatter = null)
     {
         Writer = writer;
+        _formatter = formatter ?? NexusFormatterRegistry.Get<T>();
     }
 
 
     /// <summary>
-    /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
+    /// Asynchronously writes the specified item to the underlying NexusPipeWriter.
     /// </summary>
-    /// <param name="item">The item of unmanaged type to be written to the NexusPipeWriter.</param>
+    /// <param name="item">The item to be written to the NexusPipeWriter.</param>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(T item, CancellationToken cancellationToken = default)
     {
         using var sLock = await ModificationSemaphore.WaitDisposableAsync().ConfigureAwait(false);
 
-        Write(ref item, Writer);
+        Write(item, Writer);
 
         var flushResult = await Writer.FlushAsync(cancellationToken).ConfigureAwait(false);
 
@@ -65,9 +78,9 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     }
 
     /// <summary>
-    /// Asynchronously writes the specified item of unmanaged type to the underlying NexusPipeWriter.
+    /// Asynchronously writes the specified items to the underlying NexusPipeWriter.
     /// </summary>
-    /// <param name="items">The items of unmanaged type to be written to the NexusPipeWriter.</param>
+    /// <param name="items">The items to be written to the NexusPipeWriter.</param>
     /// <param name="cancellationToken">An optional CancellationToken to observe while waiting for the task to complete.</param>
     /// <returns>A ValueTask that represents the asynchronous write operation. The task result contains a boolean value that indicates whether the write operation was successful. Returns false if the operation is canceled or the pipe writer is completed.</returns>
     public virtual async ValueTask<bool> WriteAsync(IEnumerable<T> items, CancellationToken cancellationToken = default)
@@ -99,21 +112,18 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     }
 
 
-    private static void Write(ref T item, NexusPipeWriter nexusPipeWriter)
+    private void Write(T item, NexusPipeWriter nexusPipeWriter)
     {
-        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
-        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
-        memoryPackWriter.WriteValue(item);
-        memoryPackWriter.Flush();
+        var writer = new MsgPackWriter(nexusPipeWriter);
+        _formatter.Serialize(ref writer, item);
+        writer.Flush();
     }
 
-    private static void WriteEnumerable(IEnumerable<T> items, NexusPipeWriter nexusPipeWriter)
+    private void WriteEnumerable(IEnumerable<T> items, NexusPipeWriter nexusPipeWriter)
     {
-        using var writerState = MemoryPackWriterOptionalStatePool.Rent(MemoryPackSerializerOptions.Default);
-        var memoryPackWriter = new MemoryPackWriter<NexusPipeWriter>(ref nexusPipeWriter, writerState);
+        var writer = new MsgPackWriter(nexusPipeWriter);
         foreach (var item in items)
-            memoryPackWriter.WriteValue(item);
-
-        memoryPackWriter.Flush();
+            _formatter.Serialize(ref writer, item);
+        writer.Flush();
     }
 }

@@ -3,7 +3,8 @@
   <PropertyGroup>
     <Description>ASP.NET Core middleware for NexNet servers.</Description>
     <Nullable>enable</Nullable>
-    <Version>0.16.0</Version>
+    <Version>0.17.0</Version>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />

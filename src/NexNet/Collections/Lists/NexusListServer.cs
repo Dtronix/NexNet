@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
@@ -121,7 +120,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         var message = NexusCollectionListInsertMessage.Rent();
         message.Version = _itemList.Version;
         message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(item);
+        message.Value = PayloadSerializer.Serialize(item);
 
         var result = await ProcessMessage(message).ConfigureAwait(false);
         message.Return();
@@ -151,7 +150,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         var message = NexusCollectionListReplaceMessage.Rent();
         message.Version = _itemList.Version;
         message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(value);
+        message.Value = PayloadSerializer.Serialize(value);
 
         var result = await ProcessMessage(message).ConfigureAwait(false);
         message.Return();
@@ -177,7 +176,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         var state = _itemList.State;
         message.Version = state.Version;
         message.Index = state.List.Count;
-        message.Value = MemoryPackSerializer.Serialize(item);
+        message.Value = PayloadSerializer.Serialize(item);
 
         var result = await ProcessMessage(message).ConfigureAwait(false);
         message.Return();
@@ -237,7 +236,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         foreach (var item in state.List.MemoryChunk(bufferSize))
         {
             var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = MemoryPackSerializer.Serialize(item);
+            message.Values = PayloadSerializer.Serialize(item);
             yield return message.Wrap();
         }
     }

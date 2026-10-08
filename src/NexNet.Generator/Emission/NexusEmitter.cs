@@ -139,6 +139,9 @@ internal static class NexusEmitter
             }
         }
 
+        foreach (var method in data.NexusInterface.AllMethods)
+            MethodEmitter.EmitArgumentReader(sb, method);
+
         sb.AppendLine($$"""
 
                                 protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)

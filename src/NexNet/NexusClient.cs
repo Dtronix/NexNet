@@ -287,13 +287,6 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     }
 
     /// <inheritdoc />
-    public INexusDuplexUnmanagedChannel<T> CreateUnmanagedChannel<T>()
-        where T : unmanaged
-    {
-        return CreatePipe().GetUnmanagedChannel<T>();
-    }
-
-    /// <inheritdoc />
     public INexusDuplexChannel<T> CreateChannel<T>()
     {
         return CreatePipe().GetChannel<T>();

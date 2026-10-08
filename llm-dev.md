@@ -13,11 +13,22 @@ src/
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
 ├── NexNet.IntegrationTests/  # Integration tests (NUnit)
-└── NexNet.Generator.Tests/   # Generator tests
+├── NexNet.Generator.Tests/   # Generator tests
+├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
+├── NexNet.Fuzz/              # SharpFuzz harnesses (libFuzzer), smoke runner, regression corpora
+├── NexNetBenchmarks/         # BenchmarkDotNet
+└── Samples/                  # NexNetDemo, Asp and Native AOT samples
 ```
 
-Build: `dotnet build src -c Release`
-Test: `dotnet test src/NexNet.IntegrationTests -c Release`
+Build: `dotnet build src -c Release`. `src/Directory.Build.props` sets `TreatWarningsAsErrors` for every project under
+`src/` (libraries, generator, tests, fuzz, benchmarks, samples), NuGet audit advisories (NU1901-NU1904) and warnings in
+generated code included. Fix the cause of a warning; do not add `NoWarn` or `WarningsNotAsErrors`.
+Test (all three suites must pass):
+```
+dotnet test src/NexNet.Serialization.Tests -c Release
+dotnet test src/NexNet.Generator.Tests -c Release
+dotnet test src/NexNet.IntegrationTests -c Release
+```
 Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 ---
@@ -68,19 +79,26 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 **Protocol:**
 - `MessageType.cs` - Enum: Ping, Disconnect variants (20-34 incl. DisconnectUnauthorized), DuplexPipeWrite (50), Greetings (100-105), Invocation (110-112)
-- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,521 bytes
+- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes (65,535 body minus 9 bytes worst-case overhead)
 - `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token
 - `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash
 - `InvocationMessage.cs` - Remote method invocation payload
 - `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
+- `DuplexPipeUpdateStateMessage.cs` - Pipe state changes
+
+All message bodies are hand-written MessagePack (`Serialize(ref MsgPackWriter)` / `Deserialize(ref MsgPackReader)`): fixed-length
+arrays with exact element counts, no trailing bytes. User values inside them (arguments, results) are "embedded values":
+exactly one inline MessagePack value. Collection sync messages live in `Collections/NexusCollectionMessage.cs` and
+`Collections/Lists/NexusCollectionListMessages.cs`. Exact byte layouts: [wire protocol spec](docs/internals/protocol-specification.md).
 
 ### 1.5 Session Management (src/NexNet/Internals/)
 
 **Core Session:**
-- `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1]
+- `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
 - `NexusSession.Sending.cs` - Write logic with MutexSlim serialization
-- `NexusSession.Receiving.cs` - Read loop and message dispatch
+- `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
+- `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
 - `RegisteredInvocationState.cs` - Pending invocation with TaskCompletionSource<Memory<byte>>
@@ -98,7 +116,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `SocketTransportListener.cs` - Socket-based listener
 
 **Configuration:**
-- `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions
+- `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`)
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
@@ -150,6 +168,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 - `INexusDuplexPipe.cs` - Bidirectional pipe: Id, ReadyTask, CompleteTask, CompleteAsync()
 - `NexusPipeManager.cs` - Manages duplex pipes for large data transfers
+- `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, concatenated on the pipe. The reader deserializes optimistically away from the buffer end; near the end it measures the next item with `MsgPackReader.TryGetNextValueLength` so a partial item waits for more data (bounded by `MaxBufferedItemSize`)
 
 ### 1.11 Logging (src/NexNet/Logging/)
 
@@ -163,6 +182,25 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `ConnectionRateLimiter.cs` - Thread-safe: global limit, per-IP rate (sliding window), IP banning, whitelist
 - `ConnectionRateLimitConfig.cs` - MaxConcurrentConnections, MaxConnectionsPerSecond, BanDurationSeconds
 - `ConnectionRateLimitResult.cs` - Allowed, MaxConcurrentConnectionsExceeded, MaxConnectionsPerSecondExceeded, IpBanned
+
+### 1.13 Serialization (src/NexNet/Serialization/)
+
+NexNet's own MessagePack implementation (namespace `NexNet.Serialization`, compiled into the NexNet assembly; no external
+serializer dependency).
+
+- `MsgPackWriter.cs` - `ref struct` over `IBufferWriter<byte>`; always writes the smallest canonical form; `Flush()` commits
+- `MsgPackReader.cs` - `ref struct` over `ReadOnlySequence<byte>`/`ReadOnlyMemory<byte>`; length checks before allocation, iterative `Skip`, depth tracking (`Enter`/`Exit`), `TryGetNextValueLength`
+- `MsgPackCode.cs` - Format byte constants
+- `NexusFormatter.cs` - `NexusFormatter<T>` (writes/reads exactly one value), `NexusFormatterCache<T>` (static slot), `NexusFormatterRegistry` (`Register` first-wins, `Get`, `TryGet`)
+- `NexusSerializer.cs` - Convenience `Serialize<T>`/`Deserialize<T>` entry points
+- `NexusSerializerOptions.cs` - `Untrusted` (default: depth 64, strict UTF-8, randomized comparers, 16 MiB channel item buffer) / `Trusted`
+- `NexusSerializationException.cs` - The only exception type decoding throws for bad input
+- `Attributes/NexusObjectAttribute.cs` - `[NexusObject]`, `[NexusKey]`, `[NexusIgnore]`, `[NexusConstructor]`, `[NexusUnion<T>]`, `[assembly: NexusSerializable<T>]`, `[assembly: NexusFormatter<TFormatter,T>]`
+- `Formatters/` - Built-ins: `PrimitiveFormatters` (scalars, string, bin types, date/time, Guid, decimal, BigInteger, Uri, Version), `CollectionFormatters` (arrays, lists, sets, queues, stacks, dictionaries, nullable), `EnumFormatter`, `TupleFormatters`, `ValueTupleFormatters`; `BuiltInFormatters.RegisterAll()` registers them
+- `Ext/PrimitiveArrayCodec.cs` - Ext type 78: primitive arrays/lists/memory as one kind byte + raw little-endian elements
+- `Internal/NexusSerializationModule.cs` - Module initializer that registers the built-ins; `PooledArrayBufferWriter`, `RandomizedEqualityComparer`
+
+Generated formatters for user types register from a `[ModuleInitializer]` in the user's assembly (see 2.4).
 
 ---
 
@@ -196,9 +234,21 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 ### 2.3 Utilities
 
-- `TypeHasher.cs` - xxHash32-based interface signature hashing for versioning
-- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum)
+- `IncrementalHasher.cs` - FNV-1a hasher used for method, collection, interface and shape hashes
+- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization
 - `SymbolUtilities.cs` - Symbol inspection helpers
+
+### 2.4 Serialization (Serialization/)
+
+One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[NexusObject]`, the assembly attributes) creates one `ShapeBuilder`; code generation and hashing both read its shapes, so the `HashLock` is a function of exactly what goes on the wire. Shapes hold symbols and never leave the transform phase.
+
+- `TypeShape.cs` - The shape model: how one type is serialized. `ObjectShape` (members by key, `[NexusIgnore]` excluded, plus NEXNET030 problems), `UnionShape` (cases), `EnumShape` (underlying type and values), `NullableShape` (`Nullable<T>`), `ArrayShape`, `NamedShape` (built-in, CLR, user-formatter or unsupported type by .NET identity), `TypeParameterShape`
+- `ShapeBuilder.cs` - Builds shapes from symbols, cached per producer (nullable reference annotations ignored); a shape is cached before its members are filled, so cycles terminate. Generic `[NexusObject]` types get their constructed (substituted) members. Collects `[assembly: NexusFormatter]` user formatters
+- `ShapeHasher.cs` - Canonical hash walk: pre-order over a shape from one root, object members by key, union cases by tag, type arguments by position; objects and unions get an index on first visit and later references hash `Ref #i`. FNV-1a over the token stream. Names of types, members and enum members and reference nullability are not hashed; built-in/CLR/user-formatter types hash their metadata name and arguments. `HashWithListing` also renders the walk as a shape listing (tests). `NexusDataExtractor` hashes parameter types, the return kind plus `ValueTask<T>`'s `T`, and the collection kind plus item type with it
+- `SerializationBuilder.cs` - Walks every type reachable from nexus signatures (methods, collections, channels), from non-generic `[NexusObject]` types declared in the assembly, and from the assembly attributes (`NexusSerializable`, `NexusFormatter`); emits a `file sealed class __NexusFormatter_*` per `[NexusObject]` type plus registrations for built-in closed generics and user formatters; reports NEXNET028-034, 036, 037
+- `FormatterSpec.cs` - Equatable per-formatter output (class code + registration); specs from every producer are deduplicated by `Merge` and written by `EmitSource` into one `NexNet.Formatters.g.cs` per assembly with one module initializer
+- `PrimitiveCodec.cs` - Types written/read with direct `MsgPackWriter`/`MsgPackReader` calls instead of a formatter object
+- `ChannelTypeAnalyzer.cs` - DiagnosticAnalyzer for NEXNET038 (`CreateChannel<T>`/`GetChannel<T>`/`GetChannelReader<T>`/`GetChannelWriter<T>` with an unregistered `T`)
 
 ---
 
@@ -331,24 +381,53 @@ await client.ConnectAsync().Timeout(1);
 - `GeneratorChannelTests.cs` - Channel parameter generation
 - `GeneratorPipeTests.cs` - Pipe parameter generation
 - `GeneratorCollectionTests.cs` - Collection property generation
-- `TypeHasherTests.cs` - Type hashing for method IDs
+- `TypeHasherTests.cs` - Shape listings (`AssertWalk`) and hash rules (`HashOf`) of `ShapeBuilder` + `ShapeHasher`, called directly (no test generator)
+- `ShapeBuilderTests.cs` - Shape model: key order, `[NexusIgnore]`, constructed generics, cycles, nullability
 - `VersioningTests.cs` - Version string parsing, [NexusVersion] + [NexusMethod(id)] validation
 - `GeneratorAuthorizationTests.cs` - Authorization attribute validation: client nexus error, missing OnAuthorize, mixed enums, non-int enum, cache duration, collection auth
 
 **Test Pattern:** Pass C# source string to RunGenerator(), check Diagnostic[] for expected IDs (MustBePartial, etc.)
+
+Also: `GeneratorSerializationTests.cs` - serialization diagnostics, formatter generation, merged-file deduplication and incremental caching.
+
+---
+
+## 5a. Serialization Tests (src/NexNet.Serialization.Tests/)
+
+- `ReaderTests.cs`, `ReaderCursorTests.cs`, `WriterGoldenTests.cs` - Reader/writer behavior and golden byte vectors
+- `FormatterTests.cs`, `PrimitiveArrayTests.cs`, `GeneratedFormatterTests.cs` - Built-in, ext 78 and generated formatters
+- `ProtocolMessageTests.cs` - Hand-written message bodies
+- `PropertyTests.cs` - Property-based round trips
+- `FuzzSmokeTests.cs` - Replays the fuzz seeds and `NexNet.Fuzz/Corpus/*.hex` through every harness; a harness may only throw `NexusSerializationException`
+
+MessagePack-CSharp is referenced here only, for interop cross-checks; shipping packages do not use it.
+
+## 5b. Fuzzing (src/NexNet.Fuzz/)
+
+Harnesses (`Harnesses.cs`, `SessionHarness.cs`): `reader`, `messages`, `channel`, `formatters`, `builtins`, `session`.
+```
+NexNet.Fuzz <harness>                     # run under libFuzzer (SharpFuzz-instrumented build)
+NexNet.Fuzz --smoke [corpusDir]           # every harness over the corpus, no fuzzer
+NexNet.Fuzz --repro <harness> <hex> [n]   # reproduce one input n times
+NexNet.Fuzz --export-corpus <dir>         # write every seed as a file for a libFuzzer corpus
+```
+Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying it.
 
 ---
 
 ## 6. Key Architectural Concepts
 
 ### Protocol
-- **NnP Header:** 8 bytes `[N][n][P][0x14][reserved x3][Version=1]`
-- **Framing:** Length-prefixed messages with MessageType
+Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 1).
+- **NnP Header:** 8 bytes `[N][n][P][0x14][reserved x3][Version=1]`; any mismatch -> `ProtocolError`
+- **Framing:** type byte, little-endian `uint16` body length (types with a body), pipe ID for `DuplexPipeWrite`, body
+- **Bodies:** MessagePack arrays, hand-written per message (src/NexNet/Messages)
 - **Handshake:** Client greeting -> Server greeting with version hash validation
 
 ### Serialization
-- **MemoryPack** for method arguments
-- **65,535-byte limit** per invocation (use INexusDuplexPipe for larger)
+- **NexNet MessagePack serializer** (src/NexNet/Serialization) for arguments, results, channel and collection items
+- Generator emits formatters for `[NexusObject]` types; registry lookup at runtime, no reflection (Native AOT clean; CI publishes the AOT sample and fails on any IL warning)
+- **65,526-byte limit** for serialized arguments per invocation (use INexusDuplexPipe or channels for larger)
 
 ### Session Lifecycle
 1. Client: Create -> ConnectAsync -> Proxy.Method() -> DisconnectAsync
@@ -381,3 +460,7 @@ await client.ConnectAsync().Timeout(1);
 **Add test:** Inherit from appropriate base (BaseTests/BasePipeTests/NexusCollectionBaseTests); use [TestCase(Type.X)] for transport coverage
 
 **Debug generator:** Use Generator.Tests with CSharpGeneratorRunner.RunGenerator(); check Diagnostic[] output
+
+**Add built-in serializable type:** formatter in `Serialization/Formatters/`, register in `BuiltInFormatters`, teach `SerializationBuilder` (and `ChannelTypeAnalyzer` if pre-registered) about it, document it in spec §5.4
+
+**Change a message body:** edit the hand-written `Serialize`/`Deserialize` in `Messages/`, update `ProtocolMessageTests`, the spec, and the fuzz corpus if seeds change

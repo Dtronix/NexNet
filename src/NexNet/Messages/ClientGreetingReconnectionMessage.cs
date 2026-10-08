@@ -1,11 +1,14 @@
-﻿using System;
+using System;
 using System.Threading;
-using MemoryPack;
 using NexNet.Pools;
+using NexNet.Serialization;
 
 namespace NexNet.Messages;
 
-[MemoryPackable(SerializeLayout.Explicit)]
+/// <summary>
+/// Client greeting sent to the server when reconnecting.
+/// Body: <c>[version (str|nil), serverNexusHash (int), clientNexusHash (int), authenticationToken (bin|nil)]</c>.
+/// </summary>
 internal partial class ClientGreetingReconnectionMessage : IClientGreetingMessageBase
 {
     private bool _isArgumentPoolArray;
@@ -13,28 +16,35 @@ internal partial class ClientGreetingReconnectionMessage : IClientGreetingMessag
 
     private IPooledMessage? _messageCache = null!;
 
-    [MemoryPackIgnore]
     public IPooledMessage? MessageCache
     {
         set => _messageCache = value;
     }
 
-    [MemoryPackOrder(0)]
     public string? Version { get; set; }
-    
-    [MemoryPackOrder(1)]
+
     public int ServerNexusHash { get; set; }
-    
-    [MemoryPackOrder(2)]
+
     public int ClientNexusHash { get; set; }
 
-    [MemoryPackOrder(3)]
-    [MemoryPoolFormatter<byte>]
     public Memory<byte> AuthenticationToken { get; set; }
 
-    [MemoryPackOnDeserialized]
-    private void OnDeserialized()
+    public void Serialize(ref MsgPackWriter writer)
     {
+        writer.WriteArrayHeader(4);
+        writer.Write(Version);
+        writer.Write(ServerNexusHash);
+        writer.Write(ClientNexusHash);
+        writer.WriteBinary(AuthenticationToken.Span);
+    }
+
+    public void Deserialize(ref MsgPackReader reader)
+    {
+        reader.ReadArrayHeader(4);
+        Version = reader.ReadString();
+        ServerNexusHash = reader.ReadInt32();
+        ClientNexusHash = reader.ReadInt32();
+        AuthenticationToken = reader.ReadBinaryToPooled(out _);
         _isArgumentPoolArray = true;
     }
 
@@ -51,10 +61,13 @@ internal partial class ClientGreetingReconnectionMessage : IClientGreetingMessag
             // Reset the pool flag.
             _isArgumentPoolArray = false;
 
-            if (AuthenticationToken.IsEmpty)
-                return;
+            if (!AuthenticationToken.IsEmpty)
+            {
+                // Clear sensitive authentication data before returning buffer to pool
+                AuthenticationToken.Span.Clear();
+                IMessageBase.ReturnPooledMemory(AuthenticationToken);
+            }
 
-            IMessageBase.ReturnMemoryPackMemory(AuthenticationToken);
             AuthenticationToken = default;
         }
 

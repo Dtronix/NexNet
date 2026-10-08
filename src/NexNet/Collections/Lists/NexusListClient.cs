@@ -4,11 +4,12 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Internals.Threading;
 using NexNet.Logging;
 using NexNet.Pipes.Broadcast;
+
+using NexNet.Internals;
 
 namespace NexNet.Collections.Lists;
 
@@ -84,7 +85,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                     return new BroadcastMessageProcessResult(false, true);
                 }
                 
-                var values = MemoryPackSerializer.Deserialize<T[]>(valuesMessage.Values.Span);
+                var values = valuesMessage.DeserializeValue<T[]>();
                 if(values != null)
                     _resettingList!.AddRange(values);
                 
@@ -239,7 +240,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(item);
+        message.Value = PayloadSerializer.Serialize(item);
 
         return await ProcessMessage(message).ConfigureAwait(false);
 
@@ -267,7 +268,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         using var _ = await OperationLock().ConfigureAwait(false);
         message.Version = _itemList.Version;
         message.Index = index;
-        message.Value = MemoryPackSerializer.Serialize(value);
+        message.Value = PayloadSerializer.Serialize(value);
 
         return await ProcessMessage(message).ConfigureAwait(false);
    
@@ -292,7 +293,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         var state = _itemList.State;
         message.Version = state.Version;
         message.Index = state.List.Count;
-        message.Value = MemoryPackSerializer.Serialize(item);
+        message.Value = PayloadSerializer.Serialize(item);
 
         return await ProcessMessage(message).ConfigureAwait(false);
     }

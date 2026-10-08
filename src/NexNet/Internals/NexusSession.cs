@@ -35,10 +35,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     
     // NnP(DC4) = NexNetProtocol(Device Control Four)
     // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
-    // ReSharper disable twice StaticMemberInGenericType
-    private static readonly ReadOnlyMemory<byte> _protocolHeader = new byte[] { (byte)'N', (byte)'n', (byte)'P', (byte)'\u0014', 0, 0, 0, 1 };
-    private static readonly uint ProtocolTag = BitConverter.ToUInt32(_protocolHeader.Slice(0, 4).Span);
     private const byte ProtocolVersion = 1;
+    // Magic "NnP" + DC4, three reserved bytes (must be zero), protocol version.
+    // ReSharper disable twice StaticMemberInGenericType
+    private static readonly ReadOnlyMemory<byte> _protocolHeader =
+        new byte[] { (byte)'N', (byte)'n', (byte)'P', 0x14, 0, 0, 0, ProtocolVersion };
     
     private ITransport _transportConnection;
     private PipeReader? _pipeInput;
@@ -181,7 +182,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         if(configurations.ConnectionState == ConnectionState.Reconnecting)
             EnumUtilities<InternalState>.SetFlag(ref _internalState, InternalState.ReconnectingInProgress);
         
-        PipeManager = _poolManager.PipeManagerPool.Rent(this);
+        PipeManager = new NexusPipeManager();
         PipeManager.Setup(this);
 
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
@@ -351,10 +352,33 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Cancel all current invocations.
         SessionInvocationStateManager.CancelAll();
 
-        // ReSharper disable once MethodHasAsyncOverload
+        // Complete the output under the write lock: PipeWriter is not thread-safe, and invocations may still be
+        // sending results. A writer blocked on back pressure is released first so the lock can be taken.
+        var output = _pipeOutput;
+        MutexSlim.LockToken writeLock = default;
         try
         {
-            _pipeOutput!.Complete();
+            output?.CancelPendingFlush();
+        }
+        catch (Exception)
+        {
+            // Best effort: stream-backed writers throw once their transport has already closed.
+        }
+
+        try
+        {
+            using var lockTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            writeLock = await _writeMutex.TryWaitAsync(lockTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger?.LogWarning("Timed out waiting for the write lock while disconnecting; completing the output without it.");
+        }
+
+        try
+        {
+            // ReSharper disable once MethodHasAsyncOverload
+            output?.Complete();
         }
         catch (ObjectDisposedException)
         {
@@ -364,8 +388,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             Logger?.LogError(e, "Error while completing output pipe.");
         }
-
-        _pipeOutput = null;
+        finally
+        {
+            _pipeOutput = null;
+            writeLock.Dispose();
+        }
         try
         {
             await _transportConnection.CloseAsync(true).ConfigureAwait(false);
@@ -380,9 +407,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         await _disconnectionCts.CancelAsync().ConfigureAwait(false);
         OnStateChanged?.Invoke(State);
 
-        // Cancel all pipes and return pipe manager to the cache.
+        // Cancel all pipes. Each session creates its own manager and never reuses one: invocations of this session can
+        // still be running (CancelAll above only signals them), and one that registers a pipe after a reuse would attach
+        // it to another session.
         PipeManager.CancelAll();
-        _poolManager.PipeManagerPool.Return(PipeManager);
 
         _nexus.Disconnected(reason);
         OnDisconnected?.Invoke();

@@ -1,5 +1,4 @@
-﻿using MemoryPack;
-using NexNet.IntegrationTests.TestInterfaces;
+﻿using NexNet.IntegrationTests.TestInterfaces;
 using System.Diagnostics;
 using NexNet.Messages;
 using NUnit.Framework;
@@ -156,7 +155,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Type type, Action<ServerNexus> setup,
         Action<T, TaskCompletionSource> onMessage,
         Func<NexusClient<ClientNexus, ClientNexus.ServerProxy>, ValueTask> action)
-        where T : IMessageBase
+        where T : class, IMessageBase, new()
     {
         var clientConfig = CreateClientConfig(type);
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -175,7 +174,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
                 if (bytes[0] != (byte)T.Type)
                     return;
 
-                var message = MemoryPackSerializer.Deserialize<T>(new ReadOnlySpan<byte>(bytes).Slice(3));
+                var message = TestSerialization.DeserializeMessage<T>(new ReadOnlySpan<byte>(bytes).Slice(3));
                 Debug.Assert(message != null, nameof(message) + " != null");
                 onMessage(message, tcs);
             }

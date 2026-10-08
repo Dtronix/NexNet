@@ -111,12 +111,17 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         ushort methodId,
         Memory<byte> serializedArguments,
         INexusSession session,
-        CancellationToken? cancellationToken = null)
+        CancellationToken? cancellationToken = null,
+        NexNet.Serialization.PooledArrayBufferWriter? argumentsOwner = null)
     {
         if (cancellationToken?.IsCancellationRequested == true)
+        {
+            argumentsOwner?.Return();
             return null;
+        }
 
         using var message = _poolManager.Rent<InvocationMessage>();
+        message.ArgumentsOwner = argumentsOwner;
 
         message.InvocationId = GetNextId(true);
         message.MethodId = methodId;

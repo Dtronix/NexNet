@@ -2,6 +2,8 @@
   href: getting-started.md
 - name: Hub Invocations
   href: hub-invocations.md
+- name: Serialization
+  href: serialization.md
 - name: Sessions & Lifetimes
   href: sessions-and-lifetimes.md
 - name: Synchronized Collections

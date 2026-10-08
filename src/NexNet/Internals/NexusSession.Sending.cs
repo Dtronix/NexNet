@@ -4,9 +4,10 @@ using System.IO.Pipelines;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using MemoryPack;
+using NexNet.Serialization;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
 
@@ -44,25 +45,22 @@ internal partial class NexusSession<TNexus, TProxy>
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
 
-        // Register a cancellation token to cancel the flush operation.
-        CancellationTokenRegistration? ctRegistration = null;
-        if (cancellationToken.CanBeCanceled)
-        {
-            ctRegistration = cancellationToken.Register(static obj =>
-            {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput, false);
-        }
+        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+        var output = _pipeOutput;
+        if (output == null || State != ConnectionState.Connected)
+            return;
 
         var header = _bufferWriter.GetMemory(3);
         _bufferWriter.Advance(3);
-        MemoryPackSerializer.Serialize(_bufferWriter, body);
+        var bodyWriter = new MsgPackWriter(_bufferWriter);
+        body.Serialize(ref bodyWriter);
+        bodyWriter.Flush();
 
         var contentLength = checked((ushort)(_bufferWriter.Length - 3));
 
         header.Span[0] = (byte)TMessage.Type;
 
-        BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
+        BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
 
         var length = (int)_bufferWriter.Length;
         var buffer = _bufferWriter.GetBuffer();
@@ -70,18 +68,38 @@ internal partial class NexusSession<TNexus, TProxy>
         // Only used for debugging
         _config.InternalOnSend?.Invoke(this, buffer.ToArray());
 
-        Debug.Assert(_pipeOutput != null);
-        buffer.CopyTo(_pipeOutput.GetSpan(length));
-        _bufferWriter.Reset();
-        _pipeOutput.Advance(length);
+        try
+        {
+            buffer.CopyTo(output.GetSpan(length));
+            output.Advance(length);
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
+        }
+        finally
+        {
+            _bufferWriter.Reset();
+        }
 
         Logger?.LogTrace($"Sending {TMessage.Type} header and body with {length} total bytes.");
+
+        // Register a cancellation token to cancel the flush operation.
+        CancellationTokenRegistration? ctRegistration = null;
+        if (cancellationToken.CanBeCanceled)
+        {
+            ctRegistration = cancellationToken.Register(static obj =>
+            {
+                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+            }, output, false);
+        }
 
         FlushResult result = default;
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            result = await output.FlushAsync().ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)
@@ -90,6 +108,11 @@ internal partial class NexusSession<TNexus, TProxy>
         catch (ObjectDisposedException)
         {
             // noop
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
         }
         finally
         {
@@ -143,6 +166,35 @@ internal partial class NexusSession<TNexus, TProxy>
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
 
+        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+        var output = _pipeOutput;
+        if (output == null || State != ConnectionState.Connected)
+            return;
+
+        var length = (int)body.Length;
+        var contentLength = checked((ushort)(length));
+
+        var headerLength = 3 + (messageHeader?.Length ?? 0);
+
+        try
+        {
+            var header = output.GetMemory(headerLength);
+            header.Span[0] = (byte)type;
+            BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
+
+            // Copy the message header
+            messageHeader?.CopyTo(header.Slice(3));
+
+            output.Advance(headerLength);
+            body.CopyTo(output.GetSpan((int)body.Length));
+            output.Advance(length);
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
+        }
+
         // Register a cancellation token to cancel the flush operation.
         CancellationTokenRegistration? ctRegistration = null;
         if (cancellationToken.CanBeCanceled)
@@ -150,30 +202,14 @@ internal partial class NexusSession<TNexus, TProxy>
             ctRegistration = cancellationToken.Register(static obj =>
             {
                 Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput, false);
+            }, output, false);
         }
-
-        var length = (int)body.Length;
-        var contentLength = checked((ushort)(length));
-
-        var headerLength = 3 + (messageHeader?.Length ?? 0);
-
-        var header = _pipeOutput.GetMemory(headerLength);
-        header.Span[0] = (byte)type;
-        BitConverter.TryWriteBytes(header.Span.Slice(1, 2), contentLength);
-
-        // Copy the message header
-        messageHeader?.CopyTo(header.Slice(3));
-
-        _pipeOutput.Advance(headerLength);
-        body.CopyTo(_pipeOutput.GetSpan((int)body.Length));
-        _pipeOutput.Advance(length);
 
         if (_config.InternalOnSend != null)
         {
             var debugCopy = new byte[body.Length + 3];
             debugCopy[0] = (byte)type;
-            BitConverter.TryWriteBytes(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
+            BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
             body.CopyTo(new Span<byte>(debugCopy).Slice(3));
             _config.InternalOnSend?.Invoke(this, debugCopy);
         }
@@ -183,7 +219,7 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            result = await output.FlushAsync().ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)
@@ -192,6 +228,11 @@ internal partial class NexusSession<TNexus, TProxy>
         catch (ObjectDisposedException)
         {
             // noop
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
         }
         catch (Exception e)
         {
@@ -297,6 +338,41 @@ internal partial class NexusSession<TNexus, TProxy>
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
 
+        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+        var output = _pipeOutput;
+        if (output == null)
+            return;
+
+        try
+        {
+            if (type != MessageType.Unset)
+            {
+                output.GetSpan(1)[0] = (byte)type;
+                output.Advance(1);
+                _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
+                Logger?.LogTrace($"Sending {type} header.");
+            }
+            else
+            {
+                Logger?.LogTrace("Sending raw data.");
+            }
+
+            // Check the post header data.
+            if (postHeaderData != null)
+            {
+                var data = postHeaderData.Value;
+                var length = data.Length;
+                data.Span.CopyTo(output.GetSpan(length));
+                output.Advance(length);
+                _config.InternalOnSend?.Invoke(this, data.ToArray());
+            }
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
+        }
+
         // Register a cancellation token to cancel the flush operation.
         CancellationTokenRegistration? ctRegistration = null;
         if (cancellationToken.CanBeCanceled)
@@ -304,36 +380,14 @@ internal partial class NexusSession<TNexus, TProxy>
             ctRegistration = cancellationToken.Register(static obj =>
             {
                 Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, _pipeOutput, false);
-        }
-
-        if (type != MessageType.Unset)
-        {
-            _pipeOutput.GetSpan(1)[0] = (byte)type;
-            _pipeOutput.Advance(1);
-            _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
-            Logger?.LogTrace($"Sending {type} header.");
-        }
-        else
-        {
-            Logger?.LogTrace("Sending raw data.");
-        }
-
-        // Check the post header data.
-        if (postHeaderData != null)
-        {
-            var data = postHeaderData.Value;
-            var length = data.Length;
-            data.Span.CopyTo(_pipeOutput.GetSpan(length));
-            _pipeOutput.Advance(length);
-            _config.InternalOnSend?.Invoke(this, data.ToArray());
+            }, output, false);
         }
 
         FlushResult result = default;
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await _pipeOutput.FlushAsync().ConfigureAwait(false);
+            result = await output.FlushAsync().ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)
@@ -342,6 +396,11 @@ internal partial class NexusSession<TNexus, TProxy>
         catch (ObjectDisposedException)
         {
             // noop
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while this send was in progress.
+            return;
         }
         finally
         {

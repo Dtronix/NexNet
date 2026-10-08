@@ -1,11 +1,10 @@
 using System;
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using MemoryPack;
 using NexNet.Messages;
+using NexNet.Serialization;
 
 namespace NexNet.Pools;
 
@@ -14,7 +13,7 @@ namespace NexNet.Pools;
 /// Handles both same-thread and cross-thread rent/return patterns efficiently.
 /// </summary>
 /// <typeparam name="T">Message type to pool.</typeparam>
-internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T> : IPooledMessage
+internal class MessagePool<T> : IPooledMessage
     where T : class, IMessageBase, new()
 {
     /// <summary>
@@ -71,7 +70,7 @@ internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMember
     /// Deserializes a message from the buffer, renting from pool.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T? Deserialize(in ReadOnlySequence<byte> bodySequence)
+    public T? Deserialize(in ReadOnlySequence<byte> bodySequence, NexusSerializerOptions options)
     {
         // Fast path: try thread-local slot first
         var item = _threadLocal;
@@ -89,7 +88,7 @@ internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMember
         }
 
         item.MessageCache = this;
-        MemoryPackSerializer.Deserialize(bodySequence, ref item);
+        DeserializeBody(item, bodySequence, options);
         return item;
     }
 
@@ -97,7 +96,7 @@ internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMember
     /// Deserializes a message and returns as interface.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence)
+    public IMessageBase DeserializeInterface(in ReadOnlySequence<byte> bodySequence, NexusSerializerOptions options)
     {
         // Fast path: try thread-local slot first
         T? item = _threadLocal;
@@ -115,8 +114,19 @@ internal class MessagePool<[DynamicallyAccessedMembers(DynamicallyAccessedMember
         }
 
         item.MessageCache = this;
-        MemoryPackSerializer.Deserialize(bodySequence, ref item);
-        return item!;
+        DeserializeBody(item, bodySequence, options);
+        return item;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void DeserializeBody(T item, in ReadOnlySequence<byte> bodySequence, NexusSerializerOptions options)
+    {
+        var reader = new MsgPackReader(bodySequence, options);
+        item.Deserialize(ref reader);
+
+        // Bodies must be consumed exactly; trailing bytes indicate a malformed or hostile message.
+        if (!reader.End)
+            throw new NexusSerializationException($"Trailing bytes after {T.Type} message body.");
     }
 
     /// <summary>

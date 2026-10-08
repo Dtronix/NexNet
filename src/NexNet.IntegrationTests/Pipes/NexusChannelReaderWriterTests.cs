@@ -156,7 +156,8 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
 
         _ = Task.Run(async () =>
         {
-            await writer.Writer.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 1, 2, 3, 4 }));
+            // A partial value: an int64 (0xd3) missing 5 of its 8 bytes.
+            await writer.Writer.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 0xd3, 1, 2, 3 }));
             await reader.Reader.CompleteAsync();
         });
         

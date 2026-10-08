@@ -10,6 +10,7 @@ using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Serialization;
 using NexNet.Transports;
 
 namespace NexNet.Invocation;
@@ -79,6 +80,9 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     {
         return SessionContext.Session.PipeManager.RegisterPipe(startId);
     }
+
+    NexusSerializerOptions IMethodInvoker.SerializerOptions =>
+        SessionContext.Session?.Config.SerializerOptions ?? NexusSerializerOptions.Untrusted;
 
     ValueTask IMethodInvoker.ReturnDuplexPipe(INexusDuplexPipe pipe)
     {

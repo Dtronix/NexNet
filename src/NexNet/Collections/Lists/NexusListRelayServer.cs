@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using MemoryPack;
 using NexNet.Internals;
 using NexNet.Internals.Collections.Versioned;
 using NexNet.Logging;
@@ -134,7 +133,7 @@ internal class NexusListRelayServer<T> : NexusBroadcastServer<INexusCollectionLi
         foreach (var item in state.List.MemoryChunk(bufferSize))
         {
             var message = NexusCollectionListResetValuesMessage.Rent();
-            message.Values = MemoryPackSerializer.Serialize(item);
+            message.Values = PayloadSerializer.Serialize(item);
             yield return message.Wrap();
         }
     }

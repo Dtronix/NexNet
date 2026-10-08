@@ -176,7 +176,11 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
         if (!_hasPipeId)
         {
-            BitConverter.TryWriteBytes(_pipeId.Span, _stateManager.Id);
+            // Pipe ID frame bytes: [client id][server id].
+            var pipeIdSpan = _pipeId.Span;
+            var pipeId = _stateManager.Id;
+            pipeIdSpan[0] = (byte)pipeId;
+            pipeIdSpan[1] = (byte)(pipeId >> 8);
             _hasPipeId = true;
         }
 

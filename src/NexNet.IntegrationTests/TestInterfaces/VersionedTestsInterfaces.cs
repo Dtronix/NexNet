@@ -15,14 +15,14 @@ public partial interface ISimpleClientNexus
 }
 
 
-[NexusVersion(Version = "v1.0", HashLock = -1085487423)]
+[NexusVersion(Version = "v1.0", HashLock = -326045431)]
 public partial interface IVersionedServerNexusV1
 {
     [NexusMethod(1)]
     ValueTask<bool> VerifyVersionV1(string version);
 }
 
-[NexusVersion(Version = "v1.1", HashLock = 778731763)]
+[NexusVersion(Version = "v1.1", HashLock = -1058213897)]
 public partial interface IVersionedServerNexusV1_1 : IVersionedServerNexusV1
 {
     [NexusMethod(2)]
@@ -39,7 +39,7 @@ public partial interface IVersionedServerNexusV1_1 : IVersionedServerNexusV1
     }
 }
 
-[NexusVersion(Version = "v1.2", HashLock = 467572850)]
+[NexusVersion(Version = "v1.2", HashLock = 1866304169)]
 public partial interface IVersionedServerNexusV2 : IVersionedServerNexusV1_1
 {
     [NexusMethod(4)]

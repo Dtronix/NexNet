@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Collections.Concurrent;
-using MemoryPack;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
@@ -589,7 +588,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         {
             InvocationId = (ushort)Random.Shared.Next(1, ushort.MaxValue),
             MethodId = methodId,
-            Arguments = methodId == 1 ? MemoryPackSerializer.Serialize(ValueTuple.Create("test")) : Memory<byte>.Empty
+            Arguments = methodId == 1 ? TestSerialization.SerializeArguments(ValueTuple.Create("test")) : Memory<byte>.Empty
         };
         
         await client.SendMessageAsync(invocation).Timeout(5);
@@ -601,7 +600,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         {
             InvocationId = (ushort)Random.Shared.Next(1, ushort.MaxValue),
             MethodId = methodId,
-            Arguments = methodId == 1 ? MemoryPackSerializer.Serialize(ValueTuple.Create("test")) : Memory<byte>.Empty
+            Arguments = methodId == 1 ? TestSerialization.SerializeArguments(ValueTuple.Create("test")) : Memory<byte>.Empty
         };
         
         await client.SendMessageAsync(invocation).Timeout(5);

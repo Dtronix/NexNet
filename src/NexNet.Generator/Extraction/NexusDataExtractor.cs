@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NexNet.Generator.Models;
+using NexNet.Generator.Serialization;
 
 namespace NexNet.Generator.Extraction;
 
@@ -32,7 +33,9 @@ internal static class NexusDataExtractor
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var typeHasher = new TypeHasher();
+        // One shape walk per producer: code generation and hashing both read these shapes.
+        var compilation = context.SemanticModel.Compilation;
+        var shapes = new ShapeBuilder(compilation);
 
         // Extract nexus attribute data
         var nexusAttributeData = symbol.GetAttributes()
@@ -55,13 +58,13 @@ internal static class NexusDataExtractor
         cancellationToken.ThrowIfCancellationRequested();
 
         // Extract interface data - need to build IDs for both
-        var nexusInterface = ExtractInterfaceData(nexusInterfaceSymbol, nexusAttribute, typeHasher, cancellationToken);
-        var proxyInterface = ExtractInterfaceData(proxyInterfaceSymbol, nexusAttribute, typeHasher, cancellationToken);
+        var nexusInterface = ExtractInterfaceData(nexusInterfaceSymbol, nexusAttribute, shapes, cancellationToken);
+        var proxyInterface = ExtractInterfaceData(proxyInterfaceSymbol, nexusAttribute, shapes, cancellationToken);
 
         // Extract class methods
         var classMethods = symbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Select(m => ExtractMethodData(m, typeHasher, 0)) // ID 0 for class methods since they're not invokable
+            .Select(m => ExtractMethodData(m, shapes, 0)) // ID 0 for class methods since they're not invokable
             .ToImmutableArray();
 
         // Correlate authorize data from class methods onto interface methods
@@ -78,6 +81,12 @@ internal static class NexusDataExtractor
             .Replace("global::", "")
             .Replace("<", "_")
             .Replace(">", "_");
+
+        // Serialization: walk every type reachable from both interfaces and generate formatters.
+        var serialization = new SerializationBuilder(compilation, shapes);
+        AddSerializationRoots(serialization, nexusInterfaceSymbol);
+        AddSerializationRoots(serialization, proxyInterfaceSymbol);
+        serialization.AddAssemblyDeclaredRoots();
 
         return new NexusGenerationData(
             TypeName: symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
@@ -97,7 +106,56 @@ internal static class NexusDataExtractor
             ClassMethods: classMethods,
             ClassLocation: LocationData.FromSyntax(syntax)!,
             IdentifierLocation: LocationData.FromToken(syntax.Identifier)!
-        );
+        )
+        {
+            Formatters = serialization.Build(),
+            SerializationDiagnostics = SerializationBuilder.ToImmutable(serialization.Diagnostics)
+        };
+    }
+
+    private static void AddSerializationRoots(SerializationBuilder builder, INamedTypeSymbol interfaceSymbol)
+    {
+        foreach (var iface in new[] { interfaceSymbol }.Concat(interfaceSymbol.AllInterfaces))
+        {
+            foreach (var member in iface.GetMembers())
+            {
+                if (member is IMethodSymbol { MethodKind: MethodKind.Ordinary } method)
+                {
+                    var context = iface.Name + "." + method.Name;
+                    var location = LocationData.FromSymbol(method);
+                    foreach (var parameter in method.Parameters)
+                    {
+                        var type = parameter.Type;
+                        if (type.Name == "CancellationToken")
+                            continue;
+
+                        var typeName = SymbolUtilities.GetFullSymbolType(type, false);
+                        if (typeName == "global::NexNet.Pipes.INexusDuplexPipe")
+                            continue;
+
+                        if (typeName.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<")
+                            && type is INamedTypeSymbol channel)
+                        {
+                            builder.Require(channel.TypeArguments[0], context, location);
+                            continue;
+                        }
+
+                        builder.Require(type, context, location);
+                    }
+
+                    if (method.ReturnType is INamedTypeSymbol { Arity: 1 } returnType
+                        && returnType.ConstructedFrom.MetadataName == "ValueTask`1")
+                    {
+                        builder.Require(returnType.TypeArguments[0], context, location);
+                    }
+                }
+                else if (member is IPropertySymbol { Type: INamedTypeSymbol { Arity: 1 } collectionType } property
+                         && collectionType.OriginalDefinition.Name == "INexusList")
+                {
+                    builder.Require(collectionType.TypeArguments[0], iface.Name + "." + property.Name, LocationData.FromSymbol(property));
+                }
+            }
+        }
     }
 
     private static NexusAttributeData? ExtractNexusAttribute(
@@ -143,7 +201,7 @@ internal static class NexusDataExtractor
     private static InvocationInterfaceData ExtractInterfaceData(
         INamedTypeSymbol symbol,
         NexusAttributeData nexusAttribute,
-        TypeHasher typeHasher,
+        ShapeBuilder shapes,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -155,21 +213,21 @@ internal static class NexusDataExtractor
             .ToList();
 
         // Extract methods from this interface directly
-        var directMethods = ExtractMethodsFromMembers(symbol.GetMembers(), typeHasher);
+        var directMethods = ExtractMethodsFromMembers(symbol.GetMembers(), shapes);
 
         // Collect all methods including inherited
         var allMethodsList = directMethods.ToList();
         foreach (var iface in allInterfaceSymbols)
         {
-            allMethodsList.AddRange(ExtractMethodsFromMembers(iface.GetMembers(), typeHasher));
+            allMethodsList.AddRange(ExtractMethodsFromMembers(iface.GetMembers(), shapes));
         }
 
         // Extract collections
-        var directCollections = ExtractCollectionsFromMembers(symbol.GetMembers());
+        var directCollections = ExtractCollectionsFromMembers(symbol.GetMembers(), shapes);
         var allCollectionsList = directCollections.ToList();
         foreach (var iface in allInterfaceSymbols)
         {
-            allCollectionsList.AddRange(ExtractCollectionsFromMembers(iface.GetMembers()));
+            allCollectionsList.AddRange(ExtractCollectionsFromMembers(iface.GetMembers(), shapes));
         }
 
         // Filter out ignored items
@@ -199,7 +257,7 @@ internal static class NexusDataExtractor
 
         foreach (var interfaceSymbol in allInterfaceSymbols)
         {
-            var ifaceData = ExtractInterfaceDataShallow(interfaceSymbol, nexusAttribute, typeHasher, allMethods, allCollections);
+            var ifaceData = ExtractInterfaceDataShallow(interfaceSymbol, nexusAttribute, shapes, allMethods, allCollections);
             interfaces.Add(ifaceData);
             interfaceMap[interfaceSymbol] = ifaceData;
 
@@ -269,17 +327,17 @@ internal static class NexusDataExtractor
     private static InvocationInterfaceData ExtractInterfaceDataShallow(
         INamedTypeSymbol symbol,
         NexusAttributeData nexusAttribute,
-        TypeHasher typeHasher,
+        ShapeBuilder shapes,
         MethodData[] rootAllMethods,
         CollectionData[] rootAllCollections)
     {
         // For shallow extraction, we need methods/collections from this interface AND all inherited interfaces
         // to correctly compute the hash (matching the old behavior).
-        var interfaceMethods = ExtractMethodsFromMembers(symbol.GetMembers(), typeHasher)
+        var interfaceMethods = ExtractMethodsFromMembers(symbol.GetMembers(), shapes)
             .Where(m => !m.MethodAttribute.Ignore)
             .ToList();
 
-        var interfaceCollections = ExtractCollectionsFromMembers(symbol.GetMembers())
+        var interfaceCollections = ExtractCollectionsFromMembers(symbol.GetMembers(), shapes)
             .Where(c => !c.CollectionAttribute.Ignore)
             .ToList();
 
@@ -289,11 +347,11 @@ internal static class NexusDataExtractor
 
         foreach (var inherited in symbol.AllInterfaces.OrderBy(i => i.ToDisplayString(), StringComparer.Ordinal))
         {
-            var inheritedMethods = ExtractMethodsFromMembers(inherited.GetMembers(), typeHasher)
+            var inheritedMethods = ExtractMethodsFromMembers(inherited.GetMembers(), shapes)
                 .Where(m => !m.MethodAttribute.Ignore);
             allMethods.AddRange(inheritedMethods);
 
-            var inheritedCollections = ExtractCollectionsFromMembers(inherited.GetMembers())
+            var inheritedCollections = ExtractCollectionsFromMembers(inherited.GetMembers(), shapes)
                 .Where(c => !c.CollectionAttribute.Ignore);
             allCollections.AddRange(inheritedCollections);
         }
@@ -335,16 +393,16 @@ internal static class NexusDataExtractor
 
     private static ImmutableArray<MethodData> ExtractMethodsFromMembers(
         ImmutableArray<ISymbol> members,
-        TypeHasher typeHasher)
+        ShapeBuilder shapes)
     {
         return members
             .OfType<IMethodSymbol>()
             .Where(m => m.MethodKind is not (MethodKind.PropertyGet or MethodKind.PropertySet))
-            .Select(m => ExtractMethodData(m, typeHasher, 0))
+            .Select(m => ExtractMethodData(m, shapes, 0))
             .ToImmutableArray();
     }
 
-    private static MethodData ExtractMethodData(IMethodSymbol symbol, TypeHasher typeHasher, ushort id)
+    private static MethodData ExtractMethodData(IMethodSymbol symbol, ShapeBuilder shapes, ushort id)
     {
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
         var isAsync = returnSymbol?.OriginalDefinition.Name == "ValueTask";
@@ -360,7 +418,7 @@ internal static class NexusDataExtractor
 
         for (int i = 0; i < symbol.Parameters.Length; i++)
         {
-            var param = ExtractParameterData(symbol.Parameters[i], i, typeHasher, ref serializedId);
+            var param = ExtractParameterData(symbol.Parameters[i], i, shapes, ref serializedId);
             parameters.Add(param);
 
             if (param.SerializedType != null)
@@ -388,7 +446,7 @@ internal static class NexusDataExtractor
         var assignedId = methodAttr.MethodId ?? id;
 
         // Compute hash
-        var hash = ComputeMethodHash(symbol, parameters, methodAttr);
+        var hash = ComputeMethodHash(symbol, parameters, methodAttr, shapes);
 
         // Extract authorize attribute
         var authorizeData = ExtractAuthorizeData(symbol);
@@ -423,15 +481,14 @@ internal static class NexusDataExtractor
     private static MethodParameterData ExtractParameterData(
         IParameterSymbol symbol,
         int index,
-        TypeHasher typeHasher,
+        ShapeBuilder shapes,
         ref int serializedId)
     {
         var paramType = SymbolUtilities.GetFullSymbolType(symbol.Type, false);
         var isCancellationToken = symbol.Type.Name == "CancellationToken";
         var isDuplexPipe = paramType == "global::NexNet.Pipes.INexusDuplexPipe";
-        var isDuplexUnmanagedChannel = paramType.StartsWith("global::NexNet.Pipes.INexusDuplexUnmanagedChannel<");
         var isDuplexChannel = paramType.StartsWith("global::NexNet.Pipes.INexusDuplexChannel<");
-        var utilizesDuplexPipe = isDuplexPipe || isDuplexUnmanagedChannel || isDuplexChannel;
+        var utilizesDuplexPipe = isDuplexPipe || isDuplexChannel;
 
         string? serializedType = null;
         string? serializedValue = null;
@@ -445,7 +502,7 @@ internal static class NexusDataExtractor
             serializedValue = $"__proxyInvoker.ProxyGetDuplexPipeInitialId({symbol.Name})";
             assignedSerializedId = serializedId++;
         }
-        else if (isDuplexUnmanagedChannel || isDuplexChannel)
+        else if (isDuplexChannel)
         {
             // Extract the channel type from the generic type argument
             var returnSymbol = symbol.Type as INamedTypeSymbol;
@@ -472,24 +529,24 @@ internal static class NexusDataExtractor
             SerializedId: assignedSerializedId,
             IsCancellationToken: isCancellationToken,
             IsDuplexPipe: isDuplexPipe,
-            IsDuplexUnmanagedChannel: isDuplexUnmanagedChannel,
             IsDuplexChannel: isDuplexChannel,
             UtilizesDuplexPipe: utilizesDuplexPipe,
             ChannelType: channelType,
-            NexusHashCode: typeHasher.GetHash(symbol.Type)
+            NexusHashCode: ShapeHasher.Hash(shapes.Get(symbol.Type))
         );
     }
 
     private static ImmutableArray<CollectionData> ExtractCollectionsFromMembers(
-        ImmutableArray<ISymbol> members)
+        ImmutableArray<ISymbol> members,
+        ShapeBuilder shapes)
     {
         return members
             .OfType<IPropertySymbol>()
-            .Select(ExtractCollectionData)
+            .Select(p => ExtractCollectionData(p, shapes))
             .ToImmutableArray();
     }
 
-    private static CollectionData ExtractCollectionData(IPropertySymbol symbol)
+    private static CollectionData ExtractCollectionData(IPropertySymbol symbol, ShapeBuilder shapes)
     {
         var collectionAttr = ExtractCollectionAttribute(symbol);
         var methodAttr = ExtractMethodAttributeFromProperty(symbol);
@@ -514,7 +571,8 @@ internal static class NexusDataExtractor
         }
 
         // Compute hash
-        var nexusHash = ComputeCollectionHash(symbol.Name, itemType, collectionAttr);
+        var nexusHash = ComputeCollectionHash(symbol.Name, returnSymbol?.Arity > 0 ? returnSymbol.TypeArguments[0] : null,
+            collectionType, collectionAttr, shapes);
 
         return new CollectionData(
             Name: symbol.Name,
@@ -899,19 +957,31 @@ internal static class NexusDataExtractor
         return result.ToImmutableArray();
     }
 
+    private enum ReturnKind : byte
+    {
+        Void = 0,
+        ValueTask = 1,
+        ValueTaskOfT = 2,
+    }
+
     private static int ComputeMethodHash(
         IMethodSymbol symbol,
         List<MethodParameterData> parameters,
-        NexusMethodAttributeData methodAttr)
+        NexusMethodAttributeData methodAttr,
+        ShapeBuilder shapes)
     {
         var hash = new IncrementalHasher();
 
+        // The return kind, and for ValueTask<T> the structure of T: the result goes on the wire.
         var returnSymbol = symbol.ReturnType as INamedTypeSymbol;
-        if (returnSymbol?.Arity > 0)
+        if (returnSymbol is { Arity: 1 } && returnSymbol.ConstructedFrom.MetadataName == "ValueTask`1")
         {
-            var returnType = SymbolUtilities.GetFullSymbolType(returnSymbol, true);
-            if (returnType != null)
-                hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(returnType)));
+            hash.Add((byte)ReturnKind.ValueTaskOfT);
+            hash.Add(ShapeHasher.Hash(shapes.Get(returnSymbol.TypeArguments[0])));
+        }
+        else
+        {
+            hash.Add((byte)(returnSymbol?.MetadataName == "ValueTask" ? ReturnKind.ValueTask : ReturnKind.Void));
         }
 
         hash.Add(methodAttr.MethodId ?? 0);
@@ -930,15 +1000,17 @@ internal static class NexusDataExtractor
 
     private static int ComputeCollectionHash(
         string name,
-        string? itemType,
-        NexusCollectionAttributeData collectionAttr)
+        ITypeSymbol? itemType,
+        CollectionTypeValue collectionType,
+        NexusCollectionAttributeData collectionAttr,
+        ShapeBuilder shapes)
     {
         var hash = new IncrementalHasher();
 
+        // The collection kind and the structure of its items: items go on the wire.
+        hash.Add((byte)collectionType);
         if (itemType != null)
-        {
-            hash.Add((int)_hash.ComputeHash(Encoding.UTF8.GetBytes(itemType)));
-        }
+            hash.Add(ShapeHasher.Hash(shapes.Get(itemType)));
 
         // Add the name if we don't have a manually specified ID
         if (!collectionAttr.Id.HasValue)

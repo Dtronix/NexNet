@@ -21,7 +21,8 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        var data = new byte[65521];
+        // Serialized size always exceeds the limit: the payload alone is MaxArgumentSize bytes plus framing overhead.
+        var data = new byte[NexNet.Messages.IInvocationMessage.MaxArgumentSize];
         await AssertThrows<ArgumentOutOfRangeException>(() => clientNexus.Context.Proxy.ServerData(data).AsTask())
             .Timeout(1);
     }

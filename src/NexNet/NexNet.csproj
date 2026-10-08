@@ -3,19 +3,21 @@
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Description>A real-time asynchronous networking library that provides bidirectional communication between a server and multiple clients.</Description>
-    <Version>0.16.0</Version>
+    <Version>0.17.0</Version>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />
     <InternalsVisibleTo Include="NexNet.Asp" />
     <InternalsVisibleTo Include="NexNetBenchmarks" />
+    <InternalsVisibleTo Include="NexNet.Serialization.Tests" />
+    <InternalsVisibleTo Include="NexNet.Fuzz" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MemoryPack" Version="1.21.4" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
   <ItemGroup>

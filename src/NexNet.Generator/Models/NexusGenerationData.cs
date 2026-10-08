@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using NexNet.Generator.Serialization;
 
 namespace NexNet.Generator.Models;
 
@@ -34,4 +35,16 @@ internal sealed record NexusGenerationData(
     // Diagnostic locations
     LocationData ClassLocation,
     LocationData IdentifierLocation
-);
+)
+{
+    /// <summary>
+    /// Formatter specs for every type reachable from the nexus. They are merged with the specs of the other producers
+    /// into the single per-assembly formatter file.
+    /// </summary>
+    public EquatableArray<FormatterSpec> Formatters { get; init; } = EquatableArray<FormatterSpec>.Empty;
+
+    /// <summary>
+    /// Serialization diagnostics.
+    /// </summary>
+    public ImmutableArray<SerializationDiagnostic> SerializationDiagnostics { get; init; } = ImmutableArray<SerializationDiagnostic>.Empty;
+}

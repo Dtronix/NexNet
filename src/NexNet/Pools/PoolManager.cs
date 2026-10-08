@@ -1,10 +1,10 @@
 using System.Buffers;
 using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
+using NexNet.Serialization;
 
 namespace NexNet.Pools;
 
@@ -23,11 +23,6 @@ internal class PoolManager
     /// Pool for registered invocation states.
     /// </summary>
     public readonly ResettablePool<RegisteredInvocationState> RegisteredInvocationStatePool = new(128);
-
-    /// <summary>
-    /// Pool for pipe managers.
-    /// </summary>
-    public readonly PipeManagerPool PipeManagerPool = new();
 
     /// <summary>
     /// Pool for cancellation token sources.
@@ -72,7 +67,7 @@ internal class PoolManager
     /// Gets the typed message pool for a specific message type.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public MessagePool<T> Pool<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+    public MessagePool<T> Pool<T>()
         where T : class, IMessageBase, new()
     {
         return Unsafe.As<MessagePool<T>>(_messagePools[((int)T.Type) - MessagePoolOffsetModifier])!;
@@ -89,7 +84,7 @@ internal class PoolManager
     /// <summary>
     /// Rents a message of the specified type.
     /// </summary>
-    public T Rent<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>()
+    public T Rent<T>()
         where T : class, IMessageBase, new()
     {
         return Pool<T>().Rent();
@@ -98,9 +93,9 @@ internal class PoolManager
     /// <summary>
     /// Deserializes a message from the buffer.
     /// </summary>
-    public IMessageBase Deserialize(MessageType type, ReadOnlySequence<byte> sequence)
+    public IMessageBase Deserialize(MessageType type, ReadOnlySequence<byte> sequence, NexusSerializerOptions options)
     {
-        return _messagePools[((int)type) - MessagePoolOffsetModifier]!.DeserializeInterface(sequence);
+        return _messagePools[((int)type) - MessagePoolOffsetModifier]!.DeserializeInterface(sequence, options);
     }
 
     /// <summary>
@@ -113,6 +108,5 @@ internal class PoolManager
 
         RegisteredInvocationStatePool.Clear();
         CancellationTokenSourcePool.Clear();
-        PipeManagerPool.Clear();
     }
 }

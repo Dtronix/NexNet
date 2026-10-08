@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using MemoryPack;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
 using NUnit.Framework;
@@ -17,7 +16,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var baseObject = ComplexMessage.Random();
         var bufferWriter = BufferWriter<byte>.Create();
 
-        var bytes = MemoryPackSerializer.Serialize(baseObject);
+        var bytes = TestSerialization.SerializePayload(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
         //bufferWriter.Write(header);
         bufferWriter.Write(bytes);
@@ -54,7 +53,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var baseObject = ComplexMessage.Random();
         var bufferWriter = BufferWriter<byte>.Create();
 
-        var bytes = MemoryPackSerializer.Serialize(baseObject);
+        var bytes = TestSerialization.SerializePayload(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
         //bufferWriter.Write(header);
         bufferWriter.Write(bytes);
@@ -82,6 +81,112 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
         Assert.That(result.Single(), Is.EqualTo(baseObject));
+    }
+
+    private static async Task Buffer(NexusPipeReader pipeReader, byte[] data)
+    {
+        var bufferWriter = BufferWriter<byte>.Create();
+        bufferWriter.Write(data.AsSpan());
+        using var buffer = bufferWriter.Flush();
+        await pipeReader.BufferData(buffer).Timeout(1);
+    }
+
+    [Test]
+    public async Task ReadsLargerItemSplitAfterSmallItems()
+    {
+        // Small items first, then an item far larger than any before it, delivered in two parts. The first part is
+        // big enough that the reader decodes it without probing, fails, and must wait for the rest.
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+        var reader = new NexusChannelReader<string>(pipeReader);
+        var small = Enumerable.Range(0, 20).Select(i => "s" + i).ToArray();
+        var large = new string('L', 2000);
+        var bytes = small.SelectMany(TestSerialization.SerializePayload).Concat(TestSerialization.SerializePayload(large)).ToArray();
+        var split = bytes.Length - 1000;
+
+        await Buffer(pipeReader, bytes[..split]);
+        var first = await reader.ReadAsync().Timeout(1);
+        Assert.That(first, Is.EqualTo(small));
+
+        await Buffer(pipeReader, bytes[split..]);
+        var second = await reader.ReadAsync().Timeout(1);
+        Assert.That(second, Is.EqualTo(new[] { large }));
+    }
+
+    [Test]
+    public async Task ReadAvailableDecodesOnlyCompleteItemsWithoutWaiting()
+    {
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+        var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
+        var item = ComplexMessage.Random();
+        var bytes = TestSerialization.SerializePayload(item);
+        var half = bytes.Length / 2;
+        var list = new List<ComplexMessage>();
+
+        // Partial data: nothing decoded, nothing consumed.
+        await Buffer(pipeReader, bytes[..half]);
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
+        Assert.That(list, Is.Empty);
+
+        // The rest of the data completes the buffered half into one item.
+        await Buffer(pipeReader, bytes[half..]);
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(bytes.Length));
+        Assert.That(list.Single(), Is.EqualTo(item));
+
+        // No new data: nothing more to read.
+        list.Clear();
+        Assert.That(reader.ReadAvailable(list, null), Is.EqualTo(0));
+        Assert.That(list, Is.Empty);
+    }
+
+    [Test]
+    public async Task ReadsManyItemsAcrossEverySplitPoint()
+    {
+        var items = Enumerable.Range(0, 40).Select(i => new string((char)('a' + i % 26), i * 7)).ToArray();
+        var bytes = items.SelectMany(TestSerialization.SerializePayload).ToArray();
+        for (var split = 1; split < bytes.Length; split += 13)
+        {
+            var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+            var reader = new NexusChannelReader<string>(pipeReader);
+            var read = new List<string>();
+
+            await Buffer(pipeReader, bytes[..split]);
+            read.AddRange(await reader.ReadAsync().Timeout(1));
+            await Buffer(pipeReader, bytes[split..]);
+            while (read.Count < items.Length)
+                read.AddRange(await reader.ReadAsync().Timeout(1));
+
+            Assert.That(read, Is.EqualTo(items), $"split {split}");
+        }
+    }
+
+    [Test]
+    public async Task CompleteMalformedItemAfterSmallItemsThrows()
+    {
+        // Small ints, then a complete string where an int is expected, followed by enough padding that the string
+        // is decoded without probing. The error must surface, not be mistaken for an incomplete item.
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+        var reader = new NexusChannelReader<int>(pipeReader);
+        var data = Enumerable.Range(0, 10).Select(i => (byte)i)
+            .Concat(new byte[] { 0xa5, (byte)'h', (byte)'e', (byte)'l', (byte)'l', (byte)'o' })
+            .Concat(Enumerable.Repeat((byte)1, 64))
+            .ToArray();
+
+        await Buffer(pipeReader, data);
+        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+    }
+
+    [Test]
+    public async Task NeverUsedCodeAfterSmallItemsThrows()
+    {
+        var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
+        var reader = new NexusChannelReader<int>(pipeReader);
+        var data = Enumerable.Range(0, 10).Select(i => (byte)i)
+            .Concat(new byte[] { 0xc1 })
+            .Concat(Enumerable.Repeat((byte)1, 64))
+            .ToArray();
+
+        await Buffer(pipeReader, data);
+        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
     }
 
     [Test]
@@ -133,7 +238,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
-        var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
+        var bytes = new ReadOnlySequence<byte>(TestSerialization.SerializePayload(baseObject));
         _ = Task.Run(async () =>
         {
             await tcs.Task.Timeout(1);
@@ -156,7 +261,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var pipeReader = new NexusPipeReader(new DummyPipeStateManager(), null, true, 0, 0, 0);
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
         var baseObject = ComplexMessage.Random();
-        var bytes = new ReadOnlySequence<byte>(MemoryPackSerializer.Serialize(baseObject));
+        var bytes = new ReadOnlySequence<byte>(TestSerialization.SerializePayload(baseObject));
 
         for (var i = 0; i < iterations; i++)
         {

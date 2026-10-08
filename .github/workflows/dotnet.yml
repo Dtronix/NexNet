@@ -13,7 +13,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-                             
+    permissions:
+      contents: write  # create GitHub release on tags
+      id-token: write  # GitHub OIDC token for NuGet trusted publishing
+
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -35,14 +38,26 @@ jobs:
     - name: Build
       run: dotnet build src -c Release --maxcpucount:1
 
-    - name: Validate AOT compatibility
-      run: dotnet build src/Samples/NexNetSample.Aot.Client -c Release --no-restore -p:TreatWarningsAsErrors=true -p:NoWarn=IL2104%3BIL3053%3BIL3050
+    - name: Native AOT publish (zero trim/AOT warnings)
+      # A real ILCompiler run: `dotnet build` does not run the AOT analysis, so warnings only surface on publish.
+      # TreatWarningsAsErrors comes from src/Directory.Build.props. The final grep is the dependable check,
+      # because some ILCompiler warnings bypass TreatWarningsAsErrors.
+      # `shell: bash` runs with pipefail, so a failed publish is not hidden by tee.
+      shell: bash
+      run: |
+        dotnet publish src/Samples/NexNetSample.Aot.Client -c Release -r linux-x64 -o ./aot-out \
+          -p:WarningsAsErrors=IL2026%3BIL2046%3BIL2055%3BIL2057%3BIL2067%3BIL2070%3BIL2072%3BIL2075%3BIL2080%3BIL2087%3BIL2091%3BIL2104%3BIL3050%3BIL3051%3BIL3053 \
+          2>&1 | tee aot.log
+        ! grep -E "warning IL[0-9]+" aot.log
 
     - name: Execute integration tests
       run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
 
     - name: Execute generator tests
       run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
+
+    - name: Execute serialization tests (includes fuzz harness smoke run)
+      run: dotnet test src/NexNet.Serialization.Tests -c Release --no-build -v=normal
       
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts --maxcpucount:1
@@ -70,6 +85,13 @@ jobs:
           artifacts/*.nupkg
           artifacts/*.snupkg
       
+    - name: NuGet login (OIDC → temp API key)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: NuGet/login@v1
+      id: nuget-login
+      with:
+        user: ${{ secrets.NUGET_USER }}
+
     - name: Push NuGet packages
       if: startsWith(github.ref, 'refs/tags/')
-      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ secrets.ORG_NUGET_AUTH_TOKEN }} --skip-duplicate
+      run: dotnet nuget push artifacts/**/*.nupkg --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate

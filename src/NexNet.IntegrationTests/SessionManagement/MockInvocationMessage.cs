@@ -1,5 +1,6 @@
 using NexNet.Messages;
 using NexNet.Pools;
+using NexNet.Serialization;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 
@@ -20,6 +21,20 @@ internal class MockInvocationMessage : IInvocationMessage, IMessageBase
     public T? DeserializeArguments<T>()
     {
         return default;
+    }
+
+    public void Serialize(ref MsgPackWriter writer)
+    {
+        writer.WriteArrayHeader(4);
+        writer.Write(InvocationId);
+        writer.Write(MethodId);
+        writer.Write((byte)Flags);
+        writer.WriteArrayHeader(0);
+    }
+
+    public void Deserialize(ref MsgPackReader reader)
+    {
+        reader.Skip();
     }
 
     public void Dispose()

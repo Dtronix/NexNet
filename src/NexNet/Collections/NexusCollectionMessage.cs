@@ -1,7 +1,7 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Threading;
-using MemoryPack;
 using NexNet.Pipes.Broadcast;
+using NexNet.Serialization;
 
 namespace NexNet.Collections;
 
@@ -13,7 +13,6 @@ internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollect
     private static readonly ConcurrentBag<TMessage> _cache = [];
     private int _remaining;
 
-    [MemoryPackOrder(0)] 
     public NexusCollectionMessageFlags Flags { get; set; }
 
     public static TMessage Rent()
@@ -46,9 +45,19 @@ internal abstract class NexusCollectionMessage<TMessage, TUnion> : INexusCollect
 
     public abstract TUnion Clone();
 
+    /// <summary>
+    /// Writes the message body as a fixed-length MessagePack array whose first element is <see cref="Flags"/>.
+    /// </summary>
+    public abstract void SerializeBody(ref MsgPackWriter writer);
+
+    /// <summary>
+    /// Populates this message from a body written by <see cref="SerializeBody"/>.
+    /// </summary>
+    public abstract void DeserializeBody(ref MsgPackReader reader);
+
     public INexusCollectionBroadcasterMessageWrapper<TUnion> Wrap(INexusBroadcastSession<TUnion>? client = null)
     {
         return NexusCollectionBroadcasterMessageWrapper<TUnion>.Rent((TMessage)this, client);
     }
 }
-    
+

@@ -61,7 +61,16 @@ internal partial class NexusSession<TNexus, TProxy>
                             await DisconnectCore(disconnect, true).ConfigureAwait(false);
                             return;
                         }
-                        
+
+                        // The stream ended before a full header arrived: no more data will come, so waiting would spin
+                        // until the handshake timeout.
+                        if (result.IsCompleted || result.IsCanceled)
+                        {
+                            Logger?.LogTrace("Stream ended before the protocol header was complete.");
+                            await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
+                            return;
+                        }
+
                         _pipeInput?.AdvanceTo(result.Buffer.Start, result.Buffer.End);
                         continue;
                     }
@@ -192,6 +201,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             Logger?.LogInfo($"Received invalid MessageHeader '{_recMessageHeader.Type}'.");
                             // If we are outside the acceptable messages, disconnect the connection.
                             disconnect = DisconnectReason.ProtocolError;
+                            breakLoop = true;
                             break;
                     }
 
@@ -304,18 +314,18 @@ internal partial class NexusSession<TNexus, TProxy>
                     case MessageType.InvocationCancellation:
                     case MessageType.DuplexPipeUpdateState:
                         // TODO: Review transitioning this to a simple message instead of a full message.
-                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice, _config.SerializerOptions);
                         break;
 
                     case MessageType.Invocation:
                         // Special case for invocation result, as it is passed to the method and handled/disposed there.
                         disposeMessage = false;
-                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice, _config.SerializerOptions);
                         break;
 
                     case MessageType.InvocationResult:
                         disposeMessage = false;
-                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice);
+                        messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice, _config.SerializerOptions);
                         break;
 
                     case MessageType.DuplexPipeWrite:
@@ -335,7 +345,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 if (disconnect != DisconnectReason.None)
                     break;
 
-                // If we have a message body in the form of a MemoryPack, pass it to the message handler.
+                // If we have a deserialized message body, pass it to the message handler.
                 if (messageBody != null)
                 {
                     Logger?.LogTrace($"Handling {_recMessageHeader.Type} message.");
@@ -384,13 +394,13 @@ internal partial class NexusSession<TNexus, TProxy>
         var headerSlice = sequence.Slice(0, 8);
         Span<byte> header = stackalloc byte[8]; 
         headerSlice.CopyTo(header);
-        var receivedProtocolTag = BitConverter.ToUInt32(header);
         var reserved1 = header[4]; // Reserved for future
         var reserved2 = header[5]; // Reserved for future
         var reserved3 = header[6]; // Reserved for future
         var receivedProtocolVersion = header[7];
         
-        if (receivedProtocolTag != ProtocolTag)
+        // Compare the magic bytes directly; this is independent of host byte order.
+        if (!header.Slice(0, 4).SequenceEqual(_protocolHeader.Span.Slice(0, 4)))
         {
             Logger?.LogTrace("Transport data is not a NexNet stream.");
             disconnect = DisconnectReason.ProtocolError;

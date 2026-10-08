@@ -1,11 +1,11 @@
 # NexNet Usage Reference
 
-High-performance .NET 10 async networking. Bidirectional server-client communication. Source-generated, AOT-friendly. MemoryPack serialization.
+High-performance .NET 10 async networking. Bidirectional server-client communication. Source-generated, Native AOT compatible. Built-in MessagePack serializer (no external serializer dependency).
 
 ## Packages
 ```xml
-<PackageReference Include="NexNet" Version="0.16.0" />
-<PackageReference Include="NexNet.Generator" Version="0.16.0">
+<PackageReference Include="NexNet" Version="0.17.0" />
+<PackageReference Include="NexNet.Generator" Version="0.17.0">
   <PrivateAssets>all</PrivateAssets>
   <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 </PackageReference>
@@ -49,7 +49,144 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 | `ValueTask` | Await completion | args + CT, OR args + pipes/channels |
 | `ValueTask<T>` | Await + return | args + CT only |
 
-CancellationToken must be last. Max serialized args: 65,535 bytes (use pipes for larger).
+CancellationToken must be last. Max serialized args: 65,526 bytes per invocation (use pipes or channels for larger).
+
+## Serialization
+
+NexNet ships its own MessagePack serializer (namespace `NexNet.Serialization`); there is no external serializer package.
+The generator emits a formatter for every `[NexusObject]` type reachable from a nexus (method parameters, return values,
+channel and collection item types) into one `NexNet.Formatters.g.cs` per assembly, registered by a module initializer.
+No reflection; Native AOT and trimming safe.
+
+### Attributes
+
+| Attribute | Target | Meaning |
+|---|---|---|
+| `[NexusObject]` | class, struct, record, abstract class, interface | Generate a formatter for this type |
+| `[NexusKey(n)]` | property, field | Array position `n` (>= 0) on the wire |
+| `[NexusIgnore]` | property, field | Not serialized |
+| `[NexusConstructor]` | constructor | Constructor used to deserialize (parameters matched to members by name, case-insensitive) |
+| `[NexusUnion<T>(tag)]` | abstract class, interface | Union case `T` with a `ushort` tag; one attribute per case |
+
+```csharp
+using NexNet.Serialization;
+
+[NexusObject]
+public class Order
+{
+    [NexusKey(0)] public int Id { get; set; }
+    [NexusKey(1)] public string? Customer { get; set; }
+    [NexusKey(2)] public List<OrderLine> Lines { get; set; } = new();
+    [NexusIgnore] public decimal CachedTotal { get; set; }
+}
+
+[NexusObject]
+public readonly record struct OrderLine([property: NexusKey(0)] string Sku, [property: NexusKey(1)] int Quantity);
+
+// Polymorphism: abstract base or interface with tagged cases
+[NexusObject]
+[NexusUnion<Circle>(0)]
+[NexusUnion<Square>(1)]
+public abstract class Shape { }
+[NexusObject] public class Circle : Shape { [NexusKey(0)] public double Radius { get; set; } }
+[NexusObject] public class Square : Shape { [NexusKey(0)] public double Side { get; set; } }
+```
+
+Rules:
+- Every public instance field/property of a `[NexusObject]` type needs `[NexusKey]` or `[NexusIgnore]`.
+- Non-public members may carry `[NexusKey]` (set through generated accessors), except on generic types.
+- Construction: `[NexusConstructor]` if present; else an accessible parameterless constructor; else the single
+  accessible constructor. `init` and `required` members are supported.
+- Wire shape: array of length `maxKey + 1`; element `n` is the member with key `n`; unused keys are nil. Keep keys dense.
+
+### Evolving types
+
+- Add a member with a **new** key. Old readers skip the extra element; new readers leave it at its default when an old
+  peer omits it.
+- Never reuse or renumber a key, and never change a keyed member's type. Retire a member by removing it and leaving its
+  key unused.
+- The keys, member types, class vs struct, union tags and enum values of `[NexusObject]` types reachable from method
+  parameters, `ValueTask<T>` results and `[NexusCollection]` items are part of the nexus hash (and `HashLock`). Names of
+  types, members and enum members are not, so renaming keeps the hash. Peers compare these hashes when connecting, so a
+  structural change still requires both sides to be rebuilt; for released versions add new types and methods in a new
+  version interface (see Versioning).
+
+### Types used only at runtime / third-party types
+
+```csharp
+// A type that never appears in a nexus signature, e.g. used only with CreateChannel<T>() / GetChannel<T>()
+[assembly: NexusSerializable<List<Order>>]
+
+// A type you cannot annotate: register a formatter (public parameterless constructor required)
+[assembly: NexusFormatter<PointFormatter, ThirdParty.Point>]
+
+public sealed class PointFormatter : NexusFormatter<ThirdParty.Point>
+{
+    public override void Serialize(ref MsgPackWriter writer, ThirdParty.Point? value)
+    {
+        if (value is null) { writer.WriteNil(); return; }
+        writer.WriteArrayHeader(2);
+        writer.Write(value.X);
+        writer.Write(value.Y);
+    }
+
+    public override void Deserialize(ref MsgPackReader reader, ref ThirdParty.Point? value)
+    {
+        if (reader.TryReadNil()) { value = null; return; }
+        reader.ReadArrayHeader(2);   // requires exactly 2 elements
+        value = new ThirdParty.Point(reader.ReadInt32(), reader.ReadInt32());
+    }
+}
+```
+
+A formatter writes and reads exactly one MessagePack value. Standalone use: `NexusSerializer.Serialize<T>(value)` and
+`NexusSerializer.Deserialize<T>(bytes, options)`.
+
+### Built-in types
+
+| .NET type | Encoding |
+|---|---|
+| `bool`, integers, `char`, `float`, `double`, `Half` | MessagePack bool/int/float (smallest form) |
+| `string`, `Uri`, `Version` | str (nil for null) |
+| `byte[]`, `Memory<byte>`, `ReadOnlyMemory<byte>`, `ReadOnlySequence<byte>`, `ArraySegment<byte>` | bin |
+| Arrays, `List<T>`, `Memory<T>`, `ReadOnlyMemory<T>` of `sbyte, short, ushort, int, uint, long, ulong, float, double, char, Half` | ext 78 (bulk little-endian) |
+| Other `T[]`, `List<T>`, `IList<T>`, `IReadOnlyList<T>`, `ICollection<T>`, `IReadOnlyCollection<T>`, `IEnumerable<T>`, `HashSet<T>`, `Queue<T>`, `Stack<T>` | array |
+| `Dictionary<K,V>`, `IDictionary<K,V>`, `IReadOnlyDictionary<K,V>` | map |
+| `Nullable<T>` | nil or `T` |
+| enums | underlying integer |
+| `DateTime` (keeps `Kind`), `DateTimeOffset`, `TimeSpan`, `DateOnly`, `TimeOnly` | int, or `[utcTicks, offsetMinutes]` for `DateTimeOffset` |
+| `Guid`, `decimal`, `BigInteger` | bin |
+| `ValueTuple<...>` and `Tuple<...>` (1 to 7 elements), `KeyValuePair<K,V>` | array |
+
+Anything else needs `[NexusObject]` or `[assembly: NexusFormatter<TFormatter, T>]` (NEXNET028).
+
+### Options and limits
+
+`ConfigBase.SerializerOptions` (every client and server config) controls how data from the peer is deserialized:
+
+| Value | Behavior |
+|---|---|
+| `NexusSerializerOptions.Untrusted` (default) | Max nesting depth 64, invalid UTF-8 rejected, randomized hashing for dictionaries/sets with non-string keys, a channel item may buffer at most 16 MiB |
+| `NexusSerializerOptions.Trusted` | No depth limit, invalid UTF-8 replaced, default comparers |
+
+Customize with `with`: `config.SerializerOptions = NexusSerializerOptions.Untrusted with { MaxBufferedItemSize = 64 * 1024 * 1024 };`
+(properties: `Security`, `MaxDepth`, `StrictUtf8`, `MaxBufferedItemSize`). Length checks before allocation and exact
+message shapes are always enforced.
+
+### Diagnostics
+
+| ID | Severity | Meaning |
+|---|---|---|
+| NEXNET028 | Error | A type used by a nexus has no formatter (not `[NexusObject]`, no `NexusFormatter` registration, not built in) |
+| NEXNET029 | Error | Duplicate or negative `[NexusKey]` |
+| NEXNET030 | Error | Public member of a `[NexusObject]` type has neither `[NexusKey]` nor `[NexusIgnore]` |
+| NEXNET031 | Error | Keyed member cannot be assigned during deserialization (no setter, init accessor, matching constructor parameter or backing field; or a non-public member on a generic type) |
+| NEXNET032 | Error | No usable constructor (need an accessible parameterless one, a single accessible one, or one marked `[NexusConstructor]`) |
+| NEXNET033 | Error | Union has a duplicate tag or a case type that does not derive from it |
+| NEXNET034 | Error | Abstract or interface `[NexusObject]` type without `[NexusUnion<T>(tag)]` cases |
+| NEXNET036 | Error | `[NexusObject]` type is not accessible to generated code (make it public, or internal with InternalsVisibleTo across assemblies) |
+| NEXNET037 | Warning | More than 16 unused key positions, each written as nil |
+| NEXNET038 | Error | `CreateChannel<T>`/`GetChannel<T>`/`GetChannelReader<T>`/`GetChannelWriter<T>` with a `T` that has no formatter; add `[NexusObject]` or `[assembly: NexusSerializable<T>]` |
 
 ## Lifecycle
 
@@ -155,7 +292,6 @@ await client.DisconnectAsync();
 // Create pipes/channels
 var pipe = client.CreatePipe();                // IRentedNexusDuplexPipe
 var ch = client.CreateChannel<T>();            // INexusDuplexChannel<T>
-var uch = client.CreateUnmanagedChannel<T>();  // INexusDuplexUnmanagedChannel<T>
 ```
 
 `ConnectionState`: Unset, Connecting, Connected, Reconnecting, Disconnecting, Disconnected.
@@ -361,25 +497,27 @@ public async ValueTask Upload(INexusDuplexPipe pipe) {
 
 ## Channels (Typed Streaming)
 
-Thread-safe writing. `INexusDuplexChannel<T>` (MemoryPack) or `INexusDuplexUnmanagedChannel<T>` (unmanaged, faster).
+Thread-safe writing. `INexusDuplexChannel<T>`: each item is one MessagePack value (any serializable `T`). For bulk
+numeric data use a primitive array item type (`int[]`, `float[]`, ...), encoded as ext 78, a raw little-endian block.
+A `T` used only through `CreateChannel<T>()`/`GetChannel<T>()` needs a formatter (NEXNET038).
 
 ```csharp
 // Interface
-ValueTask StreamData(INexusDuplexUnmanagedChannel<int> channel);
+ValueTask StreamData(INexusDuplexChannel<int> channel);
 // Client
-await using var channel = client.CreateUnmanagedChannel<int>();
+await using var channel = client.CreateChannel<int>();
 await client.Proxy.StreamData(channel);
 var reader = await channel.GetReaderAsync();
 await foreach (var item in reader) { }
 // Server
-public async ValueTask StreamData(INexusDuplexUnmanagedChannel<int> channel) {
+public async ValueTask StreamData(INexusDuplexChannel<int> channel) {
     var writer = await channel.GetWriterAsync();
     await writer.WriteAsync(42);
     await writer.CompleteAsync();
 }
 // Extensions
-await channel.WriteAndComplete(enumerable, batchSize: 100);
-var list = await reader.ReadUntilComplete(initialCapacity: 1000);
+await channel.WriteAndComplete(enumerable, chunkSize: 100);
+var list = await reader.ReadUntilComplete(estimatedSize: 1000);
 ```
 
 ### Different types via pipe
@@ -390,7 +528,7 @@ await client.Proxy.StreamData(pipe);
 await pipe.ReadyTask;
 var writer = await pipe.GetChannelWriter<long>();
 var reader = await pipe.GetChannelReader<string>();
-// Also: GetUnmanagedChannelWriter/Reader<T>, GetUnmanagedChannel<T>, GetChannel<T>
+// Also: GetChannel<T>
 ```
 
 ## Synchronized Collections
@@ -431,14 +569,20 @@ var relayServer = RelayNexus.CreateServer(config, () => new RelayNexus(),
 
 ## Versioning
 
-Server-only. All methods need `[NexusMethod(id)]` with unique IDs. `HashLock` prevents accidental changes.
+Server-only. All methods need `[NexusMethod(id)]` with unique IDs. `HashLock` prevents accidental changes. The hash covers
+what goes on the wire, structurally: parameter types, the return kind (`void`/`ValueTask`/`ValueTask<T>`) and `T`, and
+each collection's kind and item type. For `[NexusObject]` types: keys, member types, class vs struct, union tags. Enums:
+underlying type and values. `Nullable<T>` is hashed; built-in/CLR/custom-formatter types by .NET identity (`List<int>` to
+`int[]` changes it). Not hashed: names of types, members and enum members, and reference nullability (`string?`). So
+renaming keeps the `HashLock`; adding, removing or renumbering a key, or changing a member type, enum value or returned
+type's structure, changes it.
 
 ```csharp
-[NexusVersion(Version = "v1.0", HashLock = -2031775281)]
+[NexusVersion(Version = "v1.0", HashLock = 1408991834)]
 public interface IServerV1 {
     [NexusMethod(1)] ValueTask<bool> GetStatus();
 }
-[NexusVersion(Version = "v2.0", HashLock = -1210855623)]
+[NexusVersion(Version = "v2.0", HashLock = 325983114)]
 public interface IServerV2 : IServerV1 {
     [NexusMethod(2)] ValueTask<string> GetInfo();
 }

@@ -14,12 +14,15 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
+    <File Path="Directory.Build.props" />
   </Folder>
   <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="C#" />
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
+  <Project Path="NexNet.Serialization.Tests\NexNet.Serialization.Tests.csproj" />
+  <Project Path="NexNet.Fuzz\NexNet.Fuzz.csproj" />
   <Project Path="NexNetBenchmarks\NexNetBenchmarks.csproj" />
   <Project Path="NexNet\NexNet.csproj" />
 </Solution>

@@ -6,6 +6,12 @@ namespace NexNetBenchmarks
     {
         public static void Main(string[] args)
         {
+            if (args.Length > 0 && args[0] == "--sizes")
+            {
+                SerializerBenchmarks.PrintWireSizes();
+                return;
+            }
+
             // If arguments are available use BenchmarkSwitcher to run benchmarks
             if (args.Length > 0)
             {

@@ -29,6 +29,10 @@ internal class NexusPipeManager
             _currentId = 0;
             _usedIds.SetAll(false);
         }
+
+        // Managers are pooled. A registration that raced with CancelAll on the previous session can leave a stale
+        // entry behind, which would collide with this session's first pipe of the same ID.
+        _activePipes.Clear();
         _isCanceled = false;
         _session = session;
         _logger = session.Logger?.CreateLogger("PipeManager");
@@ -47,6 +51,13 @@ internal class NexusPipeManager
         };
 
         _activePipes.TryAdd(partialId, pipe);
+
+        // CancelAll may have run between the check above and the add; don't leave the pipe behind.
+        if (_isCanceled)
+        {
+            _activePipes.TryRemove(partialId, out _);
+            return null;
+        }
 
         return pipe;
     }
@@ -91,6 +102,14 @@ internal class NexusPipeManager
 
         if (!_activePipes.TryAdd(id, pipe))
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
+
+        // CancelAll may have run between the check above and the add; don't leave the pipe behind.
+        if (_isCanceled)
+        {
+            _activePipes.TryRemove(id, out _);
+            pipe.Dispose();
+            throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
+        }
 
         // Signal that the pipe is ready to receive and send messages.
         pipe.UpdateState(State.Ready);
@@ -207,67 +226,49 @@ internal class NexusPipeManager
         _activePipes.Clear();
     }
 
+    // Pipe IDs are a byte pair: the client's local ID and the server's local ID.
+    // The composed ushort is defined as (clientId | serverId << 8) regardless of host endianness.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ushort ComposeId(byte clientId, byte serverId) => (ushort)(clientId | (serverId << 8));
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ushort GetCompleteId(byte otherId, out byte thisId)
     {
-        Span<byte> idBytes = stackalloc byte[sizeof(ushort)];
-        if (_session.IsServer)
-        {
-            idBytes[0] = otherId; // Client
-            thisId = idBytes[1] = GetNewLocalId(); // Server
-        }
-        else
-        {
-            thisId = idBytes[0] = GetNewLocalId(); // Client
-            idBytes[1] = otherId; // Server
-        }
-
-        return BitConverter.ToUInt16(idBytes);
+        thisId = GetNewLocalId();
+        return _session.IsServer
+            ? ComposeId(otherId, thisId)
+            : ComposeId(thisId, otherId);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ushort GetPartialIdFromLocalId(byte localId)
     {
-        Span<byte> idBytes = stackalloc byte[sizeof(ushort)];
-        if (_session.IsServer)
-        {
-            idBytes[0] = 0; // Client
-            idBytes[1] = localId; // Server
-        }
-        else
-        {
-            idBytes[0] = localId; // Client
-            idBytes[1] = 0; // Server
-        }
-
-        return BitConverter.ToUInt16(idBytes);
+        return _session.IsServer
+            ? ComposeId(0, localId)
+            : ComposeId(localId, 0);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (byte ClientId, byte ServerId) ExtractClientAndServerId(ushort id)
+    internal static (byte ClientId, byte ServerId) ExtractClientAndServerId(ushort id)
     {
-        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
-        Unsafe.As<byte, ushort>(ref bytes[0]) = id;
-        return (bytes[0], bytes[1]);
+        return ((byte)id, (byte)(id >> 8));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte ExtractLocalId(ushort id, bool isServer)
     {
-        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
-        Unsafe.As<byte, ushort>(ref bytes[0]) = id;
-        return isServer ? bytes[1] : bytes[0];
+        var (clientId, serverId) = ExtractClientAndServerId(id);
+        return isServer ? serverId : clientId;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsIdLocalIdOnly(ushort id, bool isServer, out byte localId)
     {
-        Span<byte> bytes = stackalloc byte[sizeof(ushort)];
-        Unsafe.As<byte, ushort>(ref bytes[0]) = id;
-        localId = isServer ? bytes[1] : bytes[0];
+        var (clientId, serverId) = ExtractClientAndServerId(id);
+        localId = isServer ? serverId : clientId;
 
         // If the other ID is 0, then this is a local ID only.
-        return (!isServer ? bytes[1] : bytes[0]) == 0;
+        return (!isServer ? serverId : clientId) == 0;
     }
 
 

@@ -74,4 +74,4 @@ Additional transports can be added with relative ease as long as the new transpo
 
 - [ASP.NET Integration](asp-net-integration.md) — WebSocket and HttpSocket setup with middleware
 - [Rate Limiting](rate-limiting.md) — Rate limiting works across all transport types
-- [Protocol Specification](../internals/protocol-specification.md) — Wire protocol details
+- [Wire Protocol](../internals/protocol-specification.md) — Wire protocol details

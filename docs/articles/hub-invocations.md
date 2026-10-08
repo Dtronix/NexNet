@@ -25,7 +25,7 @@ public interface IServerNexus
 
 Some argument types have restrictions on how they can be combined. The source generator enforces these rules with compile-time diagnostics.
 
-|                    | CancellationToken | INexusDuplexPipe | INexusChannel&lt;T&gt; | Args |
+|                    | CancellationToken | INexusDuplexPipe | INexusDuplexChannel&lt;T&gt; | Args |
 |--------------------|:-----------------:|:----------------:|:----------------------:|:----:|
 | `void`             |                   |                  |                        | X    |
 | `ValueTask`        | X                 |                  |                        | X    |
@@ -33,9 +33,10 @@ Some argument types have restrictions on how they can be combined. The source ge
 | `ValueTask<T>`     | X                 |                  |                        | X    |
 
 **Rules:**
-- `CancellationToken` cannot be combined with `INexusDuplexPipe` or `INexusChannel<T>` because pipes and channels have built-in cancellation/completion notifications.
+- `CancellationToken` cannot be combined with `INexusDuplexPipe` or `INexusDuplexChannel<T>` because pipes and channels have built-in cancellation/completion notifications.
 - `CancellationToken` must be the last parameter, following standard .NET conventions.
-- The total serialized argument size cannot exceed 65,535 bytes. For larger data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
+- The total serialized argument size cannot exceed 65,526 bytes. For larger data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
+- Argument and return types must be serializable: built-in types, `[NexusObject]` types, or types with a registered formatter. See [Serialization](serialization.md).
 
 ## Cancellation
 
@@ -74,3 +75,4 @@ partial class ServerNexus
 - [Sessions & Lifetimes](sessions-and-lifetimes.md) — Session groups and broadcasting targets
 - [Duplex Pipes](duplex-pipes.md) — Streaming large data that exceeds the argument size limit
 - [Channels](channels.md) — Type-safe data streaming
+- [Serialization](serialization.md) — Making argument and return types serializable

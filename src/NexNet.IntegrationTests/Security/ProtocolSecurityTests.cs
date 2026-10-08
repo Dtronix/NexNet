@@ -1,6 +1,5 @@
 using System.Buffers;
 using System.Text;
-using MemoryPack;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
@@ -158,6 +157,68 @@ internal class ProtocolSecurityTests : BaseTests
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
     
+    [Test]
+    public async Task UnsupportedProtocolVersion_ShouldDisconnectWithProtocolError()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await client.ConnectAsync();
+
+        // Valid magic and reserved bytes, but protocol version 2.
+        await client.AssertWrite(RawTcpClient.ProtocolHeader,
+            [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, (byte)2]);
+        await client.ReadProtocolHeaderAsync();
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+    }
+
+    [TestCase(4)]
+    [TestCase(5)]
+    [TestCase(6)]
+    public async Task NonZeroReservedByte_ShouldDisconnectWithProtocolError(int reservedIndex)
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await client.ConnectAsync();
+
+        object[] header = [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, RawTcpClient.ProtocolVersion];
+        header[reservedIndex] = (byte)1;
+        await client.AssertWrite(RawTcpClient.ProtocolHeader, header);
+        await client.ReadProtocolHeaderAsync();
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+    }
+
+    /// <summary>
+    /// A peer from an older release passes the preamble (the version byte is unchanged) but sends a greeting body
+    /// in a different encoding. The server must disconnect with ProtocolError instead of throwing.
+    /// </summary>
+    [Test]
+    public async Task MalformedClientGreetingBody_ShouldDisconnectWithProtocolError()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await client.ConnectAsync();
+
+        await client.SendProtocolHeaderAsync();
+        await client.ReadProtocolHeaderAsync();
+
+        // A pre-0.17 style body: member count followed by raw little-endian fields. Not a greeting array.
+        await client.SendMessageWithBodyAsync(MessageType.ClientGreeting,
+            [0x04, 0xFF, 0xFF, 0xFF, 0xFF, 0x2A, 0x00, 0x00, 0x00, 0x15, 0x00, 0x00, 0x00]);
+
+        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+    }
+
     [Test]
     [Repeat(10)]
     public async Task MalformedMessageHeader_PreClientGreeting_ShouldDisconnectWithProtocolError()

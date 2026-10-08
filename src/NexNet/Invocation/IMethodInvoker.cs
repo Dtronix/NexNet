@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using NexNet.Messages;
 using NexNet.Pipes;
+using NexNet.Serialization;
 
 namespace NexNet.Invocation;
 
@@ -36,4 +37,9 @@ public interface IMethodInvoker
     /// Returns a the pipe associated with the specified invocation.
     /// </summary>
     ValueTask ReturnDuplexPipe(INexusDuplexPipe pipe);
+
+    /// <summary>
+    /// Options used to deserialize invocation arguments received from the remote peer.
+    /// </summary>
+    NexusSerializerOptions SerializerOptions { get; }
 }
