@@ -8,7 +8,7 @@ using SharpFuzz;
 //   NexNet.Fuzz --smoke [corpusDir]           run every harness over the corpus without a fuzzer
 //   NexNet.Fuzz --repro <harness> <hex> [n]   run one input n times (reproduce a failure)
 //   NexNet.Fuzz --export-corpus <dir>         write every seed input as a file, for a libFuzzer corpus
-// Harnesses: reader, messages, channel, formatters, builtins, session.
+// Harnesses: reader, messages, channel, formatters, builtins, session, flow.
 
 var harnessName = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("NEXNET_FUZZ_HARNESS");
 if (harnessName == null)
@@ -47,6 +47,8 @@ if (harnessName == "--export-corpus" && args.Length > 1)
     var seeds = SmokeRunner.LoadCorpus(Path.Combine(AppContext.BaseDirectory, "Corpus"))
         .Concat(SmokeRunner.GeneratedSeeds())
         .Concat(SessionHarness.Seeds())
+        .Concat(FlowHarness.Seeds())
+        .Concat(FlowHarness.Reproductions().Select(r => r.Input))
         .ToList();
     Directory.CreateDirectory(args[1]);
     for (var i = 0; i < seeds.Count; i++)

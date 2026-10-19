@@ -1,13 +1,10 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.IO.Pipelines;
-using System.Threading.Channels;
 using NexNet.Invocation;
-using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNet.Serialization;
-using NexNet.Transports;
 
 namespace NexNet.Fuzz;
 
@@ -29,7 +26,10 @@ public static class SessionHarness
 {
     public static TimeSpan SessionTimeout = TimeSpan.FromSeconds(double.TryParse(Environment.GetEnvironmentVariable("NEXNET_FUZZ_SESSION_TIMEOUT"), out var s) ? s : 5);
 
-    private static readonly Lazy<Server> Instance = new(() => Server.Start());
+    private static readonly Lazy<FuzzServerHost> Instance = new(() => FuzzServerHost.Start(
+        static config => FuzzServerNexus.CreateServer(config, static () => new FuzzServerNexus()).StartAsync(),
+        IInvocationMethodHash.GetMethodHash<FuzzServerNexus>(),
+        IInvocationMethodHash.GetMethodHash<FuzzClientNexus>()));
 
     public static void Run(byte[] data)
     {
@@ -42,7 +42,7 @@ public static class SessionHarness
 
         var input = transport.ClientToServer.Writer;
         if ((flags & 1) == 0)
-            Write(input, Server.Preamble);
+            Write(input, FuzzServerHost.Preamble);
         if ((flags & 1) == 0 && (flags & 2) == 0)
             Write(input, server.Greeting);
         Write(input, payload);
@@ -123,8 +123,8 @@ public static class SessionHarness
         // Own preamble (flag bit 0): truncated, wrong magic, wrong version, valid without a greeting.
         yield return [1, 0x4E, 0x6E, 0x50];
         yield return [1, 0x4E, 0x6E, 0x50, 0x15, 0, 0, 0, 1];
-        yield return [1, .. Server.Preamble.AsSpan(0, 7), 9];
-        yield return [1, .. Server.Preamble];
+        yield return [1, .. FuzzServerHost.Preamble.AsSpan(0, 7), 9];
+        yield return [1, .. FuzzServerHost.Preamble];
 
         // Own greeting (flag bit 1): the greeting itself is fuzzed.
         yield return [2, .. Instance.Value.Greeting];
@@ -164,7 +164,7 @@ public static class SessionHarness
 
     private static byte[] Frame<T>(MessageType type, T message)
         where T : IMessageBase
-        => Server.FrameMessage(type, message);
+        => FuzzServerHost.FrameMessage(type, message);
 
     private static void Write(PipeWriter writer, ReadOnlySpan<byte> bytes)
     {
@@ -172,167 +172,6 @@ public static class SessionHarness
             return;
         writer.Write(bytes);
         writer.FlushAsync().AsTask().GetAwaiter().GetResult();
-    }
-
-    private sealed class Server
-    {
-        public static readonly byte[] Preamble = [0x4E, 0x6E, 0x50, 0x14, 0, 0, 0, 1];
-
-        private readonly FuzzListener _listener = new();
-        public FuzzLogger Logger { get; } = new();
-        public byte[] Greeting { get; private set; } = [];
-
-        public static Server Start()
-        {
-            var server = new Server();
-            // No linger after sending a disconnect message: it only adds wall time per input.
-            // Short idle timeout: when a connection's invocation slots are full (MaxConcurrentConnectionInvocations),
-            // the receive loop stops reading by design, so it can't see the stream end and only the idle timeout
-            // closes it. 2 s (checked every Timeout / 4) keeps that inside SessionTimeout; a session still open
-            // after it is a real hang.
-            var config = new FuzzServerConfig(server._listener) { Logger = server.Logger, DisconnectDelay = 0, Timeout = 2000 };
-            var nexusServer = FuzzServerNexus.CreateServer(config, static () => new FuzzServerNexus());
-            nexusServer.StartAsync().GetAwaiter().GetResult();
-
-            var greeting = new ClientGreetingMessage
-            {
-                Version = null,
-                ServerNexusHash = IInvocationMethodHash.GetMethodHash<FuzzServerNexus>(),
-                ClientNexusHash = IInvocationMethodHash.GetMethodHash<FuzzClientNexus>(),
-            };
-            server.Greeting = FrameMessage(MessageType.ClientGreeting, greeting);
-            return server;
-        }
-
-        public void Accept(FuzzTransport transport) => _listener.Pending.Writer.TryWrite(transport);
-
-        internal static byte[] FrameMessage<T>(MessageType type, T message)
-            where T : IMessageBase
-        {
-            var body = new ArrayBufferWriter<byte>();
-            var writer = new MsgPackWriter(body);
-            message.Serialize(ref writer);
-            writer.Flush();
-
-            var frame = new byte[3 + body.WrittenCount];
-            frame[0] = (byte)type;
-            BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(1), (ushort)body.WrittenCount);
-            body.WrittenSpan.CopyTo(frame.AsSpan(3));
-            return frame;
-        }
-    }
-
-    private sealed class FuzzServerConfig : ServerConfig
-    {
-        private readonly FuzzListener _listener;
-
-        public FuzzServerConfig(FuzzListener listener)
-            : base(ServerConnectionMode.Listener)
-        {
-            _listener = listener;
-        }
-
-        protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
-            => new(_listener);
-    }
-
-    private sealed class FuzzListener : ITransportListener
-    {
-        public readonly Channel<ITransport> Pending = Channel.CreateUnbounded<ITransport>();
-
-        public ValueTask CloseAsync(bool linger)
-        {
-            Pending.Writer.TryComplete();
-            return default;
-        }
-
-        public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                return await Pending.Reader.ReadAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (ChannelClosedException)
-            {
-                return null;
-            }
-        }
-    }
-
-    private sealed class FuzzTransport : ITransport
-    {
-        // No back pressure: the harness never reads what the server sends, so writes must not block.
-        private static readonly PipeOptions Options = new(pauseWriterThreshold: 0, resumeWriterThreshold: 0, useSynchronizationContext: false);
-
-        public readonly Pipe ClientToServer = new(Options);
-        private readonly Pipe _serverToClient = new(Options);
-        private readonly ManualResetEventSlim _closed = new();
-
-        public ManualResetEventSlim Closed => _closed;
-        public PipeReader Input => ClientToServer.Reader;
-        public PipeWriter Output => _serverToClient.Writer;
-        public string? RemoteAddress => "fuzz";
-        public int? RemotePort => null;
-
-        public ValueTask CloseAsync(bool linger)
-        {
-            _serverToClient.Writer.Complete();
-            _serverToClient.Reader.Complete();
-            _closed.Set();
-            return default;
-        }
-    }
-
-    /// <summary>
-    /// Records exceptions the server logs at Error or above. Hostile input must only produce protocol and
-    /// serialization errors, so anything else is reported as a failure.
-    /// </summary>
-    public sealed class FuzzLogger : INexusLogger
-    {
-        private Exception? _unexpected;
-
-        public NexusLogBehaviors Behaviors { get; set; }
-        public string FormattedPath => "fuzz";
-        public string? PathSegment { get; set; }
-
-        // NEXNET_FUZZ_VERBOSE=1 prints every server log line with a timestamp (for investigating a reproducer).
-        private static readonly bool Verbose = Environment.GetEnvironmentVariable("NEXNET_FUZZ_VERBOSE") == "1";
-        private static readonly System.Diagnostics.Stopwatch Clock = System.Diagnostics.Stopwatch.StartNew();
-
-        public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
-        {
-            if (Verbose)
-                Console.WriteLine($"[{Clock.Elapsed.TotalSeconds,8:F3}] {logLevel,-11} {category}: {message}{(exception == null ? "" : " | " + exception.GetType().Name + ": " + exception.Message)}");
-
-            if (logLevel < NexusLogLevel.Error || exception is null || IsExpected(exception))
-                return;
-
-            Interlocked.CompareExchange(ref _unexpected, new InvalidOperationException($"Server logged an unexpected {exception.GetType().Name}: {message}", exception), null);
-        }
-
-        public INexusLogger CreateLogger(string? pathSegment = null) => this;
-
-        public void ThrowIfUnexpected()
-        {
-            var unexpected = Interlocked.Exchange(ref _unexpected, null);
-            if (unexpected != null)
-                throw unexpected;
-        }
-
-        private static bool IsExpected(Exception exception)
-        {
-            // The method invoker wraps failures from the invoked method.
-            if (exception.InnerException is { } inner && exception.Message == "Exception occurred while running the method.")
-                return IsExpected(inner);
-
-            return exception
-                is NexusSerializationException
-                or OperationCanceledException
-                or ObjectDisposedException
-                // A method that takes a pipe or channel, invoked just before the connection drops: the session is
-                // already closing, so the pipe can't be registered. Expected for an abrupt disconnect.
-                || exception is InvalidOperationException { Message: "Can't register duplex pipe due to cancellation." };
-        }
     }
 }
 

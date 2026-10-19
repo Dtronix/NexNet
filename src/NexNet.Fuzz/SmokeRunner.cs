@@ -8,7 +8,47 @@ public static class SmokeRunner
 {
     public static int Run(string corpusDirectory, TextWriter? log = null)
     {
-        var inputs = LoadCorpus(corpusDirectory).Concat(GeneratedSeeds()).Concat(SessionHarness.Seeds()).ToList();
+        var mutated = Mutate(LoadCorpus(corpusDirectory).Concat(GeneratedSeeds()).Concat(SessionHarness.Seeds()));
+
+        // The flow harness reads its input as a program of operations and spends real time per probe, so it runs
+        // over its own seeds only. Unmutated for now: random sizes and pipe counts reach the defects that
+        // FlowHarness.Reproductions() track (oversized results, held invocation slots, BufferData stalls). Mutations
+        // are enabled once flow control v2 steps 1, 3 and 4 have landed.
+        var flowInputs = FlowHarness.Seeds().ToList();
+
+        foreach (var (name, harness) in Harnesses.All)
+        {
+            var inputs = name == "flow" ? flowInputs : mutated;
+            foreach (var input in inputs)
+            {
+                var started = System.Diagnostics.Stopwatch.GetTimestamp();
+                try
+                {
+                    harness(input);
+                }
+                catch (Exception e)
+                {
+                    // Print a reproducer: the harness name and the input as hex (a corpus line).
+                    log?.WriteLine($"  {name}: FAILED on input {Convert.ToHexString(input)}");
+                    throw new InvalidOperationException($"Harness '{name}' failed on input {Convert.ToHexString(input)}", e);
+                }
+
+                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+                if (elapsed > TimeSpan.FromSeconds(1))
+                    log?.WriteLine($"  {name}: slow input ({elapsed.TotalMilliseconds:F0} ms) {Convert.ToHexString(input)}");
+            }
+
+            log?.WriteLine($"  {name}: {inputs.Count} inputs OK");
+        }
+
+        return mutated.Count;
+    }
+
+    /// <summary>
+    /// Each input plus deterministic mutations of it.
+    /// </summary>
+    private static List<byte[]> Mutate(IEnumerable<byte[]> inputs)
+    {
         var mutated = new List<byte[]>();
         var random = new Random(1234);
         foreach (var input in inputs)
@@ -32,31 +72,7 @@ public static class SmokeRunner
             mutated.Add(extended);
         }
 
-        foreach (var (name, harness) in Harnesses.All)
-        {
-            foreach (var input in mutated)
-            {
-                var started = System.Diagnostics.Stopwatch.GetTimestamp();
-                try
-                {
-                    harness(input);
-                }
-                catch (Exception e)
-                {
-                    // Print a reproducer: the harness name and the input as hex (a corpus line).
-                    log?.WriteLine($"  {name}: FAILED on input {Convert.ToHexString(input)}");
-                    throw new InvalidOperationException($"Harness '{name}' failed on input {Convert.ToHexString(input)}", e);
-                }
-
-                var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(started);
-                if (elapsed > TimeSpan.FromSeconds(1))
-                    log?.WriteLine($"  {name}: slow input ({elapsed.TotalMilliseconds:F0} ms) {Convert.ToHexString(input)}");
-            }
-
-            log?.WriteLine($"  {name}: {mutated.Count} inputs OK");
-        }
-
-        return mutated.Count;
+        return mutated;
     }
 
     /// <summary>

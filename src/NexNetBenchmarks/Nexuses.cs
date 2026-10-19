@@ -24,6 +24,8 @@ interface IServerNexus
     ValueTask ChannelPersons(INexusDuplexChannel<BenchPerson> channel);
     ValueTask ChannelIntArrays(INexusDuplexChannel<int[]> channel);
     ValueTask ChannelInts(INexusDuplexChannel<int> channel);
+
+    ValueTask PipeDrain(INexusDuplexPipe pipe);
 }
 
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -92,6 +94,31 @@ partial class ServerNexus
         await foreach (var _ in await channel.GetReaderAsync())
             count++;
         ChannelDone.TrySetResult(count);
+    }
+
+    /// <summary>
+    /// Completed by the server with the byte count once a <see cref="PipeDrain"/> pipe has been fully read.
+    /// </summary>
+    public static TaskCompletionSource<long> PipeDone = new();
+
+    public static Task<long> ResetPipeDone()
+    {
+        PipeDone = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
+        return PipeDone.Task;
+    }
+
+    public async ValueTask PipeDrain(INexusDuplexPipe pipe)
+    {
+        long total = 0;
+        while (true)
+        {
+            var result = await pipe.Input.ReadAsync();
+            total += result.Buffer.Length;
+            pipe.Input.AdvanceTo(result.Buffer.End);
+            if (result.IsCompleted || result.IsCanceled)
+                break;
+        }
+        PipeDone.TrySetResult(total);
     }
 
     public async ValueTask InvocationWithDuplexPipe_Upload(INexusDuplexPipe duplexPipe)

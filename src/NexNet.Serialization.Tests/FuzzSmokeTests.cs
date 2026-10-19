@@ -19,6 +19,29 @@ public class FuzzSmokeTests
         Assert.That(count, Is.GreaterThan(100));
     }
 
+    /// <summary>
+    /// Last step of the flow control v2 work sequence (docs/internals/flow-control-v2.md, section 8) that has landed.
+    /// Reproductions fixed by a later step are ignored; each step raises this.
+    /// </summary>
+    private const int CompletedFlowControlStep = 0;
+
+    private static IEnumerable<TestCaseData> FlowReproductions()
+    {
+        foreach (var (name, input, fixedInStep) in FlowHarness.Reproductions())
+        {
+            var data = new TestCaseData(input).SetName($"FlowReproduction({name})");
+            yield return fixedInStep > CompletedFlowControlStep
+                ? data.Ignore($"Fails until flow control v2 step {fixedInStep}.")
+                : data;
+        }
+    }
+
+    [TestCaseSource(nameof(FlowReproductions))]
+    public void FlowReproduction(byte[] input)
+    {
+        FlowHarness.Run(input);
+    }
+
     [Test]
     public void GeneratedSeedsRoundTripThroughHarnesses()
     {

@@ -22,6 +22,7 @@ public static class Harnesses
         ["formatters"] = GeneratedFormatters,
         ["builtins"] = BuiltInFormatters,
         ["session"] = SessionHarness.Run,
+        ["flow"] = FlowHarness.Run,
     };
 
     /// <summary>
