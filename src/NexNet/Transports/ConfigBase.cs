@@ -21,7 +21,13 @@ public abstract class ConfigBase
     private int _nexusPipeHighWaterMark = 1024 * 192;
     private int _nexusPipeLowWaterMark = 1024 * 16;
     private int _nexusPipeHighWaterCutoff = 1024 * 256;
-    private int _nexusPipeFlushChunkSize = 1024 * 8;
+    private PipeOptions _receiveSessionPipeOptions = CreateReceivePipeOptions();
+
+    /// <summary>
+    /// Smallest pause threshold for a transport's receive pipe: two maximum frames. A frame is only consumed once it
+    /// is complete, so a pipe that pauses below one frame can never resume.
+    /// </summary>
+    internal const long MinReceivePauseThreshold = 2 * (ushort.MaxValue + 5);
 
     /// <summary>
     /// Logger for the server/client.
@@ -125,24 +131,31 @@ public abstract class ConfigBase
         minimumSegmentSize: ushort.MaxValue);*/
 
     /// <summary>
-    /// Options to configure the receiving pipe with.
+    /// Options to configure the receiving pipe with. Defaults to pausing at 256KB and resuming at 128KB.
+    /// The pause threshold must be 0 (never pause) or at least two maximum frames (131,080 bytes).
     /// </summary>
-    public PipeOptions ReceiveSessionPipeOptions { get; set; } = PipeOptions.Default;
-
-    /// <summary>
-    /// The NexusPipe class will flush this maximum amount of data at once.
-    /// If the data surpasses this limit, it will be divided into chunks of this size and sent until
-    /// the entire data is transmitted. Must be between 1KB and 1MB.
-    /// </summary>
-    public virtual int NexusPipeFlushChunkSize
+    public PipeOptions ReceiveSessionPipeOptions
     {
-        get => _nexusPipeFlushChunkSize;
+        get => _receiveSessionPipeOptions;
         set
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1024, nameof(NexusPipeFlushChunkSize));
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1024 * 1024, nameof(NexusPipeFlushChunkSize));
-            _nexusPipeFlushChunkSize = value;
+            ArgumentNullException.ThrowIfNull(value);
+            ValidateReceivePipeOptions(value, nameof(ReceiveSessionPipeOptions));
+            _receiveSessionPipeOptions = value;
         }
+    }
+
+    /// <summary>
+    /// Default options for a transport's receive pipe.
+    /// </summary>
+    internal static PipeOptions CreateReceivePipeOptions(bool useSynchronizationContext = true)
+        => new(pauseWriterThreshold: 256 * 1024, resumeWriterThreshold: 128 * 1024, useSynchronizationContext: useSynchronizationContext);
+
+    internal static void ValidateReceivePipeOptions(PipeOptions options, string paramName)
+    {
+        if (options.PauseWriterThreshold != 0 && options.PauseWriterThreshold < MinReceivePauseThreshold)
+            throw new ArgumentOutOfRangeException(paramName, options.PauseWriterThreshold,
+                $"The pause threshold must be 0 or at least {MinReceivePauseThreshold} bytes.");
     }
 
     /// <summary>

@@ -76,9 +76,13 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
     public void UpdateInvocationResult(InvocationResultMessage message)
     {
-        // If we can not remove the state any longer, then it has already been handled.
+        // If we can not remove the state any longer, then it has already been handled (or the result is unsolicited).
+        // Nothing else holds the message, so return it and its pooled result here.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
+        {
+            message.Dispose();
             return;
+        }
 
         // Remove the invocation from the current invocations list.
         lock (_currentInvocationsLock)
@@ -123,15 +127,17 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         using var message = _poolManager.Rent<InvocationMessage>();
         message.ArgumentsOwner = argumentsOwner;
 
-        message.InvocationId = GetNextId(true);
         message.MethodId = methodId;
         message.Flags = InvocationFlags.None;
 
         // Try to set the arguments. If we can not, then the arguments are too large.
         if (!message.TrySetArguments(serializedArguments))
         {
-            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
+            throw new NexusMessageTooLargeException(serializedArguments.Length, IInvocationMessage.MaxArgumentSize);
         }
+
+        // Taken after the size check so a rejected call does not hold an ID.
+        message.InvocationId = GetNextId(true);
 
         var state = _poolManager.RegisteredInvocationStatePool.Rent();
 
@@ -146,7 +152,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
                 state.TrySetCanceled(true);
             }
 
-            cancellationToken.Value.Register(Callback, state);
+            state.CancellationRegistration = cancellationToken.Value.Register(Callback, state);
         }
 
         // Add the state information to the active states.

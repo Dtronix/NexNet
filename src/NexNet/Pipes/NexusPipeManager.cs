@@ -163,9 +163,10 @@ internal class NexusPipeManager
             return pipe.WriteFromUpstream(data);
         }
 
-        _logger?.LogWarning($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
-        throw new InvalidOperationException($"No pipe exists for id: {id}.");
-        //return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+        // The pipe may have closed locally while the peer was still sending; the data has nowhere to go.
+        // Debug level: a peer can send any number of these.
+        _logger?.LogDebug($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id. Discarded.");
+        return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
     }
 
     public DisconnectReason UpdateState(ushort id, State state)

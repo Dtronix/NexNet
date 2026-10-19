@@ -24,9 +24,21 @@ public class WebSocketPipeOptions
     /// </remarks>
     public bool CloseWhenCompleted { get; set; }
 
+    private PipeOptions _inputPipeOptions = ConfigBase.CreateReceivePipeOptions(useSynchronizationContext: false);
+
     /// <summary>
-    /// Allows fine-grained configuration options for the incoming side of the 
-    /// websocket pipe. Defaults to <see cref="PipeOptions.Default"/>.
+    /// Allows fine-grained configuration options for the incoming side of the
+    /// websocket pipe. Defaults to pausing at 256KB and resuming at 128KB. The pause threshold must be 0 (never
+    /// pause) or at least two maximum frames (131,080 bytes).
     /// </summary>
-    public PipeOptions InputPipeOptions { get; set; } = new PipeOptions(useSynchronizationContext: false);
+    public PipeOptions InputPipeOptions
+    {
+        get => _inputPipeOptions;
+        set
+        {
+            System.ArgumentNullException.ThrowIfNull(value);
+            ConfigBase.ValidateReceivePipeOptions(value, nameof(InputPipeOptions));
+            _inputPipeOptions = value;
+        }
+    }
 }

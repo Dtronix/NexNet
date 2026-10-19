@@ -21,6 +21,11 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private bool _isCompleted;
     private CancellationTokenSource? _flushCts;
     private readonly Memory<byte> _pipeId = new byte[sizeof(ushort)];
+    /// <summary>
+    /// Largest pipe write sent in one frame: the maximum frame body. The pipe ID travels in the frame header.
+    /// </summary>
+    internal const int MaxChunkSize = ushort.MaxValue;
+
     private readonly int _chunkSize;
     private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
     private readonly SemaphoreSlim _flushSemaphore = new SemaphoreSlim(1, 1);
@@ -57,7 +62,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
         _messenger = sessionMessenger ?? throw new ArgumentNullException(nameof(sessionMessenger));
         _logger = logger;
-        _chunkSize = chunkSize; // _session.Config.NexusPipeFlushChunkSize;
+        ArgumentOutOfRangeException.ThrowIfLessThan(chunkSize, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(chunkSize, MaxChunkSize);
+        _chunkSize = chunkSize;
 
         _completedFlag = isServer
             ? NexusDuplexPipe.State.ClientReaderServerWriterComplete

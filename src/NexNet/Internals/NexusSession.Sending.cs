@@ -50,26 +50,30 @@ internal partial class NexusSession<TNexus, TProxy>
         if (output == null || State != ConnectionState.Connected)
             return;
 
-        var header = _bufferWriter.GetMemory(3);
-        _bufferWriter.Advance(3);
-        var bodyWriter = new MsgPackWriter(_bufferWriter);
-        body.Serialize(ref bodyWriter);
-        bodyWriter.Flush();
-
-        var contentLength = checked((ushort)(_bufferWriter.Length - 3));
-
-        header.Span[0] = (byte)TMessage.Type;
-
-        BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
-
-        var length = (int)_bufferWriter.Length;
-        var buffer = _bufferWriter.GetBuffer();
-
-        // Only used for debugging
-        _config.InternalOnSend?.Invoke(this, buffer.ToArray());
-
+        int length;
         try
         {
+            var header = _bufferWriter.GetMemory(3);
+            _bufferWriter.Advance(3);
+            var bodyWriter = new MsgPackWriter(_bufferWriter);
+            body.Serialize(ref bodyWriter);
+            bodyWriter.Flush();
+
+            // Checked before anything reaches the output, so an oversized message fails alone.
+            var bodyLength = _bufferWriter.Length - 3;
+            if (bodyLength > ushort.MaxValue)
+                throw new NexusMessageTooLargeException(bodyLength, ushort.MaxValue);
+
+            header.Span[0] = (byte)TMessage.Type;
+
+            BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), (ushort)bodyLength);
+
+            length = (int)_bufferWriter.Length;
+            var buffer = _bufferWriter.GetBuffer();
+
+            // Only used for debugging
+            _config.InternalOnSend?.Invoke(this, buffer.ToArray());
+
             buffer.CopyTo(output.GetSpan(length));
             output.Advance(length);
         }
@@ -171,8 +175,11 @@ internal partial class NexusSession<TNexus, TProxy>
         if (output == null || State != ConnectionState.Connected)
             return;
 
+        if (body.Length > ushort.MaxValue)
+            throw new NexusMessageTooLargeException(body.Length, ushort.MaxValue);
+
         var length = (int)body.Length;
-        var contentLength = checked((ushort)(length));
+        var contentLength = (ushort)length;
 
         var headerLength = 3 + (messageHeader?.Length ?? 0);
 

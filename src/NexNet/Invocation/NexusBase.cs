@@ -160,12 +160,12 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         var message = context.PoolManager.Rent<InvocationResultMessage>();
         message.InvocationId = requestArgs.Message.InvocationId;
 
+        var bufferWriterCache = requestArgs.SessionContext.PoolManager.BufferWriterPool;
+        if (!bufferWriterCache.TryTake(out var bufferWriter))
+            bufferWriter = BufferWriter<byte>.Create();
+
         try
         {
-            var bufferWriterCache = requestArgs.SessionContext.PoolManager.BufferWriterPool;
-            if (!bufferWriterCache.TryTake(out var bufferWriter))
-                bufferWriter = BufferWriter<byte>.Create();
-
             await requestArgs.InvokeMethodCore(requestArgs.Message, bufferWriter).ConfigureAwait(false);
             Sequence<byte>? bufferResult = null;
             // If the length is zero, there is no return value.
@@ -180,10 +180,15 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             }
 
             message.State = InvocationResultMessage.StateType.CompletedResult;
-            await context.Session.SendMessage(message).ConfigureAwait(false);
-
-            if (bufferResult != null)
-                bufferWriter.Deallocate(bufferResult.Value);
+            try
+            {
+                await context.Session.SendMessage(message).ConfigureAwait(false);
+            }
+            finally
+            {
+                if (bufferResult != null)
+                    bufferWriter.Deallocate(bufferResult.Value);
+            }
 
             bufferWriterCache.Add(bufferWriter);
         }
@@ -191,6 +196,15 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         {
             context.Session.Logger?.LogTrace("Invocation canceled.");
             // noop
+        }
+        catch (NexusMessageTooLargeException e)
+        {
+            // The result can't be sent; fail the call. Not a fault in the method, so not logged as an error.
+            context.Session.Logger?.LogWarning($"Result of method {requestArgs.Message.MethodId} not sent: {e.Message}");
+            bufferWriterCache.Add(bufferWriter);
+            message.Result = null;
+            message.State = InvocationResultMessage.StateType.Exception;
+            await context.Session.SendMessage(message).ConfigureAwait(false);
         }
         catch (Exception e)
         {

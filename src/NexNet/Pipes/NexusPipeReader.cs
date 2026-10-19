@@ -120,8 +120,9 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
                 loopCount++;
 
-                // Check to see if the back pressure flag was removed.  If so, then we can exit the waiting loop.
-                if (_buffer.Length + length < _lowWaterMark)
+                // Resume once the reader has drained the buffer below the low watermark. The incoming chunk is not
+                // counted: a chunk larger than the low watermark would otherwise wait forever.
+                if (_buffer.Length < _lowWaterMark)
                     break;
             }
 
@@ -156,6 +157,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
             _buffer.Advance(length);
         }
 
+        // Wake the reader for every buffered chunk. Without this, a chunk reaching the high watermark left the reader
+        // asleep while the next chunk waited for it to drain below the low watermark.
+        Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
+
         // If we have reached the high watermark, then notify the other side of the pipe.
         if (_highWaterMark != 0 && bufferLength >= _highWaterMark)
         {
@@ -166,9 +171,6 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
             return NexusPipeBufferResult.HighWatermarkReached;
         }
-
-        //Interlocked.Increment(ref _stateId);
-        Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
 
         return NexusPipeBufferResult.Success;
     }

@@ -120,26 +120,26 @@ internal class SecurityTests
     }
 
     [Test]
-    public void ConfigBase_NexusPipeFlushChunkSize_ValidValues_Succeeds()
+    public void ConfigBase_ReceiveSessionPipeOptions_DefaultHoldsTwoFrames()
     {
         var config = CreateTestConfig();
 
-        // Minimum value (1KB)
-        config.NexusPipeFlushChunkSize = 1024;
-        Assert.That(config.NexusPipeFlushChunkSize, Is.EqualTo(1024));
-
-        // Maximum value (1MB)
-        config.NexusPipeFlushChunkSize = 1024 * 1024;
-        Assert.That(config.NexusPipeFlushChunkSize, Is.EqualTo(1024 * 1024));
+        // A transport receive pipe that pauses below one maximum frame can never resume: frames are consumed whole.
+        Assert.That(config.ReceiveSessionPipeOptions.PauseWriterThreshold, Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
+        Assert.That(new NexNet.Transports.WebSocket.WebSocketPipeOptions().InputPipeOptions.PauseWriterThreshold,
+            Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
     }
 
     [Test]
-    public void ConfigBase_NexusPipeFlushChunkSize_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public void ConfigBase_ReceiveSessionPipeOptions_PauseBelowTwoFrames_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeFlushChunkSize = 1023);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeFlushChunkSize = 1024 * 1024 + 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
+
+        // 0 never pauses.
+        config.ReceiveSessionPipeOptions = new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0);
     }
 
     [Test]

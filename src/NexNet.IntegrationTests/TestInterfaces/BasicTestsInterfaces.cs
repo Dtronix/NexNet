@@ -50,6 +50,8 @@ public partial interface IServerNexus
     ValueTask ServerTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
 
     ValueTask ServerData(byte[] data);
+
+    ValueTask<byte[]> ServerDataResult(int size);
 }
 
 
@@ -228,6 +230,8 @@ public partial class ServerNexus
     {
         return ServerTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
     }
+
+    public ValueTask<byte[]> ServerDataResult(int size) => new(new byte[size]);
 
     public ValueTask ServerData(byte[] data)
     {

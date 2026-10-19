@@ -85,6 +85,18 @@ public class ProtocolMessageTests
     }
 
     [Test]
+    public void InvocationCancellationIdIsUInt16()
+    {
+        // The same width as every other invocation ID.
+        var body = Body(new InvocationCancellationMessage(ushort.MaxValue));
+        Assert.That(Parse<InvocationCancellationMessage>(body).InvocationId, Is.EqualTo(ushort.MaxValue));
+
+        // 65536 and negative IDs are rejected.
+        Assert.Throws<NexusSerializationException>(() => Parse<InvocationCancellationMessage>(new byte[] { 0x91, 0xce, 0x00, 0x01, 0x00, 0x00 }));
+        Assert.Throws<NexusSerializationException>(() => Parse<InvocationCancellationMessage>(new byte[] { 0x91, 0xff }));
+    }
+
+    [Test]
     public void DuplexPipeUpdateStateGoldenVector()
     {
         var body = Body(new DuplexPipeUpdateStateMessage { PipeId = 0x0201, State = NexusDuplexPipe.State.Ready });

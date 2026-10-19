@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading;
 using System.Threading.Tasks.Sources;
 using NexNet.Messages;
 using NexNet.Pools;
@@ -10,7 +11,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     /// <summary>
     /// Id used for invocation management.
     /// </summary>
-    public int InvocationId { get; set; }
+    public ushort InvocationId { get; set; }
 
     // Mutable struct.
     private ManualResetValueTaskSourceCore<bool> _source;
@@ -24,6 +25,11 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public InvocationResultMessage? Result { get; set; } = null;
 
+    /// <summary>
+    /// Registration on the caller's cancellation token. Released when the state returns to its pool.
+    /// </summary>
+    public CancellationTokenRegistration CancellationRegistration { get; set; }
+
     public RegisteredInvocationState()
     {
         // Ensure all continuations run asynchronously to prevent deadlocks.
@@ -33,6 +39,9 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public void Reset()
     {
+        // Unregister rather than Dispose: Dispose blocks while the callback runs on another thread.
+        CancellationRegistration.Unregister();
+        CancellationRegistration = default;
         _source.Reset();
         IsComplete = false;
         IsCanceled = false;

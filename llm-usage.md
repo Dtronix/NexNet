@@ -253,7 +253,7 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 | `DisconnectDelay` | 200ms | 0-10000ms |
 | `Timeout` | 30000ms | 50-300000ms, idle timeout |
 | `HandshakeTimeout` | 15000ms | 50-60000ms |
-| `NexusPipeFlushChunkSize` | 8KB | 1KB-1MB |
+| `ReceiveSessionPipeOptions` | pause 256KB, resume 128KB | Pause 0 or at least 131,080 bytes (two frames) |
 | `NexusPipeHighWaterMark` | 192KB | Pause writer threshold |
 | `NexusPipeLowWaterMark` | 16KB | Resume threshold |
 | `NexusPipeHighWaterCutoff` | 256KB | Hard stop threshold |

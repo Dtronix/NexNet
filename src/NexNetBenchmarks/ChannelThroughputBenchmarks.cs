@@ -12,8 +12,7 @@ using NexNet.Transports.Uds;
 namespace NexNetBenchmarks;
 
 /// <summary>
-/// Items per second over typed channels. The fragmented case forces small pipe flush chunks so items split across
-/// frames, exercising incomplete-item handling in the channel reader.
+/// Items per second over typed channels.
 /// </summary>
 [MemoryDiagnoser]
 public class ChannelThroughputBenchmarks
@@ -26,19 +25,15 @@ public class ChannelThroughputBenchmarks
     private int[][] _intArrays = null!;
     private int[] _ints = null!;
 
-    [Params(false, true)]
-    public bool Fragmented { get; set; }
-
     [GlobalSetup]
     public async Task GlobalSetup()
     {
-        var path = $"channel-{Fragmented}.sock";
+        var path = "channel.sock";
         if (File.Exists(path))
             File.Delete(path);
 
-        var chunkSize = Fragmented ? 1024 : 64 * 1024;
-        var serverConfig = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(path), NexusPipeFlushChunkSize = chunkSize };
-        var clientConfig = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(path), NexusPipeFlushChunkSize = chunkSize };
+        var serverConfig = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(path) };
+        var clientConfig = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(path) };
 
         _client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
         _server = ServerNexus.CreateServer(serverConfig, static () => new ServerNexus());

@@ -122,7 +122,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         if (!message.TrySetArguments(serializedArguments))
         {
             message.Dispose();
-            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
+            throw new NexusMessageTooLargeException(serializedArguments.Length, IInvocationMessage.MaxArgumentSize);
         }
 
         switch (_mode)

@@ -146,7 +146,7 @@ public static class FlowHarness
 
         // BufferData does not wake the reader for a frame that reaches the high-water mark, then waits for the reader
         // to drain below the low-water mark.
-        yield return ("1 MiB in full frames to a reader that keeps up", Program(Open(FlowPipe.Drain), Data(0, 1024 * 1024), ProbePing()), 4);
+        yield return ("1 MiB in full frames to a reader that keeps up", Program(Open(FlowPipe.Drain), Data(0, 1024 * 1024), ProbePing()), 1);
 
         // The application's reproductions (spec section 9).
         yield return ("40 x 40 KiB items with a slow reader, then a call", Program(Open(FlowPipe.SlowItems), Repeat(40, Item(0, 40 * 1024)), ProbeCall()), 4);

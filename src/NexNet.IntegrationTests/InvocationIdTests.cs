@@ -190,4 +190,46 @@ internal class InvocationIdTests
         // Both tracked IDs should be unique (they are different)
         Assert.That(trackedId1, Is.Not.EqualTo(trackedId2));
     }
+
+    [Test]
+    public void UpdateInvocationResult_Unsolicited_ReturnsMessageToPool()
+    {
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
+        var message = _poolManager.Rent<NexNet.Messages.InvocationResultMessage>();
+        message.InvocationId = 1234;
+
+        // No call is waiting for this result. It used to be dropped without returning it to its pool.
+        manager.UpdateInvocationResult(message);
+
+        Assert.That(_poolManager.Rent<NexNet.Messages.InvocationResultMessage>(), Is.SameAs(message));
+    }
+
+    [Test]
+    public async Task InvokeMethodWithResultCore_ReturnedState_ReleasesCancellationRegistration()
+    {
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
+        using var cts = new CancellationTokenSource();
+
+        var state = await manager.InvokeMethodWithResultCore(0, Memory<byte>.Empty, _mockSession, cts.Token);
+        Assert.That(state, Is.Not.Null);
+        state!.TrySetResult();
+        _poolManager.RegisteredInvocationStatePool.Return(state);
+
+        // The registration used to outlive the call: cancelling later reached the pooled state.
+        cts.Cancel();
+        Assert.That(state.IsCanceled, Is.False);
+    }
+
+    [Test]
+    public async Task InvokeMethodWithResultCore_OversizedArguments_ThrowsWithoutHoldingId()
+    {
+        var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
+        var arguments = new byte[NexNet.Messages.IInvocationMessage.MaxArgumentSize + 1];
+
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () =>
+            await manager.InvokeMethodWithResultCore(0, arguments, _mockSession));
+
+        // The rejected call took no ID, so the next ID is the first one.
+        Assert.That(manager.GetNextId(true), Is.EqualTo(1));
+    }
 }
