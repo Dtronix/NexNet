@@ -263,6 +263,47 @@ internal class InvocationCreditTests : BaseTests
             Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task Broadcast_WritesOneEncodedFrameToEveryClient(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        var frames = new List<byte[]>();
+        serverConfig.InternalOnSend = (_, bytes) =>
+        {
+            if (bytes.Length > 0 && bytes[0] == (byte)MessageType.Invocation)
+                lock (frames)
+                    frames.Add(bytes);
+        };
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync().Timeout(1);
+
+        var received = new List<Task<int>>();
+        for (var i = 0; i < 3; i++)
+        {
+            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var (client, clientNexus) = CreateClient(CreateClientConfig(type));
+            clientNexus.ClientTaskWithParamEvent = (_, data) =>
+            {
+                tcs.TrySetResult(data);
+                return default;
+            };
+            await client.ConnectAsync().Timeout(1);
+            received.Add(tcs.Task);
+        }
+
+        using var context = server.ContextProvider.Rent();
+        await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
+
+        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(12345));
+        lock (frames)
+        {
+            Assert.That(frames, Has.Count.EqualTo(3));
+            Assert.That(frames[1], Is.EqualTo(frames[0]));
+            Assert.That(frames[2], Is.EqualTo(frames[0]));
+        }
+    }
+
     /// <summary>
     /// Connects a raw client that advertises one invocation credit and never returns it.
     /// </summary>

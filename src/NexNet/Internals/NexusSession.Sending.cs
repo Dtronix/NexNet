@@ -174,7 +174,7 @@ internal partial class NexusSession<TNexus, TProxy>
     /// Writes an invocation to the output without waiting for anything: credit, the write mutex or an earlier flush.
     /// See <see cref="INexusSession.TryWriteInvocation{TMessage}"/>.
     /// </summary>
-    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message, ReadOnlySpan<byte> frame = default)
         where TMessage : IInvocationMessage, IMessageBase
     {
         if (_pipeOutput == null || State != ConnectionState.Connected)
@@ -206,7 +206,18 @@ internal partial class NexusSession<TNexus, TProxy>
                 return InvocationWriteResult.Failed;
             }
 
-            WriteFrame(message, output, out _);
+            if (frame.IsEmpty)
+            {
+                WriteFrame(message, output, out _);
+            }
+            else
+            {
+                // Only used for debugging
+                _config.InternalOnSend?.Invoke(this, frame.ToArray());
+                frame.CopyTo(output.GetSpan(frame.Length));
+                output.Advance(frame.Length);
+            }
+
             Logger?.LogTrace($"Writing {TMessage.Type}.");
 
             Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());

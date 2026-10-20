@@ -119,9 +119,11 @@ internal interface INexusSession : ISessionMessenger
     /// to the output in order, not that the peer has received it.
     /// </summary>
     /// <param name="message">The invocation. Not modified, so one message can be written to several sessions.</param>
+    /// <param name="frame">The invocation already encoded as a frame (<see cref="MessageFrame"/>), copied instead of
+    /// encoding <paramref name="message"/> again; empty to encode it.</param>
     /// <returns><see cref="InvocationWriteResult.Busy"/> if writing would have to wait; nothing was taken or written.
     /// Use <see cref="SendInvocation{TMessage}"/> to wait.</returns>
-    InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+    InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message, ReadOnlySpan<byte> frame = default)
         where TMessage : IInvocationMessage, IMessageBase;
 
     /// <summary>

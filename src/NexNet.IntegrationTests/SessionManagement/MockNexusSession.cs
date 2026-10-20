@@ -51,7 +51,7 @@ internal class MockNexusSession : INexusSession
         return true;
     }
 
-    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message, ReadOnlySpan<byte> frame = default)
         where TMessage : IInvocationMessage, IMessageBase
     {
         if (ShouldFailSend)
