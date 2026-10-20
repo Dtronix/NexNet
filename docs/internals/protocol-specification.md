@@ -117,8 +117,10 @@ wrapped in `bin` or length-prefixed.
 - Methods without serialized parameters send an empty array (`0x90`).
 
 `flags`: bit 0 IgnoreReturn (no result is sent), bit 1 DuplexPipe. An invocation whose body exceeds one frame is
-streamed (§6). Invocations without a result use an untracked ID, except a streamed one, which uses a tracked ID
-until it has been sent.
+streamed (§6). The `invocationId` of an IgnoreReturn invocation has no meaning and need not be unique; senders use
+0. The exception is a streamed one: its ID keys the stream (§6), so it is unique among the sender's outstanding
+invocations until the stream has been sent. A receiver must not use the ID of an IgnoreReturn invocation to identify
+it; nothing can cancel such an invocation except the session ending.
 
 ### 4.4 InvocationResult
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`

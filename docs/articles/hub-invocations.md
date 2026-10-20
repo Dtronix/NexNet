@@ -50,7 +50,9 @@ public interface IServerNexus
 }
 ```
 
-Cancelling the token on the caller side propagates the cancellation to the remote method.
+Cancelling the token on the caller side propagates the cancellation to the remote method. Each call is canceled individually, also when several calls to the same method are running.
+
+When a method is invoked without waiting for its result (a broadcast, or a `ValueTask` method invoked on several clients), the caller can't cancel it. Its token is canceled when the session ends.
 
 ## Server Broadcasting
 

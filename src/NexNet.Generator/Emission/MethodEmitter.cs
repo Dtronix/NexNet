@@ -38,7 +38,7 @@ internal static class MethodEmitter
         // Create the cancellation token parameter.
         if (method.CancellationTokenParameter != null)
         {
-            sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message.InvocationId);");
+            sb.AppendLine("                        cts = methodInvoker.RegisterCancellationToken(message);");
         }
 
         // Deserialize the arguments.

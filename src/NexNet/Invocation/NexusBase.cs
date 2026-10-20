@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -25,6 +26,9 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
 
     private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
+
+    // Shared by the session's fire-and-forget invocations; canceled when the session ends. Created on first use.
+    private CancellationTokenSource? _sessionCancellation;
 
     private readonly InvokeMethodCoreDelegate _invokeMethodCoreDelegate;
     private SessionContext<TProxy>? _sessionContext;
@@ -59,21 +63,36 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         return InvokeMethodCoreTask(args);
     }
 
-    CancellationTokenSource IMethodInvoker.RegisterCancellationToken(int invocationId)
+    CancellationTokenSource IMethodInvoker.RegisterCancellationToken(IInvocationMessage message)
     {
-        var cts = SessionContext.PoolManager.CancellationTokenSourcePool.Rent();
+        if (message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
+        {
+            var shared = Volatile.Read(ref _sessionCancellation);
+            if (shared != null)
+                return shared;
 
-        _cancellableInvocations.TryAdd(invocationId, cts);
+            var created = new CancellationTokenSource();
+            return Interlocked.CompareExchange(ref _sessionCancellation, created, null) ?? created;
+        }
+
+        var cts = SessionContext.PoolManager.CancellationTokenSourcePool.Rent();
+        _cancellableInvocations.TryAdd(message.InvocationId, cts);
         return cts;
     }
 
-    void IMethodInvoker.ReturnCancellationToken(int invocationId)
+    void IMethodInvoker.ReturnCancellationToken(IInvocationMessage message, CancellationTokenSource cancellationTokenSource)
     {
-        if (!_cancellableInvocations.TryRemove(invocationId, out var cts))
+        // The shared source lives as long as the session.
+        if (message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
+            return;
+
+        // Removed only if it is this invocation's own source, never one registered by another invocation.
+        if (!_cancellableInvocations.TryRemove(
+                new KeyValuePair<int, CancellationTokenSource>(message.InvocationId, cancellationTokenSource)))
             return;
 
         // Try to reset the cts for another operation.
-        SessionContext.PoolManager.CancellationTokenSourcePool.Return(cts);
+        SessionContext.PoolManager.CancellationTokenSourcePool.Return(cancellationTokenSource);
     }
 
     async ValueTask<INexusDuplexPipe> IMethodInvoker.RegisterDuplexPipe(byte startId, IInvocationMessage message)
@@ -145,6 +164,9 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             cancellationTokenSource.Value.Dispose();
 
         _cancellableInvocations.Clear();
+
+        // Not disposed: running fire-and-forget invocations may still observe the token.
+        Interlocked.Exchange(ref _sessionCancellation, null)?.Cancel();
     }
 
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)
