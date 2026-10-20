@@ -39,6 +39,11 @@ public ref struct MsgPackWriter
     }
 
     /// <summary>
+    /// Bytes written but not yet committed to the output with <see cref="Flush"/>.
+    /// </summary>
+    internal readonly int Buffered => _buffered;
+
+    /// <summary>
     /// Commits all buffered bytes to the output.
     /// </summary>
     public void Flush()

@@ -84,7 +84,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         if (!Reader.TryRead(out var result) || result.Buffer.Length == 0)
             return 0;
 
-        return ReadItems(result.Buffer, list, converter, out _);
+        return ReadItems(result.Buffer, list, converter, out _, out _);
     }
 
     /// <inheritdoc/>
@@ -107,9 +107,10 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
 
             long readAmount;
             int pendingItemLength;
+            long pendingItemMissing;
             try
             {
-                readAmount = ReadItems(result.Buffer, list, converter, out pendingItemLength);
+                readAmount = ReadItems(result.Buffer, list, converter, out pendingItemLength, out pendingItemMissing);
             }
             catch (Exception e) when (e is NexusSerializationException or NexusMessageTooLargeException)
             {
@@ -122,7 +123,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
 
             // Waiting for the rest of an item: make sure the writer has the credit to send it. Done even when items
             // were decoded, as the whole buffer is now examined and the next read waits for new data.
-            if (pendingItemLength > 0 && !await MakeRoomFor(pendingItemLength, cancellationToken).ConfigureAwait(false))
+            if (pendingItemLength > 0 && !await MakeRoomFor(pendingItemLength, pendingItemMissing, cancellationToken).ConfigureAwait(false))
                 return list.Count > 0;
 
             if (list.Count > 0)
@@ -131,13 +132,14 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     }
 
     /// <summary>
-    /// Lets the writer send an item of <paramref name="itemLength"/> bytes (prefix included) that is waiting at the
-    /// start of the buffer: grants back everything consumed so far, and for an item larger than the window, an
-    /// extra grant from the session budget. Returns false if canceled while waiting for the budget.
+    /// Lets the writer send the rest of an item of <paramref name="itemLength"/> bytes (prefix included) that is
+    /// waiting at the start of the buffer, <paramref name="missing"/> bytes of which have not arrived: grants back
+    /// consumed credit early if the writer needs it, and for an item larger than the window, an extra grant from the
+    /// session budget. Returns false if canceled while waiting for the budget.
     /// </summary>
-    private ValueTask<bool> MakeRoomFor(int itemLength, CancellationToken cancellationToken)
+    private ValueTask<bool> MakeRoomFor(int itemLength, long missing, CancellationToken cancellationToken)
     {
-        Reader.FlushPendingGrant();
+        Reader.EnsureCredit(missing);
         return itemLength > Reader.Window
             ? Reader.GrantExtraAsync(itemLength - Reader.Window, cancellationToken)
             : new ValueTask<bool>(true);
@@ -151,6 +153,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     /// <param name="converter">Converts each item, or null.</param>
     /// <param name="pendingItemLength">The length (prefix included) of an incomplete item left at the start of the
     /// remaining data, or 0.</param>
+    /// <param name="pendingItemMissing">How many bytes of that item have not arrived yet.</param>
     /// <returns>Bytes consumed.</returns>
     /// <exception cref="NexusMessageTooLargeException">An item's length exceeds the limit.</exception>
     /// <exception cref="NexusSerializationException">A malformed prefix, or an item that does not decode to exactly
@@ -159,35 +162,43 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         ReadOnlySequence<byte> buffer,
         List<TTo> list,
         Converter<T, TTo>? converter,
-        out int pendingItemLength)
+        out int pendingItemLength,
+        out long pendingItemMissing)
     {
         pendingItemLength = 0;
-        var sequence = new SequenceReader<byte>(buffer);
+        pendingItemMissing = 0;
+
+        // One reader for the whole buffer, limited to each item in turn while it is decoded.
+        var reader = new MsgPackReader(buffer, _options);
+        var bufferLength = buffer.Length;
         long consumed = 0;
 
-        while (!sequence.End)
+        while (consumed < bufferLength)
         {
-            if (!ChannelFraming.TryReadLength(ref sequence, out var length))
+            reader.LimitTo(bufferLength);
+            if (!ChannelFraming.TryReadLength(ref reader, out var length))
                 break; // incomplete prefix
 
             if (length > _maxItemSize)
                 throw new NexusMessageTooLargeException(length, _maxItemSize);
 
-            if (sequence.Remaining < length)
+            var itemStart = reader.Consumed;
+            if (bufferLength - itemStart < length)
             {
                 // Incomplete item: wait for the rest.
-                pendingItemLength = (int)(sequence.Consumed - consumed) + length;
+                pendingItemLength = (int)(itemStart - consumed) + length;
+                pendingItemMissing = length - (bufferLength - itemStart);
                 break;
             }
 
-            var reader = new MsgPackReader(buffer.Slice(sequence.Position, length), _options);
+            var itemEnd = itemStart + length;
+            reader.LimitTo(itemEnd);
             T? item = default;
             _formatter.Deserialize(ref reader, ref item);
-            if (!reader.End)
-                throw new NexusSerializationException("Channel item has bytes after its value.");
+            if (reader.Consumed != itemEnd)
+                throw new NexusSerializationException("Channel item does not decode to exactly its length.");
 
-            sequence.Advance(length);
-            consumed = sequence.Consumed;
+            consumed = itemEnd;
             list.Add(converter == null ? Unsafe.As<T, TTo>(ref item!) : converter(item!));
         }
 

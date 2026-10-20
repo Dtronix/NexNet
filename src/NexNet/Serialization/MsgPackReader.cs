@@ -31,7 +31,7 @@ public ref struct MsgPackReader
     private long _segmentStart;                 // bytes of the sequence before _span[0]
     private SequencePosition _segmentPosition;  // position of _span[0]
     private SequencePosition _nextSegment;      // where the next segment is fetched from; default when none
-    private readonly long _length;
+    private long _length;
     private readonly NexusSerializerOptions _options;
     private int _depth;
 
@@ -88,6 +88,18 @@ public ref struct MsgPackReader
         _segmentStart = 0;
         _segmentPosition = _sequence.Start;
         _nextSegment = default;
+    }
+
+    /// <summary>
+    /// Limits the reader to the bytes before <paramref name="end"/> (counted from the start of the sequence, at most
+    /// its length) and restarts the <see cref="NexusSerializerOptions.MaxElements"/> count. Used to read one
+    /// length-delimited value of a larger buffer at a time. Length checks stop at the limit; the caller checks
+    /// <see cref="Consumed"/> afterwards, as a value may still read past it.
+    /// </summary>
+    internal void LimitTo(long end)
+    {
+        _length = end;
+        _elements = 0;
     }
 
     /// <summary>

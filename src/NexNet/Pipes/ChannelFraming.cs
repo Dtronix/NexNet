@@ -45,6 +45,35 @@ internal static class ChannelFraming
     }
 
     /// <summary>
+    /// Reads a prefix. Returns false if the reader's data ends inside it; the reader is then left inside the prefix.
+    /// </summary>
+    /// <exception cref="NexusSerializationException">The prefix is longer than five bytes or exceeds
+    /// <see cref="int.MaxValue"/>.</exception>
+    public static bool TryReadLength(ref MsgPackReader reader, out int length)
+    {
+        length = 0;
+        ulong value = 0;
+        for (var i = 0; i < MaxPrefixLength; i++)
+        {
+            if (reader.End)
+                return false;
+
+            var b = reader.ReadRawByte();
+            value |= (ulong)(b & 0x7F) << (7 * i);
+            if ((b & 0x80) == 0)
+            {
+                if (value > int.MaxValue)
+                    throw new NexusSerializationException("Channel item length prefix exceeds the maximum length.");
+
+                length = (int)value;
+                return true;
+            }
+        }
+
+        throw new NexusSerializationException("Channel item length prefix is longer than five bytes.");
+    }
+
+    /// <summary>
     /// Reads a prefix. Returns false if the buffer ends inside it, leaving <paramref name="reader"/> where it was.
     /// </summary>
     /// <exception cref="NexusSerializationException">The prefix is longer than five bytes or exceeds

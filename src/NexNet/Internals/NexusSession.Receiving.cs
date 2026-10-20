@@ -712,9 +712,18 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 // Authentication and the rest of the handshake run off the read loop, so a slow OnAuthenticate does
                 // not hold it. Until the connection completes, any further frame is a protocol error. The greeting
-                // is returned to its pool when this handler returns, so the token is copied.
-                var authenticationToken = cGreeting.AuthenticationToken.ToArray();
-                _ = Task.Run(() => CompleteServerHandshake(authenticationToken));
+                // is returned to its pool when this handler returns, so the token is copied. Passed as state, not
+                // captured: this case shares the switch scope, and a capture would allocate on every message.
+                _ = Task.Factory.StartNew(
+                    static state =>
+                    {
+                        var (session, token) = ((NexusSession<TNexus, TProxy>, byte[]))state!;
+                        return session.CompleteServerHandshake(token);
+                    },
+                    (this, cGreeting.AuthenticationToken.ToArray()),
+                    CancellationToken.None,
+                    TaskCreationOptions.DenyChildAttach,
+                    TaskScheduler.Default).Unwrap();
                 break;
             }
 

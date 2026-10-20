@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals.Threading;
@@ -20,6 +21,12 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
 
     // Largest item the peer accepts (the smaller of both sides' MaxMessageSize).
     private readonly int _maxItemSize;
+
+    // WriteEnumerable: end offset of each item serialized into the scratch buffer. Used under ModificationSemaphore.
+    private readonly List<int> _itemEnds = new();
+
+    // WriteEnumerable copies its items out with their prefixes once this many bytes are serialized.
+    private const int BatchSize = 64 * 1024;
     
     // Semaphore to ensure the underlying channel does not get used concurrently.
     protected readonly SemaphoreSlim ModificationSemaphore = new SemaphoreSlim(1, 1);
@@ -132,29 +139,18 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     }
 
 
+    /// <summary>
+    /// Serializes the item into a scratch buffer to learn its length, then writes it with its prefix.
+    /// </summary>
     private void Write(T item, NexusPipeWriter nexusPipeWriter)
     {
         var scratch = PooledArrayBufferWriter.Rent();
         try
         {
-            WriteFramed(item, scratch, nexusPipeWriter);
-        }
-        finally
-        {
-            scratch.Return();
-        }
-    }
-
-    private void WriteEnumerable(IEnumerable<T> items, NexusPipeWriter nexusPipeWriter)
-    {
-        var scratch = PooledArrayBufferWriter.Rent();
-        try
-        {
-            foreach (var item in items)
-            {
-                WriteFramed(item, scratch, nexusPipeWriter);
-                scratch.Clear();
-            }
+            var writer = new MsgPackWriter(scratch);
+            _formatter.Serialize(ref writer, item);
+            writer.Flush();
+            WriteFramed(scratch.WrittenSpan, nexusPipeWriter);
         }
         finally
         {
@@ -163,16 +159,62 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
     }
 
     /// <summary>
-    /// Serializes the item into <paramref name="scratch"/> to learn its length, checks the length, then writes the
-    /// length prefix and the item.
+    /// Serializes the items with one writer into a scratch buffer, noting where each ends, and copies them out with
+    /// their prefixes every <see cref="BatchSize"/> bytes. A writer per item costs more than the copy for small items.
     /// </summary>
-    private void WriteFramed(T item, PooledArrayBufferWriter scratch, NexusPipeWriter output)
+    private void WriteEnumerable(IEnumerable<T> items, NexusPipeWriter nexusPipeWriter)
     {
-        var writer = new MsgPackWriter(scratch);
-        _formatter.Serialize(ref writer, item);
-        writer.Flush();
+        var scratch = PooledArrayBufferWriter.Rent();
+        try
+        {
+            var writer = new MsgPackWriter(scratch);
+            foreach (var item in items)
+            {
+                _formatter.Serialize(ref writer, item);
+                var end = scratch.WrittenCount + writer.Buffered;
+                _itemEnds.Add(end);
+                if (end >= BatchSize)
+                {
+                    writer.Flush();
+                    WriteBatch(scratch, nexusPipeWriter);
+                    writer = new MsgPackWriter(scratch);
+                }
+            }
 
-        var length = scratch.WrittenCount;
+            writer.Flush();
+            WriteBatch(scratch, nexusPipeWriter);
+        }
+        finally
+        {
+            _itemEnds.Clear();
+            scratch.Return();
+        }
+    }
+
+    /// <summary>
+    /// Writes the items serialized into <paramref name="scratch"/> (ending at <see cref="_itemEnds"/>) with their
+    /// prefixes, then empties both.
+    /// </summary>
+    private void WriteBatch(PooledArrayBufferWriter scratch, NexusPipeWriter output)
+    {
+        var serialized = scratch.WrittenSpan;
+        var start = 0;
+        foreach (var end in _itemEnds)
+        {
+            WriteFramed(serialized.Slice(start, end - start), output);
+            start = end;
+        }
+
+        _itemEnds.Clear();
+        scratch.Clear();
+    }
+
+    /// <summary>
+    /// Checks the length of a serialized item, then writes its length prefix and the item.
+    /// </summary>
+    private void WriteFramed(ReadOnlySpan<byte> item, NexusPipeWriter output)
+    {
+        var length = item.Length;
         if (length > _maxItemSize)
             throw new NexusMessageTooLargeException(length, _maxItemSize);
 
@@ -180,7 +222,7 @@ internal class NexusChannelWriter<T> : INexusChannelWriter<T>
         var total = ChannelFraming.PrefixLength(length) + length;
         var span = output.GetSpan(total);
         var prefix = ChannelFraming.WriteLength(span, length);
-        scratch.WrittenSpan.CopyTo(span[prefix..]);
+        item.CopyTo(span[prefix..]);
         output.Advance(total);
     }
 }

@@ -162,14 +162,15 @@ internal class NexusPipeReader : PipeReader, IDisposable
     }
 
     /// <summary>
-    /// Grants everything consumed but not yet granted back, without waiting for half the window. Called when the
-    /// reader is waiting for the rest of an item: the writer must be able to fill the whole window.
+    /// Makes sure the writer can send <paramref name="missing"/> more bytes: if the credit it still holds is less,
+    /// grants everything consumed but not yet granted back, without waiting for half the window. Called when the
+    /// reader is waiting for the rest of an item.
     /// </summary>
-    public void FlushPendingGrant()
+    public void EnsureCredit(long missing)
     {
         lock (_bufferLock)
         {
-            if (_consumedSinceGrant <= 0 || _isCompleted)
+            if (_credit >= missing || _consumedSinceGrant <= 0 || _isCompleted)
                 return;
 
             var grant = (int)_consumedSinceGrant;
