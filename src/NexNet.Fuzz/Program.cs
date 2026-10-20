@@ -8,6 +8,8 @@ using SharpFuzz;
 //   NexNet.Fuzz --smoke [corpusDir]           run every harness over the corpus without a fuzzer
 //   NexNet.Fuzz --repro <harness> <hex> [n]   run one input n times (reproduce a failure)
 //   NexNet.Fuzz --export-corpus <dir>         write every seed input as a file, for a libFuzzer corpus
+//   NexNet.Fuzz --soak <harness> <seconds> [seed]
+//                                             run randomly mutated seeds for a while (no libFuzzer needed)
 // Harnesses: reader, messages, channel, formatters, builtins, session, flow.
 
 var harnessName = args.Length > 0 ? args[0] : Environment.GetEnvironmentVariable("NEXNET_FUZZ_HARNESS");
@@ -40,6 +42,13 @@ if (harnessName == "--smoke")
     var count = SmokeRunner.Run(corpus, Console.Out);
     Console.WriteLine($"Smoke run complete: {count} inputs per harness.");
     return 0;
+}
+
+if (harnessName == "--soak" && args.Length > 2)
+{
+    var seed = args.Length > 3 ? int.Parse(args[3]) : Environment.TickCount;
+    return SoakRunner.Run(args[1], TimeSpan.FromSeconds(double.Parse(args[2])), seed,
+        Path.Combine(AppContext.BaseDirectory, "Corpus"), Console.Out);
 }
 
 if (harnessName == "--export-corpus" && args.Length > 1)

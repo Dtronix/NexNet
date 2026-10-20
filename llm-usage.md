@@ -49,7 +49,7 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 | `ValueTask` | Await completion | args + CT, OR args + pipes/channels |
 | `ValueTask<T>` | Await + return | args + CT only |
 
-CancellationToken must be last. Max serialized args: 65,526 bytes per invocation (use pipes or channels for larger).
+CancellationToken must be last. Args and results up to `MaxMessageSize` (4 MiB default; larger than one 64 KiB frame are streamed automatically); over the limit throws `NexusMessageTooLargeException`, session stays up. Use pipes or channels for larger data.
 
 ## Serialization
 

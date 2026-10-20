@@ -195,7 +195,7 @@ the trusted options are selected).
 
 Independent of these options, the reader always checks lengths against the received data before allocating, skips values without recursion, and requires every protocol message to have its exact shape with no trailing bytes. A malformed protocol message disconnects the session with a protocol error.
 
-Serialized method arguments are limited to 65,526 bytes per invocation. Use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md) for larger data.
+Serialized method arguments and results are limited to `ConfigBase.MaxMessageSize` per invocation. Use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md) for larger data.
 
 ## Native AOT and Trimming
 

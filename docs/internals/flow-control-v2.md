@@ -1,7 +1,7 @@
 # Flow control, large values and hostile-peer limits (protocol v2)
 
-Status: design, approved for implementation. Supersedes the pause-flag and water-mark mechanism
-described in [protocol-specification.md](protocol-specification.md).
+Status: implemented in protocol version 2; see [protocol-specification.md](protocol-specification.md) for the wire
+format. Section 12 records the decisions made during implementation where this design left room.
 
 ## 1. Background
 
@@ -333,3 +333,27 @@ tag. Every step after step 0 is gated by the benchmarks and fuzz targets from st
   carry Busy, and the Busy replies to a peer that does not read form an outbound backlog.
 - **Adaptive windows.** Deferred. Ping RTT samples are too sparse, granted credit cannot be revoked, and nothing
   in R1–R8 requires it.
+
+## 12. Implementation notes
+
+Decisions made while implementing, where the design above did not settle the detail:
+
+| Area | Decision |
+|---|---|
+| Opening side's window | `Ready` carries the registering side's window. The opening side reserves its own window when it creates the pipe and grants it with `PipeWindowUpdate` on receiving `Ready`; the registering side's writer starts with no credit. |
+| Refusing an open | A new state bit, `Refused` (bit 3, the former pause flag), is sent instead of `Ready` with the opener's partial pipe ID. The opener's `ReadyTask` fails with `NexusBusyException`. |
+| Two-sided close | A side that receives the peer's `Complete` without having sent its own answers with `Complete` (through the control sender). A pipe is freed once both were exchanged and the application released it. |
+| Waiting for a channel item | While an item is incomplete, the reader grants back all consumed credit at once; otherwise an item smaller than the window could stall under the half-window rule. |
+| `MessageChunk` | The key (invocation ID, kind) is a 3-byte post-header, outside the body length, so payloads are sent from the staged buffer without copying. |
+| Abort routing | Both sides can send and receive streams with the same key. Busy and TooLarge come from a stream's receiver, Cancelled and Ack from its sender; the reason selects the stream. |
+| Large-message reservations | The reservation moves to the reassembled message and is released when the message is disposed (after the invocation runs, or the result is read), so queued large invocations stay within the budget. |
+| Invocation credit return | Coalesced and sent once half the advertised credits are pending, keeping the per-call cost to counters. |
+| Router invocations | Broadcast and multi-client invocations wait at most `ProgressTimeout` for a session's credit, then skip that session with a rate-limited warning, so a client that never returns credit can't hold up the others. A broadcast can still be delayed by up to `ProgressTimeout` per such client. |
+| Decode guard | `NexusSerializerOptions.MaxElements` (0 = no limit) holds the element limit; a configuration resolves 0 to `max(65536, MaxMessageSize / 16)`. |
+| Channel item stall | `ProgressTimeout` applies to channel items that received extra credit: the writer holds the credit to send them, so no data means it stopped. Items within the window hold only memory already reserved. |
+| Removed settings | `NexusPipeFlushChunkSize`, `NexusPipeHighWaterMark`, `NexusPipeLowWaterMark`, `NexusPipeHighWaterCutoff` and `NexusSerializerOptions.MaxBufferedItemSize` (superseded by `MaxMessageSize`). |
+
+Defects found and fixed along the way, beyond section 1: the read loop could process a buffer the transport had
+already recycled when another thread disconnected the session; the collection server flushed a channel's pipe writer
+concurrently with the session's writer loop; a fire-and-forget method that threw did not return its arguments to the
+pool.

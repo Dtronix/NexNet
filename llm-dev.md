@@ -78,10 +78,11 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.4 Messages (src/NexNet/Messages/)
 
 **Protocol:**
-- `MessageType.cs` - Enum: Ping, Disconnect variants (20-34 incl. DisconnectUnauthorized), DuplexPipeWrite (50), Greetings (100-105), Invocation (110-112)
-- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes (65,535 body minus 9 bytes worst-case overhead)
-- `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token
-- `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash
+- `MessageType.cs` - Enum: Ping, Disconnect variants (20-37 incl. FlowControl, ResourceLimit, Stalled), DuplexPipeWrite (50), PipeWindowUpdate (51), Greetings (100-105), Invocation (110-112), MessageStart/Chunk/Abort (113-115), InvocationCredit (116)
+- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes is the largest argument sent in one frame (larger ones are streamed)
+- `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token, MaxMessageSize, InvocationCredits
+- `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash, MaxMessageSize, InvocationCredits
+- `LargeMessageMessages.cs` - MessageStart/MessageAbort for arguments and results larger than one frame (see `Internals/LargeMessageReceiver.cs`)
 - `InvocationMessage.cs` - Remote method invocation payload
 - `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
@@ -427,7 +428,7 @@ Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specifi
 ### Serialization
 - **NexNet MessagePack serializer** (src/NexNet/Serialization) for arguments, results, channel and collection items
 - Generator emits formatters for `[NexusObject]` types; registry lookup at runtime, no reflection (Native AOT clean; CI publishes the AOT sample and fails on any IL warning)
-- **65,526-byte limit** for serialized arguments per invocation (use INexusDuplexPipe or channels for larger)
+- Arguments and results up to `MaxMessageSize` (4 MiB untrusted / 16 MiB trusted); larger than one frame are streamed (MessageStart/Chunk). Flow control and limits: docs/internals/flow-control-v2.md
 
 ### Session Lifecycle
 1. Client: Create -> ConnectAsync -> Proxy.Method() -> DisconnectAsync

@@ -35,7 +35,7 @@ Some argument types have restrictions on how they can be combined. The source ge
 **Rules:**
 - `CancellationToken` cannot be combined with `INexusDuplexPipe` or `INexusDuplexChannel<T>` because pipes and channels have built-in cancellation/completion notifications.
 - `CancellationToken` must be the last parameter, following standard .NET conventions.
-- The total serialized argument size cannot exceed 65,526 bytes. For larger data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
+- Arguments and results may each be up to `ConfigBase.MaxMessageSize` (4 MiB by default, the smaller of both sides' settings). Values larger than one 64 KiB frame are streamed automatically. A larger value fails the call with `NexusMessageTooLargeException`; the session stays connected. For larger or continuous data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
 - Argument and return types must be serializable: built-in types, `[NexusObject]` types, or types with a registered formatter. See [Serialization](serialization.md).
 
 ## Cancellation

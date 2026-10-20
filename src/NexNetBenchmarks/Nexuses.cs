@@ -26,6 +26,8 @@ interface IServerNexus
     ValueTask ChannelInts(INexusDuplexChannel<int> channel);
 
     ValueTask PipeDrain(INexusDuplexPipe pipe);
+
+    ValueTask<byte[]> Echo(byte[] data);
 }
 
 [Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
@@ -106,6 +108,8 @@ partial class ServerNexus
         PipeDone = new TaskCompletionSource<long>(TaskCreationOptions.RunContinuationsAsynchronously);
         return PipeDone.Task;
     }
+
+    public ValueTask<byte[]> Echo(byte[] data) => new(data);
 
     public async ValueTask PipeDrain(INexusDuplexPipe pipe)
     {

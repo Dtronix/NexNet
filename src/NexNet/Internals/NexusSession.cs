@@ -35,7 +35,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     
     // NnP(DC4) = NexNetProtocol(Device Control Four)
     // [N] [n] [P] [(DC4)] [RESERVED 1] [RESERVED 2] [RESERVED 3] [Protocol Version]
-    private const byte ProtocolVersion = 1;
+    private const byte ProtocolVersion = 2;
     // Magic "NnP" + DC4, three reserved bytes (must be zero), protocol version.
     // ReSharper disable twice StaticMemberInGenericType
     private static readonly ReadOnlyMemory<byte> _protocolHeader =

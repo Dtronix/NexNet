@@ -372,7 +372,7 @@ public static class FlowHarness
         private readonly PipeWriter _writer;
         private readonly ServerOutput _output;
         private readonly List<ushort> _invocations = [];
-        private readonly List<(byte ClientId, ushort FullId)> _pipes = [];
+        private readonly List<(byte ClientId, ushort FullId, FlowPipe Kind)> _pipes = [];
         private readonly Dictionary<ushort, long> _sent = [];
         private long _invocationsSent;
         private bool _ackCloses = true;
@@ -419,7 +419,7 @@ public static class FlowHarness
                     if (!_output.WaitFor(o => o.ReadyPipes.TryGetValue(clientId, out fullId) || o.RefusedPipes.Contains(clientId), ProbeTimeout))
                         return $"Pipe open ({kind}) neither acknowledged nor refused within {ProbeTimeout.TotalMilliseconds} ms.";
                     if (fullId != 0)
-                        _pipes.Add((clientId, fullId));
+                        _pipes.Add((clientId, fullId, kind));
                     return null;
                 }
 
@@ -691,7 +691,11 @@ public static class FlowHarness
         /// </summary>
         private void PipeWrite(ushort pipeId, ReadOnlySpan<byte> data, bool respectCredit = true)
         {
-            var limited = respectCredit && _pipes.Exists(p => p.FullId == pipeId);
+            var index = _pipes.FindIndex(p => p.FullId == pipeId);
+            var limited = respectCredit && index >= 0;
+
+            // Only a pipe the server reads can be required to take all the data.
+            var strict = _strictWrites && index >= 0 && _pipes[index].Kind is FlowPipe.Drain or FlowPipe.SlowItems;
             var sent = _sent.GetValueOrDefault(pipeId);
             while (data.Length > 0)
             {
@@ -699,10 +703,10 @@ public static class FlowHarness
                 if (limited)
                 {
                     long granted = 0;
-                    var wait = _strictWrites ? ProbeTimeout : CreditWait;
+                    var wait = strict ? ProbeTimeout : CreditWait;
                     if (!_output.WaitFor(o => (granted = o.Granted.GetValueOrDefault(pipeId)) > sent, wait) || granted <= sent)
                     {
-                        if (_strictWrites && !_output.IsClosed)
+                        if (strict && !_output.IsClosed)
                             _writeStall = $"Pipe write got no credit for {data.Length} more bytes within {ProbeTimeout.TotalMilliseconds} ms.";
                         break;
                     }
