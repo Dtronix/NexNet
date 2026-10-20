@@ -419,7 +419,7 @@ Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying i
 ## 6. Key Architectural Concepts
 
 ### Protocol
-Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 1).
+Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 2).
 - **NnP Header:** 8 bytes `[N][n][P][0x14][reserved x3][Version=1]`; any mismatch -> `ProtocolError`
 - **Framing:** type byte, little-endian `uint16` body length (types with a body), pipe ID for `DuplexPipeWrite`, body
 - **Bodies:** MessagePack arrays, hand-written per message (src/NexNet/Messages)

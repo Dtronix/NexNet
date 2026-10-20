@@ -178,6 +178,7 @@ To serialize a value outside of a session, use `NexusSerializer.Serialize<T>(val
 | Option | `NexusSerializerOptions.Untrusted` (default) | `NexusSerializerOptions.Trusted` |
 |--------|------------------------------|----------------------------|
 | `MaxDepth` (container nesting) | 64 | unlimited |
+| `MaxElements` (array elements and map entries in one value, counted together) | `max(65536, MaxMessageSize / 16)` | `max(65536, MaxMessageSize / 16)` |
 | `StrictUtf8` | invalid UTF-8 is rejected | invalid UTF-8 is replaced |
 | Dictionaries and sets with non-string keys | randomized hashing (hash flooding resistant) | default comparers |
 
@@ -191,11 +192,12 @@ config.SerializerOptions = NexusSerializerOptions.Untrusted with
 ```
 
 The size of arguments, results and channel items is limited by `ConfigBase.MaxMessageSize` (4 MiB, or 16 MiB when
-the trusted options are selected).
+the trusted options are selected). Setting `MaxElements` explicitly overrides the value derived from it. See
+[Limits and Flow Control](limits-and-flow-control.md).
 
 Independent of these options, the reader always checks lengths against the received data before allocating, skips values without recursion, and requires every protocol message to have its exact shape with no trailing bytes. A malformed protocol message disconnects the session with a protocol error.
 
-Serialized method arguments and results are limited to `ConfigBase.MaxMessageSize` per invocation. Use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md) for larger data.
+Use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md) for data larger than `MaxMessageSize`.
 
 ## Native AOT and Trimming
 

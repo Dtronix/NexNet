@@ -26,7 +26,7 @@ Each side sends an 8-byte header once, immediately after the transport connects:
 The peer closes the connection with `DisconnectProtocolError` (disconnect reason `ProtocolError`) if:
 - the magic bytes differ,
 - any reserved byte is non-zero, or
-- the protocol version differs from its own. There is no compatibility with version 1.
+- the protocol version differs from its own.
 
 Message bodies are only defined by this specification. A peer that sends the same preamble but a different body
 encoding is disconnected with `ProtocolError` as soon as its first message fails to decode.

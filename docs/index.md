@@ -30,7 +30,7 @@ Hub lifecycle, session groups, ping, and automatic reconnection.
 Real-time INexusList with server-to-client, bidirectional, and relay modes.
 
 ### [Duplex Pipes](articles/duplex-pipes.md)
-Stream raw bytes bidirectionally with built-in congestion control.
+Stream raw bytes bidirectionally with built-in flow control.
 
 ### [Channels](articles/channels.md)
 Type-safe streaming with INexusDuplexChannel&lt;T&gt; and IAsyncEnumerable.
@@ -125,7 +125,7 @@ The generator emits all hub and proxy classes at compile time — no reflection,
 <div class="row">
 <div class="col-md-4" style="margin-bottom: 1.5rem;">
 <h3>Duplex Streaming</h3>
-<p>Stream bytes via INexusDuplexPipe or typed data via INexusDuplexChannel&lt;T&gt; with built-in congestion control.</p>
+<p>Stream bytes via INexusDuplexPipe or typed data via INexusDuplexChannel&lt;T&gt; with built-in flow control.</p>
 </div>
 <div class="col-md-4" style="margin-bottom: 1.5rem;">
 <h3>Auth & Authorization</h3>

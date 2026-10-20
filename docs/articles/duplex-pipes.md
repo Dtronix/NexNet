@@ -60,13 +60,16 @@ As with `System.IO.Pipelines`, the `INexusDuplexPipe` is **not thread safe**. Yo
 
 ## Flow Control
 
-Each direction of a pipe has a receive window (`ConfigBase.PipeWindow`, 256 KiB by default). A writer only sends what the reader has granted, and waits in its own `FlushAsync` for more; the reader grants credit back as it consumes data. A slow reader therefore slows only its own pipe: other pipes, invocations and pings on the session are unaffected. Pass a `CancellationToken` to `WriteAsync`/`FlushAsync` to stop waiting.
+Each direction of a pipe has a receive window (`ConfigBase.PipeWindow`, 256 KiB by default, 1 MiB with trusted serializer options). A writer only sends what the reader has granted, and waits in its own `FlushAsync` for more; the reader grants credit back as it consumes data. A slow reader therefore slows only its own pipe: other pipes, invocations and pings on the session are unaffected. Pass a `CancellationToken` to `WriteAsync`/`FlushAsync` to stop waiting.
 
 Each session holds at most `ConfigBase.MaxPipes` pipes (32 by default), and every open pipe's window is reserved from the session budget (`ConfigBase.SessionBudget`). Opening a pipe beyond either limit fails with `NexusBusyException` (from `CreatePipe`, or from `ReadyTask` when the remote side refuses it); the session stays connected.
 
 If you frame your own messages on a raw pipe, a message must fit in the window. Channels handle larger items themselves.
 
+A pipe has at most one window in flight, so over a link with a long round-trip time its throughput is limited to the window divided by the round-trip time. See [Limits and Flow Control](limits-and-flow-control.md) for sizing the window and the session budget.
+
 ## See Also
 
 - [Channels](channels.md) — Type-safe streaming built on top of duplex pipes
+- [Limits and Flow Control](limits-and-flow-control.md) — Windows, session budget and timeouts
 - [Hub Invocations](hub-invocations.md) — Method compatibility table for pipe arguments
