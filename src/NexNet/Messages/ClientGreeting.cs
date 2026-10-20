@@ -44,7 +44,7 @@ internal partial class ClientGreetingMessage : IClientGreetingMessageBase
         Version = reader.ReadString();
         ServerNexusHash = reader.ReadInt32();
         ClientNexusHash = reader.ReadInt32();
-        AuthenticationToken = reader.ReadBinaryToPooled(out _);
+        AuthenticationToken = IClientGreetingMessageBase.ReadAuthenticationToken(ref reader);
         _isArgumentPoolArray = true;
     }
 

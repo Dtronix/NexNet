@@ -23,6 +23,7 @@ namespace NexNet.Fuzz;
 /// <list type="bullet">
 /// <item>a probe (ping, call or pipe open) that is neither answered nor ends in a disconnect within
 /// <see cref="ProbeTimeout"/>: something on the session waits on an application reader (requirement R1);</item>
+/// <item>no server greeting within <see cref="ProbeTimeout"/>: the program needs a completed connection;</item>
 /// <item>a session still open <see cref="SessionHarness.SessionTimeout"/> after the stream ends;</item>
 /// <item>a disconnect reason outside <see cref="AllowedDisconnects"/>, or malformed server output;</item>
 /// <item>the server logging an exception type that hostile input should never cause.</item>
@@ -82,7 +83,10 @@ public static class FlowHarness
         client.Send(FuzzServerHost.Preamble);
         client.Send(host.Greeting);
 
-        string? stall = null;
+        // Anything sent before the connection completes is a protocol error, which would end every program here.
+        string? stall = output.WaitFor(o => o.Greeted, ProbeTimeout) && output.Greeted
+            ? null
+            : "Server did not complete the handshake.";
         for (var i = 0; i + 4 <= data.Length && stall == null && !output.IsClosed; i += 4)
             stall = client.Execute((FlowOp)(data[i] % (int)FlowOp.Count), data[i + 1], data[i + 2], data[i + 3]);
 
@@ -115,7 +119,7 @@ public static class FlowHarness
 
         // Pipes and channels with readers that keep up.
         yield return Program(Open(FlowPipe.Drain), Data(0, 65535), Data(0, 65535), Op(FlowOp.Complete), ProbePing(), ProbeCall());
-        yield return Program(Open(FlowPipe.SlowItems), Repeat(10, Item(0, 1024)), Op(FlowOp.Complete), ProbeCall());
+        yield return Program(Open(FlowPipe.SlowItems), Item(0, 1024, 10), Item(0, 100), Op(FlowOp.Complete), ProbeCall());
         yield return Program(Open(FlowPipe.Drain), Open(FlowPipe.SlowItems), Data(0, 16 * 1024), Item(1, 100), ProbePing());
 
         // Pipe state: an unexpected state, data after Complete, state for an unknown pipe.
@@ -149,18 +153,17 @@ public static class FlowHarness
         yield return ("1 MiB in full frames to a reader that keeps up", Program(Open(FlowPipe.Drain), Data(0, 1024 * 1024), ProbePing()), 1);
 
         // The application's reproductions (spec section 9).
-        yield return ("40 x 40 KiB items with a slow reader, then a call", Program(Open(FlowPipe.SlowItems), Repeat(40, Item(0, 40 * 1024)), ProbeCall()), 4);
+        yield return ("40 x 40 KiB items with a slow reader, then a call", Program(Open(FlowPipe.SlowItems), Item(0, 40 * 1024, 40), ProbeCall()), 4);
         yield return ("Pipe completed while the reader's buffer is full", Program(Open(FlowPipe.NeverRead), Data(0, 300 * 1024), Op(FlowOp.Complete), ProbePing()), 4);
         yield return ("One 300 KiB item", Program(Open(FlowPipe.SlowItems), Item(0, 300 * 1024), ProbePing()), 6);
     }
 
     private static byte[] Program(params byte[][] ops) => ops.SelectMany(o => o).ToArray();
-    private static byte[] Repeat(int count, byte[] op) => Enumerable.Repeat(op, count).SelectMany(o => o).ToArray();
     private static byte[] Op(FlowOp op, byte a = 0, byte b = 0, byte c = 0) => [(byte)op, a, b, c];
     private static byte[] Call(FlowMethod method, byte size = 0, byte c = 0) => Op(FlowOp.Call, (byte)method, size, c);
     private static byte[] Open(FlowPipe kind) => Op(FlowOp.Open, (byte)kind);
     private static byte[] Data(byte slot, int size) => Op(FlowOp.PipeData, slot, Size(size), 0x5A);
-    private static byte[] Item(byte slot, int size) => Op(FlowOp.ChannelItem, slot, Size(size));
+    private static byte[] Item(byte slot, int size, byte count = 1) => Op(FlowOp.ChannelItem, slot, Size(size), count);
     private static byte[] ProbePing() => Op(FlowOp.ProbePing);
     private static byte[] ProbeCall() => Op(FlowOp.ProbeCall);
 
@@ -183,7 +186,8 @@ public static class FlowHarness
         Open,
         /// <summary>Write <c>Sizes[b]</c> raw bytes filled with <c>c</c> to pipe slot <c>a</c>.</summary>
         PipeData,
-        /// <summary>Write one byte[] channel item of <c>Sizes[b]</c> to pipe slot <c>a</c>.</summary>
+        /// <summary>Write <c>c</c> % 64 (at least 1) byte[] channel items of <c>Sizes[b]</c> to pipe slot <c>a</c>
+        /// as one stream, split into full frames like the channel writer does.</summary>
         ChannelItem,
         /// <summary>Send pipe state <c>b</c> for pipe slot <c>a</c>.</summary>
         PipeState,
@@ -291,8 +295,15 @@ public static class FlowHarness
                 }
 
                 case FlowOp.ChannelItem:
-                    PipeWrite(PipeId(a, c), NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]));
+                {
+                    var item = NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]);
+                    var count = Math.Max(1, c % 64);
+                    var stream = new byte[(long)item.Length * count > MaxBytesPerInput ? item.Length : item.Length * count];
+                    for (var offset = 0; offset < stream.Length; offset += item.Length)
+                        item.CopyTo(stream, offset);
+                    PipeWrite(PipeId(a, 0), stream);
                     return null;
+                }
 
                 case FlowOp.PipeState:
                     SendPipeState(PipeId(a, c), (NexusDuplexPipe.State)b);
@@ -524,171 +535,6 @@ public static class FlowHarness
         }
 
         public delegate void WriteAction(ref MsgPackWriter writer);
-    }
-
-    /// <summary>
-    /// Parses what the server sends: pongs, invocation results, pipe Ready states and the disconnect reason.
-    /// </summary>
-    private sealed class ServerOutput
-    {
-        private readonly Lock _gate = new();
-        private readonly SemaphoreSlim _changed = new(0);
-        private bool _preambleRead;
-        private string? _malformed;
-
-        public int Pongs { get; private set; }
-        public HashSet<ushort> Results { get; } = [];
-        public Dictionary<byte, ushort> ReadyPipes { get; } = [];
-        public DisconnectReason? Disconnect { get; private set; }
-
-        /// <summary>
-        /// True once the server sent a disconnect or its output ended.
-        /// </summary>
-        public bool IsClosed { get; private set; }
-
-        public async Task ReadAsync(PipeReader reader)
-        {
-            try
-            {
-                while (true)
-                {
-                    var result = await reader.ReadAsync().ConfigureAwait(false);
-                    SequencePosition consumed;
-                    lock (_gate)
-                        consumed = Parse(result.Buffer);
-                    _changed.Release();
-                    reader.AdvanceTo(consumed, result.Buffer.End);
-                    if (result.IsCompleted)
-                        break;
-                }
-            }
-            finally
-            {
-                lock (_gate)
-                    IsClosed = true;
-                _changed.Release();
-                await reader.CompleteAsync().ConfigureAwait(false);
-            }
-        }
-
-        /// <summary>
-        /// Waits until <paramref name="condition"/> holds or the server closed. Returns false on timeout.
-        /// </summary>
-        public bool WaitFor(Func<ServerOutput, bool> condition, TimeSpan timeout)
-        {
-            var deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
-            while (true)
-            {
-                lock (_gate)
-                {
-                    if (IsClosed || condition(this))
-                        return true;
-                }
-
-                var remaining = deadline - Environment.TickCount64;
-                if (remaining <= 0 || !_changed.Wait(TimeSpan.FromMilliseconds(remaining)))
-                {
-                    lock (_gate)
-                        return IsClosed || condition(this);
-                }
-            }
-        }
-
-        public void ThrowIfMalformed()
-        {
-            if (_malformed != null)
-                throw new InvalidOperationException($"Server sent malformed output: {_malformed}");
-        }
-
-        private SequencePosition Parse(ReadOnlySequence<byte> buffer)
-        {
-            var reader = new SequenceReader<byte>(buffer);
-            if (!_preambleRead)
-            {
-                if (reader.Remaining < FuzzServerHost.Preamble.Length)
-                    return reader.Position;
-                reader.Advance(FuzzServerHost.Preamble.Length);
-                _preambleRead = true;
-            }
-
-            while (!IsClosed)
-            {
-                var frameStart = reader.Consumed;
-                if (!reader.TryRead(out var typeByte))
-                    break;
-
-                var type = (MessageType)typeByte;
-                if (typeByte is >= 20 and < 39)
-                {
-                    Disconnect = (DisconnectReason)typeByte;
-                    IsClosed = true;
-                    reader.Advance(reader.Remaining);
-                    break;
-                }
-
-                if (type == MessageType.Ping)
-                {
-                    Pongs++;
-                    continue;
-                }
-
-                var postHeader = type == MessageType.DuplexPipeWrite ? 2 : 0;
-                if (!reader.TryReadLittleEndian(out short signedLength) || reader.Remaining < postHeader + (ushort)signedLength)
-                {
-                    // Incomplete frame: leave it for the next read.
-                    reader.Rewind(reader.Consumed - frameStart);
-                    break;
-                }
-
-                var length = (ushort)signedLength;
-                reader.Advance(postHeader);
-                var body = buffer.Slice(reader.Position, length);
-                reader.Advance(length);
-                Handle(type, body);
-            }
-
-            return reader.Position;
-        }
-
-        private void Handle(MessageType type, ReadOnlySequence<byte> body)
-        {
-            try
-            {
-                switch (type)
-                {
-                    case MessageType.ServerGreeting:
-                    case MessageType.DuplexPipeWrite:
-                        break;
-
-                    case MessageType.InvocationResult:
-                    {
-                        var reader = new MsgPackReader(body);
-                        reader.ReadArrayHeader();
-                        Results.Add(reader.ReadUInt16());
-                        break;
-                    }
-
-                    case MessageType.DuplexPipeUpdateState:
-                    {
-                        var reader = new MsgPackReader(body);
-                        reader.ReadArrayHeader(2);
-                        var pipeId = reader.ReadUInt16();
-                        var state = (NexusDuplexPipe.State)reader.ReadByte();
-                        if ((state & NexusDuplexPipe.State.Ready) != 0)
-                            ReadyPipes.TryAdd((byte)pipeId, pipeId);
-                        break;
-                    }
-
-                    default:
-                        _malformed ??= $"unexpected message type {type}";
-                        break;
-                }
-            }
-            catch (NexusSerializationException e)
-            {
-                _malformed ??= $"{type}: {e.Message}";
-            }
-        }
     }
 }
 

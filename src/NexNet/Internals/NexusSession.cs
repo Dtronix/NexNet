@@ -72,7 +72,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private int _versionHash = 0;
 
     // Security limits
-    private const int MaxAuthenticationTokenSize = 8192; // 8KB max for auth tokens
+    // Largest frame body accepted before the connection completes. A greeting is well below this; the length is
+    // checked as soon as it is read, before the body is buffered.
+    internal const int MaxPreAuthBodyLength = 16 * 1024;
     private const int MaxVersionStringLength = 16; // Max length for version strings
     private const int MaxGreetingAttempts = 3; // Max greeting messages per session
     private int _greetingAttempts = 0;
@@ -80,6 +82,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     // Rate limiting
     private readonly string? _rateLimiterAddress;
     private readonly IConnectionRateLimiter? _rateLimiter;
+
+    // Server only: frees this session's MaxPendingHandshakes slot (once), and records pre-auth failures.
+    private Action? _handshakeEnded;
+    private readonly PreAuthFailureLog? _preAuthFailureLog;
 
     /// <summary>
     /// State of the connection that
@@ -176,6 +182,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Store rate limiter info for release on disconnect
         _rateLimiterAddress = configurations.RateLimiterAddress;
         _rateLimiter = configurations.RateLimiter;
+        _handshakeEnded = configurations.HandshakeEnded;
+        _preAuthFailureLog = configurations.PreAuthFailureLog;
 
         Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
@@ -290,6 +298,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _registeredDisconnectReason = reason;
 
         Logger?.LogInfo($"Session disconnected with reason: {reason}; Source: {Path.GetFileName(filePath)}:{lineNumber}");
+
+        if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+            _preAuthFailureLog?.Record(reason);
+        EndHandshake();
         
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
@@ -437,6 +449,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
     
     
+    /// <summary>
+    /// Frees this session's <c>MaxPendingHandshakes</c> slot. Safe to call more than once.
+    /// </summary>
+    internal void EndHandshake() => Interlocked.Exchange(ref _handshakeEnded, null)?.Invoke();
+
     /// <summary>
     /// Method executed at the handshake timeout to verify the connection has been fully established.
     /// </summary>

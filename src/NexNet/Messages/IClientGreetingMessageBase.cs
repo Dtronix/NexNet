@@ -9,6 +9,25 @@ namespace NexNet.Messages;
 internal interface IClientGreetingMessageBase : IMessageBase
 {
     /// <summary>
+    /// Largest authentication token accepted, in bytes. Checked before the token is allocated.
+    /// </summary>
+    public const int MaxAuthenticationTokenSize = 8192;
+
+    /// <summary>
+    /// Reads the authentication token into a pooled array after checking its declared length.
+    /// </summary>
+    protected static Memory<byte> ReadAuthenticationToken(ref NexNet.Serialization.MsgPackReader reader)
+    {
+        var probe = reader;
+        // ReadBinaryHeader returns -1 for nil.
+        if (probe.ReadBinaryHeader() > MaxAuthenticationTokenSize)
+            throw new NexNet.Serialization.NexusSerializationException(
+                $"Authentication token exceeds the maximum of {MaxAuthenticationTokenSize} bytes.");
+
+        return reader.ReadBinaryToPooled(out _);
+    }
+
+    /// <summary>
     /// Targeted API version that the client is expecting.
     /// </summary>
     string? Version { get; set; }

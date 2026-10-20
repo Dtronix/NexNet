@@ -37,19 +37,30 @@ public static class SessionHarness
         var payload = data.Length > 0 ? data.AsSpan(1) : ReadOnlySpan<byte>.Empty;
 
         var server = Instance.Value;
-        var transport = new FuzzTransport();
+        var transport = new FuzzTransport(readsOutput: true);
+        var output = new ServerOutput();
+        var reading = Task.Run(() => output.ReadAsync(transport.ServerOutput));
         server.Accept(transport);
 
         var input = transport.ClientToServer.Writer;
         if ((flags & 1) == 0)
             Write(input, FuzzServerHost.Preamble);
         if ((flags & 1) == 0 && (flags & 2) == 0)
+        {
             Write(input, server.Greeting);
+
+            // Messages before the connection completes are protocol errors; wait so the payload reaches the
+            // post-handshake protocol.
+            if (!output.WaitFor(o => o.Greeted, SessionTimeout) || !output.Greeted)
+                throw new TimeoutException("Server did not complete the handshake.");
+        }
         Write(input, payload);
         input.Complete();
 
         if (!transport.Closed.Wait(SessionTimeout))
             throw new TimeoutException($"Session did not close within {SessionTimeout.TotalSeconds:F0} s after the stream ended.");
+        if (!reading.Wait(SessionTimeout))
+            throw new TimeoutException("Server output did not end after the session closed.");
 
         server.Logger.ThrowIfUnexpected();
     }

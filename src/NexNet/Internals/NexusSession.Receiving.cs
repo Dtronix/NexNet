@@ -247,6 +247,16 @@ internal partial class NexusSession<TNexus, TProxy>
                         break;
                     }
 
+                    // Before the connection completes only a greeting is valid; refuse anything larger before its
+                    // body is buffered.
+                    if (bodyLength > MaxPreAuthBodyLength
+                        && (_internalState & InternalState.NexusCompletedConnection) == 0)
+                    {
+                        Logger?.LogDebug($"Received a {_recMessageHeader.Type} body of {bodyLength} bytes before the connection completed.");
+                        disconnect = DisconnectReason.ProtocolError;
+                        break;
+                    }
+
                     //Logger?.LogTrace($"Parsed body length of {_recMessageHeader.BodyLength}.");
                     _recMessageHeader.BodyLength = bodyLength;
                 }
@@ -382,6 +392,74 @@ internal partial class NexusSession<TNexus, TProxy>
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
     }
 
+    /// <summary>
+    /// Server: authenticates the client, then completes the connection and sends the server greeting.
+    /// </summary>
+    private async Task CompleteServerHandshake(byte[] authenticationToken)
+    {
+        try
+        {
+            var serverConfig = Unsafe.As<ServerConfig>(_config);
+
+            // See if there is an authentication handler.
+            if (serverConfig.Authenticate)
+            {
+                // Run the handler and verify that it is good.
+                var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
+
+                try
+                {
+                    Identity = await serverNexus.Authenticate(authenticationToken).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    // Exception was thrown. Cancel the entire connection.
+                    _config.Logger?.LogError(e, "Authenticate threw an exception.");
+                    await DisconnectCore(DisconnectReason.Authentication, true).ConfigureAwait(false);
+                    return;
+                }
+
+                // Set the identity on the context.
+                var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
+                serverContext.Identity = Identity;
+
+                // If the token is not good, disconnect.
+                if (Identity == null)
+                {
+                    await DisconnectCore(DisconnectReason.Authentication, true).ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            // The session may have ended (stream end, handshake timeout) while authenticating.
+            if (State != ConnectionState.Connected)
+                return;
+
+            EnumUtilities<InternalState>.SetFlag(
+                ref _internalState, InternalState.NexusCompletedConnection);
+            EndHandshake();
+
+            await _sessionManager!.Sessions.RegisterSessionAsync(this).ConfigureAwait(false);
+
+            await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
+
+            using var serverGreeting = _poolManager.Rent<ServerGreetingMessage>();
+            serverGreeting.Version = TProxy.MethodHash;
+            serverGreeting.ClientId = Id;
+
+            await SendMessage(serverGreeting).ConfigureAwait(false);
+
+            _ = Task.Factory.StartNew(InvokeOnConnected, this);
+
+            _readyTaskCompletionSource?.TrySetResult();
+        }
+        catch (Exception e)
+        {
+            Logger?.LogError(e, "Completing the connection failed.");
+            await DisconnectCore(DisconnectReason.ProtocolError, true).ConfigureAwait(false);
+        }
+    }
+
     private bool ConfirmProtocol(ReadOnlySequence<byte> sequence, out DisconnectReason disconnect)
     {
         // Try again until we have enough data.
@@ -428,28 +506,28 @@ internal partial class NexusSession<TNexus, TProxy>
     }
 
 
+    private static async void InvokeOnConnected(object? sessionObj)
+    {
+        var session = Unsafe.As<NexusSession<TNexus, TProxy>>(sessionObj)!;
+
+        try
+        {
+            await session._nexus.Connected((session._internalState & InternalState.ReconnectingInProgress) != 0).ConfigureAwait(false);
+        }
+        catch (TaskCanceledException e)
+        {
+            session.Logger?.LogTrace(e, "OnConnected was canceled.");
+        }
+        catch (Exception e)
+        {
+            session.Logger?.LogError(e, "OnConnected threw an exception.");
+        }
+        // Reset the value;
+        EnumUtilities<InternalState>.RemoveFlag(ref session._internalState, InternalState.ReconnectingInProgress);
+    }
+
     private async ValueTask<DisconnectReason> MessageHandler(IMessageBase message, MessageType messageType)
     {
-        static async void InvokeOnConnected(object? sessionObj)
-        {
-            var session = Unsafe.As<NexusSession<TNexus, TProxy>>(sessionObj)!;
-
-            try
-            {
-                await session._nexus.Connected((session._internalState & InternalState.ReconnectingInProgress) != 0).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException e)
-            {
-                session.Logger?.LogTrace(e, "OnConnected was canceled.");
-            }
-            catch (Exception e)
-            {
-                session.Logger?.LogError(e, "OnConnected threw an exception.");
-            }
-            // Reset the value;
-            EnumUtilities<InternalState>.RemoveFlag(ref session._internalState, InternalState.ReconnectingInProgress);
-        }
-
         switch (messageType)
         {
             case MessageType.ClientGreetingReconnection:
@@ -492,17 +570,12 @@ internal partial class NexusSession<TNexus, TProxy>
                 if (!IsServer)
                     return DisconnectReason.ProtocolError;
 
-                // Validate authentication token size
-                if (cGreeting.AuthenticationToken.Length > MaxAuthenticationTokenSize)
-                {
-                    _config.Logger?.LogWarning($"Authentication token exceeds maximum size: {cGreeting.AuthenticationToken.Length} > {MaxAuthenticationTokenSize}");
-                    return DisconnectReason.ProtocolError;
-                }
+                // The authentication token size is checked when the greeting is deserialized.
 
                 // Validate version string length
                 if (cGreeting.Version != null && cGreeting.Version.Length > MaxVersionStringLength)
                 {
-                    _config.Logger?.LogWarning($"Version string exceeds maximum length: {cGreeting.Version.Length} > {MaxVersionStringLength}");
+                    Logger?.LogDebug($"Version string exceeds maximum length: {cGreeting.Version.Length} > {MaxVersionStringLength}");
                     return DisconnectReason.ProtocolError;
                 }
 
@@ -543,53 +616,11 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Validation has succeeded.
                 _versionHash = verificationHash;
 
-                var serverConfig = Unsafe.As<ServerConfig>(_config);
-
-                // See if there is an authentication handler.
-                if (serverConfig.Authenticate)
-                {
-                    // Run the handler and verify that it is good.
-                    var serverNexus = Unsafe.As<ServerNexusBase<TProxy>>(_nexus);
-
-                    try
-                    {
-                        Identity = await serverNexus.Authenticate(cGreeting.AuthenticationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception e)
-                    {
-                        // Exception was thrown. Cancel the entire connection.
-                        _config.Logger?.LogError(e, "Authenticate threw an exception.");
-                        return DisconnectReason.Authentication;
-                    }
-                    
-
-                    // Set the identity on the context.
-                    var serverContext = Unsafe.As<ServerSessionContext<TProxy>>(_nexus.SessionContext);
-                    serverContext.Identity = Identity;
-
-                    // If the token is not good, disconnect.
-                    if (Identity == null)
-                    {
-                        return DisconnectReason.Authentication;
-                    }
-                }
-                
-                EnumUtilities<InternalState>.SetFlag(
-                    ref _internalState, InternalState.NexusCompletedConnection);
-
-                await _sessionManager!.Sessions.RegisterSessionAsync(this).ConfigureAwait(false);
-                
-                await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
-
-                using var serverGreeting = _poolManager.Rent<ServerGreetingMessage>();
-                serverGreeting.Version = TProxy.MethodHash;
-                serverGreeting.ClientId = Id;
-
-                await SendMessage(serverGreeting).ConfigureAwait(false);
-                
-                _ = Task.Factory.StartNew(InvokeOnConnected, this);
-
-                _readyTaskCompletionSource?.TrySetResult();
+                // Authentication and the rest of the handshake run off the read loop, so a slow OnAuthenticate does
+                // not hold it. Until the connection completes, any further frame is a protocol error. The greeting
+                // is returned to its pool when this handler returns, so the token is copied.
+                var authenticationToken = cGreeting.AuthenticationToken.ToArray();
+                _ = Task.Run(() => CompleteServerHandshake(authenticationToken));
                 break;
             }
 

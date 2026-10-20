@@ -273,6 +273,7 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 |----------|---------|-------------|
 | `AcceptorBacklog` | 20 | Listen backlog |
 | `Authenticate` | false | Require client auth |
+| `MaxPendingHandshakes` | 256 | Server-wide cap on unauthenticated connections; new transports are closed when full |
 | `RateLimiting` | null | `ConnectionRateLimitConfig`; null = disabled |
 | `AuthorizationCacheDuration` | null | Default auth cache TTL; null = disabled |
 
