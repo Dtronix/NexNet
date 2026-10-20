@@ -64,10 +64,16 @@
 
 ## Performance
 
-- Pipe uploads: equal or faster (64 MiB over TCP +16%), with up to 4.7× fewer allocations.
-- Broadcasts with an unresponsive client: healthy clients receive in about 0.25 ms instead of waiting for the client's timeout.
-- Channels of very small items (single integers) are about 10–17% slower because of the length prefix; larger items are within noise.
-- Pipe throughput over high-latency links is limited to `PipeWindow` ÷ round-trip time; raise `PipeWindow` for long-distance bulk transfers.
+Measured against 0.17.0 on the same machine (BenchmarkDotNet, `src/NexNetBenchmarks`).
+
+- **Invocations:** round-trip times unchanged (within ±4%); 5–7 B more allocated per call with trusted serializer options, 13–28 B untrusted (invocation credit returns). With 8 and 32 concurrent callers, calls are 15–20% faster.
+- **Pipe uploads:** 64 MiB at 753 MB/s over TCP (+20%) and 1,486 MB/s over UDS (+4%), with 1.7–4.7× fewer allocations. A 1 MiB upload over TCP, which failed in 0.17.0, runs at 573 MB/s.
+- **Invocations with a pipe argument:** about 10% faster, with 2.6× fewer allocations.
+- **Invocations while a pipe streams:** about 8% slower (107 µs), with less than half the allocations.
+- **Large values:** a 4 MiB argument echoed back as the result in 13.5 ms (311 MB/s each way).
+- **Broadcasts with an unresponsive client:** healthy clients receive in about 0.25 ms instead of waiting for the client's timeout.
+- **Channels:** small items are 10–20% slower because of the length prefix; arrays of 256 integers are unchanged.
+- **High-latency links:** a pipe's throughput is limited to `PipeWindow` ÷ round-trip time (12.7 MB/s at 20 ms with the default 256 KiB window), where 0.17.0 timed out. Raise `PipeWindow` for long-distance bulk transfers.
 
 ## Migration Guide from v0.17.0
 
