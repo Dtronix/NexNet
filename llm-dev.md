@@ -52,7 +52,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.3 Invocation Layer (src/NexNet/Invocation/)
 
 **Base Classes:**
-- `NexusBase.cs` - Common base; implements IMethodInvoker; manages CTS registry, pipe registration, pooling
+- `NexusBase.cs` - Common base; implements IMethodInvoker; cancellation sources (calls with a result: pooled source keyed by invocation ID, canceled by `InvocationCancellation`; fire-and-forget: one shared source per session, canceled on disconnect), pipe registration (frees the invocation's execution slot), pooling
 - `ServerNexusBase.cs` - Server base; OnAuthenticate, OnNexusInitialize, OnAuthorize virtuals; CheckAuthorization with ConcurrentDictionary cache; InvalidateAuthorizationCache() overloads
 - `ClientNexusBase.cs` - Client base; OnReconnecting virtual
 
@@ -69,7 +69,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 **Routing & Registry:**
 - `IInvocationRouter.cs` - Routes invocations to target sessions
-- `LocalInvocationRouter.cs` - Single-server routing implementation
+- `LocalInvocationRouter.cs` - Single-server routing. Two passes: `TryWriteInvocation` to every target without waiting (a single-frame invocation is encoded once with `MessageFrame` and copied), then the busy sessions are sent to concurrently (at most 256 waiting) within one `ProgressTimeout`; sessions still without credit are skipped
 - `LocalSessionRegistry.cs` - ConcurrentDictionary<long, INexusSession> session tracking
 - `LocalGroupRegistry.cs` - Group membership with LocalSessionGroup management
 - `NexusCollectionManager.cs` - Manages synchronized collections per nexus
@@ -83,7 +83,9 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token, MaxMessageSize, InvocationCredits
 - `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash, MaxMessageSize, InvocationCredits
 - `LargeMessageMessages.cs` - MessageStart/MessageAbort for arguments and results larger than one frame (see `Internals/LargeMessageReceiver.cs`)
-- `InvocationMessage.cs` - Remote method invocation payload
+- `InvocationMessage.cs` - Remote method invocation payload; `Serialize` goes through `InvocationBody`
+- `InvocationBody.cs` - Readonly snapshot of an invocation's fields: exact body `Length` and `Write`, the only invocation body encoder
+- `InvocationCreditMessage.cs` - Returns invocation credit to the peer (type 116)
 - `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
 - `DuplexPipeUpdateStateMessage.cs` - Pipe state changes
@@ -97,12 +99,19 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 **Core Session:**
 - `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
-- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization
+- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
 - `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
-- `RegisteredInvocationState.cs` - Pending invocation with TaskCompletionSource<Memory<byte>>
+- `RegisteredInvocationState.cs` - Pending call awaiting its result: pooled `IValueTaskSource<bool>`; completion (result, cancel, exception) is claimed atomically
+- `SessionControlSender.cs` - Sends control replies off the read loop, coalesced: pongs, pipe window grants and close acknowledgements, large-message aborts, invocation credit
+- `SessionBudget.cs` - Per-session receive memory reservations (pipe windows, invocation queue, large values); FIFO `ReserveAsync`
+- `LargeMessageReceiver.cs` - Reassembles streamed arguments/results (MessageStart/Chunk), reserving their size from the budget first
+- `PreAuthFailureLog.cs` - Aggregated warning for sessions that fail before authentication
+- `MessageFrame.cs` - Encodes a complete frame outside a session (pre-encoded broadcast frames)
+- `InvocationWriteResult.cs` - Result of `INexusSession.TryWriteInvocation`: Written (committed to the output), Busy (would wait), Failed
+- `IInvocationSlot.cs` - Execution slot an invocation holds; released when its pipe registers
 
 **Internal State Flags:** ProtocolConfirmed, InitialClientGreetingReceived, InitialServerGreetingReceived, NexusCompletedConnection, ReconnectingInProgress
 
@@ -419,9 +428,9 @@ Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying i
 ## 6. Key Architectural Concepts
 
 ### Protocol
-Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 2).
+Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 1).
 - **NnP Header:** 8 bytes `[N][n][P][0x14][reserved x3][Version=1]`; any mismatch -> `ProtocolError`
-- **Framing:** type byte, little-endian `uint16` body length (types with a body), pipe ID for `DuplexPipeWrite`, body
+- **Framing:** type byte, little-endian `uint16` body length (types with a body), post-header (pipe ID for `DuplexPipeWrite`/`PipeWindowUpdate`, stream key for `MessageChunk`), body
 - **Bodies:** MessagePack arrays, hand-written per message (src/NexNet/Messages)
 - **Handshake:** Client greeting -> Server greeting with version hash validation
 

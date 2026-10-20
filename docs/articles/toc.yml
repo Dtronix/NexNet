@@ -28,3 +28,5 @@
   href: rate-limiting.md
 - name: Benchmarks
   href: benchmarks.md
+- name: Release Notes
+  href: releases/toc.yml
