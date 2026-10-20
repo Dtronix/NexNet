@@ -567,7 +567,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     /// <summary>
     /// Largest value this side may send: the smaller of its own limit and the peer's.
     /// </summary>
-    internal int SendMaxMessageSize => Math.Min(_config.MaxMessageSize, _peerMaxMessageSize);
+    public int SendMaxMessageSize => Math.Min(_config.MaxMessageSize, _peerMaxMessageSize);
 
     /// <summary>
     /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is

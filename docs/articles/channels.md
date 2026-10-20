@@ -8,7 +8,9 @@ Building on the [Duplex Pipes](duplex-pipes.md) infrastructure, NexNet provides 
 |-----------|------------|---------------|
 | `INexusDuplexChannel<T>` | Any type NexNet can serialize: [built-in types](serialization.md#built-in-types), `[NexusObject]` types and types with a registered formatter | Writing is thread safe; reading should be single-threaded |
 
-Each item is written as one MessagePack value, and items are sent back to back on the channel's pipe. An item can be larger than a single pipe frame; the reader waits until the whole item has arrived. A single incomplete item may buffer at most `NexusSerializerOptions.MaxBufferedItemSize` bytes (16 MiB by default, see [Serialization](serialization.md#options-and-limits)).
+Each item is written as one MessagePack value preceded by its length, and items are sent back to back on the channel's pipe. An item can be larger than a single pipe frame, and larger than the pipe's window: the reader waits until the whole item has arrived, granting the writer extra credit from the session budget when the item needs it. An item may be at most `ConfigBase.MaxMessageSize` bytes (4 MiB by default). Writing a larger item throws `NexusMessageTooLargeException` and sends nothing; receiving one resets the channel's pipe without disconnecting the session.
+
+Raw `INexusDuplexPipe` users who frame their own data get no such extra credit: an application-level message must fit in the pipe's window (`ConfigBase.PipeWindow`).
 
 For bulk numeric data, send primitive arrays (`int[]`, `float[]`, `double[]`, ...) as items. They are encoded as one compact block of raw little-endian values instead of one MessagePack value per element.
 

@@ -23,7 +23,7 @@ public class FuzzSmokeTests
     /// Last step of the flow control v2 work sequence (docs/internals/flow-control-v2.md, section 8) that has landed.
     /// Reproductions fixed by a later step are ignored; each step raises this.
     /// </summary>
-    private const int CompletedFlowControlStep = 4;
+    private const int CompletedFlowControlStep = 6;
 
     private static IEnumerable<TestCaseData> FlowReproductions()
     {

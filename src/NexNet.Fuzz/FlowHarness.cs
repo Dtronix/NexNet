@@ -187,6 +187,15 @@ public static class FlowHarness
             Program(Op(FlowOp.InvokeIgnoringCredit, 100), Op(FlowOp.AwaitClose)),
             DisconnectReason.FlowControl);
 
+        // The channel's pipe is reset; the session stays up.
+        yield return ("Sends a prefix that disagrees with its item",
+            Program(Open(FlowPipe.SlowItems), Op(FlowOp.BadItem, 0, Size(100), 0xFF), Op(FlowOp.Pause, 50), ProbePing(), ProbeCall()),
+            null);
+
+        yield return ("Sends an item over MaxMessageSize",
+            Program(Open(FlowPipe.SlowItems), Op(FlowOp.BadItem, 0, Size(100), 0x80), Op(FlowOp.Pause, 50), ProbePing(), ProbeCall()),
+            null);
+
         yield return ("Data for a pipe that was never opened",
             Program(Op(FlowOp.PipeData, 0, Size(100)), Op(FlowOp.AwaitClose)),
             DisconnectReason.ProtocolError);
@@ -288,6 +297,9 @@ public static class FlowHarness
         /// <summary>Send <c>a</c> invocations of <see cref="FlowMethod.Cancellable"/> (50 ms each) ignoring the
         /// invocation credit.</summary>
         InvokeIgnoringCredit,
+        /// <summary>Write a byte[] channel item of <c>Sizes[b]</c> to pipe slot <c>a</c> whose length prefix is off
+        /// by <c>c</c> (signed), or for <c>c</c> = 0x80, declares <see cref="int.MaxValue"/>.</summary>
+        BadItem,
         Count,
     }
 
@@ -383,7 +395,7 @@ public static class FlowHarness
 
                 case FlowOp.ChannelItem:
                 {
-                    var item = NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]);
+                    var item = Framed(NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]), 0);
                     var count = Math.Max(1, c % 64);
                     var stream = new byte[(long)item.Length * count > MaxBytesPerInput ? item.Length : item.Length * count];
                     for (var offset = 0; offset < stream.Length; offset += item.Length)
@@ -517,6 +529,21 @@ public static class FlowHarness
                     _strictWrites = true;
                     return null;
 
+                case FlowOp.BadItem:
+                {
+                    // A prefix that disagrees with its item: c says by how much (as a signed byte, never 0); 0x80
+                    // declares the largest length a prefix can hold.
+                    var item = NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]);
+                    var delta = (sbyte)c switch
+                    {
+                        0 => 1,
+                        sbyte.MinValue => int.MaxValue - item.Length,
+                        var d => d,
+                    };
+                    PipeWrite(PipeId(a, 0), Framed(item, delta));
+                    return _writeStall;
+                }
+
                 case FlowOp.InvokeIgnoringCredit:
                     for (var i = 0; i < a; i++)
                         Invoke(FlowMethod.Cancellable, (ref MsgPackWriter w) => w.Write(50), InvocationFlags.None, out _, respectCredit: false);
@@ -637,6 +664,17 @@ public static class FlowHarness
             }
 
             _sent[pipeId] = sent;
+        }
+
+        /// <summary>
+        /// A channel item as the channel writer sends it: its length prefix, then the item. The prefix is off by
+        /// <paramref name="delta"/> (0 for a correct one).
+        /// </summary>
+        private static byte[] Framed(byte[] item, int delta)
+        {
+            var prefix = new byte[ChannelFraming.MaxPrefixLength];
+            var prefixLength = ChannelFraming.WriteLength(prefix, Math.Max(0, item.Length + delta));
+            return [.. prefix.AsSpan(0, prefixLength), .. item];
         }
 
         private void SendPipeState(ushort pipeId, NexusDuplexPipe.State state)

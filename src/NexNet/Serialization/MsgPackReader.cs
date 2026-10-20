@@ -1066,30 +1066,6 @@ public ref struct MsgPackReader
     }
 
     /// <summary>
-    /// Gets the length in bytes of the next value without consuming it. Returns false if the value is incomplete.
-    /// Throws on malformed data (e.g. 0xc1).
-    /// </summary>
-    internal readonly bool TryGetNextValueLength(out long length)
-    {
-        var end = SkipInSpan(_span, _index);
-        if (end >= 0)
-        {
-            length = end - _index;
-            return true;
-        }
-
-        var probe = this;
-        if (!probe.TrySkipAcrossSegments())
-        {
-            length = 0;
-            return false;
-        }
-
-        length = probe.ConsumedCore - ConsumedCore;
-        return true;
-    }
-
-    /// <summary>
     /// Skips one value that lies entirely within <paramref name="span"/> starting at <paramref name="index"/>.
     /// Returns the index after the value, or -1 if the value runs past the end of the span (it may be incomplete or
     /// continue in the next segment). Throws on 0xc1.

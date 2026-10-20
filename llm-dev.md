@@ -168,7 +168,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 - `INexusDuplexPipe.cs` - Bidirectional pipe: Id, ReadyTask, CompleteTask, CompleteAsync()
 - `NexusPipeManager.cs` - Manages duplex pipes for large data transfers
-- `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, concatenated on the pipe. The reader deserializes optimistically away from the buffer end; near the end it measures the next item with `MsgPackReader.TryGetNextValueLength` so a partial item waits for more data (bounded by `MaxBufferedItemSize`)
+- `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, preceded by a varint length (`ChannelFraming.cs`). The reader deserializes each item from exactly its slice; a partial item waits for more data, with an extra credit grant from the session budget if it is larger than the pipe window. Items over `MaxMessageSize` or that break the framing reset the pipe
 
 ### 1.11 Logging (src/NexNet/Logging/)
 
@@ -189,7 +189,7 @@ NexNet's own MessagePack implementation (namespace `NexNet.Serialization`, compi
 serializer dependency).
 
 - `MsgPackWriter.cs` - `ref struct` over `IBufferWriter<byte>`; always writes the smallest canonical form; `Flush()` commits
-- `MsgPackReader.cs` - `ref struct` over `ReadOnlySequence<byte>`/`ReadOnlyMemory<byte>`; length checks before allocation, iterative `Skip`, depth tracking (`Enter`/`Exit`), `TryGetNextValueLength`
+- `MsgPackReader.cs` - `ref struct` over `ReadOnlySequence<byte>`/`ReadOnlyMemory<byte>`; length checks before allocation, iterative `Skip`, depth tracking (`Enter`/`Exit`)
 - `MsgPackCode.cs` - Format byte constants
 - `NexusFormatter.cs` - `NexusFormatter<T>` (writes/reads exactly one value), `NexusFormatterCache<T>` (static slot), `NexusFormatterRegistry` (`Register` first-wins, `Get`, `TryGet`)
 - `NexusSerializer.cs` - Convenience `Serialize<T>`/`Deserialize<T>` entry points

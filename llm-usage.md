@@ -169,8 +169,8 @@ Anything else needs `[NexusObject]` or `[assembly: NexusFormatter<TFormatter, T>
 | `NexusSerializerOptions.Untrusted` (default) | Max nesting depth 64, invalid UTF-8 rejected, randomized hashing for dictionaries/sets with non-string keys, a channel item may buffer at most 16 MiB |
 | `NexusSerializerOptions.Trusted` | No depth limit, invalid UTF-8 replaced, default comparers |
 
-Customize with `with`: `config.SerializerOptions = NexusSerializerOptions.Untrusted with { MaxBufferedItemSize = 64 * 1024 * 1024 };`
-(properties: `Security`, `MaxDepth`, `StrictUtf8`, `MaxBufferedItemSize`). Length checks before allocation and exact
+Customize with `with`: `config.SerializerOptions = NexusSerializerOptions.Untrusted with { MaxDepth = 128 };`
+(properties: `Security`, `MaxDepth`, `StrictUtf8`). Value sizes are limited by `ConfigBase.MaxMessageSize`. Length checks before allocation and exact
 message shapes are always enforced.
 
 ### Diagnostics

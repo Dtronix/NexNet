@@ -95,6 +95,12 @@ internal interface INexusSession : ISessionMessenger
     SessionBudget Budget { get; }
 
     /// <summary>
+    /// Largest argument, result or channel item this side may send: the smaller of its own and the peer's
+    /// MaxMessageSize.
+    /// </summary>
+    int SendMaxMessageSize { get; }
+
+    /// <summary>
     /// Sends an invocation once the peer has credit for it (docs/internals/flow-control-v2.md, section 4.7). Waits
     /// for credit in the caller's task, never in the read loop.
     /// </summary>

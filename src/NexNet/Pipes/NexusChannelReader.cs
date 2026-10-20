@@ -10,13 +10,14 @@ using NexNet.Serialization;
 namespace NexNet.Pipes;
 
 /// <summary>
-/// Reads typed items from a duplex pipe. Each item is exactly one MessagePack value, decoded by the item type's
-/// formatter.
+/// Reads typed items from a duplex pipe. Each item is one MessagePack value preceded by its length
+/// (<see cref="ChannelFraming"/>), decoded by the item type's formatter from exactly that many bytes.
 /// </summary>
 /// <typeparam name="T">The type of data to be read from the duplex pipe.</typeparam>
 /// <remarks>
-/// A partial item at the end of the buffer waits for more data instead of failing: near the end of the buffer the
-/// reader measures each item with <see cref="MsgPackReader.TryGetNextValueLength"/> before deserializing it.
+/// An item that breaks the framing (a length over the limit, a malformed prefix, an item that does not decode to
+/// exactly its length) resets the pipe; the session stays up. An incomplete item waits for more data; one larger
+/// than the pipe's window gets an extra grant from the session budget (docs/internals/flow-control-v2.md, 4.5).
 /// </remarks>
 internal class NexusChannelReader<T> : INexusChannelReader<T>
 {
@@ -25,12 +26,13 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     private readonly NexusFormatter<T> _formatter;
     private readonly NexusSerializerOptions _options;
 
-    // Largest item read so far. While the buffer holds well over this many bytes, items are deserialized without
-    // probing first (see ReadItems).
-    private long _largestItem;
+    // Largest item accepted: this side's MaxMessageSize.
+    private readonly int _maxItemSize;
 
-    // Extra bytes required beyond twice the largest item before an item is read without probing.
-    private const int OptimisticSlack = 16;
+    /// <summary>
+    /// Limit for readers created without a session (tests and fuzzing).
+    /// </summary>
+    internal const int DefaultMaxItemSize = 16 * 1024 * 1024;
 
     /// <inheritdoc/>
     public bool IsComplete => Reader.IsCompleted;
@@ -43,7 +45,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     /// </summary>
     /// <param name="pipe">The duplex pipe used for reading data.</param>
     public NexusChannelReader(INexusDuplexPipe pipe)
-        : this(pipe.ReaderCore, null, GetOptions(pipe))
+        : this(pipe.ReaderCore, null, GetOptions(pipe), GetMaxItemSize(pipe))
     {
     }
 
@@ -51,19 +53,23 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
     /// Initializes a reader that always uses the specified NexNet formatter (used for internal protocol unions).
     /// </summary>
     internal NexusChannelReader(INexusDuplexPipe pipe, NexusFormatter<T> formatter)
-        : this(pipe.ReaderCore, formatter, GetOptions(pipe))
+        : this(pipe.ReaderCore, formatter, GetOptions(pipe), GetMaxItemSize(pipe))
     {
     }
 
-    internal NexusChannelReader(NexusPipeReader reader, NexusFormatter<T>? formatter = null, NexusSerializerOptions? options = null)
+    internal NexusChannelReader(NexusPipeReader reader, NexusFormatter<T>? formatter = null, NexusSerializerOptions? options = null, int maxItemSize = DefaultMaxItemSize)
     {
         Reader = reader;
         _options = options ?? NexusSerializerOptions.Untrusted;
         _formatter = formatter ?? NexusFormatterRegistry.Get<T>();
+        _maxItemSize = maxItemSize;
     }
 
     private static NexusSerializerOptions? GetOptions(INexusDuplexPipe pipe)
         => (pipe as NexusDuplexPipe)?.Session?.Config.SerializerOptions;
+
+    private static int GetMaxItemSize(INexusDuplexPipe pipe)
+        => (pipe as NexusDuplexPipe)?.Session?.Config.MaxMessageSize ?? DefaultMaxItemSize;
 
     /// <summary>
     /// Decodes every complete item currently buffered, without waiting for more data. Returns the number of bytes
@@ -78,7 +84,7 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
         if (!Reader.TryRead(out var result) || result.Buffer.Length == 0)
             return 0;
 
-        return ReadItems(result.Buffer, list, converter);
+        return ReadItems(result.Buffer, list, converter, out _);
     }
 
     /// <inheritdoc/>
@@ -99,91 +105,91 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             if (result.IsCanceled)
                 return false;
 
-            var readAmount = ReadItems(result.Buffer, list, converter);
+            long readAmount;
+            int pendingItemLength;
+            try
+            {
+                readAmount = ReadItems(result.Buffer, list, converter, out pendingItemLength);
+            }
+            catch (Exception e) when (e is NexusSerializationException or NexusMessageTooLargeException)
+            {
+                Reader.ResetPipe();
+                throw;
+            }
 
             if (result.IsCompleted && readAmount == 0)
                 return false;
 
-            if (list.Count == 0)
-                continue;
+            // Waiting for the rest of an item: make sure the writer has the credit to send it. Done even when items
+            // were decoded, as the whole buffer is now examined and the next read waits for new data.
+            if (pendingItemLength > 0 && !await MakeRoomFor(pendingItemLength, cancellationToken).ConfigureAwait(false))
+                return list.Count > 0;
 
-            return true;
+            if (list.Count > 0)
+                return true;
         }
     }
 
     /// <summary>
-    /// Reads all complete items from the buffer without ever failing on a partial trailing item.
+    /// Lets the writer send an item of <paramref name="itemLength"/> bytes (prefix included) that is waiting at the
+    /// start of the buffer: grants back everything consumed so far, and for an item larger than the window, an
+    /// extra grant from the session budget. Returns false if canceled while waiting for the budget.
     /// </summary>
-    /// <remarks>
-    /// Near the end of the buffer each item's length is probed first (the TrySkip walk, without consuming), so an
-    /// incomplete item just waits for more data. While the remaining bytes exceed twice the largest item seen so
-    /// far, items are deserialized directly. If such an item turns out to be larger and fails, the reader is
-    /// restored and the item is probed: an incomplete item waits for more data, a complete one is malformed and the
-    /// error is rethrown. That fallback needs an item more than twice the largest seen, so it happens at most about
-    /// log2(<see cref="NexusSerializerOptions.MaxBufferedItemSize"/>) times per channel.
-    /// </remarks>
+    private ValueTask<bool> MakeRoomFor(int itemLength, CancellationToken cancellationToken)
+    {
+        Reader.FlushPendingGrant();
+        return itemLength > Reader.Window
+            ? Reader.GrantExtraAsync(itemLength - Reader.Window, cancellationToken)
+            : new ValueTask<bool>(true);
+    }
+
+    /// <summary>
+    /// Reads all complete items from the buffer.
+    /// </summary>
+    /// <param name="buffer">Buffered pipe data.</param>
+    /// <param name="list">Receives the items.</param>
+    /// <param name="converter">Converts each item, or null.</param>
+    /// <param name="pendingItemLength">The length (prefix included) of an incomplete item left at the start of the
+    /// remaining data, or 0.</param>
+    /// <returns>Bytes consumed.</returns>
+    /// <exception cref="NexusMessageTooLargeException">An item's length exceeds the limit.</exception>
+    /// <exception cref="NexusSerializationException">A malformed prefix, or an item that does not decode to exactly
+    /// its length.</exception>
     private long ReadItems<TTo>(
         ReadOnlySequence<byte> buffer,
         List<TTo> list,
-        Converter<T, TTo>? converter)
+        Converter<T, TTo>? converter,
+        out int pendingItemLength)
     {
-        var reader = new MsgPackReader(buffer, _options);
-        var bufferLength = buffer.Length;
-        long offset = 0; // position of the reader's start within buffer (changes only after a failed optimistic read)
+        pendingItemLength = 0;
+        var sequence = new SequenceReader<byte>(buffer);
         long consumed = 0;
-        var formatter = _formatter;
-        var largest = _largestItem;
-        var optimisticLimit = largest > 0 ? bufferLength - (2 * largest + OptimisticSlack) : -1;
 
-        while (consumed < bufferLength)
+        while (!sequence.End)
         {
+            if (!ChannelFraming.TryReadLength(ref sequence, out var length))
+                break; // incomplete prefix
+
+            if (length > _maxItemSize)
+                throw new NexusMessageTooLargeException(length, _maxItemSize);
+
+            if (sequence.Remaining < length)
+            {
+                // Incomplete item: wait for the rest.
+                pendingItemLength = (int)(sequence.Consumed - consumed) + length;
+                break;
+            }
+
+            var reader = new MsgPackReader(buffer.Slice(sequence.Position, length), _options);
             T? item = default;
-            if (consumed <= optimisticLimit)
-            {
-                try
-                {
-                    formatter.Deserialize(ref reader, ref item);
-                }
-                catch (NexusSerializationException)
-                {
-                    // Larger than any item so far: it may just be incomplete. Restart at the item and probe it.
-                    offset = consumed;
-                    reader = new MsgPackReader(buffer.Slice(consumed), _options);
-                    if (!reader.TryGetNextValueLength(out _))
-                        break; // incomplete item: wait for more data
+            _formatter.Deserialize(ref reader, ref item);
+            if (!reader.End)
+                throw new NexusSerializationException("Channel item has bytes after its value.");
 
-                    throw;
-                }
-            }
-            else
-            {
-                // An incomplete item stops the loop: wait for more data.
-                if (!reader.TryGetNextValueLength(out var length))
-                    break;
-
-                formatter.Deserialize(ref reader, ref item);
-
-                // A formatter must consume exactly one value.
-                if (offset + reader.Consumed - consumed != length)
-                    throw new NexusSerializationException("Channel formatter did not consume exactly one MessagePack value.");
-            }
-
-            var end = offset + reader.Consumed;
-            if (end - consumed > largest)
-            {
-                largest = end - consumed;
-                optimisticLimit = bufferLength - (2 * largest + OptimisticSlack);
-            }
-
+            sequence.Advance(length);
+            consumed = sequence.Consumed;
             list.Add(converter == null ? Unsafe.As<T, TTo>(ref item!) : converter(item!));
-            consumed = end;
         }
-
-        _largestItem = largest;
-
-        var remaining = buffer.Length - consumed;
-        if (remaining > _options.MaxBufferedItemSize)
-            throw NexusSerializationException.LengthExceedsRemaining(remaining, _options.MaxBufferedItemSize);
 
         // Everything was examined: if an item is incomplete, the next read waits for more data instead of spinning.
         Reader.AdvanceToExamined(consumed, buffer.Length);

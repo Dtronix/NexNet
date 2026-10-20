@@ -23,6 +23,8 @@ internal class MockNexusSession : INexusSession
 
     public SessionBudget Budget { get; set; } = new(16 * 1024 * 1024);
 
+    public int SendMaxMessageSize => Config.MaxMessageSize;
+
     public SessionControlSender ControlSender => _controlSender ??= new SessionControlSender(this);
     private SessionControlSender? _controlSender;
 

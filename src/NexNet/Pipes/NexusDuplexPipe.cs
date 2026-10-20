@@ -282,6 +282,53 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         return NotifyState();
     }
 
+    // Budget reserved for items larger than the window; released as the items are consumed or when the pipe is freed.
+    private int _extraReserved;
+
+    public async ValueTask<bool> ReserveExtraAsync(int bytes, CancellationToken cancellationToken)
+    {
+        if (_session == null || !await _session.Budget.ReserveAsync(bytes, cancellationToken).ConfigureAwait(false))
+            return false;
+
+        Interlocked.Add(ref _extraReserved, bytes);
+        return true;
+    }
+
+    public void ReleaseExtra(int bytes)
+    {
+        Interlocked.Add(ref _extraReserved, -bytes);
+        _session?.Budget.Release(bytes);
+    }
+
+    /// <summary>
+    /// Releases budget still reserved for oversized items. Called when the pipe is freed.
+    /// </summary>
+    internal void ReleaseAllExtra()
+    {
+        var extra = Interlocked.Exchange(ref _extraReserved, 0);
+        if (extra > 0)
+            _session?.Budget.Release(extra);
+    }
+
+    public void Reset()
+    {
+        Logger?.LogWarning("Resetting the pipe: the peer sent an item that breaks the channel framing or exceeds MaxMessageSize.");
+        _ = ResetAsync();
+
+        async Task ResetAsync()
+        {
+            try
+            {
+                _inputPipeReader.CompleteNoNotify();
+                await CloseAsync().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Logger?.LogDebug(e, "Pipe reset failed.");
+            }
+        }
+    }
+
     public void GrantCredit(int bytes)
     {
         Interlocked.Add(ref _pendingGrant, bytes);

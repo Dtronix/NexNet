@@ -56,8 +56,9 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
             return;
         }
         
-        // Ensure all initial data is fully flushed.
-        await writer.Writer.FlushAsync().ConfigureAwait(false);
+        // Ensure all initial data is fully flushed. Through the channel writer: the session's writer loop may be
+        // writing at the same time, and the pipe writer itself is not safe for that.
+        await writer.FlushAsync().ConfigureAwait(false);
         
         var reader = Mode == NexusCollectionMode.BiDirectional 
             ? new NexusChannelReader<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) 

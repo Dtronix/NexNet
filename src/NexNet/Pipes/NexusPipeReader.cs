@@ -32,6 +32,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private long _credit;
     private long _consumedSinceGrant;
 
+    // Extra credit granted for an item larger than the window (section 4.5), backed by a budget reservation. Consumed
+    // bytes pay it off first; they are not granted back.
+    private long _extraOutstanding;
+
     private readonly NexusDuplexPipe.State _writingCompleteFlag;
     private readonly INexusLogger? _logger;
     private readonly TimeProvider _time;
@@ -129,6 +133,17 @@ internal class NexusPipeReader : PipeReader, IDisposable
     /// </summary>
     private void OnConsumed(long released)
     {
+        if (released <= 0)
+            return;
+
+        if (_extraOutstanding > 0)
+        {
+            var paid = Math.Min(released, _extraOutstanding);
+            _extraOutstanding -= paid;
+            released -= paid;
+            _stateManager.ReleaseExtra((int)paid);
+        }
+
         if (released <= 0 || _isCompleted)
             return;
 
@@ -141,6 +156,52 @@ internal class NexusPipeReader : PipeReader, IDisposable
         _credit += grant;
         _stateManager.GrantCredit(grant);
     }
+
+    /// <summary>
+    /// Grants everything consumed but not yet granted back, without waiting for half the window. Called when the
+    /// reader is waiting for the rest of an item: the writer must be able to fill the whole window.
+    /// </summary>
+    public void FlushPendingGrant()
+    {
+        lock (_bufferLock)
+        {
+            if (_consumedSinceGrant <= 0 || _isCompleted)
+                return;
+
+            var grant = (int)_consumedSinceGrant;
+            _consumedSinceGrant = 0;
+            _credit += grant;
+            _stateManager.GrantCredit(grant);
+        }
+    }
+
+    /// <summary>
+    /// Makes room for an item larger than the window: reserves <paramref name="extra"/> bytes from the session budget,
+    /// all at once (waiting in FIFO order until it fits), and grants them as extra credit. Does nothing while an
+    /// earlier extra grant is still outstanding. Returns false if the wait was canceled.
+    /// </summary>
+    public async ValueTask<bool> GrantExtraAsync(int extra, CancellationToken cancellationToken)
+    {
+        if (Interlocked.Read(ref _extraOutstanding) > 0)
+            return true;
+
+        if (!await _stateManager.ReserveExtraAsync(extra, cancellationToken).ConfigureAwait(false))
+            return false;
+
+        lock (_bufferLock)
+        {
+            _extraOutstanding += extra;
+            _credit += extra;
+        }
+
+        _stateManager.GrantCredit(extra);
+        return true;
+    }
+
+    /// <summary>
+    /// Resets the pipe this reader belongs to; see <see cref="IPipeStateManager.Reset"/>.
+    /// </summary>
+    public void ResetPipe() => _stateManager.Reset();
 
     public override ValueTask CompleteAsync(Exception? exception = null)
     {

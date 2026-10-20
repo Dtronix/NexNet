@@ -125,11 +125,26 @@ public static class Harnesses
     }
 
     /// <summary>
-    /// The channel reader over the input split at arbitrary chunk boundaries.
+    /// The channel reader over the input split at arbitrary chunk boundaries. An item over the limit is an expected
+    /// rejection too.
     /// </summary>
     public static void Channel(byte[] data)
     {
         Expect(() =>
+        {
+            try
+            {
+                ChannelCore(data);
+            }
+            catch (NexusMessageTooLargeException)
+            {
+                // Expected rejection of an oversized item.
+            }
+        });
+    }
+
+    private static void ChannelCore(byte[] data)
+    {
         {
             var pipeReader = new NexusPipeReader(new FuzzPipeStateManager(), null, true, 1 << 30);
             pipeReader.OpenWindow();
@@ -152,7 +167,7 @@ public static class Harnesses
             pipeReader.CompleteNoNotify();
             list.Clear();
             reader.ReadAvailable(list, null);
-        });
+        }
     }
 
     /// <summary>

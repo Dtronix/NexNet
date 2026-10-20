@@ -58,6 +58,68 @@ internal class FlowControlTests : BaseTests
         await allReceived.Task.Timeout(10);
     }
 
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task OneItemLargerThanTheWindow_IsDelivered(Type type)
+    {
+        // The application's reproduction: a single 300 KiB item against a 256 KiB window. The reader gets an extra
+        // grant from the session budget for the difference.
+        var item = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(CreateServerConfig(type), nexus =>
+        {
+            nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+            {
+                await foreach (var received in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                    item.TrySetResult(received.Length);
+            };
+            nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
+        });
+        await server.StartAsync().Timeout(1);
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+
+        await using var pipe = client.CreatePipe();
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.ReadyTask.Timeout(1);
+        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        await writer.WriteAsync(new byte[300 * 1024]).Timeout(5);
+
+        Assert.That(await item.Task.Timeout(5), Is.EqualTo(300 * 1024));
+        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task ItemLargerThanThePeerAccepts_ThrowsAndTheChannelStaysUsable(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.MaxMessageSize = 64 * 1024;
+        serverConfig.SessionBudget = 64 * 1024 * 1024;
+        var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        {
+            await foreach (var value in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                received.TrySetResult(value.Length);
+        });
+        await server.StartAsync().Timeout(1);
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+
+        await using var pipe = client.CreatePipe();
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.ReadyTask.Timeout(1);
+        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+
+        // The server accepts 64 KiB; the client checks before sending.
+        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[100 * 1024]), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await writer.WriteAsync(new byte[10]).Timeout(1);
+        Assert.That(await received.Task.Timeout(1), Is.EqualTo(10));
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.WebSocket)]

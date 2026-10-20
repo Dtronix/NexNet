@@ -53,11 +53,6 @@ public sealed record NexusSerializerOptions
     public bool StrictUtf8 { get; init; } = true;
 
     /// <summary>
-    /// Maximum number of bytes a single channel item may buffer before it is considered hostile. Defaults to 16 MiB.
-    /// </summary>
-    public int MaxBufferedItemSize { get; init; } = 16 * 1024 * 1024;
-
-    /// <summary>
     /// True when dictionaries and sets with non-string keys use randomized hash comparers.
     /// </summary>
     public bool HashFloodingResistantCollections => Security == SerializerSecurity.Untrusted;

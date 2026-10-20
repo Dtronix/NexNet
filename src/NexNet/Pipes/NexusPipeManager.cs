@@ -115,6 +115,7 @@ internal class NexusPipeManager
 
         _activePipes.TryRemove(new System.Collections.Generic.KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
         ReleaseWindow();
+        pipe.ReleaseAllExtra();
 
         lock (_usedIdsLock)
         {

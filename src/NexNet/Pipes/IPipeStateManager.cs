@@ -34,4 +34,24 @@ internal interface IPipeStateManager
     void GrantCredit(int bytes)
     {
     }
+
+    /// <summary>
+    /// Reserves <paramref name="bytes"/> from the session budget for an item larger than the window, waiting in FIFO
+    /// order until it fits. Returns false if canceled.
+    /// </summary>
+    ValueTask<bool> ReserveExtraAsync(int bytes, System.Threading.CancellationToken cancellationToken) => new(true);
+
+    /// <summary>
+    /// Returns budget reserved with <see cref="ReserveExtraAsync"/>.
+    /// </summary>
+    void ReleaseExtra(int bytes)
+    {
+    }
+
+    /// <summary>
+    /// Resets the pipe after the peer sent an item that breaks the channel framing; the session stays up.
+    /// </summary>
+    void Reset()
+    {
+    }
 }
