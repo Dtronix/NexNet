@@ -91,7 +91,7 @@ internal class RawTcpClient : IDisposable
     public static readonly string ProtocolHeader =
         "[magByt1:byte][magByt2:byte][magByt3:byte][magByt4:byte][reserved1:byte][reserved2:byte][reserved3:byte][version:byte]";
 
-    public static byte ProtocolVersion = 2;
+    public static byte ProtocolVersion = 1;
     private static readonly object[] _protocolHeaderValues =
         [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, ProtocolVersion];
     public async Task SendProtocolHeaderAsync(bool badHeader = false, bool badVersion = false)

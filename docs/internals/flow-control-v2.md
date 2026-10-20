@@ -1,6 +1,6 @@
-# Flow control, large values and hostile-peer limits (protocol v2)
+# Flow control, large values and hostile-peer limits
 
-Status: implemented in protocol version 2; see [protocol-specification.md](protocol-specification.md) for the wire
+Status: implemented in NexNet 0.18.0; see [protocol-specification.md](protocol-specification.md) for the wire
 format. Section 12 records the decisions made during implementation where this design left room.
 
 ## 1. Background
@@ -58,10 +58,11 @@ dispatched out of order.
 | Decode guard | Cumulative element counter per value in `MsgPackReader`. |
 | Pre-auth | Frame cap checked at the header, nothing allocated before authentication, one `MaxPendingHandshakes` cap. Rate limiting and IP bans stay opt-in. |
 
-## 4. Wire protocol v2
+## 4. Wire protocol changes
 
-`ProtocolVersion` becomes 2, bumped once in the release that ships these changes. Peers with another version are
-rejected by the existing preamble check.
+`ProtocolVersion` stays 1: before NexNet 1.0, releases may change the protocol without changing the version byte.
+Message bodies are incompatible with 0.17, so clients and servers are upgraded together; a 0.17 peer passes the
+preamble and is disconnected with `ProtocolError` at the first message it can't parse.
 
 ### 4.1 New message types
 
@@ -276,8 +277,7 @@ Before `NexusCompletedConnection`:
 
 ## 8. Work sequence
 
-Each step is a PR on master that keeps the test suite green. `ProtocolVersion` is bumped once, before the release
-tag. Every step after step 0 is gated by the benchmarks and fuzz targets from step 0.
+Each step is a PR on master that keeps the test suite green. `ProtocolVersion` stays 1 (section 4). Every step after step 0 is gated by the benchmarks and fuzz targets from step 0.
 
 | Step | Content | Size |
 |---|---|---|
@@ -289,7 +289,7 @@ tag. Every step after step 0 is gated by the benchmarks and fuzz targets from st
 | 5. Invocation credits | Greeting fields, `InvocationCredit`, caller-side wait, violation disconnect. | M |
 | 6. Channel framing | Varint prefix, item-sized grants, pipe reset on TooLarge, simplified `NexusChannelReader`. Gate: channel throughput benchmarks (Ints, Persons, IntArrays256) against baseline. | M |
 | 7. Large values | `MessageStart`/`Chunk`/`Abort`, tracked ids for all streaming invocations, segment pool, validity rules, element counter in `MsgPackReader`. | L |
-| 8. Release | `ProtocolVersion` = 2, update `protocol-specification.md`, full fuzz run and benchmark comparison. | S |
+| 8. Release | Update `protocol-specification.md`, full fuzz run and benchmark comparison. | S |
 
 ## 9. Tests required
 
@@ -349,6 +349,7 @@ Decisions made while implementing, where the design above did not settle the det
 | Abort routing | Both sides can send and receive streams with the same key. Busy and TooLarge come from a stream's receiver, Cancelled and Ack from its sender; the reason selects the stream. |
 | Large-message reservations | The reservation moves to the reassembled message and is released when the message is disposed (after the invocation runs, or the result is read), so queued large invocations stay within the budget. |
 | Invocation credit return | Coalesced and sent once half the advertised credits are pending, keeping the per-call cost to counters. |
+| Protocol version | The preamble's version byte stays 1 until NexNet 1.0, as in 0.17; the release notes state that 0.17 and 0.18 peers can't talk to each other. |
 | Router invocations | Two passes. `INexusSession.TryWriteInvocation` writes the invocation, without waiting, to every session that has credit and no send in progress (a flush to a backed-up transport holds the write mutex, so that session is busy); like `ChannelWriter.TryWrite`, success means committed to the output, not delivered. The busy sessions are then sent to concurrently, at most 256 at a time, all within one `ProgressTimeout`; a session still without credit is skipped with a rate-limited warning. A single-frame invocation is encoded once (`MessageFrame`) and the frame copied to every session (fire-and-forget, invocation ID 0); a streamed one is sent as a per-session copy with a tracked ID. A broadcast is delayed by at most one `ProgressTimeout` in total, and healthy sessions not at all. |
 | Decode guard | `NexusSerializerOptions.MaxElements` (0 = no limit) holds the element limit; a configuration resolves 0 to `max(65536, MaxMessageSize / 16)`. |
 | Channel item stall | `ProgressTimeout` applies to channel items that received extra credit: the writer holds the credit to send them, so no data means it stopped. Items within the window hold only memory already reserved. |

@@ -14,7 +14,7 @@ namespace NexNet.Fuzz;
 /// </summary>
 internal sealed class FuzzServerHost
 {
-    public static readonly byte[] Preamble = [0x4E, 0x6E, 0x50, 0x14, 0, 0, 0, 2];
+    public static readonly byte[] Preamble = [0x4E, 0x6E, 0x50, 0x14, 0, 0, 0, 1];
 
     private readonly FuzzListener _listener = new();
     public FuzzLogger Logger { get; } = new();

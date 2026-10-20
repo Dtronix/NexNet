@@ -1,8 +1,8 @@
-# NexNet Wire Protocol (version 2)
+# NexNet Wire Protocol (version 1)
 
 This document specifies the bytes NexNet sends over a transport (TCP, TLS, UDS, QUIC, WebSocket, HttpSocket).
 It covers the connection preamble, message framing, every protocol message body, flow control, the payload encoding
-rules for user types, and limits. The design behind version 2 is described in
+rules for user types, and limits. The design behind the flow control, large values and hostile-peer limits is described in
 [flow-control-v2.md](flow-control-v2.md).
 
 Two encodings are used:
@@ -21,7 +21,7 @@ Each side sends an 8-byte header once, immediately after the transport connects:
 |---|---|---|
 | 0 | 4 | Magic `4E 6E 50 14` (`N`, `n`, `P`, DC4) |
 | 4 | 3 | Reserved, must be `00 00 00` |
-| 7 | 1 | Protocol version, `2` |
+| 7 | 1 | Protocol version, `1` |
 
 The peer closes the connection with `DisconnectProtocolError` (disconnect reason `ProtocolError`) if:
 - the magic bytes differ,

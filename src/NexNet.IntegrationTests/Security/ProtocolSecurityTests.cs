@@ -176,9 +176,9 @@ internal class ProtocolSecurityTests : BaseTests
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
         await client.ConnectAsync();
 
-        // Valid magic and reserved bytes, but protocol version 1 (before flow control v2).
+        // Valid magic and reserved bytes, but protocol version 2.
         await client.AssertWrite(RawTcpClient.ProtocolHeader,
-            [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, (byte)1]);
+            [(byte)'N', (byte)'n', (byte)'P', (byte)0x14, (byte)0, (byte)0, (byte)0, (byte)2]);
         await client.ReadProtocolHeaderAsync();
 
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
