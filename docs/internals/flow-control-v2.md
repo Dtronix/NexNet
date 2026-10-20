@@ -77,8 +77,9 @@ before the pre-auth allow-list is applied. A unit test asserts this for every `M
 | 115 | `MessageAbort` | invocation id (u16), kind, reason (Busy, TooLarge, Cancelled, Ack) |
 | 116 | `InvocationCredit` | `+n` (u16) |
 
-New disconnect reasons use the free codes 35–38, e.g. `DisconnectFlowControl` (credit or window violation),
-`DisconnectResourceLimit`, `DisconnectStalled` (progress timeout).
+New disconnect reasons use the free codes 35–38: `DisconnectFlowControl` (35, credit or window violation) and
+`DisconnectStalled` (37, progress timeout). Limits refuse the operation or fail the call rather than disconnect, so
+no other reason is needed; 36 and 38 are not assigned.
 
 ### 4.2 Greeting
 

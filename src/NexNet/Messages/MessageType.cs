@@ -89,10 +89,7 @@ public enum MessageType : byte
     /// </summary>
     DisconnectFlowControl = 35,
 
-    /// <summary>
-    /// The peer exceeded a resource limit. No body.
-    /// </summary>
-    DisconnectResourceLimit = 36,
+    // 36 is not assigned.
 
     /// <summary>
     /// The session made no progress within the progress timeout. No body.

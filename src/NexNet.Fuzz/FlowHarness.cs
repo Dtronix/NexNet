@@ -73,7 +73,6 @@ public static class FlowHarness
         DisconnectReason.ProtocolError,
         DisconnectReason.Timeout,
         DisconnectReason.FlowControl,
-        DisconnectReason.ResourceLimit,
         DisconnectReason.Stalled,
     ];
 

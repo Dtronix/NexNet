@@ -78,7 +78,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.4 Messages (src/NexNet/Messages/)
 
 **Protocol:**
-- `MessageType.cs` - Enum: Ping, Disconnect variants (20-37 incl. FlowControl, ResourceLimit, Stalled), DuplexPipeWrite (50), PipeWindowUpdate (51), Greetings (100-105), Invocation (110-112), MessageStart/Chunk/Abort (113-115), InvocationCredit (116)
+- `MessageType.cs` - Enum: Ping, Disconnect variants (20-37 incl. FlowControl 35, Stalled 37; 36 unassigned), DuplexPipeWrite (50), PipeWindowUpdate (51), Greetings (100-105), Invocation (110-112), MessageStart/Chunk/Abort (113-115), InvocationCredit (116)
 - `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes is the largest argument sent in one frame (larger ones are streamed)
 - `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token, MaxMessageSize, InvocationCredits
 - `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash, MaxMessageSize, InvocationCredits

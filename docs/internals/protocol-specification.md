@@ -80,7 +80,7 @@ Both forms are independent of host byte order.
 Every byte in 20–38 is read as a disconnect reason before anything else; no other message type uses that range.
 Defined disconnect reasons: 20 SocketError, 21 Graceful, 22 ProtocolError, 23 Timeout, 24 ClientMismatch,
 25 ServerMismatch, 28 ServerShutdown, 29 Authentication, 30 ServerRestarting, 32 SocketClosedWhenWriting,
-33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 36 ResourceLimit, 37 Stalled
+33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (36 is not assigned)
 (no progress within the progress timeout, §9).
 
 A server rejects `ServerGreeting`, and a client rejects `ClientGreeting*`, with `DisconnectProtocolError`.

@@ -81,11 +81,6 @@ public enum DisconnectReason : byte
     FlowControl = MessageType.DisconnectFlowControl,
 
     /// <summary>
-    /// The peer exceeded a resource limit.
-    /// </summary>
-    ResourceLimit = MessageType.DisconnectResourceLimit,
-
-    /// <summary>
     /// The session made no progress within <see cref="NexNet.Transports.ConfigBase.ProgressTimeout"/>.
     /// </summary>
     Stalled = MessageType.DisconnectStalled,
