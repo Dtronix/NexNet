@@ -113,6 +113,18 @@ internal interface INexusSession : ISessionMessenger
         where TMessage : IMessageBase;
 
     /// <summary>
+    /// Writes an invocation to the session's output if that needs no waiting: the peer has credit, no other send
+    /// is in progress (including a flush to a backed-up transport) and the arguments fit in one frame. Like
+    /// <c>ChannelWriter.TryWrite</c>, <see cref="InvocationWriteResult.Written"/> means the invocation is committed
+    /// to the output in order, not that the peer has received it.
+    /// </summary>
+    /// <param name="message">The invocation. Not modified, so one message can be written to several sessions.</param>
+    /// <returns><see cref="InvocationWriteResult.Busy"/> if writing would have to wait; nothing was taken or written.
+    /// Use <see cref="SendInvocation{TMessage}"/> to wait.</returns>
+    InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+        where TMessage : IInvocationMessage, IMessageBase;
+
+    /// <summary>
     /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.
     /// </summary>
     SessionControlSender ControlSender { get; }

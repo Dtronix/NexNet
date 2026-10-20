@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using NexNet.Serialization;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
+using NexNet.Internals.Threading;
 using System.Collections.Generic;
 
 namespace NexNet.Internals;
@@ -55,47 +56,15 @@ internal partial class NexusSession<TNexus, TProxy>
                 return;
 
             int length;
-            LargeMessage large = default;
+            LargeMessage large;
             try
             {
-                var header = _bufferWriter.GetMemory(3);
-                _bufferWriter.Advance(3);
-                var bodyWriter = new MsgPackWriter(_bufferWriter);
-                body.Serialize(ref bodyWriter);
-                bodyWriter.Flush();
-
-                // Checked before anything reaches the output, so an oversized message fails alone. Arguments and
-                // results larger than one frame are streamed.
-                var bodyLength = _bufferWriter.Length - 3;
-                if (bodyLength > ushort.MaxValue)
-                {
-                    large = StageLargeMessage(body, bodyLength);
-                    length = 0;
-                }
-                else
-                {
-                    header.Span[0] = (byte)TMessage.Type;
-
-                    BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), (ushort)bodyLength);
-
-                    length = (int)_bufferWriter.Length;
-                    var buffer = _bufferWriter.GetBuffer();
-
-                    // Only used for debugging
-                    _config.InternalOnSend?.Invoke(this, buffer.ToArray());
-
-                    buffer.CopyTo(output.GetSpan(length));
-                    output.Advance(length);
-                }
+                length = WriteFrame(body, output, out large);
             }
             catch (InvalidOperationException) when (State != ConnectionState.Connected)
             {
                 // Disconnect completed the output while this send was in progress.
                 return;
-            }
-            finally
-            {
-                _bufferWriter.Reset();
             }
 
             if (large.Buffer != null)
@@ -153,6 +122,157 @@ internal partial class NexusSession<TNexus, TProxy>
             if (mutexHeld)
                 mutexResult.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Writes <paramref name="body"/> to <paramref name="output"/> as one frame and returns the frame's length. A body
+    /// larger than one frame is not written: it is staged in <paramref name="large"/> for streaming and 0 is
+    /// returned. Must be called with the write mutex held.
+    /// </summary>
+    private int WriteFrame<TMessage>(TMessage body, PipeWriter output, out LargeMessage large)
+        where TMessage : IMessageBase
+    {
+        large = default;
+        try
+        {
+            var header = _bufferWriter.GetMemory(3);
+            _bufferWriter.Advance(3);
+            var bodyWriter = new MsgPackWriter(_bufferWriter);
+            body.Serialize(ref bodyWriter);
+            bodyWriter.Flush();
+
+            // Checked before anything reaches the output, so an oversized message fails alone. Arguments and
+            // results larger than one frame are streamed.
+            var bodyLength = _bufferWriter.Length - 3;
+            if (bodyLength > ushort.MaxValue)
+            {
+                large = StageLargeMessage(body, bodyLength);
+                return 0;
+            }
+
+            header.Span[0] = (byte)TMessage.Type;
+
+            BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), (ushort)bodyLength);
+
+            var length = (int)_bufferWriter.Length;
+            var buffer = _bufferWriter.GetBuffer();
+
+            // Only used for debugging
+            _config.InternalOnSend?.Invoke(this, buffer.ToArray());
+
+            buffer.CopyTo(output.GetSpan(length));
+            output.Advance(length);
+            return length;
+        }
+        finally
+        {
+            _bufferWriter.Reset();
+        }
+    }
+
+    /// <summary>
+    /// Writes an invocation to the output without waiting for anything: credit, the write mutex or an earlier flush.
+    /// See <see cref="INexusSession.TryWriteInvocation{TMessage}"/>.
+    /// </summary>
+    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+        where TMessage : IInvocationMessage, IMessageBase
+    {
+        if (_pipeOutput == null || State != ConnectionState.Connected)
+            return InvocationWriteResult.Failed;
+
+        // An argument larger than one frame is streamed, which waits for the mutex between frames.
+        if (message.Arguments.Length > IInvocationMessage.MaxArgumentSize)
+            return InvocationWriteResult.Busy;
+
+        if (!_outboundCredits.Wait(0))
+            return InvocationWriteResult.Busy;
+
+        // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.
+        var mutex = _writeMutex.TryWait(MutexSlim.WaitOptions.NoDelay);
+        if (!mutex.Success)
+        {
+            _outboundCredits.Release();
+            return InvocationWriteResult.Busy;
+        }
+
+        ValueTask<FlushResult> flush;
+        try
+        {
+            // The session may have disconnected meanwhile; disconnect clears _pipeOutput without the mutex.
+            var output = _pipeOutput;
+            if (output == null || State != ConnectionState.Connected)
+            {
+                mutex.Dispose();
+                return InvocationWriteResult.Failed;
+            }
+
+            WriteFrame(message, output, out _);
+            Logger?.LogTrace($"Writing {TMessage.Type}.");
+
+            Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+            flush = output.FlushAsync();
+        }
+        catch (InvalidOperationException) when (State != ConnectionState.Connected)
+        {
+            // Disconnect completed the output while writing.
+            Volatile.Write(ref _flushStartedTicks, 0);
+            mutex.Dispose();
+            return InvocationWriteResult.Failed;
+        }
+        catch
+        {
+            Volatile.Write(ref _flushStartedTicks, 0);
+            mutex.Dispose();
+            _outboundCredits.Release();
+            throw;
+        }
+
+        if (!flush.IsCompleted)
+        {
+            // The transport is backed up: finish in the background, holding the mutex until the flush completes.
+            _ = CompleteWriteAsync(flush, mutex);
+            return InvocationWriteResult.Written;
+        }
+
+        Volatile.Write(ref _flushStartedTicks, 0);
+        mutex.Dispose();
+        OnFlushed(flush);
+        return InvocationWriteResult.Written;
+    }
+
+    /// <summary>
+    /// Completes a <see cref="TryWriteInvocation{TMessage}"/> whose flush did not complete synchronously.
+    /// </summary>
+    private async Task CompleteWriteAsync(ValueTask<FlushResult> flush, MutexSlim.LockToken mutex)
+    {
+        try
+        {
+            await flush.ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is ObjectDisposedException or InvalidOperationException)
+        {
+            // The session is going away; the disconnect path reports why.
+        }
+        finally
+        {
+            Volatile.Write(ref _flushStartedTicks, 0);
+            mutex.Dispose();
+        }
+
+        OnFlushed(flush);
+    }
+
+    /// <summary>
+    /// After a completed flush of a written invocation: reports the send, and disconnects if the transport closed.
+    /// </summary>
+    private void OnFlushed(ValueTask<FlushResult> flush)
+    {
+        if (!flush.IsCompletedSuccessfully)
+            return;
+
+        OnSent?.Invoke();
+        if (flush.Result.IsCompleted)
+            _ = DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false);
     }
 
     /// <summary>

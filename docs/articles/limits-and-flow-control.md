@@ -50,7 +50,12 @@ The session stays connected in every case. Results follow the same rules in the 
 
 The receiving side queues up to `InvocationCredits` invocations and runs `MaxConcurrentConnectionInvocations` of them at a time. An invocation with a pipe or channel argument frees its execution slot once the pipe is registered, so long-running streams do not block other calls.
 
-Invocations sent to several sessions (`All`, `Others`, `Groups`, `Clients`) wait up to `ProgressTimeout` for each session's credit. A session that has none by then is skipped, with a warning in the log, so one unresponsive client can't hold up a broadcast indefinitely.
+Invocations sent to several sessions (`All`, `Others`, `Groups`, `Clients`) are delivered in two passes:
+
+1. The invocation is written immediately to every session that can take it without waiting: it has credit, and nothing else is being sent to it.
+2. The sessions that were busy are waited for together, at most 256 at a time and all within one `ProgressTimeout`. A session that still has no credit by then is skipped for this invocation, with a warning in the log.
+
+A client that is slow or unresponsive therefore delays neither the other clients nor the broadcast by more than one `ProgressTimeout`, however many such clients there are. Each client receives the broadcasts from one caller in the order they were made.
 
 ## Pipes
 

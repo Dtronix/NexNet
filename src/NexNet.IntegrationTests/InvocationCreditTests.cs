@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
@@ -132,5 +133,152 @@ internal class InvocationCreditTests : BaseTests
         await context.Proxy.All.ClientTask().Timeout(1);
         await context.Proxy.All.ClientTask().Timeout(2);
         Assert.That(raw.IsConnected, Is.True);
+    }
+
+    [Test]
+    public async Task BroadcastWithStalledClients_ReachesHealthyClientsWithoutWaiting()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        serverConfig.ProgressTimeout = 1000;
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var stalled1 = await ConnectStalledClient(serverConfig);
+        using var stalled2 = await ConnectStalledClient(serverConfig);
+
+        var received = new List<Task>();
+        for (var i = 0; i < 3; i++)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var (client, clientNexus) = CreateClient(CreateClientConfig(Type.Tcp));
+            clientNexus.ClientTaskWithParamEvent = (_, data) =>
+            {
+                if (data == 1)
+                    tcs.TrySetResult();
+                return default;
+            };
+            await client.ConnectAsync().Timeout(1);
+            received.Add(tcs.Task);
+        }
+
+        using var context = server.ContextProvider.Rent();
+
+        // Uses the stalled clients' only credit.
+        await context.Proxy.All.ClientTaskWithParam(0).Timeout(1);
+
+        var elapsed = Stopwatch.StartNew();
+        var broadcast = context.Proxy.All.ClientTaskWithParam(1).AsTask();
+
+        // The healthy clients get it while the broadcast still waits for the stalled ones.
+        await Task.WhenAll(received).Timeout(1);
+        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
+        Assert.That(broadcast.IsCompleted, Is.False);
+
+        // Both stalled clients are waited for at the same time: one timeout, not two.
+        await broadcast.Timeout(3);
+        Assert.That(elapsed.ElapsedMilliseconds, Is.InRange(900, 1800));
+        Assert.That(stalled1.IsConnected && stalled2.IsConnected, Is.True);
+    }
+
+    [Test]
+    public async Task BroadcastLargeArgumentWithStalledClient_ReachesHealthyClientsWithoutWaiting()
+    {
+        var serverConfig = CreateServerConfig(Type.Tcp);
+        serverConfig.ProgressTimeout = 1000;
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync();
+
+        using var stalled = await ConnectStalledClient(serverConfig);
+
+        var received = new List<Task<int>>();
+        for (var i = 0; i < 2; i++)
+        {
+            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var (client, clientNexus) = CreateClient(CreateClientConfig(Type.Tcp));
+            clientNexus.ClientTaskEvent = _ => default;
+            clientNexus.ClientDataEvent = (_, data) =>
+            {
+                tcs.TrySetResult(data.Length);
+                return default;
+            };
+            await client.ConnectAsync().Timeout(1);
+            received.Add(tcs.Task);
+        }
+
+        using var context = server.ContextProvider.Rent();
+        await context.Proxy.All.ClientTask().Timeout(1);
+
+        // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
+        var elapsed = Stopwatch.StartNew();
+        var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
+        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(300 * 1024));
+        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
+
+        await broadcast.Timeout(3);
+        Assert.That(stalled.IsConnected, Is.True);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task Broadcasts_ArriveInOrderAtEachClient(Type type)
+    {
+        // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
+        // order they arrive.
+        const int count = 500;
+        var server = CreateServer(CreateServerConfig(type), null);
+        await server.StartAsync().Timeout(1);
+
+        var orders = new List<List<int>>();
+        var done = new List<Task>();
+        for (var i = 0; i < 3; i++)
+        {
+            var clientConfig = CreateClientConfig(type);
+            clientConfig.InvocationCredits = 2;
+            clientConfig.MaxConcurrentConnectionInvocations = 1;
+            var order = new List<int>();
+            var all = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var (client, clientNexus) = CreateClient(clientConfig);
+            clientNexus.ClientTaskWithParamEvent = (_, id) =>
+            {
+                lock (order)
+                {
+                    order.Add(id);
+                    if (order.Count == count)
+                        all.TrySetResult();
+                }
+
+                return default;
+            };
+            await client.ConnectAsync().Timeout(1);
+            orders.Add(order);
+            done.Add(all.Task);
+        }
+
+        using var context = server.ContextProvider.Rent();
+        for (var i = 0; i < count; i++)
+            await context.Proxy.All.ClientTaskWithParam(i).Timeout(1);
+
+        await Task.WhenAll(done).Timeout(5);
+        foreach (var order in orders)
+            Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
+    }
+
+    /// <summary>
+    /// Connects a raw client that advertises one invocation credit and never returns it.
+    /// </summary>
+    private async Task<RawTcpClient> ConnectStalledClient(Transports.ServerConfig serverConfig)
+    {
+        var raw = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
+        await raw.ConnectAsync();
+        await raw.SendProtocolHeaderAsync();
+        await raw.ReadProtocolHeaderAsync();
+        await raw.SendMessageAsync(new ClientGreetingMessage
+        {
+            ServerNexusHash = IInvocationMethodHash.GetMethodHash<ServerNexus>(),
+            ClientNexusHash = IInvocationMethodHash.GetMethodHash<ClientNexus>(),
+            InvocationCredits = 1,
+        }).Timeout(1);
+        await raw.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
+        return raw;
     }
 }

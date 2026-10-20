@@ -71,6 +71,8 @@ partial class ServerNexus
 }
 ```
 
+A broadcast is written straight away to every client that can take it; clients that are behind are waited for together, for at most `ConfigBase.ProgressTimeout`, so a slow client does not delay the others. See [Limits and Flow Control](limits-and-flow-control.md#invocations).
+
 ## See Also
 
 - [Sessions & Lifetimes](sessions-and-lifetimes.md) — Session groups and broadcasting targets

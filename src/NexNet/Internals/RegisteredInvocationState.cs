@@ -16,7 +16,11 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     // Mutable struct.
     private ManualResetValueTaskSourceCore<bool> _source;
 
-    public bool IsComplete { get; set; }
+    // 1 once a result, cancellation or exception has been set. Claimed atomically: the cancellation callback can
+    // race with the sending task.
+    private int _complete;
+
+    public bool IsComplete => Volatile.Read(ref _complete) != 0;
 
     public bool IsCanceled { get; set; }
 
@@ -43,7 +47,7 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
         CancellationRegistration.Unregister();
         CancellationRegistration = default;
         _source.Reset();
-        IsComplete = false;
+        Volatile.Write(ref _complete, 0);
         IsCanceled = false;
         Exception = null;
     }
@@ -51,9 +55,8 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     public short Version => _source.Version;
     public bool TrySetResult()
     {
-        if (IsComplete)
+        if (Interlocked.Exchange(ref _complete, 1) != 0)
             return false;
-        IsComplete = true;
 
         _source.SetResult(true);
         return true;
@@ -67,9 +70,8 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     /// <returns>True if the call succeeded.  False if the state has already been set.</returns>
     public bool TrySetCanceled(bool notifyConnection)
     {
-        if (IsComplete)
+        if (Interlocked.Exchange(ref _complete, 1) != 0)
             return false;
-        IsComplete = true;
         IsCanceled = true;
         NotifyConnection = notifyConnection;
         _source.SetResult(false);
@@ -80,9 +82,8 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public bool TrySetException(Exception exception)
     {
-        if (IsComplete)
+        if (Interlocked.Exchange(ref _complete, 1) != 0)
             return false;
-        IsComplete = true;
         Exception = exception;
 
         _source.SetResult(false);

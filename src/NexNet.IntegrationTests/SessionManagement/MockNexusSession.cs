@@ -51,6 +51,16 @@ internal class MockNexusSession : INexusSession
         return true;
     }
 
+    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message)
+        where TMessage : IInvocationMessage, IMessageBase
+    {
+        if (ShouldFailSend)
+            throw new InvalidOperationException("Simulated send failure");
+
+        SentMessages.Add(message!);
+        return InvocationWriteResult.Written;
+    }
+
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
         if (ShouldFailSend)

@@ -287,18 +287,20 @@ internal class LocalInvocationRouterTests
     }
 
     [Test]
-    public async Task InvocationId_IsSetOnMessage()
+    public async Task Message_IsSentUnchangedToEverySession()
     {
-        var session = new MockNexusSession { Id = 1 };
-        _context.Sessions.TryAdd(1, session);
+        // One message is written to every session, possibly concurrently, so the router must not modify it.
+        var session1 = new MockNexusSession { Id = 1 };
+        var session2 = new MockNexusSession { Id = 2 };
+        _context.Sessions.TryAdd(1, session1);
+        _context.Sessions.TryAdd(2, session2);
 
         var message = CreateTestMessage();
-        Assert.That(message.InvocationId, Is.EqualTo(0)); // Initially 0
+        await _router.InvokeAllAsync(message);
 
-        await _router.InvokeClientAsync(message, sessionId: 1);
-
-        // Message should have had InvocationId set by router
-        Assert.That(message.InvocationId, Is.Not.EqualTo(0));
+        Assert.That(message.InvocationId, Is.EqualTo(0));
+        Assert.That(session1.SentMessages, Is.EqualTo(new object[] { message }));
+        Assert.That(session2.SentMessages, Is.EqualTo(new object[] { message }));
     }
 
     private static MockInvocationMessage CreateTestMessage()
