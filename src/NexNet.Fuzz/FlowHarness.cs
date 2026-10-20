@@ -531,9 +531,31 @@ public static class FlowHarness
 
                 case FlowOp.RawFrame:
                 {
+                    // Types with a post-header get one (filled like the body): without it the frame would take its
+                    // pipe ID or stream key from the next frame, and the rest of the program would be read
+                    // misaligned, which no peer can recover from.
+                    var type = (MessageType)a;
+                    var postHeader = type switch
+                    {
+                        MessageType.DuplexPipeWrite or MessageType.PipeWindowUpdate => 2,
+                        MessageType.MessageChunk => 3,
+                        _ => 0,
+                    };
                     var body = new byte[Math.Min(Sizes[b % Sizes.Length], MaxFrameBody)];
                     body.AsSpan().Fill(c);
-                    SendFrame((MessageType)a, body);
+                    if (postHeader == 0)
+                    {
+                        SendFrame(type, body);
+                    }
+                    else
+                    {
+                        Span<byte> header = stackalloc byte[3 + postHeader];
+                        header[0] = (byte)type;
+                        BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(1, 2), (ushort)body.Length);
+                        header[3..].Fill(c);
+                        Send(header, body);
+                    }
+
                     return null;
                 }
 
