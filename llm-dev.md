@@ -20,6 +20,8 @@ src/
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
 ```
 
+Release: bump `<Version>` in NexNet, NexNet.Asp, NexNet.Generator and NexNet.Quic, add `docs/articles/releases/release-notes-vX.Y.Z.md` (and its row in that folder's `index.md` and `toc.yml`), then push tag `vX.Y.Z`. The tag build (`.github/workflows/dotnet.yml`) uses the page as the GitHub release body (`.github/scripts/release-notes.py`; fails if missing) and publishes the NuGet packages.
+
 Build: `dotnet build src -c Release`. `src/Directory.Build.props` sets `TreatWarningsAsErrors` for every project under
 `src/` (libraries, generator, tests, fuzz, benchmarks, samples), NuGet audit advisories (NU1901-NU1904) and warnings in
 generated code included. Fix the cause of a warning; do not add `NoWarn` or `WarningsNotAsErrors`.

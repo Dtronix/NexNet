@@ -1,6 +1,6 @@
 # NexNet v0.18.0
 
-*Unreleased*
+*Released 2026-10-20*
 
 ## Highlights
 

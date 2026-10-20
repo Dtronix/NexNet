@@ -1,11 +1,12 @@
 # Release Notes
 
-Per-version release notes for NexNet. Released versions mirror the matching
-[GitHub releases](https://github.com/Dtronix/NexNet/releases).
+Per-version release notes for NexNet. Each page is also the body of the matching
+[GitHub release](https://github.com/Dtronix/NexNet/releases): the release build for a `vX.Y.Z` tag publishes
+`release-notes-vX.Y.Z.md` and fails if it is missing.
 
 | Version | Released | Highlights |
 |---------|----------|------------|
-| [v0.18.0](release-notes-v0.18.0.md) | Unreleased | Flow control and limits for every session: large values streamed up to `MaxMessageSize`, per-pipe credit windows, invocation credits, a session memory budget, stall detection and pre-authentication limits. |
+| [v0.18.0](release-notes-v0.18.0.md) | 2026-10-20 | Flow control and limits for every session: large values streamed up to `MaxMessageSize`, per-pipe credit windows, invocation credits, a session memory budget, stall detection and pre-authentication limits. |
 | [v0.17.0](release-notes-v0.17.0.md) | 2026-10-08 | NexNet now uses its own MessagePack serializer and MemoryPack is removed. |
 | [v0.16.0](release-notes-v0.16.0.md) | 2026-10-03 | NexNet is now Native AOT compatible, `HashLock` values are deterministic, and all timers and timeouts can be driven by a configurable `TimeProvider`. |
 | [v0.15.0](release-notes-v0.15.0.md) | 2026-03-16 | This release upgrades to .NET 10 and introduces method-level authorization — a declarative, source-generator-driven permission system for securing server nexus methods and collections. |
