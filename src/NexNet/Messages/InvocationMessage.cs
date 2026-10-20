@@ -11,7 +11,7 @@ namespace NexNet.Messages;
 /// Body: <c>[invocationId (uint16), methodId (uint16), flags (uint8), arguments]</c>.
 /// The arguments are an embedded MessagePack array.
 /// </summary>
-internal partial class InvocationMessage : IMessageBase, IInvocationMessage, IKnownBodyLength
+internal partial class InvocationMessage : IMessageBase, IInvocationMessage
 {
     /// <summary>
     /// True if the arguments were deserialized into a pooled array.
@@ -66,26 +66,9 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage, IKn
         Arguments = serializedArguments;
     }
 
-    /// <summary>
-    /// Length of the body <see cref="Serialize"/> writes, known before writing it.
-    /// </summary>
-    int IKnownBodyLength.BodyLength
-        => 1 // array header
-           + MsgPackWriter.GetUInt32CompactLength(InvocationId)
-           + MsgPackWriter.GetUInt32CompactLength(MethodId)
-           + MsgPackWriter.GetUInt32CompactLength((byte)Flags)
-           + (Arguments.IsEmpty ? 1 : Arguments.Length);
-
     public void Serialize(ref MsgPackWriter writer)
     {
-        writer.WriteArrayHeader(4);
-        writer.Write(InvocationId);
-        writer.Write(MethodId);
-        writer.Write((byte)Flags);
-        if (Arguments.IsEmpty)
-            writer.WriteArrayHeader(0); // methods without serialized parameters still send an empty array
-        else
-            writer.WriteRaw(Arguments.Span); // already a MessagePack array produced by generated code
+        new InvocationBody(this).Write(ref writer);
     }
 
     public void Deserialize(ref MsgPackReader reader)

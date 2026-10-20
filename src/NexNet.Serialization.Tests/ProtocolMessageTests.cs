@@ -47,7 +47,7 @@ public class ProtocolMessageTests
         foreach (var args in arguments)
         {
             var message = new InvocationMessage { InvocationId = id, MethodId = methodId, Flags = flag, Arguments = args };
-            Assert.That(((IKnownBodyLength)message).BodyLength, Is.EqualTo(Body(message).Length),
+            Assert.That(new InvocationBody(message).Length, Is.EqualTo(Body(message).Length),
                 $"id {id}, method {methodId}, flags {flag}, arguments {args.Length}");
         }
     }

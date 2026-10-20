@@ -134,21 +134,15 @@ internal partial class NexusSession<TNexus, TProxy>
     {
         large = default;
 
-        // A body whose length is known up front is written straight to the output, after its header.
-        if (body is IKnownBodyLength known && _config.InternalOnSend == null)
+        // An invocation's body length is known up front (from one snapshot of its fields, so the length and the
+        // bytes agree): it is written straight to the output, after its header.
+        if (body is InvocationMessage invocation && _config.InternalOnSend == null)
         {
-            var knownLength = known.BodyLength;
-            if (knownLength <= ushort.MaxValue)
+            var invocationBody = new InvocationBody(invocation);
+            if (invocationBody.Length <= ushort.MaxValue)
             {
-                var frameHeader = output.GetSpan(3);
-                frameHeader[0] = (byte)TMessage.Type;
-                BinaryPrimitives.WriteUInt16LittleEndian(frameHeader.Slice(1, 2), (ushort)knownLength);
-                output.Advance(3);
-
-                var directWriter = new MsgPackWriter(output);
-                body.Serialize(ref directWriter);
-                directWriter.Flush();
-                return 3 + knownLength;
+                WriteInvocationFrame(in invocationBody, output);
+                return 3 + invocationBody.Length;
             }
         }
 
@@ -187,6 +181,21 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             _bufferWriter.Reset();
         }
+    }
+
+    /// <summary>
+    /// Writes the frame header for <paramref name="body"/>, then the body, straight to <paramref name="output"/>.
+    /// </summary>
+    private static void WriteInvocationFrame(in InvocationBody body, PipeWriter output)
+    {
+        var header = output.GetSpan(3);
+        header[0] = (byte)MessageType.Invocation;
+        BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(1, 2), (ushort)body.Length);
+        output.Advance(3);
+
+        var writer = new MsgPackWriter(output);
+        body.Write(ref writer);
+        writer.Flush();
     }
 
     /// <summary>
