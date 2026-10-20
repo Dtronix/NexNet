@@ -54,6 +54,19 @@ internal sealed class SessionControlSender
     }
 
     /// <summary>
+    /// Takes the pending invocation credit once it has reached the threshold, for the caller to send; 0 if it has
+    /// not. A send already in progress takes it to carry the credit along (see
+    /// <c>NexusSession.WritePendingCredit</c>), so the drain only sends credit while nothing else is being sent.
+    /// </summary>
+    public int TakeInvocationCredit()
+    {
+        if (Volatile.Read(ref _pendingInvocationCredit) < _invocationCreditThreshold)
+            return 0;
+
+        return Interlocked.Exchange(ref _pendingInvocationCredit, 0);
+    }
+
+    /// <summary>
     /// Requests a ping reply. Any number of requests before the next drain send one reply.
     /// </summary>
     public void RequestPong()
@@ -113,9 +126,9 @@ internal sealed class SessionControlSender
                     await _session.SendMessage(message).ConfigureAwait(false);
                 }
 
-                if (Volatile.Read(ref _pendingInvocationCredit) >= _invocationCreditThreshold)
+                var credit = TakeInvocationCredit();
+                if (credit > 0)
                 {
-                    var credit = Interlocked.Exchange(ref _pendingInvocationCredit, 0);
                     while (credit > 0)
                     {
                         using var message = _session.PoolManager.Rent<InvocationCreditMessage>();

@@ -248,6 +248,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
             Logger?.LogTrace($"Writing {TMessage.Type}.");
 
+            WritePendingCredit(output);
             Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
             flush = output.FlushAsync();
         }
@@ -434,8 +435,25 @@ internal partial class NexusSession<TNexus, TProxy>
     /// Flushes the transport, recording when the flush started so a flush that never completes is detected as a
     /// stall (<see cref="NexNet.Transports.ConfigBase.ProgressTimeout"/>). Called with the write mutex held.
     /// </summary>
+    /// <summary>
+    /// Writes pending invocation credit to <paramref name="output"/> as part of the send in progress, so returning it
+    /// takes no send of its own. Called with the write mutex held, just before flushing.
+    /// </summary>
+    private void WritePendingCredit(PipeWriter output)
+    {
+        var credit = _controlSender.TakeInvocationCredit();
+        while (credit > 0)
+        {
+            using var message = _poolManager.Rent<InvocationCreditMessage>();
+            message.Credits = (ushort)Math.Min(credit, ushort.MaxValue);
+            credit -= message.Credits;
+            WriteFrame(message, output, out _);
+        }
+    }
+
     private async ValueTask<FlushResult> FlushOutput(PipeWriter output)
     {
+        WritePendingCredit(output);
         Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
         try
         {
