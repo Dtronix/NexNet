@@ -55,7 +55,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
 
-    private readonly SemaphoreSlim _invocationSemaphore;
+    // Invocations received and not yet running. The read loop only enqueues; up to
+    // MaxConcurrentConnectionInvocations run at once, each holding a slot until it finishes or registers its pipe.
+    private readonly ConcurrentQueue<InvocationMessage> _invocationQueue = new();
+    private int _freeInvocationSlots;
+
+    private readonly SessionControlSender _controlSender;
     //private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
@@ -195,8 +200,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
         SessionStore = new SessionStore();
-        _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
-            _config.MaxConcurrentConnectionInvocations);
+        _freeInvocationSlots = _config.MaxConcurrentConnectionInvocations;
+        _controlSender = new SessionControlSender(this);
+        LastReceived = _config.Time.GetTickCount64();
 
         // Note: Session registration is deferred until after authentication completes
         // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
@@ -335,17 +341,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
         }
 
-        // This can not be stopped on some transports as they don't have an understanding about
-        // shutting down of rending pipes separately from receiving pipes.
-        // Cancel any pending reads.
-        _pipeInput!.CancelPendingRead();
-        
-        // The CompleteAsync method does the exact same action, but introduces overhead into this call.
-        // ReSharper disable once MethodHasAsyncOverload
-        _pipeInput!.Complete();
+        // Wake the read loop; it completes the input itself when it exits. Completing it here could recycle the buffer
+        // the read loop is still processing.
+        _pipeInput?.CancelPendingRead();
         _pipeInput = null;
-        
-        _invocationSemaphore.Dispose();
+
+        while (_invocationQueue.TryDequeue(out var queued))
+            queued.Dispose();
 
         if (_config.InternalNoLingerOnShutdown)
         {
@@ -474,9 +476,72 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
     
-    private class InvocationTaskArguments
+    /// <summary>
+    /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
+    /// returned, so a queued invocation always finds a free slot.
+    /// </summary>
+    private void DispatchInvocations()
+    {
+        while (!_invocationQueue.IsEmpty && TryTakeInvocationSlot())
+        {
+            if (!_invocationQueue.TryDequeue(out var message))
+            {
+                // Another dispatcher took it.
+                Interlocked.Increment(ref _freeInvocationSlots);
+                continue;
+            }
+
+            if (State != ConnectionState.Connected)
+            {
+                message.Dispose();
+                Interlocked.Increment(ref _freeInvocationSlots);
+                continue;
+            }
+
+            if (!_invocationTaskArgumentsPool.TryTake(out var args))
+                args = new InvocationTaskArguments();
+
+            args.Message = message;
+            args.Session = this;
+            args.SlotHeld = 1;
+            message.Slot = args;
+
+            _ = Task.Factory.StartNew(InvocationTask, args);
+        }
+    }
+
+    private bool TryTakeInvocationSlot()
+    {
+        var free = Volatile.Read(ref _freeInvocationSlots);
+        while (free > 0)
+        {
+            var observed = Interlocked.CompareExchange(ref _freeInvocationSlots, free - 1, free);
+            if (observed == free)
+                return true;
+            free = observed;
+        }
+
+        return false;
+    }
+
+    private void ReturnInvocationSlot()
+    {
+        Interlocked.Increment(ref _freeInvocationSlots);
+        DispatchInvocations();
+    }
+
+    private class InvocationTaskArguments : IInvocationSlot
     {
         public InvocationMessage Message { get; set; } = null!;
         public NexusSession<TNexus, TProxy> Session { get; set; } = null!;
+
+        // 1 while the invocation holds its execution slot.
+        public int SlotHeld;
+
+        public void Release()
+        {
+            if (Interlocked.Exchange(ref SlotHeld, 0) == 1)
+                Session.ReturnInvocationSlot();
+        }
     }
 }

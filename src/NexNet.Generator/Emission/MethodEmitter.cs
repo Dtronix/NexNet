@@ -62,7 +62,7 @@ internal static class MethodEmitter
         {
             sb.Append("                        duplexPipe = await methodInvoker.RegisterDuplexPipe(").Append(argPrefix);
             sb.Append(method.DuplexPipeParameter!.SerializedId);
-            sb.AppendLine(").ConfigureAwait(false);");
+            sb.AppendLine(", message).ConfigureAwait(false);");
         }
 
         sb.Append("                        this.Context.Logger?.NexusLog(\"");

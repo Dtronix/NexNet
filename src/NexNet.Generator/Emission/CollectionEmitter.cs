@@ -60,7 +60,7 @@ internal static class CollectionEmitter
 
         sb.Append(@"
                         var arguments = message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>();
-                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1).ConfigureAwait(false);
+                        duplexPipe = await methodInvoker.RegisterDuplexPipe(arguments.Item1, message).ConfigureAwait(false);
                         this.Context.Logger?.NexusLog($""Nexus ")
             .Append(GetCollectionTypeShortString(collection.CollectionType))
             .Append(" Collection connection Invocation: ")

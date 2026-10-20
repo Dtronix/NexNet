@@ -145,6 +145,10 @@ public static class FlowHarness
         // A result larger than a frame breaks every later send on the session.
         yield return ("Oversized result, then a call", Program(Call(FlowMethod.Large, Size(300 * 1024)), ProbeCall()), 1);
 
+        // Disconnecting from another thread (here the idle timeout) completed the input while the read loop was still
+        // processing a buffer from it; the read loop then read recycled memory.
+        yield return ("Disconnect while the read loop is inside a pipe write", Program(Open(FlowPipe.NeverRead), Data(0, 300 * 1024)), 3);
+
         // Pipe methods hold an invocation slot for the pipe's lifetime; the read loop waits for a free slot.
         yield return ("Three pipe methods, then a call", Program(Open(FlowPipe.Drain), Open(FlowPipe.Drain), Open(FlowPipe.Drain), ProbeCall()), 3);
 

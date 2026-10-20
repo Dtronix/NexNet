@@ -166,13 +166,27 @@ internal class NexusPipeReader : PipeReader, IDisposable
         {
             _logger?.LogDebug($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high watermark of {_highWaterMark}");
 
+            // Not awaited: this runs on the session read loop, which must not wait on a send. At most one per crossing
+            // of the high watermark, since UpdateState only reports a change. (Removed with the pause flags.)
             if (_stateManager.UpdateState(_backPressureFlag))
-                await _stateManager.NotifyState().ConfigureAwait(false);
+                _ = NotifyStateObserved();
 
             return NexusPipeBufferResult.HighWatermarkReached;
         }
 
         return NexusPipeBufferResult.Success;
+    }
+
+    private async Task NotifyStateObserved()
+    {
+        try
+        {
+            await _stateManager.NotifyState().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogDebug(e, $"Pipe {_stateManager.Id} could not send its state.");
+        }
     }
 
     public override ValueTask CompleteAsync(Exception? exception = null)

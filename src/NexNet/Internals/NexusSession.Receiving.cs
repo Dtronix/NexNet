@@ -20,16 +20,19 @@ internal partial class NexusSession<TNexus, TProxy>
         _ = Task.Delay(Config.HandshakeTimeout, cancellationToken).ContinueWith(CheckHandshakeComplete, cancellationToken);
         
         Logger?.LogTrace("Reading");
+
+        // Only this loop completes the input, when it exits; see DisconnectCore.
+        var input = _pipeInput;
         try
         {
             while (true)
             {
-                if (_pipeInput == null
+                if (input == null
+                    || _pipeInput == null
                     || State != ConnectionState.Connected)
                     return;
 
-                var result = await _pipeInput.ReadAsync(cancellationToken).ConfigureAwait(false);
-                LastReceived = Config.Time.GetTickCount64();
+                var result = await input.ReadAsync(cancellationToken).ConfigureAwait(false);
                 
                 var buffer = result.Buffer;
                 // Terribly inefficient and only used for testing
@@ -48,7 +51,7 @@ internal partial class NexusSession<TNexus, TProxy>
                         // Don't process an empty buffer.
                         if (buffer.Length == 0)
                         {
-                            _pipeInput?.AdvanceTo(buffer.Start, buffer.Start);
+                            input.AdvanceTo(buffer.Start, buffer.Start);
                             continue;
                         }
                     }
@@ -71,7 +74,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             return;
                         }
 
-                        _pipeInput?.AdvanceTo(result.Buffer.Start, result.Buffer.End);
+                        input.AdvanceTo(result.Buffer.Start, result.Buffer.End);
                         continue;
                     }
                 }
@@ -101,7 +104,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     return;
                 }
 
-                _pipeInput?.AdvanceTo(processResult.Position, result.Buffer.End);
+                input.AdvanceTo(processResult.Position, result.Buffer.End);
             }
         }
         catch (NullReferenceException ex)
@@ -126,11 +129,25 @@ internal partial class NexusSession<TNexus, TProxy>
                 await DisconnectCore(DisconnectReason.SocketError, false).ConfigureAwait(false);
             }
         }
+        finally
+        {
+            try
+            {
+                // The CompleteAsync method does the exact same action, but introduces overhead into this call.
+                // ReSharper disable once MethodHasAsyncOverload
+                input?.Complete();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
     }
 
     private async ValueTask<ProcessResult> Process(ReadOnlySequence<byte> sequence)
     {
         var position = 0;
+        var completedFrames = false;
         var maxLength = sequence.Length;
         var disconnect = DisconnectReason.None;
         var issueDisconnectMessage = true;
@@ -174,10 +191,12 @@ internal partial class NexusSession<TNexus, TProxy>
                         // SINGLE BYTE HEADER ONLY
                         case MessageType.Ping:
                             _recMessageHeader.Reset();
+                            completedFrames = true;
 
-                            // If we are the server, send back a ping message to help the client know if it is still connected.
+                            // If we are the server, send back a ping message to help the client know if it is still
+                            // connected. Coalesced and sent by the control sender: the read loop never waits on a send.
                             if (IsServer)
-                                await SendHeader(MessageType.Ping).ConfigureAwait(false);
+                                _controlSender.RequestPong();
 
                             continue;
                         
@@ -371,6 +390,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 //_config.Logger?.LogTrace($"Resetting header.");
                 // Reset the header.
                 _recMessageHeader.Reset();
+                completedFrames = true;
             }
             catch (Exception e)
             {
@@ -387,6 +407,10 @@ internal partial class NexusSession<TNexus, TProxy>
 
             _recMessageHeader.Reset();
         }
+
+        // Only complete frames count as activity: a peer trickling bytes of one frame does not hold the session open.
+        if (completedFrames)
+            LastReceived = Config.Time.GetTickCount64();
 
         var seqPosition = sequence.GetPosition(position);
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);
@@ -677,19 +701,10 @@ internal partial class NexusSession<TNexus, TProxy>
                     return DisconnectReason.ProtocolError;
                 }
                 Logger?.LogTrace($"Started Invoking method {invocationRequestMessage.MethodId}.");
-                
-                await _invocationSemaphore.WaitAsync(_disconnectionCts.Token).ConfigureAwait(false);
 
-                if (State != ConnectionState.Connected)
-                    return DisconnectReason.ProtocolError;
-
-                if (!_invocationTaskArgumentsPool.TryTake(out var args))
-                    args = new InvocationTaskArguments();
-
-                args.Message = invocationRequestMessage;
-                args.Session = this;
-
-                _ = Task.Factory.StartNew(InvocationTask, args);
+                // Queued, never awaited: the read loop must not wait for an execution slot.
+                _invocationQueue.Enqueue(invocationRequestMessage);
+                DispatchInvocations();
                 break;
             }
 
@@ -722,39 +737,32 @@ internal partial class NexusSession<TNexus, TProxy>
                 return DisconnectReason.ProtocolError;
         }
         return DisconnectReason.None;
-        
-        static async void InvocationTask(object? argumentsObj)
+    }
+
+    private static async void InvocationTask(object? argumentsObj)
+    {
+        var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
+
+        var session = arguments.Session;
+        var message = arguments.Message;
+        try
         {
-            var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
+            arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
+            await session._nexus.InvokeMethod(message).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
+        }
+        finally
+        {
+            // Frees the slot unless a pipe registration already did.
+            arguments.Release();
 
-            var session = arguments.Session;
-            var message = arguments.Message;
-            try
-            {
-                arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
-                await session._nexus.InvokeMethod(message).ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
-            }
-            finally
-            {
-                try
-                {
-                    session._invocationSemaphore.Release();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The semaphore was disposed and the client is disconnected.
-                }
-
-
-                // Clear out the references before returning to the pool.
-                arguments.Session = null!;
-                arguments.Message = null!;
-                session._invocationTaskArgumentsPool.Add(arguments);
-            }
+            // Clear out the references before returning to the pool.
+            arguments.Session = null!;
+            arguments.Message = null!;
+            session._invocationTaskArgumentsPool.Add(arguments);
         }
     }
 }

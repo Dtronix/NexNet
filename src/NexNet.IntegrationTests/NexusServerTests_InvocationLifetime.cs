@@ -8,10 +8,10 @@ namespace NexNet.IntegrationTests;
 /// <summary>
 /// Pins down the current invocation lifetime behavior on the server:
 /// 1. There is no server (or client) side execution deadline on an invocation.
-/// 2. A hung invocation holds its MaxConcurrentConnectionInvocations semaphore slot indefinitely,
+/// 2. A hung invocation holds its MaxConcurrentConnectionInvocations slot indefinitely,
 ///    starving subsequent invocations on the session.
-/// 3. While the session is saturated, the read loop is blocked awaiting the semaphore, so
-///    InvocationCancellationMessages queued behind a pending invocation are never dispatched.
+/// 3. While the session is saturated, invocations queue without stopping the read loop, so
+///    InvocationCancellationMessages still reach running invocations.
 /// 4. Session disconnection disposes registered CancellationTokenSources without cancelling them,
 ///    so running invocations survive the disconnect as orphaned tasks.
 /// These tests assert the current behavior; introducing an invocation timeout or
@@ -122,7 +122,7 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
-    public async Task SaturatedSessionCannotProcessCancellation(Type type)
+    public async Task SaturatedSessionStillProcessesCancellation(Type type)
     {
         await RunCancellationScenario(type, saturateSession: true);
     }
@@ -135,8 +135,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task CancellationIsProcessedWhenSessionIsNotSaturated(Type type)
     {
-        // Control test for SaturatedSessionCannotProcessCancellation: with a free read
-        // loop, the same cancellation reaches the method's token promptly.
+        // Control test for SaturatedSessionStillProcessesCancellation: the same cancellation
+        // on a session with free slots.
         await RunCancellationScenario(type, saturateSession: false);
     }
 
@@ -210,27 +210,26 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             blockerTask = client.Proxy.ServerTask().AsTask();
             await blockerStartedTcs.Task.Timeout(1);
 
-            // Both slots are taken, so this invocation blocks the read loop in the semaphore
-            // wait. The cancellation message sent below is ordered behind it on the wire.
+            // Both slots are taken, so this invocation is queued. The cancellation message sent
+            // below is ordered behind it on the wire.
             client.Proxy.ServerVoid();
         }
 
         cts.Cancel();
         await Assert.ThrowsAsync<TaskCanceledException>(async () => await invocationTask);
 
+        // The read loop does not wait for a slot, so the cancellation reaches the running method
+        // even while the session is saturated.
+        await cancelledTcs.Task.Timeout(1);
+
         if (saturateSession)
         {
-            // The cancellation was sent, but the server does not process it while saturated.
-            await cancelledTcs.Task.AssertTimeout(0.5);
-
-            // Freeing a slot unblocks the read loop: the queued invocation is dispatched and
-            // the cancellation behind it reaches the still-running method's token.
+            // The queued invocation runs once a slot frees.
+            await queuedInvocationTcs.Task.AssertTimeout(0.5);
             blockerTcs.TrySetResult();
             await blockerTask!.Timeout(1);
             await queuedInvocationTcs.Task.Timeout(1);
         }
-
-        await cancelledTcs.Task.Timeout(1);
 
         // Cleanup: release the hung invocation.
         hangTcs.TrySetResult();

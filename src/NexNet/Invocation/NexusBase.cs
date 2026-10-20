@@ -76,9 +76,13 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         SessionContext.PoolManager.CancellationTokenSourcePool.Return(cts);
     }
 
-    ValueTask<INexusDuplexPipe> IMethodInvoker.RegisterDuplexPipe(byte startId)
+    async ValueTask<INexusDuplexPipe> IMethodInvoker.RegisterDuplexPipe(byte startId, IInvocationMessage message)
     {
-        return SessionContext.Session.PipeManager.RegisterPipe(startId);
+        var pipe = await SessionContext.Session.PipeManager.RegisterPipe(startId).ConfigureAwait(false);
+
+        // The pipe now counts against the pipe limit; free the execution slot for other invocations.
+        (message as InvocationMessage)?.Slot?.Release();
+        return pipe;
     }
 
     NexusSerializerOptions IMethodInvoker.SerializerOptions =>

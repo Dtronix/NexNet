@@ -41,6 +41,12 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     /// </summary>
     internal PooledArrayBufferWriter? ArgumentsOwner;
 
+    /// <summary>
+    /// Receiving side: the execution slot this invocation runs in. A pipe or collection method frees it when its pipe
+    /// registers, so long-lived pipes do not hold slots.
+    /// </summary>
+    internal NexNet.Internals.IInvocationSlot? Slot;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<T>()
     {
@@ -97,6 +103,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     public void Dispose()
     {
         Interlocked.Exchange(ref ArgumentsOwner, null)?.Return();
+        Slot = null;
 
         var cache = Interlocked.Exchange(ref _messageCache, null);
 
