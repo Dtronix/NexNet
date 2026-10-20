@@ -24,7 +24,7 @@ public class NexusPipeReaderTests
         var reader = CreateReader();
         byte[] payload = [1, 2, 3, 4];
 
-        var bufferResult = await reader.BufferData(new ReadOnlySequence<byte>(payload));
+        var bufferResult = reader.BufferData(new ReadOnlySequence<byte>(payload));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bufferResult, Is.EqualTo(NexusPipeBufferResult.Success));
@@ -37,20 +37,6 @@ public class NexusPipeReaderTests
 
     }
     
-    [Test]
-    public async Task BufferData_ExceedsHighWatermark_ReturnsHighWatermarkReached()
-    {
-        var reader = CreateReader(highWaterMark: 2);
-        byte[] payload = [10, 20, 30];
-
-        var bufferResult = await reader.BufferData(new ReadOnlySequence<byte>(payload));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(bufferResult, Is.EqualTo(NexusPipeBufferResult.HighWatermarkReached));
-            Assert.That(reader.TryRead(out var readResult), Is.True, "Data should still be buffered after high‐watermark");
-            Assert.That(readResult.Buffer.ToArray(), Is.EqualTo(payload));
-        }
-    }
     
     [Test]
     public async Task CancelPendingRead_ReadAsyncReturnsCanceled()
@@ -86,7 +72,7 @@ public class NexusPipeReaderTests
         var reader = CreateReader();
         byte[] payload = [5, 6, 7, 8];
 
-        await reader.BufferData(new ReadOnlySequence<byte>(payload));
+        reader.BufferData(new ReadOnlySequence<byte>(payload));
         var readResult = await reader.ReadAsync();
 
         Assert.That(readResult.Buffer.ToArray(), Is.EqualTo(payload), "Initial read sees full payload");
@@ -99,84 +85,18 @@ public class NexusPipeReaderTests
         Assert.That(afterConsume.IsCanceled, Is.False);
     }
     
-    [Test]
-    public async Task BufferData_HighWaterMark_SetsBackPressureFlag()
-    {
-        var spy = new SpyStateManager();
-        // highWaterMark=2, no cutoff or low‐water logic needed here
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: false,
-            highWaterMark: 2,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
-
-        var payload = new byte[] { 0, 1, 2 };
-        var result = await reader.BufferData(new ReadOnlySequence<byte>(payload));
-
-        Assert.That(result, Is.EqualTo(NexusPipeBufferResult.HighWatermarkReached));
-        Assert.That(spy.Updates, Has.Count.EqualTo(1));
-        Assert.That(spy.Updates[0].Flag,
-            Is.EqualTo(NexusDuplexPipe.State.ServerWriterPause),
-            "Non‐server readers should use the ServerWriterPause flag");
-        Assert.That(spy.Updates[0].Remove, Is.False);
-        Assert.That(spy.NotifyCount, Is.EqualTo(1),
-            "NotifyState must be called exactly once after hitting the watermark");
-    }
     
     
-    [Test]
-    public async Task ReadAsync_BufferDropsBelowLowWaterMark_RemovesBackPressureFlag()
-    {
-        var spy = new SpyStateManager();
-        // highWaterMark=2 to set the flag, lowWaterMark=1 so we can drop below it
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: false,
-            highWaterMark: 2,
-            highWaterCutoff: 0,
-            lowWaterMark: 1);
-
-        // 1) Buffer enough to hit the high watermark
-        await reader.BufferData(new ReadOnlySequence<byte>([9, 8, 7]));
-        // flag set in spy.Updates[0]
-
-        // 2) Read once (does not remove the flag since bufferLength (3) > lowWaterMark (1))
-        var firstRead = await reader.ReadAsync();
-        Assert.That(firstRead.Buffer.ToArray(), Is.EqualTo(new byte[] { 9, 8, 7 }));
-
-        // 3) Consume 2 bytes → remaining payload length = 1, which is ≤ lowWaterMark
-        reader.AdvanceTo(2, 2);
-
-        // 4) Next ReadAsync should see remaining single byte AND remove the back‐pressure flag
-        var secondRead = await reader.ReadAsync();
-        Assert.That(secondRead.Buffer.ToArray(), Is.EqualTo(new byte[] { 7 }),
-            "After advancing, only the last byte should remain");
-        Assert.That(spy.Updates, Has.Count.EqualTo(2),
-            "Second UpdateState invocation should remove the flag");
-        var removalCall = spy.Updates[1];
-        Assert.That(removalCall.Flag,
-            Is.EqualTo(NexusDuplexPipe.State.ServerWriterPause));
-        Assert.That(removalCall.Remove, Is.True,
-            "The second UpdateState must indicate removal");
-        Assert.That(spy.NotifyCount, Is.EqualTo(2),
-            "NotifyState should have been called again for the removal");
-    }
     
     
     [Test]
     public async Task BufferData_AfterCompleteNoNotify_ReturnsDataIgnored()
     {
-        var reader = new NexusPipeReader(
-            new DummyStateManager(), logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 10,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CompleteNoNotify();
 
-        var result = await reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3]));
+        var result = reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3]));
         Assert.That(result, Is.EqualTo(NexusPipeBufferResult.DataIgnored),
             "Once completed, new data must be ignored");
     }
@@ -185,12 +105,7 @@ public class NexusPipeReaderTests
     [Test]
     public async Task ReadAsync_AfterCompleteNoNotify_ReturnsCompleted()
     {
-        var reader = new NexusPipeReader(
-            new DummyStateManager(), logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CompleteNoNotify();
 
@@ -203,12 +118,7 @@ public class NexusPipeReaderTests
     [Test]
     public void TryRead_AfterCancelPendingRead_ReturnsTrueAndCanceled()
     {
-        var reader = new NexusPipeReader(
-            new DummyStateManager(), logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CancelPendingRead();
         var got = reader.TryRead(out var result);
@@ -222,12 +132,7 @@ public class NexusPipeReaderTests
     [Test]
     public void TryRead_CancellationFlagResets_AfterFirstTryRead()
     {
-        var reader = new NexusPipeReader(
-            new DummyStateManager(), logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(new DummyStateManager(), null, false);
 
         reader.CancelPendingRead();
 
@@ -245,12 +150,7 @@ public class NexusPipeReaderTests
     {
         var spy = new SpyStateManager();
         // isServer = false → writingCompleteFlag == ClientReaderServerWriterComplete
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(spy, null, false);
 
         await reader.CompleteAsync();
 
@@ -269,12 +169,7 @@ public class NexusPipeReaderTests
     public void CancelPendingRead_DoesNotUpdateState()
     {
         var spy = new SpyStateManager();
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(spy, null, false);
 
         reader.CancelPendingRead();
 
@@ -282,36 +177,13 @@ public class NexusPipeReaderTests
         Assert.That(spy.NotifyCount, Is.Zero,  "CancelPendingRead should not call NotifyState");
     }
     
-    [Test]
-    public async Task BufferData_HighWaterCutoffWithoutHighWaterMark_DoesNotTriggerStateUpdates()
-    {
-        var spy = new SpyStateManager();
-        // highWaterCutoff = 2, lowWaterMark = 5 → triggers cutoff loop then exits immediately
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: false,
-            highWaterMark: 0,
-            highWaterCutoff: 2,
-            lowWaterMark: 5);
-
-        var result = await reader.BufferData(new ReadOnlySequence<byte>([1, 2]));
-
-        Assert.That(result, Is.EqualTo(NexusPipeBufferResult.Success));
-        Assert.That(spy.Updates, Is.Empty,   "No back‑pressure or completion flags should be set");
-        Assert.That(spy.NotifyCount, Is.Zero, "NotifyState should never be called");
-    }
     
     [Test]
     public async Task CompleteAsync_AsServer_UsesClientWriterServerReaderCompleteFlag()
     {
         var spy = new SpyStateManager();
         // isServer = true → writingCompleteFlag == ClientWriterServerReaderComplete
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: true,
-            highWaterMark: 0,
-            highWaterCutoff: 0,
-            lowWaterMark: 0);
+        var reader = TestPipes.Reader(spy, null, true);
 
         await reader.CompleteAsync();
 
@@ -322,59 +194,63 @@ public class NexusPipeReaderTests
         Assert.That(spy.NotifyCount, Is.EqualTo(1));
     }
     
+    
     [Test]
-    public async Task BufferDataAndLowWatermark_WithServer_BackPressureAddsAndRemovesCorrectFlag()
+    public void BufferData_BeyondCredit_ReturnsCreditExceeded()
+    {
+        var reader = CreateReader(window: 4);
+
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3])), Is.EqualTo(NexusPipeBufferResult.Success));
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+
+        // The data beyond the credit was not buffered.
+        Assert.That(reader.TryRead(out var result), Is.True);
+        Assert.That(result.Buffer.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+    }
+
+    [Test]
+    public void BufferData_BeforeTheWindowOpens_ReturnsCreditExceeded()
+    {
+        // Nothing was granted yet, so the peer may not send anything.
+        var reader = new NexusPipeReader(new DummyStateManager(), logger: null, isServer: false, window: 1024);
+
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+    }
+
+    [Test]
+    public void ConsumingHalfTheWindow_GrantsTheConsumedBytes()
     {
         var spy = new SpyStateManager();
-        // For server: backPressureFlag = ClientWriterPause
-        var reader = new NexusPipeReader(
-            spy, logger: null,
-            isServer: true,
-            highWaterMark: 3,
-            highWaterCutoff: 0,
-            lowWaterMark: 1);
+        var reader = TestPipes.Reader(spy, window: 8);
+        reader.BufferData(new ReadOnlySequence<byte>([0, 1, 2, 3, 4, 5, 6, 7]));
 
-        // 1) Buffer enough to hit the watermark
-        var highResult = await reader.BufferData(new ReadOnlySequence<byte>([9, 8, 7]));
-        Assert.That(highResult, Is.EqualTo(NexusPipeBufferResult.HighWatermarkReached));
+        reader.AdvanceTo(3, 3);
+        Assert.That(spy.Grants, Is.Empty, "Less than half the window consumed");
 
-        // Should have set ClientWriterPause
-        Assert.That(spy.Updates.Any(u =>
-                u.Flag == NexusDuplexPipe.State.ClientWriterPause && u.Remove == false),
-            Is.True);
+        reader.AdvanceTo(1, 1);
+        Assert.That(spy.Grants, Is.EqualTo(new[] { 4 }), "Half the window consumed");
 
-        // 2) Read it out
-        var read1 = await reader.ReadAsync();
-        Assert.That(read1.Buffer.ToArray(), Is.EqualTo(new byte[] { 9, 8, 7 }));
-
-        // 3) Consume 2 bytes → leaves 1, which is ≤ lowWaterMark
-        reader.AdvanceTo(2, 2);
-
-        // 4) Next ReadAsync should remove the flag
-        var read2 = await reader.ReadAsync();
-        Assert.That(read2.Buffer.ToArray(), Is.EqualTo(new byte[] { 7 }));
-
-        Assert.That(spy.Updates.Any(u =>
-                u.Flag == NexusDuplexPipe.State.ClientWriterPause && u.Remove),
-            Is.True,
-            "Once buffer ≤ lowWaterMark, the back‑pressure flag should be removed");
-        Assert.That(spy.NotifyCount, Is.EqualTo(2),
-            "Should notify once for add and once for removal");
+        // The grant is usable: 4 more bytes fit, a fifth does not.
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([8, 9, 10, 11])), Is.EqualTo(NexusPipeBufferResult.Success));
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([12])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
     }
-    
-    private NexusPipeReader CreateReader(
-        int highWaterMark = 0,
-        int highWaterCutoff = 0,
-        int lowWaterMark = 0,
-        bool isServer = false)
+
+    [Test]
+    public void BufferData_AfterComplete_IsDiscardedButCountsAgainstTheCredit()
     {
-        return new NexusPipeReader(
-            new DummyStateManager(),
-            logger: null,
-            isServer: isServer,
-            highWaterMark: highWaterMark,
-            highWaterCutoff: highWaterCutoff,
-            lowWaterMark: lowWaterMark);
+        var spy = new SpyStateManager();
+        var reader = TestPipes.Reader(spy, window: 4);
+        reader.CompleteNoNotify();
+
+        // The peer may still have data in flight; it is discarded, up to the credit granted.
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([1, 2, 3])), Is.EqualTo(NexusPipeBufferResult.DataIgnored));
+        Assert.That(reader.BufferData(new ReadOnlySequence<byte>([4, 5])), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
+        Assert.That(spy.Grants, Is.Empty, "Discarded data is not granted back");
+    }
+
+    private NexusPipeReader CreateReader(int window = TestPipes.LargeWindow, bool isServer = false)
+    {
+        return TestPipes.Reader(new DummyStateManager(), isServer: isServer, window: window);
     }
     
     /// <summary>
@@ -402,6 +278,10 @@ public class NexusPipeReaderTests
             NotifyCount++;
             return new ValueTask();
         }
+
+        public List<int> Grants { get; } = [];
+
+        public void GrantCredit(int bytes) => Grants.Add(bytes);
     }
     
     /// <summary>

@@ -156,8 +156,20 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         // return the rest args to the cache.
         if (requestArgs.Message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
         {
-            await requestArgs.InvokeMethodCore(requestArgs.Message, null).ConfigureAwait(false);
-            ReturnArgsToCache(context, requestArgs);
+            try
+            {
+                await requestArgs.InvokeMethodCore(requestArgs.Message, null).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is NexusMessageTooLargeException or NexusBusyException)
+            {
+                // A limit was reached (e.g. a pipe was refused). Not a fault in the method.
+                context.Session.Logger?.LogWarning($"Method {requestArgs.Message.MethodId} failed: {e.Message}");
+            }
+            finally
+            {
+                ReturnArgsToCache(context, requestArgs);
+            }
+
             return;
         }
 
@@ -201,10 +213,11 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             context.Session.Logger?.LogTrace("Invocation canceled.");
             // noop
         }
-        catch (NexusMessageTooLargeException e)
+        catch (Exception e) when (e is NexusMessageTooLargeException or NexusBusyException)
         {
-            // The result can't be sent; fail the call. Not a fault in the method, so not logged as an error.
-            context.Session.Logger?.LogWarning($"Result of method {requestArgs.Message.MethodId} not sent: {e.Message}");
+            // A limit was reached (the result is too large, or a pipe was refused); fail the call. Not a fault in
+            // the method, so not logged as an error.
+            context.Session.Logger?.LogWarning($"Method {requestArgs.Message.MethodId} failed: {e.Message}");
             bufferWriterCache.Add(bufferWriter);
             message.Result = null;
             message.State = InvocationResultMessage.StateType.Exception;

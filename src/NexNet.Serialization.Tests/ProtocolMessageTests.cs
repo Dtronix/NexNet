@@ -99,11 +99,13 @@ public class ProtocolMessageTests
     [Test]
     public void DuplexPipeUpdateStateGoldenVector()
     {
-        var body = Body(new DuplexPipeUpdateStateMessage { PipeId = 0x0201, State = NexusDuplexPipe.State.Ready });
-        Assert.That(Hex(body), Is.EqualTo("92cd0201" + ((byte)NexusDuplexPipe.State.Ready).ToString("x2")));
+        // [pipeId, state, window]: the Ready acknowledgement grants a 256 KiB window.
+        var body = Body(new DuplexPipeUpdateStateMessage { PipeId = 0x0201, State = NexusDuplexPipe.State.Ready, Window = 256 * 1024 });
+        Assert.That(Hex(body), Is.EqualTo("93cd0201" + ((byte)NexusDuplexPipe.State.Ready).ToString("x2") + "ce00040000"));
         var parsed = Parse<DuplexPipeUpdateStateMessage>(body);
         Assert.That(parsed.PipeId, Is.EqualTo(0x0201));
         Assert.That(parsed.State, Is.EqualTo(NexusDuplexPipe.State.Ready));
+        Assert.That(parsed.Window, Is.EqualTo(256 * 1024));
     }
 
     [Test]

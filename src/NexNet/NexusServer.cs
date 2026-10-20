@@ -114,6 +114,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         ArgumentNullException.ThrowIfNull(nexusFactory);
         if(_config != null)
             throw new InvalidOperationException("Server has already been configured.");
+
+        config.ValidateFlowControl();
         
 
         _config = config;

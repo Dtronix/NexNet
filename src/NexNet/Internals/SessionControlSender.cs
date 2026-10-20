@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Logging;
 using NexNet.Messages;
+using NexNet.Pipes;
 
 namespace NexNet.Internals;
 
@@ -23,6 +25,9 @@ internal sealed class SessionControlSender
     private int _draining;
     private int _pongPending;
 
+    // Pipes with a pending window grant or close acknowledgement; each pipe is queued at most once at a time.
+    private readonly ConcurrentQueue<NexusDuplexPipe> _pipes = new();
+
     public SessionControlSender(INexusSession session)
     {
         _session = session;
@@ -37,7 +42,17 @@ internal sealed class SessionControlSender
         Schedule();
     }
 
-    private bool HasPending => Volatile.Read(ref _pongPending) != 0;
+    /// <summary>
+    /// Requests that <paramref name="pipe"/>'s pending control state be sent. The pipe guarantees it is queued at most
+    /// once until it is drained.
+    /// </summary>
+    public void RequestPipeControl(NexusDuplexPipe pipe)
+    {
+        _pipes.Enqueue(pipe);
+        Schedule();
+    }
+
+    private bool HasPending => Volatile.Read(ref _pongPending) != 0 || !_pipes.IsEmpty;
 
     private void Schedule()
     {
@@ -53,6 +68,9 @@ internal sealed class SessionControlSender
             {
                 if (Interlocked.Exchange(ref _pongPending, 0) != 0)
                     await _session.SendHeader(MessageType.Ping).ConfigureAwait(false);
+
+                while (_pipes.TryDequeue(out var pipe))
+                    await pipe.SendPendingControl().ConfigureAwait(false);
             }
             catch (Exception e)
             {

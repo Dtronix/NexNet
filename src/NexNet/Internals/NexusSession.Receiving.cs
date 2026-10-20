@@ -213,6 +213,7 @@ internal partial class NexusSession<TNexus, TProxy>
                             break;
    
                         case MessageType.DuplexPipeWrite:
+                        case MessageType.PipeWindowUpdate:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
                             break;
 
@@ -286,6 +287,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     switch (_recMessageHeader.Type)
                     {
                         case MessageType.DuplexPipeWrite:
+                        case MessageType.PipeWindowUpdate:
                             if (!ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position,
                                     out _recMessageHeader.DuplexPipeId))
                             {
@@ -359,8 +361,23 @@ internal partial class NexusSession<TNexus, TProxy>
 
                     case MessageType.DuplexPipeWrite:
                     {
-                        await PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice)
-                            .ConfigureAwait(false);
+                        // Synchronous: the data fits the credit granted, so there is room for it.
+                        disconnect = PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
+                        break;
+                    }
+
+                    case MessageType.PipeWindowUpdate:
+                    {
+                        if (bodySlice.Length != sizeof(uint))
+                        {
+                            disconnect = DisconnectReason.ProtocolError;
+                            break;
+                        }
+
+                        Span<byte> credit = stackalloc byte[sizeof(uint)];
+                        bodySlice.CopyTo(credit);
+                        disconnect = PipeManager.AddCredit(_recMessageHeader.DuplexPipeId,
+                            System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(credit));
                         break;
                     }
 
@@ -725,7 +742,7 @@ internal partial class NexusSession<TNexus, TProxy>
             case MessageType.DuplexPipeUpdateState:
             {
                 var updateStateMessage = message.As<DuplexPipeUpdateStateMessage>();
-                var updateStateResult = PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State);
+                var updateStateResult = PipeManager.UpdateState(updateStateMessage.PipeId, updateStateMessage.State, updateStateMessage.Window);
                 if (updateStateResult != DisconnectReason.None)
                     return updateStateResult;
                 break;

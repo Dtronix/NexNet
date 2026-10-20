@@ -103,7 +103,7 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await output.FlushAsync().ConfigureAwait(false);
+            result = await FlushOutput(output).ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)
@@ -133,7 +133,34 @@ internal partial class NexusSession<TNexus, TProxy>
 
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
-        return SendHeaderWithBody(type, null, body, cancellationToken);
+        return SendHeaderWithBody(type, null, body, true, cancellationToken);
+    }
+
+    public ValueTask SendHeaderWithBody(
+        MessageType type,
+        ReadOnlyMemory<byte>? messageHeader,
+        ReadOnlySequence<byte> body,
+        CancellationToken cancellationToken = default)
+    {
+        return SendHeaderWithBody(type, messageHeader, body, true, cancellationToken);
+    }
+
+    /// <summary>
+    /// Flushes the transport, recording when the flush started so a flush that never completes is detected as a
+    /// stall (<see cref="NexNet.Transports.ConfigBase.ProgressTimeout"/>). Called with the write mutex held.
+    /// </summary>
+    private async ValueTask<FlushResult> FlushOutput(PipeWriter output)
+    {
+        Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+        try
+        {
+            // ReSharper disable once MethodSupportsCancellation
+            return await output.FlushAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            Volatile.Write(ref _flushStartedTicks, 0);
+        }
     }
 
     /// <summary>
@@ -142,6 +169,7 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <param name="type">The type of the message to be sent.</param>
     /// <param name="messageHeader">The header of the message. Its length can vary. Can be null.</param>
     /// <param name="body">The body of the message.</param>
+    /// <param name="flush">False to leave the frame in the transport's buffer for a later flush.</param>
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
     /// <remarks>
     /// Sends with the following format:
@@ -154,9 +182,10 @@ internal partial class NexusSession<TNexus, TProxy>
     /// </remarks>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
     public async ValueTask SendHeaderWithBody(
-        MessageType type, 
-        ReadOnlyMemory<byte>? messageHeader, 
+        MessageType type,
+        ReadOnlyMemory<byte>? messageHeader,
         ReadOnlySequence<byte> body,
+        bool flush,
         CancellationToken cancellationToken = default)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
@@ -202,6 +231,12 @@ internal partial class NexusSession<TNexus, TProxy>
             return;
         }
 
+        if (!flush)
+        {
+            _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
+            return;
+        }
+
         // Register a cancellation token to cancel the flush operation.
         CancellationTokenRegistration? ctRegistration = null;
         if (cancellationToken.CanBeCanceled)
@@ -213,20 +248,14 @@ internal partial class NexusSession<TNexus, TProxy>
         }
 
         if (_config.InternalOnSend != null)
-        {
-            var debugCopy = new byte[body.Length + 3];
-            debugCopy[0] = (byte)type;
-            BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
-            body.CopyTo(new Span<byte>(debugCopy).Slice(3));
-            _config.InternalOnSend?.Invoke(this, debugCopy);
-        }
+            _config.InternalOnSend?.Invoke(this, DebugCopy(type, contentLength, body));
 
         Logger?.LogTrace($"Sending {type} header and {length} total bytes.");
         FlushResult result = default;
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await output.FlushAsync().ConfigureAwait(false);
+            result = await FlushOutput(output).ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)
@@ -257,6 +286,16 @@ internal partial class NexusSession<TNexus, TProxy>
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
     
+    // Only used for debugging (InternalOnSend).
+    private static byte[] DebugCopy(MessageType type, ushort contentLength, ReadOnlySequence<byte> body)
+    {
+        var debugCopy = new byte[body.Length + 3];
+        debugCopy[0] = (byte)type;
+        BinaryPrimitives.WriteUInt16LittleEndian(new Span<byte>(debugCopy).Slice(1, 2), contentLength);
+        body.CopyTo(new Span<byte>(debugCopy).Slice(3));
+        return debugCopy;
+    }
+
     /// <summary>
     /// Asynchronously sends raw data over the transport. Does nothing if the session is not connected.
     /// </summary>
@@ -394,7 +433,7 @@ internal partial class NexusSession<TNexus, TProxy>
         try
         {
             // ReSharper disable once MethodSupportsCancellation
-            result = await output.FlushAsync().ConfigureAwait(false);
+            result = await FlushOutput(output).ConfigureAwait(false);
 
             // Return if the operation was canceled.
             if (result.IsCanceled)

@@ -28,7 +28,12 @@ namespace NexNet.Fuzz;
 /// <item>a disconnect reason outside <see cref="AllowedDisconnects"/>, or malformed server output;</item>
 /// <item>the server logging an exception type that hostile input should never cause.</item>
 /// </list>
-/// The session budget check is added with the budget itself (step 4).
+/// The session budget is checked too: no reservation is ever released twice
+/// (<see cref="Internals.SessionBudget.InvariantViolations"/>).
+/// </para>
+/// <para>
+/// The client behaves like a NexNet client unless an operation says otherwise: it writes pipe data only within the
+/// credit the server granted, and answers the server's pipe closes.
 /// </para>
 /// <para>
 /// The v2 frames (<c>PipeWindowUpdate</c>, <c>MessageStart</c>/<c>Chunk</c>/<c>Abort</c>, <c>InvocationCredit</c>)
@@ -47,6 +52,10 @@ public static class FlowHarness
     public static readonly int[] Sizes = [0, 1, 100, 1024, 16 * 1024, 40 * 1024, 65535, 65536, 300 * 1024, 1024 * 1024];
 
     private const int MaxBytesPerInput = 8 * 1024 * 1024;
+
+    // How long a write waits for more credit before the client gives up on the rest of it, as a writer cancelling
+    // its flush would.
+    private static readonly TimeSpan CreditWait = TimeSpan.FromMilliseconds(200);
     private const int MaxPausePerInput = 500;
     private const int MaxFrameBody = ushort.MaxValue;
 
@@ -64,14 +73,24 @@ public static class FlowHarness
     [
         DisconnectReason.ProtocolError,
         DisconnectReason.Timeout,
+        DisconnectReason.FlowControl,
+        DisconnectReason.ResourceLimit,
+        DisconnectReason.Stalled,
     ];
 
     private static readonly Lazy<FuzzServerHost> Instance = new(() => FuzzServerHost.Start(
         static config => FlowServerNexus.CreateServer(config, static () => new FlowServerNexus()).StartAsync(),
         IInvocationMethodHash.GetMethodHash<FlowServerNexus>(),
-        IInvocationMethodHash.GetMethodHash<FlowClientNexus>()));
+        IInvocationMethodHash.GetMethodHash<FlowClientNexus>(),
+        // Short enough that the hostile cases see a stalled close inside the harness timeout.
+        static config => config.ProgressTimeout = 1000));
 
-    public static void Run(byte[] data)
+    public static void Run(byte[] data) => Execute(data);
+
+    /// <summary>
+    /// Runs a program and checks the invariants. Returns the server's disconnect reason, if it sent one.
+    /// </summary>
+    public static DisconnectReason? Execute(byte[] data)
     {
         var host = Instance.Value;
         var transport = new FuzzTransport(readsOutput: true);
@@ -104,6 +123,10 @@ public static class FlowHarness
             throw new TimeoutException(stall);
         if (output.Disconnect is { } reason && !AllowedDisconnects.Contains(reason))
             throw new InvalidOperationException($"Server disconnected with {reason}.");
+        if (Interlocked.Read(ref Internals.SessionBudget.InvariantViolations) != 0)
+            throw new InvalidOperationException("A session budget was released below zero.");
+
+        return output.Disconnect;
     }
 
     /// <summary>
@@ -137,6 +160,33 @@ public static class FlowHarness
     }
 
     /// <summary>
+    /// Hostile peers (spec section 9) and the disconnect each must cause, or null if the session must stay up.
+    /// </summary>
+    public static IEnumerable<(string Name, byte[] Input, DisconnectReason? Expected)> HostileCases()
+    {
+        yield return ("Sends beyond its window",
+            Program(Open(FlowPipe.NeverRead), Op(FlowOp.Overrun, 0, Size(300 * 1024)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.FlowControl);
+
+        yield return ("Never acknowledges a close",
+            Program(Op(FlowOp.NoCloseAcks), Open(FlowPipe.CloseAtOnce), Op(FlowOp.AwaitClose)),
+            DisconnectReason.Stalled);
+
+        // MaxPipes is 32: the rest are refused and the session stays up.
+        yield return ("Floods pipe opens",
+            Program([.. Enumerable.Repeat(Open(FlowPipe.NeverRead), 40).SelectMany(o => o), .. ProbePing(), .. ProbeCall()]),
+            null);
+
+        yield return ("Never reads its pipe",
+            Program(Open(FlowPipe.NeverRead), Data(0, 1024 * 1024), Open(FlowPipe.Drain), Data(1, 1024 * 1024), ProbePing(), ProbeCall()),
+            null);
+
+        yield return ("Data for a pipe that was never opened",
+            Program(Op(FlowOp.PipeData, 0, Size(100)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
+    }
+
+    /// <summary>
     /// Reproductions of the defects in spec section 1, with the step of spec section 8 that fixes each. They fail
     /// until that step lands.
     /// </summary>
@@ -154,12 +204,13 @@ public static class FlowHarness
 
         // BufferData does not wake the reader for a frame that reaches the high-water mark, then waits for the reader
         // to drain below the low-water mark.
-        yield return ("1 MiB in full frames to a reader that keeps up", Program(Open(FlowPipe.Drain), Data(0, 1024 * 1024), ProbePing()), 1);
+        yield return ("1 MiB in full frames to a reader that keeps up", Program(Op(FlowOp.StrictWrites), Open(FlowPipe.Drain), Data(0, 1024 * 1024), ProbePing()), 1);
 
         // The application's reproductions (spec section 9).
-        yield return ("40 x 40 KiB items with a slow reader, then a call", Program(Open(FlowPipe.SlowItems), Item(0, 40 * 1024, 40), ProbeCall()), 4);
+        yield return ("40 x 40 KiB items with a slow reader, then a call", Program(Op(FlowOp.StrictWrites), Open(FlowPipe.SlowItems), Item(0, 40 * 1024, 40), ProbeCall()), 4);
         yield return ("Pipe completed while the reader's buffer is full", Program(Open(FlowPipe.NeverRead), Data(0, 300 * 1024), Op(FlowOp.Complete), ProbePing()), 4);
-        yield return ("One 300 KiB item", Program(Open(FlowPipe.SlowItems), Item(0, 300 * 1024), ProbePing()), 6);
+        // The session stays up from step 4 on; the item itself needs more than the window (step 6).
+        yield return ("One 300 KiB item", Program(Op(FlowOp.StrictWrites), Open(FlowPipe.SlowItems), Item(0, 300 * 1024), ProbePing()), 6);
     }
 
     private static byte[] Program(params byte[][] ops) => ops.SelectMany(o => o).ToArray();
@@ -219,6 +270,15 @@ public static class FlowHarness
         ProbePing,
         /// <summary>Call <see cref="FlowMethod.Ping"/> and wait for the result.</summary>
         ProbeCall,
+        /// <summary>Write <c>Sizes[b]</c> bytes to pipe slot <c>a</c> ignoring the credit granted.</summary>
+        Overrun,
+        /// <summary>Stop answering the server's pipe closes.</summary>
+        NoCloseAcks,
+        /// <summary>Wait up to 3 s for the server to close the connection.</summary>
+        AwaitClose,
+        /// <summary>From now on, a write that can't be sent in full within <see cref="ProbeTimeout"/> for lack of
+        /// credit is a failure: the data must reach the server.</summary>
+        StrictWrites,
         Count,
     }
 
@@ -234,6 +294,7 @@ public static class FlowHarness
         Drain,
         NeverRead,
         SlowItems,
+        CloseAtOnce,
     }
 
     internal enum FlowPipe : byte
@@ -241,6 +302,7 @@ public static class FlowHarness
         Drain,
         NeverRead,
         SlowItems,
+        CloseAtOnce,
     }
 
     /// <summary>
@@ -252,6 +314,10 @@ public static class FlowHarness
         private readonly ServerOutput _output;
         private readonly List<ushort> _invocations = [];
         private readonly List<(byte ClientId, ushort FullId)> _pipes = [];
+        private readonly Dictionary<ushort, long> _sent = [];
+        private bool _ackCloses = true;
+        private bool _strictWrites;
+        private string? _writeStall;
         private ushort _nextInvocationId = 1;
         private byte _nextPipeId = 1;
         private int _bytesSent;
@@ -268,6 +334,13 @@ public static class FlowHarness
         /// </summary>
         public string? Execute(FlowOp op, byte a, byte b, byte c)
         {
+            // Answer pipes the server closed since the last operation, as a NexNet client does.
+            while (_output.TryTakeClosedByServer(out var closed))
+            {
+                if (_ackCloses)
+                    SendPipeState(closed, NexusDuplexPipe.State.Complete);
+            }
+
             switch (op)
             {
                 case FlowOp.Call:
@@ -279,12 +352,12 @@ public static class FlowHarness
                     if (_nextPipeId == 0)
                         return null;
                     var clientId = _nextPipeId++;
-                    var kind = (FlowPipe)(a % 3);
+                    var kind = (FlowPipe)(a % 4);
                     if (!Invoke(FlowMethod.Drain + (byte)kind, (ref MsgPackWriter w) => w.Write(clientId), InvocationFlags.DuplexPipe, out _))
                         return null;
                     var fullId = (ushort)0;
-                    if (!_output.WaitFor(o => o.ReadyPipes.TryGetValue(clientId, out fullId), ProbeTimeout))
-                        return $"Pipe open ({kind}) not acknowledged within {ProbeTimeout.TotalMilliseconds} ms.";
+                    if (!_output.WaitFor(o => o.ReadyPipes.TryGetValue(clientId, out fullId) || o.RefusedPipes.Contains(clientId), ProbeTimeout))
+                        return $"Pipe open ({kind}) neither acknowledged nor refused within {ProbeTimeout.TotalMilliseconds} ms.";
                     if (fullId != 0)
                         _pipes.Add((clientId, fullId));
                     return null;
@@ -295,7 +368,7 @@ public static class FlowHarness
                     var data = new byte[Sizes[b % Sizes.Length]];
                     data.AsSpan().Fill(c);
                     PipeWrite(PipeId(a, c), data);
-                    return null;
+                    return _writeStall;
                 }
 
                 case FlowOp.ChannelItem:
@@ -306,7 +379,7 @@ public static class FlowHarness
                     for (var offset = 0; offset < stream.Length; offset += item.Length)
                         item.CopyTo(stream, offset);
                     PipeWrite(PipeId(a, 0), stream);
-                    return null;
+                    return _writeStall;
                 }
 
                 case FlowOp.PipeState:
@@ -419,6 +492,25 @@ public static class FlowHarness
                         : $"Call not answered within {ProbeTimeout.TotalMilliseconds} ms.";
                 }
 
+                case FlowOp.Overrun:
+                {
+                    var data = new byte[Sizes[b % Sizes.Length]];
+                    PipeWrite(PipeId(a, 0), data, respectCredit: false);
+                    return null;
+                }
+
+                case FlowOp.NoCloseAcks:
+                    _ackCloses = false;
+                    return null;
+
+                case FlowOp.StrictWrites:
+                    _strictWrites = true;
+                    return null;
+
+                case FlowOp.AwaitClose:
+                    _output.WaitFor(o => false, TimeSpan.FromSeconds(3));
+                    return null;
+
                 default:
                     return null;
             }
@@ -486,19 +578,43 @@ public static class FlowHarness
             return i < _invocations.Count ? _invocations[i] : (ushort)(0xF000 | index);
         }
 
-        private void PipeWrite(ushort pipeId, ReadOnlySpan<byte> data)
+        /// <summary>
+        /// Writes pipe data in frames. For an open pipe it sends only what the server's grants allow, waiting up to
+        /// <see cref="CreditWait"/> for more, and gives up on the rest when none comes. An unknown pipe ID, or
+        /// <paramref name="respectCredit"/> false, sends everything regardless.
+        /// </summary>
+        private void PipeWrite(ushort pipeId, ReadOnlySpan<byte> data, bool respectCredit = true)
         {
-            do
+            var limited = respectCredit && _pipes.Exists(p => p.FullId == pipeId);
+            var sent = _sent.GetValueOrDefault(pipeId);
+            while (data.Length > 0)
             {
                 var length = Math.Min(data.Length, MaxFrameBody);
+                if (limited)
+                {
+                    long granted = 0;
+                    var wait = _strictWrites ? ProbeTimeout : CreditWait;
+                    if (!_output.WaitFor(o => (granted = o.Granted.GetValueOrDefault(pipeId)) > sent, wait) || granted <= sent)
+                    {
+                        if (_strictWrites && !_output.IsClosed)
+                            _writeStall = $"Pipe write got no credit for {data.Length} more bytes within {ProbeTimeout.TotalMilliseconds} ms.";
+                        break;
+                    }
+
+                    length = (int)Math.Min(length, granted - sent);
+                }
+
                 var header = new byte[5];
                 header[0] = (byte)MessageType.DuplexPipeWrite;
                 BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(1), (ushort)length);
                 BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(3), pipeId);
                 if (!Send(header, data[..length]))
-                    return;
+                    break;
+                sent += length;
                 data = data[length..];
-            } while (data.Length > 0);
+            }
+
+            _sent[pipeId] = sent;
         }
 
         private void SendPipeState(ushort pipeId, NexusDuplexPipe.State state)
@@ -551,6 +667,7 @@ public interface IFlowServerNexus
     ValueTask Drain(INexusDuplexPipe pipe);
     ValueTask NeverRead(INexusDuplexPipe pipe);
     ValueTask SlowItems(INexusDuplexChannel<byte[]> channel);
+    ValueTask CloseAtOnce(INexusDuplexPipe pipe);
 }
 
 public interface IFlowClientNexus
@@ -590,6 +707,11 @@ public partial class FlowServerNexus
     /// Never reads; returns when the pipe completes (at the latest when the session ends).
     /// </summary>
     public async ValueTask NeverRead(INexusDuplexPipe pipe) => await pipe.CompleteTask;
+
+    /// <summary>
+    /// Returns at once, so the server closes the pipe straight away.
+    /// </summary>
+    public ValueTask CloseAtOnce(INexusDuplexPipe pipe) => default;
 
     /// <summary>
     /// Reads items with a delay per item.

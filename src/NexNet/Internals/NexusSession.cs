@@ -111,6 +111,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public NexusPipeManager PipeManager { get; }
 
+    public SessionBudget Budget { get; }
+
+    public SessionControlSender ControlSender => _controlSender;
+
+    // Tick count when the current outbound transport flush started; 0 when none is in progress.
+    private long _flushStartedTicks;
+
     public long Id
     {
         get => _id;
@@ -201,6 +208,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
         SessionStore = new SessionStore();
         _freeInvocationSlots = _config.MaxConcurrentConnectionInvocations;
+        Budget = new SessionBudget(_config.SessionBudget);
         _controlSender = new SessionControlSender(this);
         LastReceived = _config.Time.GetTickCount64();
 
@@ -232,6 +240,18 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             Logger?.LogTrace($"Timed out session {Id}");
             DisconnectAsync(DisconnectReason.Timeout);
+            return true;
+        }
+
+        // Progress (ConfigBase.ProgressTimeout): an outbound flush that does not complete, or a pipe whose close
+        // the peer never confirms. Waiting for credit is not measured.
+        var now = _config.Time.GetTickCount64();
+        var flushStarted = Volatile.Read(ref _flushStartedTicks);
+        if ((flushStarted != 0 && now - flushStarted > _config.ProgressTimeout)
+            || PipeManager.HasStalledClose(now, _config.ProgressTimeout))
+        {
+            Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms.");
+            DisconnectAsync(DisconnectReason.Stalled);
             return true;
         }
 

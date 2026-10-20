@@ -23,7 +23,7 @@ public class FuzzSmokeTests
     /// Last step of the flow control v2 work sequence (docs/internals/flow-control-v2.md, section 8) that has landed.
     /// Reproductions fixed by a later step are ignored; each step raises this.
     /// </summary>
-    private const int CompletedFlowControlStep = 3;
+    private const int CompletedFlowControlStep = 4;
 
     private static IEnumerable<TestCaseData> FlowReproductions()
     {
@@ -34,6 +34,15 @@ public class FuzzSmokeTests
                 ? data.Ignore($"Fails until flow control v2 step {fixedInStep}.")
                 : data;
         }
+    }
+
+    private static IEnumerable<TestCaseData> FlowHostileCases() =>
+        FlowHarness.HostileCases().Select(c => new TestCaseData(c.Input, c.Expected).SetName($"FlowHostile({c.Name})"));
+
+    [TestCaseSource(nameof(FlowHostileCases))]
+    public void FlowHostile(byte[] input, NexNet.Messages.DisconnectReason? expected)
+    {
+        Assert.That(FlowHarness.Execute(input), Is.EqualTo(expected));
     }
 
     [TestCaseSource(nameof(FlowReproductions))]

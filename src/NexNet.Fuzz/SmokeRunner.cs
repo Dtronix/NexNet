@@ -11,10 +11,8 @@ public static class SmokeRunner
         var mutated = Mutate(LoadCorpus(corpusDirectory).Concat(GeneratedSeeds()).Concat(SessionHarness.Seeds()));
 
         // The flow harness reads its input as a program of operations and spends real time per probe, so it runs
-        // over its own seeds only. Unmutated for now: random sizes and pipe counts reach the defects that
-        // FlowHarness.Reproductions() track (oversized results, held invocation slots, BufferData stalls). Mutations
-        // are enabled once flow control v2 steps 1, 3 and 4 have landed.
-        var flowInputs = FlowHarness.Seeds().ToList();
+        // over its own seeds (and mutations of them) only.
+        var flowInputs = Mutate(FlowHarness.Seeds());
 
         foreach (var (name, harness) in Harnesses.All)
         {

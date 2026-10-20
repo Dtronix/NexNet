@@ -14,7 +14,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 1024);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 1024).WithCredit();
 
         // Should get a non-empty Memory and Span
         var mem = writer.GetMemory(10);
@@ -32,7 +32,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 128);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 128).WithCredit();
 
         Assert.Throws<InvalidOperationException>(() => writer.Complete());
     }
@@ -44,7 +44,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager { UpdateStateReturnValue = updateStateReturns };
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64).WithCredit();
 
         await writer.CompleteAsync();
 
@@ -62,7 +62,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64).WithCredit();
 
         var result = await writer.FlushAsync();
         using (Assert.EnterMultipleScope())
@@ -79,7 +79,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 100);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 100).WithCredit();
 
         // Write 30 bytes
         var span = writer.GetSpan(30);
@@ -104,7 +104,7 @@ public class NexusPipeWriterTests
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
         // force chunking at 5 bytes
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 5);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 5).WithCredit();
 
         // Write 12 bytes so we get 3 flushes: 5 + 5 + 2
         var span = writer.GetSpan(12);
@@ -128,7 +128,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 100);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 100).WithCredit();
 
         // Write something so buffer is non-empty
         var span = writer.GetSpan(10);
@@ -149,7 +149,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64).WithCredit();
         Assert.DoesNotThrow(() => writer.Dispose());
     }
 
@@ -158,7 +158,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new ThrowingMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 10);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 10).WithCredit();
 
         // Write a few bytes so buffer isn't empty
         var span = writer.GetSpan(5);
@@ -178,7 +178,7 @@ public class NexusPipeWriterTests
     {
         var state = new SpyStateManager();
         var messenger = new CancelingMessenger();
-        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 10);
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 10).WithCredit();
 
         // Write data
         var span = writer.GetSpan(8);
@@ -195,7 +195,7 @@ public class NexusPipeWriterTests
     }
 
     [Test]
-    public async Task FlushAsync_WhenPausedAndTokenAlreadyCancelled_ReturnsCanceledWithoutSending()
+    public async Task FlushAsync_WithoutCreditAndTokenAlreadyCancelled_ReturnsCanceledWithoutSending()
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
@@ -205,9 +205,7 @@ public class NexusPipeWriterTests
         var span = writer.GetSpan(4);
         writer.Advance(4);
 
-        // Pause writing so FlushAsync will wait on the semaphore
-        writer.PauseWriting = true;
-
+        // No credit, so FlushAsync would wait for a grant.
         // Provide a cancellation token that's already canceled
         var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -220,7 +218,7 @@ public class NexusPipeWriterTests
     }
 
     [Test]
-    public async Task FlushAsync_Blocks_WhenPaused_Then_Resumes_WhenUnpaused()
+    public async Task FlushAsync_Blocks_WithoutCredit_Then_Resumes_WhenCreditIsGranted()
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
@@ -231,18 +229,15 @@ public class NexusPipeWriterTests
         for (int i = 0; i < 50; i++) mem[i] = (byte)i;
         writer.Advance(50);
 
-        // Pause before flushing
-        writer.PauseWriting = true;
-
-        // Start flush but it should block on the semaphore
+        // No credit yet: the flush waits for a grant.
         var flushTask = writer.FlushAsync();
 
         // Give it a moment—no SendHeaderWithBody calls yet
         await Task.Delay(50);
-        Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero, "Should not send while paused");
+        Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero, "Should not send without credit");
 
-        // Now resume
-        writer.PauseWriting = false;
+        // Now grant the peer's window
+        writer.AddCredit(50);
 
         // Await completion and verify it sent exactly once
         var result = await flushTask;

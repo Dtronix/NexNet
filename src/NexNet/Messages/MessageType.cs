@@ -84,12 +84,32 @@ public enum MessageType : byte
     /// </summary>
     DisconnectUnauthorized = 34,
 
+    /// <summary>
+    /// The peer sent more than the credit it was granted. No body.
+    /// </summary>
+    DisconnectFlowControl = 35,
+
+    /// <summary>
+    /// The peer exceeded a resource limit. No body.
+    /// </summary>
+    DisconnectResourceLimit = 36,
+
+    /// <summary>
+    /// The session made no progress within the progress timeout. No body.
+    /// </summary>
+    DisconnectStalled = 37,
+
     // Reserved through 39
 
     /// <summary>
     /// Header for data sent to a pipe.
     /// </summary>
     DuplexPipeWrite = 50,
+
+    /// <summary>
+    /// Grants more receive credit on a pipe. Pipe ID in the header; body: credit in bytes (uint32, little-endian).
+    /// </summary>
+    PipeWindowUpdate = 51,
 
     // Messages 100 - 109 are reserved for handshake messages.
 

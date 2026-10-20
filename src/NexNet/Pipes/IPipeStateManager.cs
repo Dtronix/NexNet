@@ -27,4 +27,11 @@ internal interface IPipeStateManager
     /// State of the pipe.
     /// </summary>
     NexusDuplexPipe.State CurrentState { get; }
+
+    /// <summary>
+    /// Grants the peer <paramref name="bytes"/> more credit to send on this pipe. Coalesced; never waits.
+    /// </summary>
+    void GrantCredit(int bytes)
+    {
+    }
 }

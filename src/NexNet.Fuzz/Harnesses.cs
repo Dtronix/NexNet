@@ -131,7 +131,8 @@ public static class Harnesses
     {
         Expect(() =>
         {
-            var pipeReader = new NexusPipeReader(new FuzzPipeStateManager(), null, true, 0, 0, 0);
+            var pipeReader = new NexusPipeReader(new FuzzPipeStateManager(), null, true, 1 << 30);
+            pipeReader.OpenWindow();
             var reader = new NexusChannelReader<FuzzOrder>(pipeReader);
             var chunk = data.Length == 0 ? 1 : data[0] % 7 + 1;
             var list = new List<FuzzOrder>();
@@ -140,7 +141,7 @@ public static class Harnesses
                 var writer = BufferWriter<byte>.Create();
                 writer.Write(data.AsSpan(i, Math.Min(chunk, data.Length - i)));
                 using (var buffer = writer.Flush())
-                    pipeReader.BufferData(buffer).AsTask().GetAwaiter().GetResult();
+                    pipeReader.BufferData(buffer);
 
                 // Decode whatever is complete without waiting; an incomplete item stays buffered for the next chunk.
                 list.Clear();

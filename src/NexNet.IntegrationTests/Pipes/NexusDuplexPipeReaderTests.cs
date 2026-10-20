@@ -7,17 +7,23 @@ namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusDuplexPipeReaderTests
 {
-    private NexusPipeReader CreateReader(IPipeStateManager? stateManager = null)
+    private NexusPipeReader CreateReader(IPipeStateManager? stateManager = null, int window = TestPipes.LargeWindow)
     {
         stateManager ??= new PipeStateManagerStub();
-        var reader = new NexusPipeReader(
-            stateManager,
-            null,
-            true,
-            1024 * 128,
-            1024 * 1024,
-            1024 * 32);
-        return reader;
+        return TestPipes.Reader(stateManager, window: window);
+    }
+
+    [Test]
+    public void BufferData_WithinTheWindow_NeverWaits()
+    {
+        // The whole window can be buffered while nothing reads it: buffering is synchronous and only ever bounded by
+        // the credit granted. (The read loop used to wait here for the reader to drain.)
+        var reader = CreateReader(window: 1024 * 1024);
+        var data = new ReadOnlySequence<byte>(new byte[1024]);
+        for (var i = 0; i < 1024; i++)
+            Assert.That(reader.BufferData(data), Is.EqualTo(NexusPipeBufferResult.Success));
+
+        Assert.That(reader.BufferData(data), Is.EqualTo(NexusPipeBufferResult.CreditExceeded));
     }
 
     [Test]
@@ -26,7 +32,7 @@ internal class NexusDuplexPipeReaderTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
-        await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         _ = Task.Run(async () =>
         {
@@ -52,7 +58,7 @@ internal class NexusDuplexPipeReaderTests
             tcs.SetResult();
         });
 
-        await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         await tcs.Task.Timeout(1);
     }
@@ -75,7 +81,7 @@ internal class NexusDuplexPipeReaderTests
         });
 
 
-        await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
 
         await tcs.Task.Timeout(1);
     }
@@ -92,7 +98,7 @@ internal class NexusDuplexPipeReaderTests
             for (var i = 0; i < 100; i++)
             {
                 //Console.WriteLine("Writer");
-                await reader.BufferData(new ReadOnlySequence<byte>(new[] { (byte)i })).Timeout(1);
+                reader.BufferData(new ReadOnlySequence<byte>(new[] { (byte)i }));
                 await bufferSemaphore.WaitAsync().Timeout(1);
             }
 
@@ -197,7 +203,7 @@ internal class NexusDuplexPipeReaderTests
         await Task.Delay(1);
 
         reader.CancelPendingRead();
-        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 })).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         await tcs.Task.Timeout(1);
     }
@@ -209,7 +215,7 @@ internal class NexusDuplexPipeReaderTests
         var reader = CreateReader();
 
         reader.CancelPendingRead();
-        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 })).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         _ = Task.Run(async () =>
         {
@@ -272,7 +278,7 @@ internal class NexusDuplexPipeReaderTests
         var cts = new CancellationTokenSource();
 
         cts.Cancel();
-        await reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 })).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
 
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
         Assert.That(result.IsCanceled, Is.True);
@@ -297,7 +303,7 @@ internal class NexusDuplexPipeReaderTests
             await Task.Delay(100);
             cts.Cancel();
 
-            await reader.BufferData(data).Timeout(1);
+            reader.BufferData(data);
         });
 
         var result = await reader.ReadAsync(cts.Token).Timeout(1);
@@ -316,7 +322,7 @@ internal class NexusDuplexPipeReaderTests
         var length = data.Length * 9000;
         for (var i = 0; i < 9000; i++)
         {
-            await reader.BufferData(data).Timeout(1);
+            reader.BufferData(data);
         }
         var result = await reader.ReadAsync().Timeout(1);
         Assert.That(result.Buffer.Length, Is.EqualTo(length));
@@ -336,7 +342,7 @@ internal class NexusDuplexPipeReaderTests
         var length = data.Length * 9000;
         for (var i = 0; i < 9000; i++)
         {
-            await reader.BufferData(data).Timeout(1);
+            reader.BufferData(data);
         }
 
         Assert.That(reader.TryRead(out var result), Is.True);
@@ -349,88 +355,8 @@ internal class NexusDuplexPipeReaderTests
         Assert.That(result.Buffer.Length, Is.EqualTo(length - 3000 * 16));
     }
 
-    [Test]
-    public async Task ReaderNotifiesBackPressure_HighWaterMark()
-    {
-        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
-        var data = new ReadOnlySequence<byte>(new byte[1024]);
-        var reader = CreateReader(stateManager);
-        for (var i = 0; i < 1025 * 2; i++)
-        {
-            var result = await reader.BufferData(data).Timeout(1);
-            if (result == NexusPipeBufferResult.HighWatermarkReached)
-            {
-                Assert.That(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause), Is.True);
-                return;
-            }
-        }
-
-        Assert.Fail("High water mark not reached.");
-    }
-
-    [Test]
-    public async Task ReaderNotifiesBackPressure_HighWaterCutoff()
-    {
-        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
-        var data = new ReadOnlySequence<byte>(new byte[1024]);
-        stateManager ??= new PipeStateManagerStub();
-        var reader = new NexusPipeReader(
-            stateManager,
-            null,
-            true,
-            1024 * 128,
-            1024 * 1024,
-            1024 * 32);
-        for (var i = 0; i < 1023; i++)
-        {
-            await reader.BufferData(data).Timeout(1);
-        }
-
-        await reader.BufferData(data).AsTask().AssertTimeout(.15);
-    }
-
-    [Test]
-    public async Task ReadAsyncNotifiesBackPressure_ReachesLowWaterMark()
-    {
-        var stateManager = new PipeStateManagerStub(NexusDuplexPipe.State.Ready);
-        var data = new ReadOnlySequence<byte>(new byte[1024]);
-        stateManager ??= new PipeStateManagerStub();
-        var reader = new NexusPipeReader(
-            stateManager,
-            null,
-            true,
-            1024 * 128,
-            1024 * 1024,
-            1024 * 32);
 
 
-
-        for (var j = 0; j < 10; j++)
-        {
-            // Reach the high water mark.
-            for (var i = 0; i < 128; i++)
-            {
-                await reader.BufferData(data).Timeout(1);
-            }
-
-            Assert.That(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause), Is.True);
-
-            for (var i = 0; i < 96; i++)
-            {
-                var result = await reader.ReadAsync().Timeout(1);
-                reader.AdvanceTo(result.Buffer.GetPosition(1024));
-                Assert.That(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause), Is.True);
-            }
-
-            for (var i = 0; i < 32; i++)
-            {
-                var result = await reader.ReadAsync().Timeout(1);
-                reader.AdvanceTo(result.Buffer.GetPosition(1024));
-                Assert.That(stateManager.CurrentState.HasFlag(NexusDuplexPipe.State.ClientWriterPause), Is.False);
-            }
-
-        }
-    }
 
 
     [Test]
@@ -447,7 +373,7 @@ internal class NexusDuplexPipeReaderTests
     {
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var reader = CreateReader();
-        await reader.BufferData(new ReadOnlySequence<byte>(simpleData)).Timeout(1);
+        reader.BufferData(new ReadOnlySequence<byte>(simpleData));
         Assert.That(reader.TryRead(out var readData), Is.True);
     }
 

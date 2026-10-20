@@ -190,6 +190,7 @@ public sealed class FuzzLogger : INexusLogger
 
         return exception
             is NexusSerializationException
+            or NexusBusyException
             or OperationCanceledException
             or ObjectDisposedException
             // A method that takes a pipe or channel, invoked just before the connection drops: the session is

@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.IO.Pipelines;
 using NexNet.Messages;
 using NexNet.Pipes;
@@ -7,8 +8,8 @@ using NexNet.Serialization;
 namespace NexNet.Fuzz;
 
 /// <summary>
-/// Parses what the server sends: the server greeting, pongs, invocation results, pipe Ready states and the
-/// disconnect reason.
+/// Parses what the server sends: the server greeting, pongs, invocation results, pipe opens (Ready with its window, or
+/// Refused), window grants, pipe closes and the disconnect reason.
 /// </summary>
 internal sealed class ServerOutput
 {
@@ -25,6 +26,21 @@ internal sealed class ServerOutput
     public int Pongs { get; private set; }
     public HashSet<ushort> Results { get; } = [];
     public Dictionary<byte, ushort> ReadyPipes { get; } = [];
+
+    /// <summary>
+    /// Client pipe IDs whose open the server refused.
+    /// </summary>
+    public HashSet<byte> RefusedPipes { get; } = [];
+
+    /// <summary>
+    /// Credit the server granted per full pipe ID, in total.
+    /// </summary>
+    public Dictionary<ushort, long> Granted { get; } = [];
+
+    /// <summary>
+    /// Full pipe IDs the server closed (sent its Complete), in order.
+    /// </summary>
+    public Queue<ushort> ClosedByServer { get; } = new();
     public DisconnectReason? Disconnect { get; private set; }
 
     /// <summary>
@@ -80,6 +96,15 @@ internal sealed class ServerOutput
         }
     }
 
+    /// <summary>
+    /// Takes the next pipe the server closed, if any.
+    /// </summary>
+    public bool TryTakeClosedByServer(out ushort pipeId)
+    {
+        lock (_gate)
+            return ClosedByServer.TryDequeue(out pipeId);
+    }
+
     public void ThrowIfMalformed()
     {
         if (_malformed != null)
@@ -118,7 +143,7 @@ internal sealed class ServerOutput
                 continue;
             }
 
-            var postHeader = type == MessageType.DuplexPipeWrite ? 2 : 0;
+            var postHeader = type is MessageType.DuplexPipeWrite or MessageType.PipeWindowUpdate ? 2 : 0;
             if (!reader.TryReadLittleEndian(out short signedLength) || reader.Remaining < postHeader + (ushort)signedLength)
             {
                 // Incomplete frame: leave it for the next read.
@@ -127,16 +152,21 @@ internal sealed class ServerOutput
             }
 
             var length = (ushort)signedLength;
-            reader.Advance(postHeader);
+            ushort pipeId = 0;
+            if (postHeader == 2)
+            {
+                reader.TryReadLittleEndian(out short signedPipeId);
+                pipeId = (ushort)signedPipeId;
+            }
             var body = buffer.Slice(reader.Position, length);
             reader.Advance(length);
-            Handle(type, body);
+            Handle(type, pipeId, body);
         }
 
         return reader.Position;
     }
 
-    private void Handle(MessageType type, ReadOnlySequence<byte> body)
+    private void Handle(MessageType type, ushort pipeId, ReadOnlySequence<byte> body)
     {
         try
         {
@@ -157,14 +187,38 @@ internal sealed class ServerOutput
                     break;
                 }
 
+                case MessageType.PipeWindowUpdate:
+                {
+                    if (body.Length != sizeof(uint))
+                    {
+                        _malformed ??= $"window update body of {body.Length} bytes";
+                        break;
+                    }
+
+                    Span<byte> credit = stackalloc byte[sizeof(uint)];
+                    body.CopyTo(credit);
+                    Granted[pipeId] = Granted.GetValueOrDefault(pipeId) + BinaryPrimitives.ReadUInt32LittleEndian(credit);
+                    break;
+                }
+
                 case MessageType.DuplexPipeUpdateState:
                 {
                     var reader = new MsgPackReader(body);
-                    reader.ReadArrayHeader(2);
-                    var pipeId = reader.ReadUInt16();
+                    reader.ReadArrayHeader(3);
+                    var statePipeId = reader.ReadUInt16();
                     var state = (NexusDuplexPipe.State)reader.ReadByte();
-                    if ((state & NexusDuplexPipe.State.Ready) != 0)
-                        ReadyPipes.TryAdd((byte)pipeId, pipeId);
+                    var window = reader.ReadUInt32();
+                    if ((state & NexusDuplexPipe.State.Refused) != 0)
+                    {
+                        RefusedPipes.Add((byte)statePipeId);
+                    }
+                    else if ((state & NexusDuplexPipe.State.Ready) != 0 && ReadyPipes.TryAdd((byte)statePipeId, statePipeId))
+                    {
+                        Granted[statePipeId] = Granted.GetValueOrDefault(statePipeId) + window;
+                    }
+
+                    if (state == NexusDuplexPipe.State.Complete)
+                        ClosedByServer.Enqueue(statePipeId);
                     break;
                 }
 

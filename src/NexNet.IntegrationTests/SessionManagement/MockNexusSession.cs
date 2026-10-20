@@ -21,6 +21,11 @@ internal class MockNexusSession : INexusSession
     public ConnectionState State { get; set; } = ConnectionState.Connected;
     public INexusLogger? Logger { get; set; }
 
+    public SessionBudget Budget { get; set; } = new(16 * 1024 * 1024);
+
+    public SessionControlSender ControlSender => _controlSender ??= new SessionControlSender(this);
+    private SessionControlSender? _controlSender;
+
     // Track sent messages for verification
     public List<object> SentMessages { get; } = new();
 

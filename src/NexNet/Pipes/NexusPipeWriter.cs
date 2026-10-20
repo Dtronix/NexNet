@@ -27,9 +27,17 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     internal const int MaxChunkSize = ushort.MaxValue;
 
     private readonly int _chunkSize;
-    private readonly SemaphoreSlim _pauseSemaphore = new SemaphoreSlim(0, 1);
     private readonly SemaphoreSlim _flushSemaphore = new SemaphoreSlim(1, 1);
-    internal bool _pauseWriting;
+
+    // Send credit granted by the peer (docs/internals/flow-control-v2.md, section 4.4). A flush sends what the
+    // credit allows and waits, in the writer's task, for more.
+    private long _credit;
+    private readonly SemaphoreSlim _creditSignal = new SemaphoreSlim(0, 1);
+
+    /// <summary>
+    /// Most credit the peer may grant on a pipe; more is a protocol violation.
+    /// </summary>
+    internal const long MaxCredit = 1L << 31;
     private readonly INexusLogger? _logger;
     private readonly ISessionMessenger? _messenger;
     private readonly NexusDuplexPipe.State _completedFlag;
@@ -37,19 +45,20 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private int _flushCounter;
 
     /// <summary>
-    /// Set to true to pause writing to the pipe.
+    /// Send credit currently available.
     /// </summary>
-    public bool PauseWriting
+    public long Credit => Volatile.Read(ref _credit);
+
+    /// <summary>
+    /// Adds credit granted by the peer. Returns false if the total would exceed <see cref="MaxCredit"/>.
+    /// </summary>
+    public bool AddCredit(long bytes)
     {
-        get => _pauseWriting;
-        set
-        {
-            _pauseWriting = value;
-            if (value == false)
-            {
-                _pauseSemaphore.TryReleaseSemaphore();
-            }
-        }
+        if (Interlocked.Add(ref _credit, bytes) > MaxCredit)
+            return false;
+
+        _creditSignal.TryReleaseSemaphore();
+        return true;
     }
 
     public NexusPipeWriter(
@@ -125,6 +134,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     public void SetComplete()
     {
         _isCompleted = true;
+
+        // Wake a flush waiting for credit.
+        _creditSignal.TryReleaseSemaphore();
     }
 
     public override async ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
@@ -160,27 +172,6 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             }, _flushCts);
         }
 
-        // If we are paused, wait for the semaphore to be released.
-        if (PauseWriting)
-        {
-            try
-            {
-                await _pauseSemaphore.WaitAsync(_flushCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Ensure the cancellation token is canceled null so it will be created again.
-                _flushCts.Dispose();
-                _flushCts = null;
-                return new FlushResult(true, _isCompleted);
-            }
-            finally
-            {
-                if(cancellationTokenRegistration != null)
-                    await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
-            }
-        }
-
         if (!_hasPipeId)
         {
             // Pipe ID frame bytes: [client id][server id].
@@ -192,14 +183,10 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         }
 
         var buffer = _bufferWriter.GetBuffer();
+        long flushPosition = 0;
 
-        var multiPartSend = bufferLength > _chunkSize;
-
-        var sendingBuffer = multiPartSend
-            ? buffer.Slice(0, _chunkSize)
-            : buffer;
-
-        var flushPosition = 0;
+        // Cancels this flush only; unlike CancelPendingFlush it does not cancel later ones.
+        var canceledWhileWaiting = false;
 
         if (_messenger == null)
         {
@@ -209,15 +196,38 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             throw new InvalidOperationException("Session is null.");
         }
 
-        while (true)
+        while (bufferLength > 0)
         {
-            if (_isCanceled)
+            if (_isCanceled || _isCompleted)
                 break;
+
+            // Wait for credit. This is the writer's own task; the session's read loop never waits here.
+            var credit = Volatile.Read(ref _credit);
+            if (credit <= 0)
+            {
+                try
+                {
+                    await _creditSignal.WaitAsync(_flushCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    canceledWhileWaiting = true;
+                    break;
+                }
+
+                continue;
+            }
+
+            var chunkLength = (int)Math.Min(Math.Min(bufferLength, credit), _chunkSize);
+            Interlocked.Add(ref _credit, -chunkLength);
+            var sendingBuffer = buffer.Slice(flushPosition, chunkLength);
+
+            // Flush the transport once for everything the current credit allows, not once per chunk.
+            var flush = chunkLength == bufferLength || chunkLength == credit;
 
             try
             {
                 Interlocked.Increment(ref _flushCounter);
-                //_logger?.LogTrace($"Sending[id:{flushId}] {sendingBuffer.Length} bytes [{string.Join(",", sendingBuffer.ToArray())}]");
                 // We are passing the cancellation token from the method instead of the _flushCts due to
                 // the fact that the _flushCts can be canceled even after this method is completed due
                 // to some transport implementations such as QUIC.
@@ -225,6 +235,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
                     MessageType.DuplexPipeWrite,
                     _pipeId,
                     sendingBuffer,
+                    flush,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (InvalidOperationException)
@@ -244,13 +255,8 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
                 break;
             }
 
-            bufferLength -= _chunkSize;
-            if (bufferLength <= 0)
-                break;
-
-            flushPosition += _chunkSize;
-
-            sendingBuffer = buffer.Slice(flushPosition, Math.Min(bufferLength, _chunkSize));
+            bufferLength -= chunkLength;
+            flushPosition += chunkLength;
         }
 
         _bufferWriter.Deallocate(buffer);
@@ -268,14 +274,14 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         if(cancellationTokenRegistration != null)
             await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
 
-        return new FlushResult(_isCanceled, _isCompleted);
+        return new FlushResult(_isCanceled || canceledWhileWaiting, _isCompleted);
     }
 
     public void Dispose()
     {
         _bufferWriter.Dispose();
         _flushCts?.Dispose();
-        _pauseSemaphore.Dispose();
+        _creditSignal.Dispose();
         _flushSemaphore.Dispose();
     }
 }

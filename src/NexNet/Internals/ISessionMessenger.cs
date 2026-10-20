@@ -50,6 +50,13 @@ internal interface ISessionMessenger
     ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sends a frame; with <paramref name="flush"/> false the frame is written without flushing the transport, so
+    /// several frames can share one flush.
+    /// </summary>
+    ValueTask SendHeaderWithBody(MessageType type, ReadOnlyMemory<byte>? messageHeader, ReadOnlySequence<byte> body, bool flush, CancellationToken cancellationToken = default)
+        => SendHeaderWithBody(type, messageHeader, body, cancellationToken);
+
+    /// <summary>
     /// Disconnects the session with the specified reason.
     /// </summary>
     /// <param name="reason">The reason for disconnection.</param>

@@ -85,6 +85,16 @@ internal interface INexusSession : ISessionMessenger
     /// <param name="timeoutTicks">Normally use <c>Config.Time.GetTickCount64() - Config.Timeout</c>.</param>
     /// <returns>True upon successful disconnection due to timeout.  False otherwise.</returns>
     bool DisconnectIfTimeout(long timeoutTicks);
+
+    /// <summary>
+    /// Receive memory budget for this session.
+    /// </summary>
+    SessionBudget Budget { get; }
+
+    /// <summary>
+    /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.
+    /// </summary>
+    SessionControlSender ControlSender { get; }
 }
 
 /// <summary>

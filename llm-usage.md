@@ -254,9 +254,15 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 | `Timeout` | 30000ms | 50-300000ms, idle timeout |
 | `HandshakeTimeout` | 15000ms | 50-60000ms |
 | `ReceiveSessionPipeOptions` | pause 256KB, resume 128KB | Pause 0 or at least 131,080 bytes (two frames) |
-| `NexusPipeHighWaterMark` | 192KB | Pause writer threshold |
-| `NexusPipeLowWaterMark` | 16KB | Resume threshold |
-| `NexusPipeHighWaterCutoff` | 256KB | Hard stop threshold |
+| `SessionBudget` | 16MB (64MB trusted) | Receive memory per session; pipe windows are reserved from it |
+| `MaxPipes` | 32 | Pipes open per session; more are refused (`NexusBusyException`) |
+| `PipeWindow` | 256KB (1MB trusted) | Per-pipe receive window (credit granted to the writer) |
+| `MaxMessageSize` | 4MB (16MB trusted) | Largest argument, result or channel item |
+| `InvocationCredits` | 32 (128 trusted) | Invocations the peer may queue on this side |
+| `ProgressTimeout` | 30000ms | Disconnect (`Stalled`) when a flush or a pipe close makes no progress |
+
+"Trusted" means `SerializerOptions = NexusSerializerOptions.Trusted`. Building a client or server throws if
+`MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB` exceeds `SessionBudget`.
 
 ### Client-specific
 
