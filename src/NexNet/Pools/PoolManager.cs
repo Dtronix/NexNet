@@ -61,6 +61,9 @@ internal class PoolManager
 
         _messagePools[((int)DuplexPipeUpdateStateMessage.Type - MessagePoolOffsetModifier)] =
             new MessagePool<DuplexPipeUpdateStateMessage>();
+
+        _messagePools[((int)InvocationCreditMessage.Type - MessagePoolOffsetModifier)] =
+            new MessagePool<InvocationCreditMessage>();
     }
 
     /// <summary>

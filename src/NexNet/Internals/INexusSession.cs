@@ -1,5 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
+using NexNet.Messages;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Pipes;
@@ -90,6 +93,18 @@ internal interface INexusSession : ISessionMessenger
     /// Receive memory budget for this session.
     /// </summary>
     SessionBudget Budget { get; }
+
+    /// <summary>
+    /// Sends an invocation once the peer has credit for it (docs/internals/flow-control-v2.md, section 4.7). Waits
+    /// for credit in the caller's task, never in the read loop.
+    /// </summary>
+    /// <param name="message">The invocation.</param>
+    /// <param name="cancellationToken">Cancels the wait for credit.</param>
+    /// <param name="creditTimeout">Gives up when no credit comes within this time; null waits until the session
+    /// ends.</param>
+    /// <returns>False if the invocation was not sent: the session ended, or no credit came in time.</returns>
+    ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase;
 
     /// <summary>
     /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.

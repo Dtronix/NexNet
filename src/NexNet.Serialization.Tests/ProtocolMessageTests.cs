@@ -41,8 +41,9 @@ public class ProtocolMessageTests
             AuthenticationToken = new byte[] { 1, 2 }
         };
 
+        // The two trailing fields are the defaults: maxMessageSize 4 MiB, invocationCredits 32.
         var body = Body(message);
-        Assert.That(Hex(body), Is.EqualTo("94" + "a27631" + "cd012c" + "fb" + "c4020102"));
+        Assert.That(Hex(body), Is.EqualTo("96" + "a27631" + "cd012c" + "fb" + "c4020102" + "ce00400000" + "20"));
 
         var parsed = Parse<ClientGreetingMessage>(body);
         Assert.That(parsed.Version, Is.EqualTo("v1"));
@@ -61,7 +62,7 @@ public class ProtocolMessageTests
     public void ClientGreetingWithNullVersionAndEmptyToken()
     {
         var body = Body(new ClientGreetingMessage());
-        Assert.That(Hex(body), Is.EqualTo("94c00000c400"));
+        Assert.That(Hex(body), Is.EqualTo("96c00000c400" + "ce00400000" + "20"));
         var parsed = Parse<ClientGreetingMessage>(body);
         Assert.That(parsed.Version, Is.Null);
         Assert.That(parsed.AuthenticationToken.IsEmpty, Is.True);
@@ -70,10 +71,12 @@ public class ProtocolMessageTests
     [Test]
     public void ServerGreetingGoldenVector()
     {
-        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000 });
-        Assert.That(Hex(body), Is.EqualTo("92" + "01" + "cf0000000100000000"));
+        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000, MaxMessageSize = 65536, InvocationCredits = 128 });
+        Assert.That(Hex(body), Is.EqualTo("94" + "01" + "cf0000000100000000" + "ce00010000" + "cc80"));
         var parsed = Parse<ServerGreetingMessage>(body);
         Assert.That(parsed.ClientId, Is.EqualTo(0x1_0000_0000));
+        Assert.That(parsed.MaxMessageSize, Is.EqualTo(65536));
+        Assert.That(parsed.InvocationCredits, Is.EqualTo(128));
     }
 
     [Test]

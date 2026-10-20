@@ -28,9 +28,26 @@ internal sealed class SessionControlSender
     // Pipes with a pending window grant or close acknowledgement; each pipe is queued at most once at a time.
     private readonly ConcurrentQueue<NexusDuplexPipe> _pipes = new();
 
-    public SessionControlSender(INexusSession session)
+    // Invocation credit to return to the peer, sent once it reaches the threshold (half the credits advertised).
+    private int _pendingInvocationCredit;
+    private readonly int _invocationCreditThreshold;
+
+    /// <param name="session">The session to send on.</param>
+    /// <param name="invocationCreditThreshold">Invocation credit is returned in batches of at least this much.</param>
+    public SessionControlSender(INexusSession session, int invocationCreditThreshold = 1)
     {
         _session = session;
+        _invocationCreditThreshold = Math.Max(1, invocationCreditThreshold);
+    }
+
+    /// <summary>
+    /// Returns one invocation credit to the peer. Coalesced: sent as one message once the pending credit reaches the
+    /// threshold, so a busy session sends one credit message per batch of invocations.
+    /// </summary>
+    public void ReturnInvocationCredit()
+    {
+        if (Interlocked.Increment(ref _pendingInvocationCredit) >= _invocationCreditThreshold)
+            Schedule();
     }
 
     /// <summary>
@@ -52,7 +69,9 @@ internal sealed class SessionControlSender
         Schedule();
     }
 
-    private bool HasPending => Volatile.Read(ref _pongPending) != 0 || !_pipes.IsEmpty;
+    private bool HasPending => Volatile.Read(ref _pongPending) != 0
+                               || !_pipes.IsEmpty
+                               || Volatile.Read(ref _pendingInvocationCredit) >= _invocationCreditThreshold;
 
     private void Schedule()
     {
@@ -71,6 +90,18 @@ internal sealed class SessionControlSender
 
                 while (_pipes.TryDequeue(out var pipe))
                     await pipe.SendPendingControl().ConfigureAwait(false);
+
+                if (Volatile.Read(ref _pendingInvocationCredit) >= _invocationCreditThreshold)
+                {
+                    var credit = Interlocked.Exchange(ref _pendingInvocationCredit, 0);
+                    while (credit > 0)
+                    {
+                        using var message = _session.PoolManager.Rent<InvocationCreditMessage>();
+                        message.Credits = (ushort)Math.Min(credit, ushort.MaxValue);
+                        credit -= message.Credits;
+                        await _session.SendMessage(message).ConfigureAwait(false);
+                    }
+                }
             }
             catch (Exception e)
             {

@@ -181,6 +181,12 @@ public static class FlowHarness
             Program(Open(FlowPipe.NeverRead), Data(0, 1024 * 1024), Open(FlowPipe.Drain), Data(1, 1024 * 1024), ProbePing(), ProbeCall()),
             null);
 
+        // The server advertises 32 credits. Each call holds one of its two slots for 50 ms, so most of the 100 stay
+        // queued and the credits run out.
+        yield return ("Invokes beyond its credit",
+            Program(Op(FlowOp.InvokeIgnoringCredit, 100), Op(FlowOp.AwaitClose)),
+            DisconnectReason.FlowControl);
+
         yield return ("Data for a pipe that was never opened",
             Program(Op(FlowOp.PipeData, 0, Size(100)), Op(FlowOp.AwaitClose)),
             DisconnectReason.ProtocolError);
@@ -279,6 +285,9 @@ public static class FlowHarness
         /// <summary>From now on, a write that can't be sent in full within <see cref="ProbeTimeout"/> for lack of
         /// credit is a failure: the data must reach the server.</summary>
         StrictWrites,
+        /// <summary>Send <c>a</c> invocations of <see cref="FlowMethod.Cancellable"/> (50 ms each) ignoring the
+        /// invocation credit.</summary>
+        InvokeIgnoringCredit,
         Count,
     }
 
@@ -315,6 +324,7 @@ public static class FlowHarness
         private readonly List<ushort> _invocations = [];
         private readonly List<(byte ClientId, ushort FullId)> _pipes = [];
         private readonly Dictionary<ushort, long> _sent = [];
+        private long _invocationsSent;
         private bool _ackCloses = true;
         private bool _strictWrites;
         private string? _writeStall;
@@ -507,6 +517,11 @@ public static class FlowHarness
                     _strictWrites = true;
                     return null;
 
+                case FlowOp.InvokeIgnoringCredit:
+                    for (var i = 0; i < a; i++)
+                        Invoke(FlowMethod.Cancellable, (ref MsgPackWriter w) => w.Write(50), InvocationFlags.None, out _, respectCredit: false);
+                    return null;
+
                 case FlowOp.AwaitClose:
                     _output.WaitFor(o => false, TimeSpan.FromSeconds(3));
                     return null;
@@ -536,10 +551,16 @@ public static class FlowHarness
         }
 
         /// <summary>
-        /// Sends an invocation with one argument (or none). Returns false if it does not fit in a frame.
+        /// Sends an invocation with one argument (or none). Returns false if it does not fit in a frame, or (unless
+        /// <paramref name="respectCredit"/> is false) the server granted no invocation credit within
+        /// <see cref="ProbeTimeout"/>.
         /// </summary>
-        private bool Invoke(FlowMethod method, WriteAction? argument, InvocationFlags flags, out ushort id)
+        private bool Invoke(FlowMethod method, WriteAction? argument, InvocationFlags flags, out ushort id, bool respectCredit = true)
         {
+            id = 0;
+            if (respectCredit && !_output.WaitFor(o => o.InvocationCredits > _invocationsSent, ProbeTimeout))
+                return false;
+
             var arguments = new ArrayBufferWriter<byte>();
             var writer = new MsgPackWriter(arguments);
             writer.WriteArrayHeader(argument == null ? 0 : 1);
@@ -556,6 +577,7 @@ public static class FlowHarness
                 return false;
 
             _invocations.Add(id);
+            _invocationsSent++;
             SendFrame(MessageType.Invocation, body.WrittenSpan);
             return true;
         }

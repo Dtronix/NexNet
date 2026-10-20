@@ -207,6 +207,7 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.Invocation:
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
+                        case MessageType.InvocationCredit:
                         case MessageType.DuplexPipeUpdateState:
                             //Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
@@ -343,6 +344,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     case MessageType.ClientGreeting:
                     case MessageType.ClientGreetingReconnection:
                     case MessageType.InvocationCancellation:
+                    case MessageType.InvocationCredit:
                     case MessageType.DuplexPipeUpdateState:
                         // TODO: Review transitioning this to a simple message instead of a full message.
                         messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice, _config.SerializerOptions);
@@ -480,6 +482,9 @@ internal partial class NexusSession<TNexus, TProxy>
                 ref _internalState, InternalState.NexusCompletedConnection);
             EndHandshake();
 
+            // The client may now be invoked: it advertised its credits in the greeting.
+            _outboundCredits.Release(_peerInvocationCredits);
+
             await _sessionManager!.Sessions.RegisterSessionAsync(this).ConfigureAwait(false);
 
             await Unsafe.As<ServerNexusBase<TProxy>>(_nexus).NexusInitialize().ConfigureAwait(false);
@@ -487,6 +492,8 @@ internal partial class NexusSession<TNexus, TProxy>
             using var serverGreeting = _poolManager.Rent<ServerGreetingMessage>();
             serverGreeting.Version = TProxy.MethodHash;
             serverGreeting.ClientId = Id;
+            serverGreeting.MaxMessageSize = _config.MaxMessageSize;
+            serverGreeting.InvocationCredits = _config.InvocationCredits;
 
             await SendMessage(serverGreeting).ConfigureAwait(false);
 
@@ -625,6 +632,10 @@ internal partial class NexusSession<TNexus, TProxy>
                     return DisconnectReason.ClientMismatch;
                 }
 
+                // Used only once authentication succeeds.
+                if (!ApplyPeerLimits(cGreeting.MaxMessageSize, cGreeting.InvocationCredits))
+                    return DisconnectReason.ProtocolError;
+
                 var requestedVersion = cGreeting.Version;
                 
                 // If we have no versions, ensure that the requested version is null.
@@ -691,6 +702,10 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Set the server assigned client id.
                 Id = greetingMessage.ClientId;
 
+                if (!ApplyPeerLimits(greetingMessage.MaxMessageSize, greetingMessage.InvocationCredits))
+                    return DisconnectReason.ProtocolError;
+                _outboundCredits.Release(_peerInvocationCredits);
+
                 //Logger = Logger.CreateLogger(Id.ToString());
    
                 
@@ -719,6 +734,13 @@ internal partial class NexusSession<TNexus, TProxy>
                 }
                 Logger?.LogTrace($"Started Invoking method {invocationRequestMessage.MethodId}.");
 
+                // Each queued invocation uses one of the credits this side advertised.
+                if (Interlocked.Decrement(ref _inboundCredits) < 0)
+                {
+                    Logger?.LogWarning($"Session {Id} received an invocation without invocation credit.");
+                    return DisconnectReason.FlowControl;
+                }
+
                 // Queued, never awaited: the read loop must not wait for an execution slot.
                 _invocationQueue.Enqueue(invocationRequestMessage);
                 DispatchInvocations();
@@ -729,6 +751,18 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
+                break;
+            }
+
+            case MessageType.InvocationCredit:
+            {
+                var credits = message.As<InvocationCreditMessage>().Credits;
+
+                // More credit than the peer advertised is a protocol error.
+                if (credits == 0 || _outboundCredits.CurrentCount + credits > _peerInvocationCredits)
+                    return DisconnectReason.FlowControl;
+
+                _outboundCredits.Release(credits);
                 break;
             }
 

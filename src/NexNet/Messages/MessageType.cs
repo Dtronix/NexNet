@@ -145,6 +145,11 @@ public enum MessageType : byte
     /// </summary>
     InvocationResult = 112,
 
+    /// <summary>
+    /// Header for <see cref="InvocationCreditMessage"/>.
+    /// </summary>
+    InvocationCredit = 116,
+
     // Messages 120 - 129 are reserved for duplex pipe messages.
     
     /// <summary>

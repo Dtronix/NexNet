@@ -17,6 +17,15 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
         _context = context ?? throw new ArgumentNullException(nameof(context));
     }
 
+    /// <summary>
+    /// Sends to one session, waiting at most <see cref="Transports.ConfigBase.ProgressTimeout"/> for its invocation
+    /// credit. A session that grants none in time misses the invocation (logged by the session), so one client
+    /// can't hold up a broadcast to the others.
+    /// </summary>
+    private static ValueTask<bool> Send<TMessage>(Internals.INexusSession session, TMessage message)
+        where TMessage : IInvocationMessage, IMessageBase
+        => session.SendInvocation(message, creditTimeout: TimeSpan.FromMilliseconds(session.Config.ProgressTimeout));
+
     public async ValueTask InvokeAllAsync<TMessage>(TMessage message)
         where TMessage : IInvocationMessage, IMessageBase
     {
@@ -26,7 +35,7 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 
             try
             {
-                await session.SendMessage(message).ConfigureAwait(false);
+                await Send(session, message).ConfigureAwait(false);
             }
             catch
             {
@@ -47,7 +56,7 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 
             try
             {
-                await session.SendMessage(message).ConfigureAwait(false);
+                await Send(session, message).ConfigureAwait(false);
             }
             catch
             {
@@ -66,7 +75,7 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 
         try
         {
-            await session.SendMessage(message).ConfigureAwait(false);
+            await Send(session, message).ConfigureAwait(false);
             return true;
         }
         catch
@@ -86,7 +95,7 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 
                 try
                 {
-                    await session.SendMessage(message).ConfigureAwait(false);
+                    await Send(session, message).ConfigureAwait(false);
                 }
                 catch
                 {
@@ -114,7 +123,7 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
 
             try
             {
-                await session.SendMessage(message).ConfigureAwait(false);
+                await Send(session, message).ConfigureAwait(false);
             }
             catch
             {

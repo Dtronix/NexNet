@@ -129,7 +129,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         {
             case ProxyInvocationMode.Caller:
             {
-                await _session!.SendMessage(message).ConfigureAwait(false);
+                await _session!.SendInvocation(message).ConfigureAwait(false);
                 break;
             }
             case ProxyInvocationMode.All:

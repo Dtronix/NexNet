@@ -49,4 +49,14 @@ internal interface IClientGreetingMessageBase : IMessageBase
     /// (Optional) Token to be passed to the server upon connection for validation.
     /// </summary>
     Memory<byte> AuthenticationToken { get; set; }
+
+    /// <summary>
+    /// Largest argument, result or channel item the client accepts, in bytes.
+    /// </summary>
+    int MaxMessageSize { get; set; }
+
+    /// <summary>
+    /// Invocations the server may have queued on the client at once.
+    /// </summary>
+    int InvocationCredits { get; set; }
 }

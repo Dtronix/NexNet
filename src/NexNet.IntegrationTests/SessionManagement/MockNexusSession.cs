@@ -42,6 +42,13 @@ internal class MockNexusSession : INexusSession
         return ValueTask.CompletedTask;
     }
 
+    public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase
+    {
+        await SendMessage(message, cancellationToken);
+        return true;
+    }
+
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
         if (ShouldFailSend)
@@ -78,7 +85,7 @@ internal class MockNexusSession : INexusSession
     public long LastReceived { get; set; }
     public PoolManager PoolManager { get; set; } = null!;
     public NexusCollectionManager CollectionManager { get; set; } = null!;
-    public ConfigBase Config { get; set; } = null!;
+    public ConfigBase Config { get; set; } = new TcpServerConfig { EndPoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0) };
     public bool IsServer { get; set; } = true;
     public NexusPipeManager PipeManager { get; set; } = null!;
     public string? RemoteAddress { get; set; } = "127.0.0.1";

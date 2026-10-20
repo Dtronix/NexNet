@@ -24,6 +24,12 @@ internal sealed class ServerOutput
     public bool Greeted { get; private set; }
 
     public int Pongs { get; private set; }
+
+    /// <summary>
+    /// Invocation credit granted by the server in total: its greeting's advertised credits plus every
+    /// InvocationCredit message.
+    /// </summary>
+    public long InvocationCredits { get; private set; }
     public HashSet<ushort> Results { get; } = [];
     public Dictionary<byte, ushort> ReadyPipes { get; } = [];
 
@@ -173,8 +179,24 @@ internal sealed class ServerOutput
             switch (type)
             {
                 case MessageType.ServerGreeting:
+                {
+                    var reader = new MsgPackReader(body);
+                    reader.ReadArrayHeader(4);
+                    reader.ReadInt32();
+                    reader.ReadInt64();
+                    reader.ReadInt32();
+                    InvocationCredits += reader.ReadInt32();
                     Greeted = true;
                     break;
+                }
+
+                case MessageType.InvocationCredit:
+                {
+                    var reader = new MsgPackReader(body);
+                    reader.ReadArrayHeader(1);
+                    InvocationCredits += reader.ReadUInt16();
+                    break;
+                }
 
                 case MessageType.DuplexPipeWrite:
                     break;

@@ -118,6 +118,15 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     // Tick count when the current outbound transport flush started; 0 when none is in progress.
     private long _flushStartedTicks;
 
+    // Invocation credits (docs/internals/flow-control-v2.md, section 4.7). _inboundCredits: invocations the peer may
+    // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
+    private int _inboundCredits;
+    private readonly SemaphoreSlim _outboundCredits = new(0, int.MaxValue);
+    private int _peerInvocationCredits;
+    private int _peerMaxMessageSize;
+    private long _creditDrops;
+    private long _lastCreditDropWarning;
+
     public long Id
     {
         get => _id;
@@ -209,7 +218,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         SessionStore = new SessionStore();
         _freeInvocationSlots = _config.MaxConcurrentConnectionInvocations;
         Budget = new SessionBudget(_config.SessionBudget);
-        _controlSender = new SessionControlSender(this);
+
+        // The peer may queue InvocationCredits invocations of up to one frame each; reserve that up front.
+        _inboundCredits = _config.InvocationCredits;
+        Budget.TryReserve((long)_config.InvocationCredits * (ushort.MaxValue + 1));
+        _controlSender = new SessionControlSender(this, _config.InvocationCredits / 2);
         LastReceived = _config.Time.GetTickCount64();
 
         // Note: Session registration is deferred until after authentication completes
@@ -287,6 +300,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, TProxy.MethodHash);
         greetingMessage.ClientNexusHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
+        greetingMessage.MaxMessageSize = _config.MaxMessageSize;
+        greetingMessage.InvocationCredits = _config.InvocationCredits;
         
         await InitializeConnection().ConfigureAwait(false);
         
@@ -496,6 +511,64 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
     
+    public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase
+    {
+        if (!_outboundCredits.Wait(0))
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disconnectionCts.Token);
+            try
+            {
+                if (!await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, linked.Token).ConfigureAwait(false))
+                {
+                    RecordCreditDrop();
+                    return false;
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The session ended while waiting.
+                return false;
+            }
+        }
+
+        await SendMessage(message, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Logs, at most once per 10 s, invocations dropped because the peer granted no credit in time.
+    /// </summary>
+    private void RecordCreditDrop()
+    {
+        var drops = Interlocked.Increment(ref _creditDrops);
+        var now = _config.Time.GetTickCount64();
+        var last = Volatile.Read(ref _lastCreditDropWarning);
+        if (now - last < 10_000 || Interlocked.CompareExchange(ref _lastCreditDropWarning, now, last) != last)
+            return;
+
+        Logger?.LogWarning($"Session {Id} dropped invocations because the peer returned no invocation credit within " +
+                           $"{_config.ProgressTimeout} ms ({drops} so far).");
+    }
+
+    /// <summary>
+    /// Applies the peer's advertised limits from its greeting. Returns false if they are invalid.
+    /// </summary>
+    private bool ApplyPeerLimits(int maxMessageSize, int invocationCredits)
+    {
+        if (maxMessageSize < IInvocationMessage.MaxArgumentSize || invocationCredits < 1)
+            return false;
+
+        _peerMaxMessageSize = maxMessageSize;
+        _peerInvocationCredits = invocationCredits;
+        return true;
+    }
+
+    /// <summary>
+    /// Largest value this side may send: the smaller of its own limit and the peer's.
+    /// </summary>
+    internal int SendMaxMessageSize => Math.Min(_config.MaxMessageSize, _peerMaxMessageSize);
+
     /// <summary>
     /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
     /// returned, so a queued invocation always finds a free slot.
@@ -518,6 +591,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
                 continue;
             }
 
+
             if (!_invocationTaskArgumentsPool.TryTake(out var args))
                 args = new InvocationTaskArguments();
 
@@ -526,8 +600,17 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             args.SlotHeld = 1;
             message.Slot = args;
 
+            // Dequeued for execution: the peer may queue another.
+            ReturnInvocationCredit();
+
             _ = Task.Factory.StartNew(InvocationTask, args);
         }
+    }
+
+    private void ReturnInvocationCredit()
+    {
+        Interlocked.Increment(ref _inboundCredits);
+        _controlSender.ReturnInvocationCredit();
     }
 
     private bool TryTakeInvocationSlot()

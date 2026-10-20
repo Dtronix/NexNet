@@ -105,6 +105,10 @@ internal class FlowControlTests : BaseTests
         var (client, _) = CreateClient(CreateClientConfig(type));
         await client.ConnectAsync().Timeout(1);
 
+        // Reserved for the session's lifetime: the invocation queue (InvocationCredits x 64 KiB).
+        var budget = client.Session!.Budget;
+        var baseline = budget.Reserved;
+
         for (var i = 0; i < 300; i++)
         {
             await using var pipe = client.CreatePipe();
@@ -115,10 +119,9 @@ internal class FlowControlTests : BaseTests
         }
 
         // Every window reserved by the client was released.
-        var budget = client.Session!.Budget;
-        for (var i = 0; i < 50 && budget.Reserved != 0; i++)
+        for (var i = 0; i < 50 && budget.Reserved != baseline; i++)
             await Task.Delay(20);
-        Assert.That(budget.Reserved, Is.Zero);
+        Assert.That(budget.Reserved, Is.EqualTo(baseline));
     }
 
     [TestCase(Type.Uds)]

@@ -161,7 +161,19 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         {
             _invocationStates.TryAdd(message.InvocationId, state);
 
-            await session.SendMessage(message).ConfigureAwait(false);
+            try
+            {
+                if (!await session.SendInvocation(message, cancellationToken ?? default).ConfigureAwait(false))
+                    state.TrySetCanceled(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Canceled while waiting for invocation credit: never sent. The cancellation callback already
+                // completed the state.
+                ForgetInvocation(message.InvocationId);
+                state.TrySetCanceled(false);
+                return state;
+            }
         }
         else
         {
@@ -171,6 +183,18 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         // Return the message to the cache
         return state;
+    }
+
+    /// <summary>
+    /// Removes an invocation that was never sent.
+    /// </summary>
+    private void ForgetInvocation(ushort invocationId)
+    {
+        _invocationStates.TryRemove(invocationId, out _);
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
     }
 
     public void CancelAll()
