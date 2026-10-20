@@ -94,8 +94,22 @@ internal partial class InvocationResultMessage : IMessageBase
         _result = new ReadOnlySequence<byte>(_pooledResult);
     }
 
+    // Budget reserved for a message reassembled from a large stream; released when the message is disposed.
+    private NexNet.Internals.SessionBudget? _reservedFrom;
+    private long _reservedBytes;
+
+    /// <summary>
+    /// Makes this message hold <paramref name="bytes"/> of <paramref name="budget"/> until it is disposed.
+    /// </summary>
+    internal void ReserveFrom(NexNet.Internals.SessionBudget budget, long bytes)
+    {
+        _reservedBytes = bytes;
+        _reservedFrom = budget;
+    }
+
     public void Dispose()
     {
+        Interlocked.Exchange(ref _reservedFrom, null)?.Release(_reservedBytes);
         var cache = Interlocked.Exchange(ref _messageCache, null);
 
         if (cache == null)

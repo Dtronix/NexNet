@@ -28,6 +28,21 @@ internal interface ISessionInvocationStateManager
     void UpdateInvocationResult(InvocationResultMessage message);
 
     /// <summary>
+    /// True if a call with this ID is waiting for its result.
+    /// </summary>
+    bool IsOutstanding(ushort invocationId);
+
+    /// <summary>
+    /// Fails a call that is waiting for its result, e.g. because the peer refused its large argument.
+    /// </summary>
+    void FailInvocation(ushort invocationId, Exception exception);
+
+    /// <summary>
+    /// Frees a tracked ID taken with <c>GetNextId(true)</c> for an invocation that expects no result.
+    /// </summary>
+    void ReleaseId(ushort invocationId);
+
+    /// <summary>
     /// Invokes a method and waits for the result.
     /// </summary>
     /// <param name="methodId">The method ID to invoke.</param>

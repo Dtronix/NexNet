@@ -22,17 +22,31 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
     /// credit. A session that grants none in time misses the invocation (logged by the session), so one client
     /// can't hold up a broadcast to the others.
     /// </summary>
-    private static ValueTask<bool> Send<TMessage>(Internals.INexusSession session, TMessage message)
+    /// <remarks>
+    /// An argument larger than one frame is streamed under its invocation ID, so it gets an ID the session tracks
+    /// until the stream is sent.
+    /// </remarks>
+    private static async ValueTask<bool> Send<TMessage>(Internals.INexusSession session, TMessage message)
         where TMessage : IInvocationMessage, IMessageBase
-        => session.SendInvocation(message, creditTimeout: TimeSpan.FromMilliseconds(session.Config.ProgressTimeout));
+    {
+        var streamed = message.Arguments.Length > IInvocationMessage.MaxArgumentSize;
+        message.InvocationId = session.SessionInvocationStateManager.GetNextId(streamed);
+        try
+        {
+            return await session.SendInvocation(message, creditTimeout: TimeSpan.FromMilliseconds(session.Config.ProgressTimeout)).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (streamed)
+                session.SessionInvocationStateManager.ReleaseId(message.InvocationId);
+        }
+    }
 
     public async ValueTask InvokeAllAsync<TMessage>(TMessage message)
         where TMessage : IInvocationMessage, IMessageBase
     {
         foreach (var (_, session) in _context.Sessions)
         {
-            message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
-
             try
             {
                 await Send(session, message).ConfigureAwait(false);
@@ -52,8 +66,6 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
             if (id == excludeSessionId)
                 continue;
 
-            message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
-
             try
             {
                 await Send(session, message).ConfigureAwait(false);
@@ -70,8 +82,6 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
     {
         if (!_context.Sessions.TryGetValue(sessionId, out var session))
             return false;
-
-        message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
 
         try
         {
@@ -91,8 +101,6 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
         {
             if (_context.Sessions.TryGetValue(sessionIds[i], out var session))
             {
-                message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
-
                 try
                 {
                     await Send(session, message).ConfigureAwait(false);
@@ -118,8 +126,6 @@ internal sealed class LocalInvocationRouter : IInvocationRouter
         {
             if (excludeSessionId.HasValue && session.Id == excludeSessionId)
                 continue;
-
-            message.InvocationId = session.SessionInvocationStateManager.GetNextId(false);
 
             try
             {

@@ -52,11 +52,34 @@ public abstract class ConfigBase
     /// </remarks>
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
+    private NexusSerializerOptions _serializerOptions = NexusSerializerOptions.Untrusted;
+    private NexusSerializerOptions? _resolvedSerializerOptions;
+
     /// <summary>
     /// Options applied when deserializing data received from the remote peer.
-    /// Defaults to <see cref="NexusSerializerOptions.Untrusted"/> (hardening for hostile peers).
+    /// Defaults to <see cref="NexusSerializerOptions.Untrusted"/> (hardening for hostile peers). An unset
+    /// <see cref="NexusSerializerOptions.MaxElements"/> reads back as <c>max(65536, MaxMessageSize / 16)</c>.
     /// </summary>
-    public NexusSerializerOptions SerializerOptions { get; set; } = NexusSerializerOptions.Untrusted;
+    public NexusSerializerOptions SerializerOptions
+    {
+        get
+        {
+            if (_serializerOptions.MaxElements != 0)
+                return _serializerOptions;
+
+            var maxElements = Math.Max(65536, MaxMessageSize / 16);
+            var resolved = _resolvedSerializerOptions;
+            if (resolved == null || resolved.MaxElements != maxElements)
+                _resolvedSerializerOptions = resolved = _serializerOptions with { MaxElements = maxElements };
+            return resolved;
+        }
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _serializerOptions = value;
+            _resolvedSerializerOptions = null;
+        }
+    }
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
@@ -161,7 +184,8 @@ public abstract class ConfigBase
                 $"The pause threshold must be 0 or at least {MinReceivePauseThreshold} bytes.");
     }
 
-    private bool IsTrusted => SerializerOptions.Security == SerializerSecurity.Trusted;
+    // Reads the options as set: the SerializerOptions getter depends on MaxMessageSize, which depends on this.
+    private bool IsTrusted => _serializerOptions.Security == SerializerSecurity.Trusted;
 
     /// <summary>
     /// Receive memory per session, in bytes. Every pipe window and every large-value reservation is drawn from it.
@@ -243,7 +267,8 @@ public abstract class ConfigBase
     /// <summary>
     /// Longest time without progress before the session disconnects with
     /// <see cref="NexNet.Messages.DisconnectReason.Stalled"/>, in milliseconds. Progress is measured on a pipe that is closing (until
-    /// the peer confirms the close) and on an outbound transport flush. Waiting for credit is never a stall.
+    /// the peer confirms the close), on an inbound large argument or result and on a channel item given extra credit
+    /// (since their last data), and on an outbound transport flush. Waiting for credit is never a stall.
     /// 30000 default. Must be between 50 and 600000.
     /// </summary>
     public int ProgressTimeout

@@ -119,6 +119,18 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
         // No-op for testing
     }
 
+    public bool IsOutstanding(ushort invocationId) => false;
+
+    public void FailInvocation(ushort invocationId, Exception exception)
+    {
+        // No-op for testing
+    }
+
+    public void ReleaseId(ushort invocationId)
+    {
+        // No-op for testing
+    }
+
     public ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
         ushort methodId,
         Memory<byte> serializedArguments,

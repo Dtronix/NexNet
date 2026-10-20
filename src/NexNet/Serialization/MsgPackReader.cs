@@ -35,6 +35,9 @@ public ref struct MsgPackReader
     private readonly NexusSerializerOptions _options;
     private int _depth;
 
+    // Array elements and map entries read so far, checked against NexusSerializerOptions.MaxElements.
+    private long _elements;
+
     /// <summary>
     /// Creates a reader over the specified sequence.
     /// </summary>
@@ -772,7 +775,18 @@ public ref struct MsgPackReader
         if (count > RemainingCore)
             throw NexusSerializationException.LengthExceedsRemaining(count, RemainingCore);
 
+        CountElements(count);
         return (int)count;
+    }
+
+    /// <summary>
+    /// Adds to the cumulative element count of the value being read.
+    /// </summary>
+    private void CountElements(long count)
+    {
+        var max = _options.MaxElements;
+        if (max > 0 && (_elements += count) > max)
+            throw NexusSerializationException.ElementsExceeded(max);
     }
 
     /// <summary>
@@ -804,6 +818,7 @@ public ref struct MsgPackReader
         if (count * 2 > RemainingCore)
             throw NexusSerializationException.LengthExceedsRemaining(count * 2, RemainingCore);
 
+        CountElements(count * 2);
         return (int)count;
     }
 

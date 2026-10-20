@@ -162,6 +162,46 @@ public class ReaderTests
         Assert.That(ok.End, Is.True);
     }
 
+    [Test]
+    public void ElementLimitCountsCumulativelyAcrossNestedContainers()
+    {
+        // Three arrays of four nils: 3 + 12 = 15 elements, each array within a limit of 10 on its own.
+        var data = new byte[] { 0x93, 0x94, 0xc0, 0xc0, 0xc0, 0xc0, 0x94, 0xc0, 0xc0, 0xc0, 0xc0, 0x94, 0xc0, 0xc0, 0xc0, 0xc0 };
+
+        Assert.Throws<NexusSerializationException>(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 10 }));
+        Assert.DoesNotThrow(() => ReadNested(data, NexusSerializerOptions.Untrusted with { MaxElements = 15 }));
+
+        // 0, the default, means no limit.
+        Assert.DoesNotThrow(() => ReadNested(data, NexusSerializerOptions.Untrusted));
+
+        static void ReadNested(byte[] data, NexusSerializerOptions options)
+        {
+            var reader = new MsgPackReader(data, options);
+            var outer = reader.ReadArrayHeader();
+            for (var i = 0; i < outer; i++)
+            {
+                var inner = reader.ReadArrayHeader();
+                for (var j = 0; j < inner; j++)
+                    reader.ReadNil();
+            }
+        }
+    }
+
+    [Test]
+    public void ElementLimitCountsMapEntriesAsKeyAndValue()
+    {
+        // A map of three pairs is six elements.
+        var data = new byte[] { 0x83, 0x01, 0xc0, 0x02, 0xc0, 0x03, 0xc0 };
+
+        Assert.Throws<NexusSerializationException>(() =>
+        {
+            var reader = new MsgPackReader(data, NexusSerializerOptions.Untrusted with { MaxElements = 5 });
+            reader.ReadMapHeader();
+        });
+        var ok = new MsgPackReader(data, NexusSerializerOptions.Untrusted with { MaxElements = 6 });
+        Assert.That(ok.ReadMapHeader(), Is.EqualTo(3));
+    }
+
     private sealed class NestedFormatter : NexusFormatter<object>
     {
         public override void Serialize(ref MsgPackWriter writer, object? value) => throw new NotSupportedException();

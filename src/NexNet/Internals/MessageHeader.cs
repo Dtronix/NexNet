@@ -40,6 +40,11 @@ internal struct MessageHeader
     public ushort DuplexPipeId = 0;
 
     /// <summary>
+    /// MessageChunk: the kind of large message (the invocation ID goes in <see cref="InvocationId"/>).
+    /// </summary>
+    public byte LargeMessageKind = 0;
+
+    /// <summary>
     /// Sets the total header size.
     /// </summary>
     /// <param name="postHeaderSize">Number of bytes required to read the post header.</param>
@@ -78,5 +83,6 @@ internal struct MessageHeader
         IsHeaderComplete = false;
         InvocationId = 0;
         DuplexPipeId = 0;
+        LargeMessageKind = 0;
     }
 }

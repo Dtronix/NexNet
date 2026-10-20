@@ -53,6 +53,13 @@ public sealed record NexusSerializerOptions
     public bool StrictUtf8 { get; init; } = true;
 
     /// <summary>
+    /// Most array elements and map entries (counted cumulatively) one value may contain; 0 means no limit, the default.
+    /// Client and server configurations resolve 0 to <c>max(65536, ConfigBase.MaxMessageSize / 16)</c>, so data from
+    /// a peer is always limited.
+    /// </summary>
+    public int MaxElements { get; init; }
+
+    /// <summary>
     /// True when dictionaries and sets with non-string keys use randomized hash comparers.
     /// </summary>
     public bool HashFloodingResistantCollections => Security == SerializerSecurity.Untrusted;

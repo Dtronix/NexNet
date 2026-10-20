@@ -224,7 +224,7 @@ internal class InvocationIdTests
     public async Task InvokeMethodWithResultCore_OversizedArguments_ThrowsWithoutHoldingId()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
-        var arguments = new byte[NexNet.Messages.IInvocationMessage.MaxArgumentSize + 1];
+        var arguments = new byte[_mockSession.SendMaxMessageSize + 1];
 
         await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () =>
             await manager.InvokeMethodWithResultCore(0, arguments, _mockSession));

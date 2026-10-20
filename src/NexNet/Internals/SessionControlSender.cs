@@ -28,6 +28,9 @@ internal sealed class SessionControlSender
     // Pipes with a pending window grant or close acknowledgement; each pipe is queued at most once at a time.
     private readonly ConcurrentQueue<NexusDuplexPipe> _pipes = new();
 
+    // Large-message aborts to send: at most one per stream key and side.
+    private readonly ConcurrentQueue<(ushort InvocationId, LargeMessageKind Kind, LargeMessageAbortReason Reason)> _aborts = new();
+
     // Invocation credit to return to the peer, sent once it reaches the threshold (half the credits advertised).
     private int _pendingInvocationCredit;
     private readonly int _invocationCreditThreshold;
@@ -60,6 +63,15 @@ internal sealed class SessionControlSender
     }
 
     /// <summary>
+    /// Requests a large-message abort.
+    /// </summary>
+    public void RequestAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
+    {
+        _aborts.Enqueue((invocationId, kind, reason));
+        Schedule();
+    }
+
+    /// <summary>
     /// Requests that <paramref name="pipe"/>'s pending control state be sent. The pipe guarantees it is queued at most
     /// once until it is drained.
     /// </summary>
@@ -71,6 +83,7 @@ internal sealed class SessionControlSender
 
     private bool HasPending => Volatile.Read(ref _pongPending) != 0
                                || !_pipes.IsEmpty
+                               || !_aborts.IsEmpty
                                || Volatile.Read(ref _pendingInvocationCredit) >= _invocationCreditThreshold;
 
     private void Schedule()
@@ -90,6 +103,15 @@ internal sealed class SessionControlSender
 
                 while (_pipes.TryDequeue(out var pipe))
                     await pipe.SendPendingControl().ConfigureAwait(false);
+
+                while (_aborts.TryDequeue(out var abort))
+                {
+                    using var message = _session.PoolManager.Rent<MessageAbortMessage>();
+                    message.InvocationId = abort.InvocationId;
+                    message.Kind = abort.Kind;
+                    message.Reason = abort.Reason;
+                    await _session.SendMessage(message).ConfigureAwait(false);
+                }
 
                 if (Volatile.Read(ref _pendingInvocationCredit) >= _invocationCreditThreshold)
                 {

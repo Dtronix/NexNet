@@ -47,6 +47,9 @@ internal sealed class ServerOutput
     /// Full pipe IDs the server closed (sent its Complete), in order.
     /// </summary>
     public Queue<ushort> ClosedByServer { get; } = new();
+
+    // Large results the server is streaming: (invocation ID, kind) to (total, received).
+    private readonly Dictionary<int, (long Total, long Received)> _largeStreams = [];
     public DisconnectReason? Disconnect { get; private set; }
 
     /// <summary>
@@ -149,7 +152,12 @@ internal sealed class ServerOutput
                 continue;
             }
 
-            var postHeader = type is MessageType.DuplexPipeWrite or MessageType.PipeWindowUpdate ? 2 : 0;
+            var postHeader = type switch
+            {
+                MessageType.DuplexPipeWrite or MessageType.PipeWindowUpdate => 2,
+                MessageType.MessageChunk => 3,
+                _ => 0,
+            };
             if (!reader.TryReadLittleEndian(out short signedLength) || reader.Remaining < postHeader + (ushort)signedLength)
             {
                 // Incomplete frame: leave it for the next read.
@@ -159,17 +167,48 @@ internal sealed class ServerOutput
 
             var length = (ushort)signedLength;
             ushort pipeId = 0;
-            if (postHeader == 2)
+            byte chunkKind = 0;
+            if (postHeader >= 2)
             {
                 reader.TryReadLittleEndian(out short signedPipeId);
                 pipeId = (ushort)signedPipeId;
             }
+
+            if (postHeader == 3)
+                reader.TryRead(out chunkKind);
             var body = buffer.Slice(reader.Position, length);
             reader.Advance(length);
-            Handle(type, pipeId, body);
+            if (type == MessageType.MessageChunk)
+                HandleChunk(pipeId, chunkKind, body.Length);
+            else
+                Handle(type, pipeId, body);
         }
 
         return reader.Position;
+    }
+
+    /// <summary>
+    /// A chunk of a large result. A completed result counts like one sent in a single frame.
+    /// </summary>
+    private void HandleChunk(ushort invocationId, byte kind, long length)
+    {
+        var key = invocationId | (kind << 16);
+        if (!_largeStreams.TryGetValue(key, out var stream) || stream.Received + length > stream.Total)
+        {
+            _malformed ??= $"chunk for invocation {invocationId} outside a stream";
+            return;
+        }
+
+        stream.Received += length;
+        if (stream.Received < stream.Total)
+        {
+            _largeStreams[key] = stream;
+            return;
+        }
+
+        _largeStreams.Remove(key);
+        if (kind == 1)
+            Results.Add(invocationId);
     }
 
     private void Handle(MessageType type, ushort pipeId, ReadOnlySequence<byte> body)
@@ -189,6 +228,22 @@ internal sealed class ServerOutput
                     Greeted = true;
                     break;
                 }
+
+                case MessageType.MessageStart:
+                {
+                    var reader = new MsgPackReader(body);
+                    reader.ReadArrayHeader(4);
+                    var invocationId = reader.ReadUInt16();
+                    var kind = reader.ReadByte();
+                    reader.ReadByte();
+                    var total = reader.ReadUInt32();
+                    if (!_largeStreams.TryAdd(invocationId | (kind << 16), (total, 0)))
+                        _malformed ??= $"second Start for invocation {invocationId}";
+                    break;
+                }
+
+                case MessageType.MessageAbort:
+                    break;
 
                 case MessageType.InvocationCredit:
                 {

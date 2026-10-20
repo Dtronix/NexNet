@@ -60,12 +60,10 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     /// Sets the pre-serialized argument bytes on this message.
     /// </summary>
     /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
-    /// <returns>True if the arguments fit within the maximum size.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TrySetArguments(Memory<byte> serializedArguments)
+    public void SetArguments(Memory<byte> serializedArguments)
     {
         Arguments = serializedArguments;
-        return Arguments.Length <= IInvocationMessage.MaxArgumentSize;
     }
 
     public void Serialize(ref MsgPackWriter writer)
@@ -100,8 +98,22 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         _isArgumentPoolArray = true;
     }
 
+    // Budget reserved for a message reassembled from a large stream; released when the message is disposed.
+    private NexNet.Internals.SessionBudget? _reservedFrom;
+    private long _reservedBytes;
+
+    /// <summary>
+    /// Makes this message hold <paramref name="bytes"/> of <paramref name="budget"/> until it is disposed.
+    /// </summary>
+    internal void ReserveFrom(NexNet.Internals.SessionBudget budget, long bytes)
+    {
+        _reservedBytes = bytes;
+        _reservedFrom = budget;
+    }
+
     public void Dispose()
     {
+        Interlocked.Exchange(ref _reservedFrom, null)?.Release(_reservedBytes);
         Interlocked.Exchange(ref ArgumentsOwner, null)?.Return();
         Slot = null;
 

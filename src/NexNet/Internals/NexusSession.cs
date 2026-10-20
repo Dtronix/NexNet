@@ -19,7 +19,7 @@ using NexNet.RateLimiting;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -127,6 +127,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private long _creditDrops;
     private long _lastCreditDropWarning;
 
+    // Large arguments and results (docs/internals/flow-control-v2.md, section 4.3): streams the peer is sending
+    // here, and streams this side is sending, by (invocation ID, kind).
+    private readonly LargeMessageReceiver _largeMessages;
+    private readonly ConcurrentDictionary<int, OutgoingLargeMessage> _outgoingLargeMessages = new();
+
     public long Id
     {
         get => _id;
@@ -223,6 +228,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _inboundCredits = _config.InvocationCredits;
         Budget.TryReserve((long)_config.InvocationCredits * (ushort.MaxValue + 1));
         _controlSender = new SessionControlSender(this, _config.InvocationCredits / 2);
+        _largeMessages = new LargeMessageReceiver(this, Budget, _config.MaxMessageSize, _poolManager,
+            _config.SerializerOptions, _config.Time);
         LastReceived = _config.Time.GetTickCount64();
 
         // Note: Session registration is deferred until after authentication completes
@@ -256,12 +263,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             return true;
         }
 
-        // Progress (ConfigBase.ProgressTimeout): an outbound flush that does not complete, or a pipe whose close
-        // the peer never confirms. Waiting for credit is not measured.
+        // Progress (ConfigBase.ProgressTimeout): an outbound flush that does not complete, a pipe whose close the
+        // peer never confirms, an oversized channel item or large message whose data stops arriving. Waiting for
+        // credit is not measured.
         var now = _config.Time.GetTickCount64();
         var flushStarted = Volatile.Read(ref _flushStartedTicks);
         if ((flushStarted != 0 && now - flushStarted > _config.ProgressTimeout)
-            || PipeManager.HasStalledClose(now, _config.ProgressTimeout))
+            || PipeManager.HasStalledPipe(now, _config.ProgressTimeout)
+            || _largeMessages.HasStalledStream(now, _config.ProgressTimeout))
         {
             Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms.");
             DisconnectAsync(DisconnectReason.Stalled);
@@ -606,6 +615,17 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             _ = Task.Factory.StartNew(InvocationTask, args);
         }
     }
+
+    bool LargeMessageReceiver.IOwner.IsCallOutstanding(ushort invocationId)
+        => SessionInvocationStateManager.IsOutstanding(invocationId);
+
+    bool LargeMessageReceiver.IOwner.TryTakeInvocationCredit()
+        => Interlocked.Decrement(ref _inboundCredits) >= 0;
+
+    void LargeMessageReceiver.IOwner.ReturnInvocationCredit() => ReturnInvocationCredit();
+
+    void LargeMessageReceiver.IOwner.SendAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
+        => _controlSender.RequestAbort(invocationId, kind, reason);
 
     private void ReturnInvocationCredit()
     {

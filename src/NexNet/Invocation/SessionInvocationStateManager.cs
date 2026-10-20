@@ -130,11 +130,10 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         message.MethodId = methodId;
         message.Flags = InvocationFlags.None;
 
-        // Try to set the arguments. If we can not, then the arguments are too large.
-        if (!message.TrySetArguments(serializedArguments))
-        {
-            throw new NexusMessageTooLargeException(serializedArguments.Length, IInvocationMessage.MaxArgumentSize);
-        }
+        // Larger than one frame is streamed; larger than the peer accepts fails here, before taking an ID.
+        if (serializedArguments.Length > session.SendMaxMessageSize)
+            throw new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize);
+        message.SetArguments(serializedArguments);
 
         // Taken after the size check so a rejected call does not hold an ID.
         message.InvocationId = GetNextId(true);
@@ -168,11 +167,16 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
             }
             catch (OperationCanceledException)
             {
-                // Canceled while waiting for invocation credit: never sent. The cancellation callback already
-                // completed the state.
+                // Canceled while waiting for invocation credit (or while streaming a large argument): never
+                // executed. The cancellation callback already completed the state.
                 ForgetInvocation(message.InvocationId);
                 state.TrySetCanceled(false);
                 return state;
+            }
+            catch
+            {
+                ForgetInvocation(message.InvocationId);
+                throw;
             }
         }
         else
@@ -183,6 +187,35 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         // Return the message to the cache
         return state;
+    }
+
+    public bool IsOutstanding(ushort invocationId)
+    {
+        lock (_currentInvocationsLock)
+        {
+            return _currentInvocations.Contains(invocationId);
+        }
+    }
+
+    public void FailInvocation(ushort invocationId, Exception exception)
+    {
+        if (!_invocationStates.TryRemove(invocationId, out var state))
+            return;
+
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
+
+        state.TrySetException(exception);
+    }
+
+    public void ReleaseId(ushort invocationId)
+    {
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
     }
 
     /// <summary>

@@ -131,6 +131,9 @@ internal partial class NexusSession<TNexus, TProxy>
         }
         finally
         {
+            // Only this loop touches the streams' buffers.
+            _largeMessages.Clear();
+
             try
             {
                 // The CompleteAsync method does the exact same action, but introduces overhead into this call.
@@ -208,6 +211,8 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.InvocationCancellation:
                         case MessageType.InvocationResult:
                         case MessageType.InvocationCredit:
+                        case MessageType.MessageStart:
+                        case MessageType.MessageAbort:
                         case MessageType.DuplexPipeUpdateState:
                             //Logger?.LogTrace($"Message has a standard body.");
                             _recMessageHeader.SetTotalHeaderSize(0, true);
@@ -216,6 +221,11 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.DuplexPipeWrite:
                         case MessageType.PipeWindowUpdate:
                             _recMessageHeader.SetTotalHeaderSize(sizeof(ushort), true);
+                            break;
+
+                        // Post-header: invocation ID (uint16) and kind (uint8).
+                        case MessageType.MessageChunk:
+                            _recMessageHeader.SetTotalHeaderSize(sizeof(ushort) + 1, true);
                             break;
 
                         default:
@@ -300,6 +310,14 @@ internal partial class NexusSession<TNexus, TProxy>
                             //Logger?.LogTrace(
                             //    $"Parsed DuplexStreamId of {_recMessageHeader.DuplexPipeId} for {_recMessageHeader.Type}.");
                             break;
+
+                        case MessageType.MessageChunk:
+                            // The header check above ensured the whole post-header is buffered.
+                            ReadingHelpers.TryReadUShort(sequence, _readBuffer, ref position, out var chunkInvocationId);
+                            _recMessageHeader.InvocationId = chunkInvocationId;
+                            _recMessageHeader.LargeMessageKind = sequence.Slice(position, 1).FirstSpan[0];
+                            position++;
+                            break;
                         default:
                             Logger?.LogTrace(
                                 $"Received invalid combination of PostHeaderLength ({_recMessageHeader.PostHeaderLength}) and MessageType ({_recMessageHeader.Type}).");
@@ -345,6 +363,8 @@ internal partial class NexusSession<TNexus, TProxy>
                     case MessageType.ClientGreetingReconnection:
                     case MessageType.InvocationCancellation:
                     case MessageType.InvocationCredit:
+                    case MessageType.MessageStart:
+                    case MessageType.MessageAbort:
                     case MessageType.DuplexPipeUpdateState:
                         // TODO: Review transitioning this to a simple message instead of a full message.
                         messageBody = _poolManager.Deserialize(_recMessageHeader.Type, bodySlice, _config.SerializerOptions);
@@ -365,6 +385,28 @@ internal partial class NexusSession<TNexus, TProxy>
                     {
                         // Synchronous: the data fits the credit granted, so there is room for it.
                         disconnect = PipeManager.BufferIncomingData(_recMessageHeader.DuplexPipeId, bodySlice);
+                        break;
+                    }
+
+                    case MessageType.MessageChunk:
+                    {
+                        var kind = (LargeMessageKind)_recMessageHeader.LargeMessageKind;
+                        if (kind is not (LargeMessageKind.Argument or LargeMessageKind.Result))
+                        {
+                            disconnect = DisconnectReason.ProtocolError;
+                            break;
+                        }
+
+                        disconnect = _largeMessages.OnChunk((ushort)_recMessageHeader.InvocationId, kind, bodySlice, out var completed);
+
+                        // The last chunk: handle the reassembled message as if it had arrived in one frame. Its
+                        // invocation credit was taken at Start.
+                        if (disconnect == DisconnectReason.None && completed != null)
+                        {
+                            var completedType = kind == LargeMessageKind.Argument ? MessageType.Invocation : MessageType.InvocationResult;
+                            disconnect = await MessageHandler(completed, completedType, argumentCreditTaken: true).ConfigureAwait(false);
+                        }
+
                         break;
                     }
 
@@ -574,7 +616,7 @@ internal partial class NexusSession<TNexus, TProxy>
         EnumUtilities<InternalState>.RemoveFlag(ref session._internalState, InternalState.ReconnectingInProgress);
     }
 
-    private async ValueTask<DisconnectReason> MessageHandler(IMessageBase message, MessageType messageType)
+    private async ValueTask<DisconnectReason> MessageHandler(IMessageBase message, MessageType messageType, bool argumentCreditTaken = false)
     {
         switch (messageType)
         {
@@ -734,8 +776,8 @@ internal partial class NexusSession<TNexus, TProxy>
                 }
                 Logger?.LogTrace($"Started Invoking method {invocationRequestMessage.MethodId}.");
 
-                // Each queued invocation uses one of the credits this side advertised.
-                if (Interlocked.Decrement(ref _inboundCredits) < 0)
+                // Each queued invocation uses one of the credits this side advertised (a streamed one at its Start).
+                if (!argumentCreditTaken && Interlocked.Decrement(ref _inboundCredits) < 0)
                 {
                     Logger?.LogWarning($"Session {Id} received an invocation without invocation credit.");
                     return DisconnectReason.FlowControl;
@@ -750,7 +792,44 @@ internal partial class NexusSession<TNexus, TProxy>
             case MessageType.InvocationResult:
             {
                 var invocationProxyResultMessage = message.As<InvocationResultMessage>();
+
+                // A result for a call this side is not waiting on is a protocol error.
+                if (!SessionInvocationStateManager.IsOutstanding(invocationProxyResultMessage.InvocationId))
+                {
+                    invocationProxyResultMessage.Dispose();
+                    return DisconnectReason.ProtocolError;
+                }
+
                 SessionInvocationStateManager.UpdateInvocationResult(invocationProxyResultMessage);
+                break;
+            }
+
+            case MessageType.MessageStart:
+                return _largeMessages.OnStart(message.As<MessageStartMessage>());
+
+            case MessageType.MessageAbort:
+            {
+                var abort = message.As<MessageAbortMessage>();
+                if (abort.Reason is LargeMessageAbortReason.Busy or LargeMessageAbortReason.TooLarge)
+                {
+                    // From the receiver of a stream this side is sending: stop it (the stream answers with Ack).
+                    if (_outgoingLargeMessages.TryGetValue(abort.InvocationId | ((int)abort.Kind << 16), out var stream))
+                        stream.Abort();
+
+                    // A refused argument fails its call, which will not run.
+                    if (abort.Kind == LargeMessageKind.Argument)
+                    {
+                        SessionInvocationStateManager.FailInvocation(abort.InvocationId, abort.Reason == LargeMessageAbortReason.Busy
+                            ? new NexusBusyException("The peer has no room for the argument right now.")
+                            : new NexusMessageTooLargeException(0, SendMaxMessageSize));
+                    }
+                }
+                else
+                {
+                    // From the sender of a stream this side is receiving.
+                    _largeMessages.OnAbort(abort);
+                }
+
                 break;
             }
 

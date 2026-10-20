@@ -36,6 +36,9 @@ internal class NexusPipeReader : PipeReader, IDisposable
     // bytes pay it off first; they are not granted back.
     private long _extraOutstanding;
 
+    // When data last arrived (TimeProvider tick count); with extra credit outstanding, no data is a stall.
+    private long _lastDataTicks;
+
     private readonly NexusDuplexPipe.State _writingCompleteFlag;
     private readonly INexusLogger? _logger;
     private readonly TimeProvider _time;
@@ -121,6 +124,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
             _bufferTailPosition += length;
             data.CopyTo(_buffer.GetSpan(length));
             _buffer.Advance(length);
+            _lastDataTicks = _time.GetTickCount64();
         }
 
         Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
@@ -192,10 +196,21 @@ internal class NexusPipeReader : PipeReader, IDisposable
         {
             _extraOutstanding += extra;
             _credit += extra;
+            _lastDataTicks = _time.GetTickCount64();
         }
 
         _stateManager.GrantCredit(extra);
         return true;
+    }
+
+    /// <summary>
+    /// True if extra credit was granted for an oversized item and no data arrived for longer than
+    /// <paramref name="timeoutTicks"/>: the writer has the credit to send, so it is not waiting on this side.
+    /// </summary>
+    public bool IsItemStalled(long nowTicks, long timeoutTicks)
+    {
+        lock (_bufferLock)
+            return _extraOutstanding > 0 && !_isCompleted && nowTicks - _lastDataTicks > timeoutTicks;
     }
 
     /// <summary>

@@ -130,14 +130,14 @@ internal class NexusPipeManager
     private ushort KeyOf(NexusDuplexPipe pipe) => pipe.Id != 0 ? pipe.Id : GetPartialIdFromLocalId(pipe.LocalId);
 
     /// <summary>
-    /// True if a pipe has been closing (this side's Complete sent, the peer's not received) for longer than
-    /// <paramref name="timeoutTicks"/>.
+    /// True if a pipe made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing (this
+    /// side's Complete sent, the peer's not received), or the data of an item given extra credit stopped arriving.
     /// </summary>
-    public bool HasStalledClose(long nowTicks, long timeoutTicks)
+    public bool HasStalledPipe(long nowTicks, long timeoutTicks)
     {
         foreach (var pipe in _activePipes)
         {
-            if (pipe.Value.IsCloseStalled(nowTicks, timeoutTicks))
+            if (pipe.Value.IsCloseStalled(nowTicks, timeoutTicks) || pipe.Value.IsItemStalled(nowTicks, timeoutTicks))
                 return true;
         }
 

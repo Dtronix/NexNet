@@ -22,6 +22,8 @@ public partial interface IClientNexus
     ValueTask<int> ClientTaskValueWithCancellation(CancellationToken cancellationToken);
     ValueTask<int> ClientTaskValueWithValueAndCancellation(int value, CancellationToken cancellationToken);
     ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe);
+
+    ValueTask ClientData(byte[] data);
 }
 
 
@@ -52,6 +54,8 @@ public partial interface IServerNexus
     ValueTask ServerData(byte[] data);
 
     ValueTask<byte[]> ServerDataResult(int size);
+
+    ValueTask<byte[]> ServerEcho(byte[] data);
 }
 
 
@@ -128,6 +132,13 @@ public partial class ClientNexus
     public ValueTask ClientTaskValueWithDuplexPipe(INexusDuplexPipe pipe)
     {
         return ClientTaskValueWithDuplexPipeEvent.Invoke(this, pipe);
+    }
+
+    public Func<ClientNexus, byte[], ValueTask>? ClientDataEvent;
+
+    public ValueTask ClientData(byte[] data)
+    {
+        return ClientDataEvent?.Invoke(this, data) ?? ValueTask.CompletedTask;
     }
 
     protected override ValueTask OnConnected(bool isReconnected)
@@ -232,6 +243,10 @@ public partial class ServerNexus
     }
 
     public ValueTask<byte[]> ServerDataResult(int size) => new(new byte[size]);
+
+    public Func<ServerNexus, byte[], ValueTask<byte[]>>? ServerEchoEvent;
+
+    public ValueTask<byte[]> ServerEcho(byte[] data) => ServerEchoEvent?.Invoke(this, data) ?? new(data);
 
     public ValueTask ServerData(byte[] data)
     {

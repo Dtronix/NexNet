@@ -199,6 +199,11 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         && nowTicks - Volatile.Read(ref _closingSince) > timeoutTicks;
 
     /// <summary>
+    /// True if an item larger than the window got extra credit and its data stopped arriving.
+    /// </summary>
+    internal bool IsItemStalled(long nowTicks, long timeoutTicks) => _inputPipeReader.IsItemStalled(nowTicks, timeoutTicks);
+
+    /// <summary>
     /// Registering side: opens the receive window and sends Ready with it.
     /// </summary>
     internal ValueTask SendReady()

@@ -64,6 +64,12 @@ internal class PoolManager
 
         _messagePools[((int)InvocationCreditMessage.Type - MessagePoolOffsetModifier)] =
             new MessagePool<InvocationCreditMessage>();
+
+        _messagePools[((int)MessageStartMessage.Type - MessagePoolOffsetModifier)] =
+            new MessagePool<MessageStartMessage>();
+
+        _messagePools[((int)MessageAbortMessage.Type - MessagePoolOffsetModifier)] =
+            new MessagePool<MessageAbortMessage>();
     }
 
     /// <summary>

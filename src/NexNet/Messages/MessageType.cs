@@ -146,6 +146,21 @@ public enum MessageType : byte
     InvocationResult = 112,
 
     /// <summary>
+    /// Header for <see cref="MessageStartMessage"/>: starts a large argument or result.
+    /// </summary>
+    MessageStart = 113,
+
+    /// <summary>
+    /// A part of a large message. Post-header: invocation ID (uint16, little-endian) and kind (uint8); body: payload.
+    /// </summary>
+    MessageChunk = 114,
+
+    /// <summary>
+    /// Header for <see cref="MessageAbortMessage"/>.
+    /// </summary>
+    MessageAbort = 115,
+
+    /// <summary>
     /// Header for <see cref="InvocationCreditMessage"/>.
     /// </summary>
     InvocationCredit = 116,

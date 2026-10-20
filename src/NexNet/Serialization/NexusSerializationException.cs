@@ -42,6 +42,9 @@ public sealed class NexusSerializationException : Exception
     internal static NexusSerializationException DepthExceeded(int maxDepth)
         => new($"MessagePack data exceeds the maximum depth of {maxDepth}.");
 
+    internal static NexusSerializationException ElementsExceeded(int maxElements)
+        => new($"MessagePack data exceeds the maximum of {maxElements} elements.");
+
     internal static NexusSerializationException LengthExceedsRemaining(long length, long remaining)
         => new($"MessagePack length {length} exceeds the {remaining} remaining bytes.");
 

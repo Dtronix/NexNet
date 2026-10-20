@@ -36,9 +36,8 @@ namespace NexNet.Fuzz;
 /// credit the server granted, and answers the server's pipe closes.
 /// </para>
 /// <para>
-/// The v2 frames (<c>PipeWindowUpdate</c>, <c>MessageStart</c>/<c>Chunk</c>/<c>Abort</c>, <c>InvocationCredit</c>)
-/// use the proposed type numbers. Protocol v1 peers reject them as unknown types; each encoder is brought in line
-/// with the final layout by the step that adds the message.
+/// Operations can also send the v2 control frames (<c>PipeWindowUpdate</c>, <c>MessageStart</c>/<c>Chunk</c>/<c>Abort</c>,
+/// <c>InvocationCredit</c>) directly, valid or not.
 /// </para>
 /// </remarks>
 public static class FlowHarness
@@ -138,6 +137,10 @@ public static class FlowHarness
         yield return Program(Call(FlowMethod.Ping), ProbeCall());
         yield return Program(Call(FlowMethod.Echo, Size(1024)), Call(FlowMethod.Echo, Size(40 * 1024)), ProbeCall());
         yield return Program(Call(FlowMethod.Large, Size(16 * 1024)), ProbeCall());
+
+        // Large arguments and results, streamed both ways.
+        yield return Program(Op(FlowOp.CallLarge, 0, Size(300 * 1024)), ProbePing());
+        yield return Program(Op(FlowOp.CallLarge, 0, Size(1024 * 1024)), Op(FlowOp.CallLarge, 0, Size(65536)), ProbeCall());
         yield return Program(Call(FlowMethod.Cancellable, c: 40), Op(FlowOp.Cancel), ProbePing());
 
         // Pipes and channels with readers that keep up.
@@ -195,6 +198,35 @@ public static class FlowHarness
         yield return ("Sends an item over MaxMessageSize",
             Program(Open(FlowPipe.SlowItems), Op(FlowOp.BadItem, 0, Size(100), 0x80), Op(FlowOp.Pause, 50), ProbePing(), ProbeCall()),
             null);
+
+        // Larger than the window: the reader grants extra credit, which the writer never uses.
+        yield return ("Sends half of an item larger than the window, then stops",
+            Program(Open(FlowPipe.SlowItems), Op(FlowOp.PartialItem, 0, Size(300 * 1024)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.Stalled);
+
+        yield return ("Declares a large argument, then stops",
+            Program(Call(FlowMethod.Ping), Op(FlowOp.MessageStart, 1, 0, Size(1024 * 1024)), Op(FlowOp.MessageChunk, 1, 0, Size(16 * 1024)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.Stalled);
+
+        yield return ("Chunk beyond the declared length",
+            Program(Op(FlowOp.MessageStart, 0, 0, Size(100)), Op(FlowOp.MessageChunk, 0, 0, Size(1024)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
+
+        yield return ("Chunk for a stream never started",
+            Program(Op(FlowOp.MessageChunk, 0, 0, Size(100)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
+
+        yield return ("Result for a call never made",
+            Program(Op(FlowOp.MessageStart, 0, 1, Size(100)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
+
+        yield return ("Declares more than MaxMessageSize",
+            Program(Op(FlowOp.MessageStart, 0, 0, 0xFF), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
+
+        yield return ("Start for a key already active",
+            Program(Op(FlowOp.MessageStart, 0, 0, Size(1024 * 1024)), Op(FlowOp.MessageStart, 0, 0, Size(1024 * 1024)), Op(FlowOp.AwaitClose)),
+            DisconnectReason.ProtocolError);
 
         yield return ("Data for a pipe that was never opened",
             Program(Op(FlowOp.PipeData, 0, Size(100)), Op(FlowOp.AwaitClose)),
@@ -265,7 +297,8 @@ public static class FlowHarness
         Complete,
         /// <summary>PipeWindowUpdate of <c>Sizes[b]</c> for pipe slot <c>a</c>.</summary>
         WindowUpdate,
-        /// <summary>MessageStart for invocation <c>a</c>, kind <c>b</c>, totalLen <c>Sizes[c]</c>.</summary>
+        /// <summary>MessageStart for invocation <c>a</c>, kind <c>b</c>, totalLen <c>Sizes[c]</c> (for <c>c</c> = 0xFF,
+        /// <see cref="uint.MaxValue"/>).</summary>
         MessageStart,
         /// <summary>MessageChunk of <c>Sizes[c]</c> bytes for invocation <c>a</c>, kind <c>b</c>.</summary>
         MessageChunk,
@@ -297,6 +330,11 @@ public static class FlowHarness
         /// <summary>Send <c>a</c> invocations of <see cref="FlowMethod.Cancellable"/> (50 ms each) ignoring the
         /// invocation credit.</summary>
         InvokeIgnoringCredit,
+        /// <summary>Call <see cref="FlowMethod.Echo"/> with <c>Sizes[b]</c> bytes and wait for the result; large
+        /// arguments and results are streamed.</summary>
+        CallLarge,
+        /// <summary>Write the first half of a byte[] channel item of <c>Sizes[b]</c> to pipe slot <c>a</c>.</summary>
+        PartialItem,
         /// <summary>Write a byte[] channel item of <c>Sizes[b]</c> to pipe slot <c>a</c> whose length prefix is off
         /// by <c>c</c> (signed), or for <c>c</c> = 0x80, declares <see cref="int.MaxValue"/>.</summary>
         BadItem,
@@ -431,24 +469,22 @@ public static class FlowHarness
                         w.Write(InvocationId(a));
                         w.Write((byte)(b & 1));
                         w.Write((byte)((b & 1) == 0 ? MessageType.Invocation : MessageType.InvocationResult));
-                        w.Write((uint)Sizes[c % Sizes.Length]);
+                        w.Write(c == 0xFF ? uint.MaxValue : (uint)Sizes[c % Sizes.Length]);
                     });
                     return null;
 
                 case FlowOp.MessageChunk:
-                {
-                    // [invocation id: u16 LE][kind: u8][payload], split into frames.
-                    var remaining = Sizes[c % Sizes.Length];
-                    do
-                    {
-                        var payload = Math.Min(remaining, MaxFrameBody - 3);
-                        var body = new byte[3 + payload];
-                        BinaryPrimitives.WriteUInt16LittleEndian(body, InvocationId(a));
-                        body[2] = (byte)(b & 1);
-                        SendFrame(MessageChunk, body);
-                        remaining -= payload;
-                    } while (remaining > 0);
+                    SendChunks(InvocationId(a), (byte)(b & 1), new byte[Sizes[c % Sizes.Length]]);
                     return null;
+
+                case FlowOp.CallLarge:
+                {
+                    // Echo with an argument of Sizes[b]: streamed when it does not fit a frame, as is the result.
+                    if (!Invoke(FlowMethod.Echo, (ref MsgPackWriter w) => w.WriteBinary(new byte[Sizes[b % Sizes.Length]]), InvocationFlags.None, out var id))
+                        return null;
+                    return _output.WaitFor(o => o.Results.Contains(id), ProbeTimeout)
+                        ? null
+                        : $"Large call not answered within {ProbeTimeout.TotalMilliseconds} ms.";
                 }
 
                 case FlowOp.MessageAbort:
@@ -529,6 +565,13 @@ public static class FlowHarness
                     _strictWrites = true;
                     return null;
 
+                case FlowOp.PartialItem:
+                {
+                    var item = Framed(NexusSerializer.Serialize(new byte[Sizes[b % Sizes.Length]]), 0);
+                    PipeWrite(PipeId(a, 0), item.AsSpan(0, item.Length / 2));
+                    return null;
+                }
+
                 case FlowOp.BadItem:
                 {
                     // A prefix that disagrees with its item: c says by how much (as a signed byte, never 0); 0x80
@@ -600,12 +643,26 @@ public static class FlowHarness
             var bodyWriter = new MsgPackWriter(body);
             message.Serialize(ref bodyWriter);
             bodyWriter.Flush();
-            if (body.WrittenCount > MaxFrameBody)
-                return false;
-
             _invocations.Add(id);
             _invocationsSent++;
-            SendFrame(MessageType.Invocation, body.WrittenSpan);
+            if (body.WrittenCount <= MaxFrameBody)
+            {
+                SendFrame(MessageType.Invocation, body.WrittenSpan);
+                return true;
+            }
+
+            // Larger than a frame: stream it like a NexNet client does.
+            var bodyLength = body.WrittenCount;
+            var streamId = id;
+            SendMessagePack(MessageStart, (ref MsgPackWriter w) =>
+            {
+                w.WriteArrayHeader(4);
+                w.Write(streamId);
+                w.Write((byte)0);
+                w.Write((byte)MessageType.Invocation);
+                w.Write((uint)bodyLength);
+            });
+            SendChunks(id, 0, body.WrittenSpan);
             return true;
         }
 
@@ -675,6 +732,25 @@ public static class FlowHarness
             var prefix = new byte[ChannelFraming.MaxPrefixLength];
             var prefixLength = ChannelFraming.WriteLength(prefix, Math.Max(0, item.Length + delta));
             return [.. prefix.AsSpan(0, prefixLength), .. item];
+        }
+
+        /// <summary>
+        /// Sends <paramref name="payload"/> as MessageChunk frames: post-header [invocation id: u16 LE][kind: u8].
+        /// </summary>
+        private void SendChunks(ushort invocationId, byte kind, ReadOnlySpan<byte> payload)
+        {
+            do
+            {
+                var length = Math.Min(payload.Length, MaxFrameBody);
+                var header = new byte[6];
+                header[0] = (byte)MessageChunk;
+                BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(1), (ushort)length);
+                BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(3), invocationId);
+                header[5] = kind;
+                if (!Send(header, payload[..length]))
+                    return;
+                payload = payload[length..];
+            } while (payload.Length > 0);
         }
 
         private void SendPipeState(ushort pipeId, NexusDuplexPipe.State state)

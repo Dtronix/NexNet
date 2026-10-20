@@ -117,19 +117,35 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         message.MethodId = methodId;
         message.Flags = InvocationFlags.IgnoreReturn | flags;
         message.InvocationId = 0;
-
-        // Try to set the arguments. If we can not, then the arguments are too large.
-        if (!message.TrySetArguments(serializedArguments))
-        {
-            message.Dispose();
-            throw new NexusMessageTooLargeException(serializedArguments.Length, IInvocationMessage.MaxArgumentSize);
-        }
+        message.SetArguments(serializedArguments);
 
         switch (_mode)
         {
             case ProxyInvocationMode.Caller:
             {
-                await _session!.SendInvocation(message).ConfigureAwait(false);
+                var session = _session!;
+                if (serializedArguments.Length > session.SendMaxMessageSize)
+                {
+                    message.Dispose();
+                    throw new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize);
+                }
+
+                // An argument larger than one frame is streamed under its invocation ID, so it needs a tracked one
+                // even though no result comes back.
+                var streamed = serializedArguments.Length > IInvocationMessage.MaxArgumentSize;
+                if (streamed)
+                    message.InvocationId = session.SessionInvocationStateManager.GetNextId(true);
+
+                try
+                {
+                    await session.SendInvocation(message).ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (streamed)
+                        session.SessionInvocationStateManager.ReleaseId(message.InvocationId);
+                }
+
                 break;
             }
             case ProxyInvocationMode.All:
@@ -418,6 +434,14 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
 
             await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
+
+            // Failed before any result arrived (e.g. the peer refused a large argument).
+            if (state.Result == null && state.Exception is { } failure)
+            {
+                ReturnState(state);
+                throw failure;
+            }
+
             if (state.IsCanceled)
             {
                 if (state.NotifyConnection)
@@ -433,6 +457,10 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
         }
         catch (TaskCanceledException)
+        {
+            throw;
+        }
+        catch (Exception e) when (e is NexusBusyException or NexusMessageTooLargeException)
         {
             throw;
         }

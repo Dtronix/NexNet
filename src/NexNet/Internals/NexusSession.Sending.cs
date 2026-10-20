@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using NexNet.Serialization;
 using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
+using System.Collections.Generic;
 
 namespace NexNet.Internals;
 
@@ -40,96 +41,221 @@ internal partial class NexusSession<TNexus, TProxy>
         if (State != ConnectionState.Connected)
             return;
 
-        using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
-
-        if (mutexResult.Success != true)
-            throw new InvalidOperationException("Could not acquire write lock");
-
-        // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
-        var output = _pipeOutput;
-        if (output == null || State != ConnectionState.Connected)
-            return;
-
-        int length;
+        // Released by hand: a large message gives the mutex up to stream its frames (see SendLargeMessage).
+        var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        var mutexHeld = true;
         try
         {
-            var header = _bufferWriter.GetMemory(3);
-            _bufferWriter.Advance(3);
-            var bodyWriter = new MsgPackWriter(_bufferWriter);
-            body.Serialize(ref bodyWriter);
-            bodyWriter.Flush();
+            if (mutexResult.Success != true)
+                throw new InvalidOperationException("Could not acquire write lock");
 
-            // Checked before anything reaches the output, so an oversized message fails alone.
-            var bodyLength = _bufferWriter.Length - 3;
-            if (bodyLength > ushort.MaxValue)
-                throw new NexusMessageTooLargeException(bodyLength, ushort.MaxValue);
-
-            header.Span[0] = (byte)TMessage.Type;
-
-            BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), (ushort)bodyLength);
-
-            length = (int)_bufferWriter.Length;
-            var buffer = _bufferWriter.GetBuffer();
-
-            // Only used for debugging
-            _config.InternalOnSend?.Invoke(this, buffer.ToArray());
-
-            buffer.CopyTo(output.GetSpan(length));
-            output.Advance(length);
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
-        }
-        finally
-        {
-            _bufferWriter.Reset();
-        }
-
-        Logger?.LogTrace($"Sending {TMessage.Type} header and body with {length} total bytes.");
-
-        // Register a cancellation token to cancel the flush operation.
-        CancellationTokenRegistration? ctRegistration = null;
-        if (cancellationToken.CanBeCanceled)
-        {
-            ctRegistration = cancellationToken.Register(static obj =>
-            {
-                Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
-            }, output, false);
-        }
-
-        FlushResult result = default;
-        try
-        {
-            // ReSharper disable once MethodSupportsCancellation
-            result = await FlushOutput(output).ConfigureAwait(false);
-
-            // Return if the operation was canceled.
-            if (result.IsCanceled)
+            // The session may have disconnected while waiting for the lock; disconnect clears _pipeOutput without it.
+            var output = _pipeOutput;
+            if (output == null || State != ConnectionState.Connected)
                 return;
-        }
-        catch (ObjectDisposedException)
-        {
-            // noop
-        }
-        catch (InvalidOperationException) when (State != ConnectionState.Connected)
-        {
-            // Disconnect completed the output while this send was in progress.
-            return;
+
+            int length;
+            LargeMessage large = default;
+            try
+            {
+                var header = _bufferWriter.GetMemory(3);
+                _bufferWriter.Advance(3);
+                var bodyWriter = new MsgPackWriter(_bufferWriter);
+                body.Serialize(ref bodyWriter);
+                bodyWriter.Flush();
+
+                // Checked before anything reaches the output, so an oversized message fails alone. Arguments and
+                // results larger than one frame are streamed.
+                var bodyLength = _bufferWriter.Length - 3;
+                if (bodyLength > ushort.MaxValue)
+                {
+                    large = StageLargeMessage(body, bodyLength);
+                    length = 0;
+                }
+                else
+                {
+                    header.Span[0] = (byte)TMessage.Type;
+
+                    BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), (ushort)bodyLength);
+
+                    length = (int)_bufferWriter.Length;
+                    var buffer = _bufferWriter.GetBuffer();
+
+                    // Only used for debugging
+                    _config.InternalOnSend?.Invoke(this, buffer.ToArray());
+
+                    buffer.CopyTo(output.GetSpan(length));
+                    output.Advance(length);
+                }
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+            finally
+            {
+                _bufferWriter.Reset();
+            }
+
+            if (large.Buffer != null)
+            {
+                mutexResult.Dispose();
+                mutexHeld = false;
+                await SendLargeMessage(large, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            Logger?.LogTrace($"Sending {TMessage.Type} header and body with {length} total bytes.");
+
+            // Register a cancellation token to cancel the flush operation.
+            CancellationTokenRegistration? ctRegistration = null;
+            if (cancellationToken.CanBeCanceled)
+            {
+                ctRegistration = cancellationToken.Register(static obj =>
+                {
+                    Unsafe.As<PipeWriter?>(obj)?.CancelPendingFlush();
+                }, output, false);
+            }
+
+            FlushResult result = default;
+            try
+            {
+                // ReSharper disable once MethodSupportsCancellation
+                result = await FlushOutput(output).ConfigureAwait(false);
+
+                // Return if the operation was canceled.
+                if (result.IsCanceled)
+                    return;
+            }
+            catch (ObjectDisposedException)
+            {
+                // noop
+            }
+            catch (InvalidOperationException) when (State != ConnectionState.Connected)
+            {
+                // Disconnect completed the output while this send was in progress.
+                return;
+            }
+            finally
+            {
+                if (ctRegistration != null)
+                    await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            }
+
+            OnSent?.Invoke();
+
+            if (result.IsCompleted)
+                await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
         }
         finally
         {
-            if (ctRegistration != null)
-                await ctRegistration.Value.DisposeAsync().ConfigureAwait(false);
+            if (mutexHeld)
+                mutexResult.Dispose();
         }
-
-        OnSent?.Invoke();
-
-        if (result.IsCompleted)
-            await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// A message body staged for streaming (docs/internals/flow-control-v2.md, section 4.3).
+    /// </summary>
+    private readonly record struct LargeMessage(byte[]? Buffer, int Length, ushort InvocationId, LargeMessageKind Kind, MessageType InnerType);
+
+    /// <summary>
+    /// Copies a body larger than one frame out of the shared buffer so it can be streamed. Only arguments and results
+    /// can be; anything larger than the peer accepts is refused before anything is sent.
+    /// </summary>
+    private LargeMessage StageLargeMessage<TMessage>(TMessage body, long bodyLength)
+        where TMessage : IMessageBase
+    {
+        (ushort Id, LargeMessageKind Kind) key = body switch
+        {
+            InvocationMessage invocation => (invocation.InvocationId, LargeMessageKind.Argument),
+            InvocationResultMessage result => (result.InvocationId, LargeMessageKind.Result),
+            _ => throw new NexusMessageTooLargeException(bodyLength, ushort.MaxValue),
+        };
+
+        if (bodyLength > SendMaxMessageSize)
+            throw new NexusMessageTooLargeException(bodyLength, SendMaxMessageSize);
+
+        var buffer = ArrayPool<byte>.Shared.Rent((int)bodyLength);
+        _bufferWriter.GetBuffer().Slice(3).CopyTo(buffer);
+        return new LargeMessage(buffer, (int)bodyLength, key.Id, key.Kind, TMessage.Type);
+    }
+
+    /// <summary>
+    /// Streams a staged body as MessageStart and MessageChunk frames, taking the write mutex once per frame so other
+    /// senders interleave. Stops on the receiver's abort (answering with Ack) or the caller's cancellation (sending
+    /// Cancelled); no chunk follows either.
+    /// </summary>
+    private async ValueTask SendLargeMessage(LargeMessage message, CancellationToken cancellationToken)
+    {
+        var key = message.InvocationId | ((int)message.Kind << 16);
+        var stream = new OutgoingLargeMessage();
+        try
+        {
+            if (!_outgoingLargeMessages.TryAdd(key, stream))
+                throw new InvalidOperationException($"A large {message.Kind} for invocation {message.InvocationId} is already being sent.");
+
+            using (var start = _poolManager.Rent<MessageStartMessage>())
+            {
+                start.InvocationId = message.InvocationId;
+                start.Kind = message.Kind;
+                start.InnerType = message.InnerType;
+                start.TotalLength = (uint)message.Length;
+                await SendMessage(start).ConfigureAwait(false);
+            }
+
+            var header = new byte[3];
+            BinaryPrimitives.WriteUInt16LittleEndian(header, message.InvocationId);
+            header[2] = (byte)message.Kind;
+
+            for (var offset = 0; offset < message.Length;)
+            {
+                if (State != ConnectionState.Connected)
+                    return;
+
+                if (stream.Aborted)
+                {
+                    await SendAbort(message.InvocationId, message.Kind, LargeMessageAbortReason.Ack).ConfigureAwait(false);
+                    return;
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    await SendAbort(message.InvocationId, message.Kind, LargeMessageAbortReason.Cancelled).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                var count = Math.Min(message.Length - offset, ushort.MaxValue);
+                await SendHeaderWithBody(MessageType.MessageChunk, header, new ReadOnlySequence<byte>(message.Buffer!, offset, count)).ConfigureAwait(false);
+                offset += count;
+            }
+        }
+        finally
+        {
+            _outgoingLargeMessages.TryRemove(new KeyValuePair<int, OutgoingLargeMessage>(key, stream));
+            ArrayPool<byte>.Shared.Return(message.Buffer!);
+        }
+    }
+
+    private async ValueTask SendAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
+    {
+        using var abort = _poolManager.Rent<MessageAbortMessage>();
+        abort.InvocationId = invocationId;
+        abort.Kind = kind;
+        abort.Reason = reason;
+        await SendMessage(abort).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A large message this side is sending; the receiver can abort it.
+    /// </summary>
+    private sealed class OutgoingLargeMessage
+    {
+        private int _aborted;
+        public bool Aborted => Volatile.Read(ref _aborted) == 1;
+        public void Abort() => Volatile.Write(ref _aborted, 1);
+    }
 
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
     {
