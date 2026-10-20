@@ -377,6 +377,10 @@ public static class FlowHarness
         private long _invocationsSent;
         private bool _ackCloses = true;
         private bool _strictWrites;
+
+        // Pipes the server may rightly stop taking data on: this client changed their state (completed, reset, ...)
+        // or sent them data their reader can't accept (which resets a channel).
+        private readonly HashSet<ushort> _stateChanged = [];
         private string? _writeStall;
         private ushort _nextInvocationId = 1;
         private byte _nextPipeId = 1;
@@ -427,7 +431,7 @@ public static class FlowHarness
                 {
                     var data = new byte[Sizes[b % Sizes.Length]];
                     data.AsSpan().Fill(c);
-                    PipeWrite(PipeId(a, c), data);
+                    PipeWrite(PipeId(a, c), data, suits: FlowPipe.Drain);
                     return _writeStall;
                 }
 
@@ -438,15 +442,17 @@ public static class FlowHarness
                     var stream = new byte[(long)item.Length * count > MaxBytesPerInput ? item.Length : item.Length * count];
                     for (var offset = 0; offset < stream.Length; offset += item.Length)
                         item.CopyTo(stream, offset);
-                    PipeWrite(PipeId(a, 0), stream);
+                    PipeWrite(PipeId(a, 0), stream, suits: FlowPipe.SlowItems);
                     return _writeStall;
                 }
 
                 case FlowOp.PipeState:
+                    _stateChanged.Add(PipeId(a, c));
                     SendPipeState(PipeId(a, c), (NexusDuplexPipe.State)b);
                     return null;
 
                 case FlowOp.Complete:
+                    _stateChanged.Add(PipeId(a, c));
                     SendPipeState(PipeId(a, c), NexusDuplexPipe.State.ClientWriterServerReaderComplete);
                     return null;
 
@@ -584,7 +590,7 @@ public static class FlowHarness
                         var d => d,
                     };
                     PipeWrite(PipeId(a, 0), Framed(item, delta));
-                    return _writeStall;
+                    return null;
                 }
 
                 case FlowOp.InvokeIgnoringCredit:
@@ -689,13 +695,19 @@ public static class FlowHarness
         /// <see cref="CreditWait"/> for more, and gives up on the rest when none comes. An unknown pipe ID, or
         /// <paramref name="respectCredit"/> false, sends everything regardless.
         /// </summary>
-        private void PipeWrite(ushort pipeId, ReadOnlySpan<byte> data, bool respectCredit = true)
+        /// <param name="suits">The pipe kind this data is well-formed for (raw bytes for Drain, channel items for
+        /// SlowItems), or null for data no reader accepts.</param>
+        private void PipeWrite(ushort pipeId, ReadOnlySpan<byte> data, bool respectCredit = true, FlowPipe? suits = null)
         {
             var index = _pipes.FindIndex(p => p.FullId == pipeId);
             var limited = respectCredit && index >= 0;
 
-            // Only a pipe the server reads can be required to take all the data.
-            var strict = _strictWrites && index >= 0 && _pipes[index].Kind is FlowPipe.Drain or FlowPipe.SlowItems;
+            // Data the pipe's reader can't accept may reset it; after that the server need not take more.
+            if (index >= 0 && _pipes[index].Kind != suits)
+                _stateChanged.Add(pipeId);
+
+            // Only a pipe the server reads, given only data it accepts, can be required to take all of it.
+            var strict = _strictWrites && index >= 0 && _pipes[index].Kind == suits && !_stateChanged.Contains(pipeId);
             var sent = _sent.GetValueOrDefault(pipeId);
             while (data.Length > 0)
             {
