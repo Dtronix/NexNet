@@ -12,6 +12,8 @@
   href: duplex-pipes.md
 - name: Channels
   href: channels.md
+- name: Limits & Flow Control
+  href: limits-and-flow-control.md
 - name: Authentication
   href: authentication.md
 - name: Authorization
@@ -26,3 +28,5 @@
   href: rate-limiting.md
 - name: Benchmarks
   href: benchmarks.md
+- name: Release Notes
+  href: releases/toc.yml

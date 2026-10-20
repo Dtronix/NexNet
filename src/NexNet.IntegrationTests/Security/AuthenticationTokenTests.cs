@@ -10,7 +10,7 @@ namespace NexNet.IntegrationTests.Security;
 
 internal class AuthenticationTokenTests : BaseTests
 {
-    private const int MaxAuthenticationTokenSize = 8192; // 8KB max - must match NexusSession.MaxAuthenticationTokenSize
+    private const int MaxAuthenticationTokenSize = IClientGreetingMessageBase.MaxAuthenticationTokenSize;
 
     [Test]
     public async Task AuthenticationToken_AtLimit_Succeeds()

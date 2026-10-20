@@ -1,5 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
+using NexNet.Messages;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Pipes;
@@ -85,6 +88,48 @@ internal interface INexusSession : ISessionMessenger
     /// <param name="timeoutTicks">Normally use <c>Config.Time.GetTickCount64() - Config.Timeout</c>.</param>
     /// <returns>True upon successful disconnection due to timeout.  False otherwise.</returns>
     bool DisconnectIfTimeout(long timeoutTicks);
+
+    /// <summary>
+    /// Receive memory budget for this session.
+    /// </summary>
+    SessionBudget Budget { get; }
+
+    /// <summary>
+    /// Largest argument, result or channel item this side may send: the smaller of its own and the peer's
+    /// MaxMessageSize.
+    /// </summary>
+    int SendMaxMessageSize { get; }
+
+    /// <summary>
+    /// Sends an invocation once the peer has credit for it (docs/internals/flow-control.md, section 4.7). Waits
+    /// for credit in the caller's task, never in the read loop.
+    /// </summary>
+    /// <param name="message">The invocation.</param>
+    /// <param name="cancellationToken">Cancels the wait for credit.</param>
+    /// <param name="creditTimeout">Gives up when no credit comes within this time; null waits until the session
+    /// ends.</param>
+    /// <returns>False if the invocation was not sent: the session ended, or no credit came in time.</returns>
+    ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase;
+
+    /// <summary>
+    /// Writes an invocation to the session's output if that needs no waiting: the peer has credit, no other send
+    /// is in progress (including a flush to a backed-up transport) and the arguments fit in one frame. Like
+    /// <c>ChannelWriter.TryWrite</c>, <see cref="InvocationWriteResult.Written"/> means the invocation is committed
+    /// to the output in order, not that the peer has received it.
+    /// </summary>
+    /// <param name="message">The invocation. Not modified, so one message can be written to several sessions.</param>
+    /// <param name="frame">The invocation already encoded as a frame (<see cref="MessageFrame"/>), copied instead of
+    /// encoding <paramref name="message"/> again; empty to encode it.</param>
+    /// <returns><see cref="InvocationWriteResult.Busy"/> if writing would have to wait; nothing was taken or written.
+    /// Use <see cref="SendInvocation{TMessage}"/> to wait.</returns>
+    InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message, ReadOnlySpan<byte> frame = default)
+        where TMessage : IInvocationMessage, IMessageBase;
+
+    /// <summary>
+    /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.
+    /// </summary>
+    SessionControlSender ControlSender { get; }
 }
 
 /// <summary>

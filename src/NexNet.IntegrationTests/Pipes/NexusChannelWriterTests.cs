@@ -14,7 +14,7 @@ internal class NexusChannelWriterTests
     public async Task WritesData()
     {
         var messenger = new DummySessionMessenger();
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue).WithCredit();
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -26,7 +26,7 @@ internal class NexusChannelWriterTests
 
         await writer.WriteAsync(baseObject).Timeout(1);
 
-        var message = TestSerialization.DeserializePayload<ComplexMessage>(bufferWriter.GetBuffer());
+        var message = TestSerialization.DeserializeChannelItem<ComplexMessage>(bufferWriter.GetBuffer());
 
         Assert.That(message, Is.EqualTo(baseObject));
     }
@@ -35,7 +35,7 @@ internal class NexusChannelWriterTests
     public async Task WritesDataWithPartialFlush()
     {
         var messenger = new DummySessionMessenger();
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1);
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1).WithCredit();
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
         var bufferWriter = BufferWriter<byte>.Create();
         var baseObject = ComplexMessage.Random();
@@ -47,18 +47,36 @@ internal class NexusChannelWriterTests
 
         await writer.WriteAsync(baseObject).Timeout(1);
 
-        var message = TestSerialization.DeserializePayload<ComplexMessage>(bufferWriter.GetBuffer());
+        var message = TestSerialization.DeserializeChannelItem<ComplexMessage>(bufferWriter.GetBuffer());
 
         Assert.That(message, Is.EqualTo(baseObject));
     }
 
     [Test]
+    public async Task ItemLargerThanThePeerAccepts_ThrowsAndTheChannelStaysUsable()
+    {
+        var messenger = new DummySessionMessenger();
+        var sent = 0;
+        messenger.OnMessageSent = (_, _, body) =>
+        {
+            sent += (int)body.Length;
+            return ValueTask.CompletedTask;
+        };
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue).WithCredit();
+        var writer = new NexusChannelWriter<byte[]>(nexusPipeWriter, maxItemSize: 100);
+
+        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[200]), Throws.InstanceOf<NexusMessageTooLargeException>());
+        Assert.That(sent, Is.Zero);
+
+        Assert.That(await writer.WriteAsync(new byte[10]).Timeout(1), Is.True);
+        Assert.That(sent, Is.EqualTo(1 + 12)); // prefix + bin8 header + 10 bytes
+    }
+
+    [Test]
     public async Task WritesCancels()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
-        {
-            PauseWriting = true
-        };
+        // No credit: the write waits until it is cancelled.
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue);
 
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
 
@@ -72,10 +90,8 @@ internal class NexusChannelWriterTests
     [Test]
     public async Task WritesCancelsImmediately()
     {
-        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue)
-        {
-            PauseWriting = true
-        };
+        // No credit: the write waits until it is cancelled.
+        var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, new DummySessionMessenger(), true, ushort.MaxValue);
 
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
 

@@ -52,7 +52,17 @@ Groups are automatically cleaned up when sessions disconnect. You don't need to 
 
 ## Ping and Keep-Alive
 
-NexNet includes a built-in ping system to detect connection timeouts from both the client and server side. Ping messages are sent periodically, and if a response is not received within the configured timeout, the connection is considered lost.
+NexNet includes a built-in ping system to detect connection timeouts from both the client and server side. Ping messages are sent periodically (`ClientConfig.PingInterval`, 10 seconds by default), and if nothing is received within `ConfigBase.Timeout` (30 seconds by default), the connection is considered lost.
+
+## Timeouts
+
+| Setting | Default | Disconnects when |
+|---------|---------|------------------|
+| `Timeout` | 30 s | Nothing is received from the peer, including pings. |
+| `HandshakeTimeout` | 15 s | The connection is not established and authenticated in time. |
+| `ProgressTimeout` | 30 s | An operation that holds session memory stops making progress: a large argument or result being received, a channel item larger than its pipe's window, a pipe close the peer does not confirm, or a send to the transport that does not complete. The reason is `DisconnectReason.Stalled`. |
+
+Waiting for a slow reader is not a stall: a pipe writer waits for credit as long as the reader takes. See [Limits and Flow Control](limits-and-flow-control.md).
 
 ## Automatic Reconnection
 
@@ -69,3 +79,4 @@ During reconnection:
 - [Hub Invocations](hub-invocations.md) — Method patterns and broadcasting
 - [Synchronized Collections](synchronized-collections.md) — Data sync across sessions
 - [Authentication](authentication.md) — Securing session connections
+- [Limits and Flow Control](limits-and-flow-control.md) — Session memory, pipe windows and timeouts

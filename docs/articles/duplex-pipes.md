@@ -1,11 +1,11 @@
 # Duplex Pipes
 
-NexNet has a limitation where the total serialized argument size cannot exceed 65,526 bytes. For larger data transfers, NexNet provides built-in duplex pipe support via the `INexusDuplexPipe` argument, allowing bidirectional byte streaming between server and client.
+Method arguments and results are limited to `ConfigBase.MaxMessageSize` (4 MiB by default) and are held in memory whole. For larger or continuous data transfers, NexNet provides built-in duplex pipe support via the `INexusDuplexPipe` argument, allowing bidirectional byte streaming between server and client.
 
 ## When to Use Duplex Pipes
 
 Use duplex pipes when you need to:
-- Transfer data larger than the 65,526-byte argument limit
+- Transfer data larger than `MaxMessageSize`, or that should not be held in memory at once
 - Stream data continuously (e.g., file transfers)
 - Send and receive byte data simultaneously
 
@@ -58,11 +58,18 @@ partial class ServerNexus
 
 As with `System.IO.Pipelines`, the `INexusDuplexPipe` is **not thread safe**. You are responsible for ensuring that member calls do not overlap. Do not read and write from multiple threads simultaneously without synchronization.
 
-## Congestion Control
+## Flow Control
 
-NexNet duplex pipes include built-in congestion control. When the receiving side cannot process data fast enough, backpressure is applied to the sender automatically through the pipeline flow control mechanism.
+Each direction of a pipe has a receive window (`ConfigBase.PipeWindow`, 256 KiB by default, 1 MiB with trusted serializer options). A writer only sends what the reader has granted, and waits in its own `FlushAsync` for more; the reader grants credit back as it consumes data. A slow reader therefore slows only its own pipe: other pipes, invocations and pings on the session are unaffected. Pass a `CancellationToken` to `WriteAsync`/`FlushAsync` to stop waiting.
+
+Each session holds at most `ConfigBase.MaxPipes` pipes (32 by default), and every open pipe's window is reserved from the session budget (`ConfigBase.SessionBudget`). Opening a pipe beyond either limit fails with `NexusBusyException` (from `CreatePipe`, or from `ReadyTask` when the remote side refuses it); the session stays connected.
+
+If you frame your own messages on a raw pipe, a message must fit in the window. Channels handle larger items themselves.
+
+A pipe has at most one window in flight, so over a link with a long round-trip time its throughput is limited to the window divided by the round-trip time. See [Limits and Flow Control](limits-and-flow-control.md) for sizing the window and the session budget.
 
 ## See Also
 
 - [Channels](channels.md) — Type-safe streaming built on top of duplex pipes
+- [Limits and Flow Control](limits-and-flow-control.md) — Windows, session budget and timeouts
 - [Hub Invocations](hub-invocations.md) — Method compatibility table for pipe arguments

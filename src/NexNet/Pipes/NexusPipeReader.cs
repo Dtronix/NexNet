@@ -26,17 +26,24 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private bool _isCompleted;
     private bool _isCanceled;
 
-    private readonly int _highWaterMark;
-    private readonly int _highWaterCutoff;
-    private readonly int _lowWaterMark;
+    // Receive window (docs/internals/flow-control.md, section 4.4). _credit is what the peer may still send;
+    // consumed bytes are granted back once they reach half the window. Guarded by _bufferLock.
+    private readonly int _window;
+    private long _credit;
+    private long _consumedSinceGrant;
 
-    private readonly NexusDuplexPipe.State _backPressureFlag;
+    // Extra credit granted for an item larger than the window (section 4.5), backed by a budget reservation. Consumed
+    // bytes pay it off first; they are not granted back.
+    private long _extraOutstanding;
+
+    // When data last arrived (TimeProvider tick count); with extra credit outstanding, no data is a stall.
+    private long _lastDataTicks;
+
     private readonly NexusDuplexPipe.State _writingCompleteFlag;
     private readonly INexusLogger? _logger;
     private readonly TimeProvider _time;
     private long _examinedPosition;
     private long _bufferTailPosition;
-    private int _receiveCounter;
 
     /// <summary>
     /// Length of data that has been buffered.
@@ -59,21 +66,14 @@ internal class NexusPipeReader : PipeReader, IDisposable
         IPipeStateManager stateManager,
         INexusLogger? logger,
         bool isServer,
-        int highWaterMark,
-        int highWaterCutoff,
-        int lowWaterMark,
+        int window,
         TimeProvider? time = null)
     {
         _stateManager = stateManager;
         _cancelReadingArgs = new CancellationRegistrationArgs(_readSemaphore);
         _logger = logger;
         _time = time ?? TimeProvider.System;
-        _highWaterMark = highWaterMark; //_session!.Config.NexusPipeHighWaterMark;
-        _highWaterCutoff = highWaterCutoff; //_session!.Config.NexusPipeHighWaterCutoff;
-        _lowWaterMark = lowWaterMark; //_session!.Config.NexusPipeLowWaterMark;
-        _backPressureFlag = !isServer
-            ? NexusDuplexPipe.State.ServerWriterPause
-            : NexusDuplexPipe.State.ClientWriterPause;
+        _window = window;
 
         _writingCompleteFlag = isServer
             ? NexusDuplexPipe.State.ClientWriterServerReaderComplete
@@ -82,96 +82,142 @@ internal class NexusPipeReader : PipeReader, IDisposable
     }
 
     /// <summary>
-    /// Buffers incoming data to the reader and notifies the reader that data is available.
+    /// The receive window: bytes the peer may have in flight or buffered here.
+    /// </summary>
+    public int Window => _window;
+
+    /// <summary>
+    /// Opens the window: the peer may now send <see cref="Window"/> bytes. Called when the window is granted.
+    /// </summary>
+    public void OpenWindow()
+    {
+        lock (_bufferLock)
+            _credit = _window;
+    }
+
+    /// <summary>
+    /// Buffers incoming data to the reader and notifies the reader that data is available. Never waits: the peer
+    /// only sends what it has credit for, and the space for that is reserved.
     /// </summary>
     /// <param name="data">The incoming data as a ReadOnlySequence of bytes.</param>
-    /// <returns>The length of the buffered data.</returns>
-    public async ValueTask<NexusPipeBufferResult> BufferData(ReadOnlySequence<byte> data)
+    /// <returns>The result of the buffering; <see cref="NexusPipeBufferResult.CreditExceeded"/> is a protocol
+    /// violation by the peer.</returns>
+    public NexusPipeBufferResult BufferData(ReadOnlySequence<byte> data)
     {
-        
-        // TODO: Remove!
-        Interlocked.Increment(ref _receiveCounter);
-        //_logger?.LogTrace($"Receiving[id:{bufferId}] {data.Length} bytes [{string.Join(",", data.ToArray())}]");
-        //using var lockToken = _readLock.TryWait(MutexSlim.WaitOptions.NoDelay);
         var length = (int)data.Length;
-        var bufferLength = _buffer.Length + length;
-
-        if (_highWaterCutoff != 0 && bufferLength >= _highWaterCutoff)
-        {
-            // Ensure the connection is not completed.
-            if (_isCompleted)
-                return NexusPipeBufferResult.DataIgnored;
-
-            //_logger?.LogInfo($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high water cutoff of {_highWaterCutoff}");
-            //Todo: Review changing this out for a latch instead of a loop.
-            int loopCount = 0;
-            while (!_isCompleted)
-            {
-                _logger?.LogInfo($"Pipe {_stateManager.Id} waiting for low watermark completion. Loop {loopCount}");
-                // Do a short delay to allow the other side to process the data and progressively increase the delay.
-                var delayMs = loopCount < 2
-                    ? 1
-                    : loopCount < 10
-                        ? 5
-                        : loopCount < 50
-                            ? 10
-                            : 100;
-                await Task.Delay(TimeSpan.FromMilliseconds(delayMs), _time).ConfigureAwait(false);
-
-                loopCount++;
-
-                // Check to see if the back pressure flag was removed.  If so, then we can exit the waiting loop.
-                if (_buffer.Length + length < _lowWaterMark)
-                    break;
-            }
-
-            // Ensure the connection is not completed.
-            if(_isCompleted)
-                return NexusPipeBufferResult.DataIgnored;
-
-            // If we have the back pressure flag, then we have not yet reached the low watermark.
-            //if (_stateManager.CurrentState.HasFlag(_backPressureFlag))
-            //{
-            //    //return NexusPipeBufferResult.HighCutoffReached;
-            //}
-        }
 
         lock (_bufferLock)
         {
-            _bufferTailPosition += length;
+            if (length > _credit)
+                return NexusPipeBufferResult.CreditExceeded;
 
-            // Get the updated length which may have changed while we were waiting.
-            bufferLength = _buffer.Length + length;
+            // Discarded data still used credit; it is not granted back, as the peer stops sending once it learns
+            // this side completed.
+            _credit -= length;
 
             if (_isCompleted)
             {
-                _logger?.LogTrace($"Already completed. Cancelling buffering.");
+                _logger?.LogTrace($"Already completed. Discarded {length} bytes.");
                 return NexusPipeBufferResult.DataIgnored;
             }
 
-            _logger?.LogTrace($"Buffered {length} new bytes.");
-
-            // Copy the data to the buffer.
+            _bufferTailPosition += length;
             data.CopyTo(_buffer.GetSpan(length));
             _buffer.Advance(length);
+            _lastDataTicks = _time.GetTickCount64();
         }
 
-        // If we have reached the high watermark, then notify the other side of the pipe.
-        if (_highWaterMark != 0 && bufferLength >= _highWaterMark)
-        {
-            _logger?.LogDebug($"Pipe {_stateManager.Id} has buffered {bufferLength} bytes of data and exceed the high watermark of {_highWaterMark}");
-
-            if (_stateManager.UpdateState(_backPressureFlag))
-                await _stateManager.NotifyState().ConfigureAwait(false);
-
-            return NexusPipeBufferResult.HighWatermarkReached;
-        }
-
-        //Interlocked.Increment(ref _stateId);
         Internals.Threading.Utilities.TryReleaseSemaphore(_readSemaphore);
-
         return NexusPipeBufferResult.Success;
     }
+
+    /// <summary>
+    /// Records <paramref name="released"/> consumed bytes and grants credit back to the peer once at least half the
+    /// window has been consumed since the last grant. Called with <see cref="_bufferLock"/> held.
+    /// </summary>
+    private void OnConsumed(long released)
+    {
+        if (released <= 0)
+            return;
+
+        if (_extraOutstanding > 0)
+        {
+            var paid = Math.Min(released, _extraOutstanding);
+            _extraOutstanding -= paid;
+            released -= paid;
+            _stateManager.ReleaseExtra((int)paid);
+        }
+
+        if (released <= 0 || _isCompleted)
+            return;
+
+        _consumedSinceGrant += released;
+        if (_consumedSinceGrant < _window / 2)
+            return;
+
+        var grant = (int)_consumedSinceGrant;
+        _consumedSinceGrant = 0;
+        _credit += grant;
+        _stateManager.GrantCredit(grant);
+    }
+
+    /// <summary>
+    /// Makes sure the writer can send <paramref name="missing"/> more bytes: if the credit it still holds is less,
+    /// grants everything consumed but not yet granted back, without waiting for half the window. Called when the
+    /// reader is waiting for the rest of an item.
+    /// </summary>
+    public void EnsureCredit(long missing)
+    {
+        lock (_bufferLock)
+        {
+            if (_credit >= missing || _consumedSinceGrant <= 0 || _isCompleted)
+                return;
+
+            var grant = (int)_consumedSinceGrant;
+            _consumedSinceGrant = 0;
+            _credit += grant;
+            _stateManager.GrantCredit(grant);
+        }
+    }
+
+    /// <summary>
+    /// Makes room for an item larger than the window: reserves <paramref name="extra"/> bytes from the session budget,
+    /// all at once (waiting in FIFO order until it fits), and grants them as extra credit. Does nothing while an
+    /// earlier extra grant is still outstanding. Returns false if the wait was canceled.
+    /// </summary>
+    public async ValueTask<bool> GrantExtraAsync(int extra, CancellationToken cancellationToken)
+    {
+        if (Interlocked.Read(ref _extraOutstanding) > 0)
+            return true;
+
+        if (!await _stateManager.ReserveExtraAsync(extra, cancellationToken).ConfigureAwait(false))
+            return false;
+
+        lock (_bufferLock)
+        {
+            _extraOutstanding += extra;
+            _credit += extra;
+            _lastDataTicks = _time.GetTickCount64();
+        }
+
+        _stateManager.GrantCredit(extra);
+        return true;
+    }
+
+    /// <summary>
+    /// True if extra credit was granted for an oversized item and no data arrived for longer than
+    /// <paramref name="timeoutTicks"/>: the writer has the credit to send, so it is not waiting on this side.
+    /// </summary>
+    public bool IsItemStalled(long nowTicks, long timeoutTicks)
+    {
+        lock (_bufferLock)
+            return _extraOutstanding > 0 && !_isCompleted && nowTicks - _lastDataTicks > timeoutTicks;
+    }
+
+    /// <summary>
+    /// Resets the pipe this reader belongs to; see <see cref="IPipeStateManager.Reset"/>.
+    /// </summary>
+    public void ResetPipe() => _stateManager.Reset();
 
     public override ValueTask CompleteAsync(Exception? exception = null)
     {
@@ -350,31 +396,8 @@ internal class NexusPipeReader : PipeReader, IDisposable
         }
 
         ReadOnlySequence<byte> readOnlySequence;
-        long bufferLength;
         lock (_bufferLock)
-        {
             readOnlySequence = _buffer.GetBuffer();
-            bufferLength = _buffer.Length;
-        }
-
-        // If we currently have back-pressure, and the buffer length is below the low watermark, then we need to
-        // notify the other side that we are ready to receive more data.
-        // ignore the back pressure if the completed flag is set.
-        if (_isCompleted == false
-            && _lowWaterMark != 0
-            && _stateManager.CurrentState.HasFlag(_backPressureFlag) 
-            && bufferLength <= _lowWaterMark)
-        {
-            // Remove the flag and notify the other side.
-            if (_stateManager.UpdateState(_backPressureFlag, true))
-            {
-                await _stateManager.NotifyState().ConfigureAwait(false);
-
-                //_logger?.LogInfo("Allow");
-                // Set the task completion source to allow the next write to continue then assign a new one.
-                //_allowBuffer.TrySetResult();
-            }
-        }
 
         return new ReadResult(readOnlySequence, cancellationToken.IsCancellationRequested, _isCompleted);
     }
@@ -406,7 +429,9 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
         lock (_bufferLock)
         {
+            var before = _buffer.Length;
             _buffer.ReleaseTo(consumed);
+            OnConsumed(before - _buffer.Length);
         }
     }
 
@@ -417,9 +442,12 @@ internal class NexusPipeReader : PipeReader, IDisposable
         lock (_bufferLock)
         {
             _examinedPosition += examined;
-            
-            if(consumed > 0)
+
+            if (consumed > 0)
+            {
                 _buffer.ReleaseTo(consumed);
+                OnConsumed(consumed);
+            }
         }
     }
 
@@ -441,7 +469,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
                 _examinedPosition = examinedAbsolute;
 
             if (consumed > 0)
+            {
                 _buffer.ReleaseTo((int)consumed);
+                OnConsumed(consumed);
+            }
         }
     }
 

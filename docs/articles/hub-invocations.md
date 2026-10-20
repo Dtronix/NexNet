@@ -35,7 +35,8 @@ Some argument types have restrictions on how they can be combined. The source ge
 **Rules:**
 - `CancellationToken` cannot be combined with `INexusDuplexPipe` or `INexusDuplexChannel<T>` because pipes and channels have built-in cancellation/completion notifications.
 - `CancellationToken` must be the last parameter, following standard .NET conventions.
-- The total serialized argument size cannot exceed 65,526 bytes. For larger data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
+- Arguments and results may each be up to `ConfigBase.MaxMessageSize` (4 MiB by default, the smaller of both sides' settings). Values larger than one 64 KiB frame are streamed automatically. A larger value fails the call with `NexusMessageTooLargeException`, and a value the receiver has no memory for right now fails it with `NexusBusyException`; the session stays connected in both cases. For larger or continuous data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
+- The receiving side queues a limited number of invocations per session (`ConfigBase.InvocationCredits`) and runs `MaxConcurrentConnectionInvocations` of them at a time. When the queue is full, a call waits until a slot frees up. See [Limits and Flow Control](limits-and-flow-control.md).
 - Argument and return types must be serializable: built-in types, `[NexusObject]` types, or types with a registered formatter. See [Serialization](serialization.md).
 
 ## Cancellation
@@ -49,7 +50,9 @@ public interface IServerNexus
 }
 ```
 
-Cancelling the token on the caller side propagates the cancellation to the remote method.
+Cancelling the token on the caller side propagates the cancellation to the remote method. Each call is canceled individually, also when several calls to the same method are running.
+
+When a method is invoked without waiting for its result (a broadcast, or a `ValueTask` method invoked on several clients), the caller can't cancel it. Its token is canceled when the session ends.
 
 ## Server Broadcasting
 
@@ -69,6 +72,8 @@ partial class ServerNexus
     }
 }
 ```
+
+A broadcast is written straight away to every client that can take it; clients that are behind are waited for together, for at most `ConfigBase.ProgressTimeout`, so a slow client does not delay the others. See [Limits and Flow Control](limits-and-flow-control.md#invocations).
 
 ## See Also
 

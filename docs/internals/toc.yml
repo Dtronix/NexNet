@@ -1,2 +1,4 @@
 - name: Wire Protocol
   href: protocol-specification.md
+- name: Flow Control (design)
+  href: flow-control.md

@@ -210,7 +210,7 @@ internal static class NexusEmitter
                                     {
                                         if(cts!= null)
                                         {
-                                            methodInvoker.ReturnCancellationToken(message.InvocationId);
+                                            methodInvoker.ReturnCancellationToken(message, cts);
                                         }
 
                                         if (duplexPipe != null)

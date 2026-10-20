@@ -31,9 +31,12 @@ public ref struct MsgPackReader
     private long _segmentStart;                 // bytes of the sequence before _span[0]
     private SequencePosition _segmentPosition;  // position of _span[0]
     private SequencePosition _nextSegment;      // where the next segment is fetched from; default when none
-    private readonly long _length;
+    private long _length;
     private readonly NexusSerializerOptions _options;
     private int _depth;
+
+    // Array elements and map entries read so far, checked against NexusSerializerOptions.MaxElements.
+    private long _elements;
 
     /// <summary>
     /// Creates a reader over the specified sequence.
@@ -85,6 +88,18 @@ public ref struct MsgPackReader
         _segmentStart = 0;
         _segmentPosition = _sequence.Start;
         _nextSegment = default;
+    }
+
+    /// <summary>
+    /// Limits the reader to the bytes before <paramref name="end"/> (counted from the start of the sequence, at most
+    /// its length) and restarts the <see cref="NexusSerializerOptions.MaxElements"/> count. Used to read one
+    /// length-delimited value of a larger buffer at a time. Length checks stop at the limit; the caller checks
+    /// <see cref="Consumed"/> afterwards, as a value may still read past it.
+    /// </summary>
+    internal void LimitTo(long end)
+    {
+        _length = end;
+        _elements = 0;
     }
 
     /// <summary>
@@ -772,7 +787,18 @@ public ref struct MsgPackReader
         if (count > RemainingCore)
             throw NexusSerializationException.LengthExceedsRemaining(count, RemainingCore);
 
+        CountElements(count);
         return (int)count;
+    }
+
+    /// <summary>
+    /// Adds to the cumulative element count of the value being read.
+    /// </summary>
+    private void CountElements(long count)
+    {
+        var max = _options.MaxElements;
+        if (max > 0 && (_elements += count) > max)
+            throw NexusSerializationException.ElementsExceeded(max);
     }
 
     /// <summary>
@@ -804,6 +830,7 @@ public ref struct MsgPackReader
         if (count * 2 > RemainingCore)
             throw NexusSerializationException.LengthExceedsRemaining(count * 2, RemainingCore);
 
+        CountElements(count * 2);
         return (int)count;
     }
 
@@ -1063,30 +1090,6 @@ public ref struct MsgPackReader
         }
 
         return TrySkipAcrossSegments();
-    }
-
-    /// <summary>
-    /// Gets the length in bytes of the next value without consuming it. Returns false if the value is incomplete.
-    /// Throws on malformed data (e.g. 0xc1).
-    /// </summary>
-    internal readonly bool TryGetNextValueLength(out long length)
-    {
-        var end = SkipInSpan(_span, _index);
-        if (end >= 0)
-        {
-            length = end - _index;
-            return true;
-        }
-
-        var probe = this;
-        if (!probe.TrySkipAcrossSegments())
-        {
-            length = 0;
-            return false;
-        }
-
-        length = probe.ConsumedCore - ConsumedCore;
-        return true;
     }
 
     /// <summary>

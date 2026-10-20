@@ -74,4 +74,14 @@ public enum DisconnectReason : byte
     /// Connection was disconnected due to an unauthorized method invocation.
     /// </summary>
     Unauthorized = MessageType.DisconnectUnauthorized,
+
+    /// <summary>
+    /// The peer sent more than the credit it was granted on a pipe.
+    /// </summary>
+    FlowControl = MessageType.DisconnectFlowControl,
+
+    /// <summary>
+    /// The session made no progress within <see cref="NexNet.Transports.ConfigBase.ProgressTimeout"/>.
+    /// </summary>
+    Stalled = MessageType.DisconnectStalled,
 }

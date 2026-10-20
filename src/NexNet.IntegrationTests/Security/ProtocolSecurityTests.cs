@@ -67,10 +67,19 @@ internal class ProtocolSecurityTests : BaseTests
         await client.SendMessageAsync(clientGreeting).Timeout(1);
         await client.SendMessageAsync(clientGreeting).Timeout(1);
 
-        // Ignore the message
-        await client.AssertReceiveMessageAsync<ServerGreetingMessage>();
-
-        await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+        // The handshake completes off the read loop, so the server greeting may or may not be sent before the
+        // second greeting is rejected.
+        var type = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
+        Assert.That(type.TryRead<byte>("type", out var typeValue), Is.True);
+        if (typeValue == (byte)MessageType.ServerGreeting)
+        {
+            await client.AssertReadSuccess("[body_length:ushort][body:body_length]").Timeout(1);
+            await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
+        }
+        else
+        {
+            Assert.That(typeValue, Is.EqualTo((byte)DisconnectReason.ProtocolError));
+        }
     }
     
     [Test]

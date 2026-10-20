@@ -39,6 +39,14 @@ var serverConfig = new TcpServerConfig
 - **Automatic temporary banning** — Repeat offenders are banned for a configurable duration
 - **IP whitelisting** — Trusted infrastructure can be exempted from rate limits
 
+## Unauthenticated Connections
+
+Independently of `RateLimiting`, a server limits connections that have not finished connecting and authenticating:
+
+- `ServerConfig.MaxPendingHandshakes` (256 by default, server-wide) caps how many such connections exist at once. While the limit is reached, new transports are closed immediately. It also bounds concurrent `OnAuthenticate` calls, so `HandshakeTimeout` must cover the application's authentication latency.
+- Before a connection is established, any message larger than 16 KiB is rejected before it is buffered.
+- Connections that fail before authenticating are logged as one aggregated warning per interval, never one by one, and the log contains nothing the peer sent.
+
 ## Transport Compatibility
 
 Rate limiting works across all transport types (TCP, TLS, UDS, WebSocket, HttpSocket, QUIC). Per-IP limits are automatically skipped for Unix Domain Sockets, where IP addresses are not applicable.
@@ -46,4 +54,5 @@ Rate limiting works across all transport types (TCP, TLS, UDS, WebSocket, HttpSo
 ## See Also
 
 - [Transports](transports.md) — Transport types and selection guide
+- [Limits and Flow Control](limits-and-flow-control.md) — Per-session limits after a connection is established
 - [Authentication](authentication.md) — Combine rate limiting with authentication for layered security

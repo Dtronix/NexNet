@@ -53,9 +53,11 @@ public sealed record NexusSerializerOptions
     public bool StrictUtf8 { get; init; } = true;
 
     /// <summary>
-    /// Maximum number of bytes a single channel item may buffer before it is considered hostile. Defaults to 16 MiB.
+    /// Most array elements and map entries (counted cumulatively) one value may contain; 0 means no limit, the default.
+    /// Client and server configurations resolve 0 to <c>max(65536, ConfigBase.MaxMessageSize / 16)</c>, so data from
+    /// a peer is always limited.
     /// </summary>
-    public int MaxBufferedItemSize { get; init; } = 16 * 1024 * 1024;
+    public int MaxElements { get; init; }
 
     /// <summary>
     /// True when dictionaries and sets with non-string keys use randomized hash comparers.

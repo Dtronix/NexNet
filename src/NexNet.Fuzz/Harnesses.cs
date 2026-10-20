@@ -22,6 +22,7 @@ public static class Harnesses
         ["formatters"] = GeneratedFormatters,
         ["builtins"] = BuiltInFormatters,
         ["session"] = SessionHarness.Run,
+        ["flow"] = FlowHarness.Run,
     };
 
     /// <summary>
@@ -124,13 +125,29 @@ public static class Harnesses
     }
 
     /// <summary>
-    /// The channel reader over the input split at arbitrary chunk boundaries.
+    /// The channel reader over the input split at arbitrary chunk boundaries. An item over the limit is an expected
+    /// rejection too.
     /// </summary>
     public static void Channel(byte[] data)
     {
         Expect(() =>
         {
-            var pipeReader = new NexusPipeReader(new FuzzPipeStateManager(), null, true, 0, 0, 0);
+            try
+            {
+                ChannelCore(data);
+            }
+            catch (NexusMessageTooLargeException)
+            {
+                // Expected rejection of an oversized item.
+            }
+        });
+    }
+
+    private static void ChannelCore(byte[] data)
+    {
+        {
+            var pipeReader = new NexusPipeReader(new FuzzPipeStateManager(), null, true, 1 << 30);
+            pipeReader.OpenWindow();
             var reader = new NexusChannelReader<FuzzOrder>(pipeReader);
             var chunk = data.Length == 0 ? 1 : data[0] % 7 + 1;
             var list = new List<FuzzOrder>();
@@ -139,7 +156,7 @@ public static class Harnesses
                 var writer = BufferWriter<byte>.Create();
                 writer.Write(data.AsSpan(i, Math.Min(chunk, data.Length - i)));
                 using (var buffer = writer.Flush())
-                    pipeReader.BufferData(buffer).AsTask().GetAwaiter().GetResult();
+                    pipeReader.BufferData(buffer);
 
                 // Decode whatever is complete without waiting; an incomplete item stays buffered for the next chunk.
                 list.Clear();
@@ -150,7 +167,7 @@ public static class Harnesses
             pipeReader.CompleteNoNotify();
             list.Clear();
             reader.ReadAvailable(list, null);
-        });
+        }
     }
 
     /// <summary>

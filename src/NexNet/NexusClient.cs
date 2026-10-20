@@ -79,7 +79,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public NexusClient(ClientConfig config, TClientNexus nexus)
     {
         ArgumentNullException.ThrowIfNull(config);
-        
+        config.ValidateFlowControl();
+
         var id = Interlocked.Increment(ref _id);
         _config = config;
         _logger = config.Logger?.CreateLogger($"CL{id}");

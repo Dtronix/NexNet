@@ -22,6 +22,9 @@ internal class NexusPipeManager
     private int _currentId = 0;
     private bool _isCanceled;
 
+    // Pipes that hold a receive window: open, or closing until both sides confirmed. Bounded by ConfigBase.MaxPipes.
+    private int _openPipes;
+
     public void Setup(INexusSession session)
     {
         lock (_usedIdsLock)
@@ -33,6 +36,7 @@ internal class NexusPipeManager
         // Managers are pooled. A registration that raced with CancelAll on the previous session can leave a stale
         // entry behind, which would collide with this session's first pipe of the same ID.
         _activePipes.Clear();
+        _openPipes = 0;
         _isCanceled = false;
         _session = session;
         _logger = session.Logger?.CreateLogger("PipeManager");
@@ -43,7 +47,20 @@ internal class NexusPipeManager
         if (_isCanceled)
             return null;
 
-        var localId = GetNewLocalId();
+        if (!TryReserveWindow())
+            throw new NexusBusyException("Can't open a pipe: the session's pipe limit or budget is reached.");
+
+        byte localId;
+        try
+        {
+            localId = GetNewLocalId();
+        }
+        catch
+        {
+            ReleaseWindow();
+            throw;
+        }
+
         var partialId = GetPartialIdFromLocalId(localId);
         var pipe = new RentedNexusDuplexPipe(localId, _session)
         {
@@ -63,6 +80,71 @@ internal class NexusPipeManager
     }
 
     /// <summary>
+    /// Takes a pipe slot (<see cref="Transports.ConfigBase.MaxPipes"/>) and reserves one receive window from the
+    /// session budget, all or nothing.
+    /// </summary>
+    private bool TryReserveWindow()
+    {
+        if (Interlocked.Increment(ref _openPipes) > _session.Config.MaxPipes)
+        {
+            Interlocked.Decrement(ref _openPipes);
+            return false;
+        }
+
+        if (_session.Budget.TryReserve(_session.Config.PipeWindow))
+            return true;
+
+        Interlocked.Decrement(ref _openPipes);
+        return false;
+    }
+
+    private void ReleaseWindow()
+    {
+        Interlocked.Decrement(ref _openPipes);
+        _session.Budget.Release(_session.Config.PipeWindow);
+    }
+
+    /// <summary>
+    /// Frees a pipe once both sides closed it and the application released it: removes it, releases its window
+    /// and returns its ID.
+    /// </summary>
+    private void TryFree(NexusDuplexPipe pipe)
+    {
+        if (!pipe.IsFullyClosed || !pipe.TryMarkFreed())
+            return;
+
+        _activePipes.TryRemove(new System.Collections.Generic.KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
+        ReleaseWindow();
+        pipe.ReleaseAllExtra();
+
+        lock (_usedIdsLock)
+        {
+            _usedIds.Set(pipe.LocalId, false);
+        }
+    }
+
+    /// <summary>
+    /// The pipe's key in the active pipes: its full ID, or until the peer's Ready arrives on the initiating side,
+    /// its partial ID.
+    /// </summary>
+    private ushort KeyOf(NexusDuplexPipe pipe) => pipe.Id != 0 ? pipe.Id : GetPartialIdFromLocalId(pipe.LocalId);
+
+    /// <summary>
+    /// True if a pipe made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing (this
+    /// side's Complete sent, the peer's not received), or the data of an item given extra credit stopped arriving.
+    /// </summary>
+    public bool HasStalledPipe(long nowTicks, long timeoutTicks)
+    {
+        foreach (var pipe in _activePipes)
+        {
+            if (pipe.Value.IsCloseStalled(nowTicks, timeoutTicks) || pipe.Value.IsItemStalled(nowTicks, timeoutTicks))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Asynchronously returns the specified rented duplex pipe back to the pipe manager.
     /// </summary>
     /// <param name="pipe">The rented duplex pipe to be returned.</param>
@@ -70,21 +152,30 @@ internal class NexusPipeManager
     public async ValueTask ReturnPipe(IRentedNexusDuplexPipe pipe)
     {
         _logger?.LogTrace($"ReturnPipe(P{pipe.Id});");
-        if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
+        var nexusPipe = (NexusDuplexPipe)pipe;
+        if (!_activePipes.TryGetValue(KeyOf(nexusPipe), out var active) || !ReferenceEquals(active, nexusPipe))
             return;
-        
-        if(nexusPipe.CurrentState != State.Complete)
-        {
-            await pipe.CompleteAsync().ConfigureAwait(false);
-        }
 
-        nexusPipe.Dispose();
+        await ReleasePipe(nexusPipe).ConfigureAwait(false);
+    }
 
-        lock (_usedIdsLock)
-        {
-            // Return the local ID to the available IDs list.
-            _usedIds.Set(nexusPipe.LocalId, false);
-        }
+    /// <summary>
+    /// The application is done with a pipe: send this side's Complete if needed and free the pipe once the peer has
+    /// closed it too. A pipe the peer never opened is freed at once.
+    /// </summary>
+    private async ValueTask ReleasePipe(NexusDuplexPipe pipe)
+    {
+        var neverOpened = pipe.CurrentState == State.Unset;
+        if (!neverOpened)
+            await pipe.CloseAsync().ConfigureAwait(false);
+
+        pipe.Dispose();
+        pipe.MarkReleased();
+
+        if (neverOpened)
+            pipe.MarkClosedWithoutExchange();
+
+        TryFree(pipe);
     }
 
     public async ValueTask<INexusDuplexPipe> RegisterPipe(byte otherId)
@@ -96,12 +187,35 @@ internal class NexusPipeManager
         if (_isCanceled)
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
 
-        var id = GetCompleteId(otherId, out var localId);
+        if (!TryReserveWindow())
+        {
+            // Refuse the open; the initiating side fails its pipe and frees its ID.
+            using var refusal = _session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
+            refusal.PipeId = _session.IsServer ? ComposeId(otherId, 0) : ComposeId(0, otherId);
+            refusal.State = State.Refused;
+            await _session.SendMessage(refusal).ConfigureAwait(false);
+            throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
+        }
+
+        ushort id;
+        byte localId;
+        try
+        {
+            id = GetCompleteId(otherId, out localId);
+        }
+        catch
+        {
+            ReleaseWindow();
+            throw;
+        }
 
         var pipe = new NexusDuplexPipe(id, localId, _session);
 
         if (!_activePipes.TryAdd(id, pipe))
+        {
+            ReleaseWindow();
             throw new Exception("Could not add NexusDuplexPipe to the list of current pipes.");
+        }
 
         // CancelAll may have run between the check above and the add; don't leave the pipe behind.
         if (_isCanceled)
@@ -111,9 +225,8 @@ internal class NexusPipeManager
             throw new InvalidOperationException("Can't register duplex pipe due to cancellation.");
         }
 
-        // Signal that the pipe is ready to receive and send messages.
-        pipe.UpdateState(State.Ready);
-        await pipe.NotifyState().ConfigureAwait(false);
+        // Signal that the pipe is ready to receive and send messages, granting the receive window.
+        await pipe.SendReady().ConfigureAwait(false);
         _logger?.LogTrace($"Sending Ready Notification");
         return pipe;
     }
@@ -122,61 +235,69 @@ internal class NexusPipeManager
     {
         _logger?.LogTrace($"DeregisterPipe(P{pipe.Id});");
 
-        if (!_activePipes.TryRemove(pipe.Id, out var nexusPipe))
+        if (!_activePipes.TryGetValue(pipe.Id, out var nexusPipe))
         {
             _logger?.LogError($"Can't Remove (P{pipe.Id});");
             return;
         }
 
-        var localId = ExtractLocalId(pipe.Id, _session.IsServer);
-
-        if (nexusPipe.CurrentState != State.Complete)
-        {
-            await pipe.CompleteAsync().ConfigureAwait(false);
-        }
-
-        //_session.CacheManager.NexusDuplexPipeCache.Return(nexusPipe.Pipe);
-
-        lock (_usedIdsLock)
-        {
-            // Return the local ID to the available IDs list.
-            _usedIds.Set(localId, false);
-        }
+        await ReleasePipe(nexusPipe).ConfigureAwait(false);
 
     }
 
     /// <summary>
-    /// Buffers incoming data from the other side of the pipe.
+    /// Buffers incoming data from the other side of the pipe. Never waits.
     /// </summary>
     /// <param name="id">Full ID of the pipe.</param>
     /// <param name="data">Data to buffer.</param>
-    /// <returns>Result of the buffering.</returns>
-    public ValueTask<NexusPipeBufferResult> BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
+    /// <returns>A disconnect reason if the data breaks the protocol, otherwise <see cref="DisconnectReason.None"/>.</returns>
+    public DisconnectReason BufferIncomingData(ushort id, ReadOnlySequence<byte> data)
     {
         if (_isCanceled)
-            return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+            return DisconnectReason.None;
 
-        if (_activePipes.TryGetValue(id, out var pipe))
+        // Pipes stay here while closing, so data the peer sent before learning of a local close is accepted (and
+        // discarded) up to its credit.
+        if (!_activePipes.TryGetValue(id, out var pipe))
         {
-            // Check to see if we have exceeded the high water cutoff for the pipe.
-            // If we have, then disconnect the connection.
-            return pipe.WriteFromUpstream(data);
+            _logger?.LogDebug($"Received data on NexusDuplexPipe id: P{id} but no pipe is open or closing on this id.");
+            return DisconnectReason.ProtocolError;
         }
 
-        _logger?.LogWarning($"Received data on NexusDuplexPipe id: P{id} but no stream is open on this id.");
-        throw new InvalidOperationException($"No pipe exists for id: {id}.");
-        //return new ValueTask<NexusPipeBufferResult>(NexusPipeBufferResult.DataIgnored);
+        if (pipe.WriteFromUpstream(data) == NexusPipeBufferResult.CreditExceeded)
+        {
+            _logger?.LogDebug($"Pipe P{id} received data beyond its credit or after the peer's Complete.");
+            return DisconnectReason.FlowControl;
+        }
+
+        return DisconnectReason.None;
     }
 
-    public DisconnectReason UpdateState(ushort id, State state)
+    /// <summary>
+    /// Adds send credit granted by the peer.
+    /// </summary>
+    /// <returns>A disconnect reason if the grant breaks the protocol, otherwise <see cref="DisconnectReason.None"/>.</returns>
+    public DisconnectReason AddCredit(ushort id, uint bytes)
+    {
+        // A grant can race with this side freeing the pipe; it no longer matters.
+        if (_isCanceled || !_activePipes.TryGetValue(id, out var pipe))
+            return DisconnectReason.None;
+
+        return pipe.AddCredit(bytes) ? DisconnectReason.None : DisconnectReason.FlowControl;
+    }
+
+    public DisconnectReason UpdateState(ushort id, State state, uint window = 0)
     {
         _logger?.LogTrace($"Pipe P{id} update state {state}");
         if (_isCanceled)
             return DisconnectReason.None;
 
+        // A refusal carries the opener's partial ID, so it is found here too.
         if (_activePipes.TryGetValue(id, out var pipe))
         {
-            pipe.UpdateState(state);
+            var result = pipe.OnRemoteState(state, window);
+            TryFree(pipe);
+            return result;
         }
         else
         {
@@ -198,8 +319,7 @@ internal class NexusPipeManager
                     // Set the full ID of the pipe.
                     pipe.Id = id;
 
-                    pipe.UpdateState(state);
-                    return DisconnectReason.None;
+                    return pipe.OnRemoteState(state, window);
                 }
                 case State.Complete:
                     _logger?.LogTrace($"Pipe is already complete and ignored state update of {state} with Full ID of P{id}");

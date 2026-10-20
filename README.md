@@ -50,7 +50,7 @@ Beyond RPC, NexNet provides synchronized collections that keep data in sync acro
 - **[Source-generated hubs and proxies](https://dtronix.github.io/NexNet/articles/getting-started.html)** — all invocation code emitted at compile time; no reflection
 - **[Bidirectional method invocation](https://dtronix.github.io/NexNet/articles/hub-invocations.html)** — server-to-client and client-to-server calls with void, ValueTask, and ValueTask&lt;T&gt; returns
 - **[Synchronized collections](https://dtronix.github.io/NexNet/articles/synchronized-collections.html)** — INexusList with server-to-client, bidirectional, and relay modes
-- **[Duplex pipes](https://dtronix.github.io/NexNet/articles/duplex-pipes.html)** — bidirectional byte streaming with built-in congestion control
+- **[Duplex pipes](https://dtronix.github.io/NexNet/articles/duplex-pipes.html)** — bidirectional byte streaming with built-in flow control
 - **[Typed channels](https://dtronix.github.io/NexNet/articles/channels.html)** — INexusDuplexChannel&lt;T&gt; with IAsyncEnumerable support; primitive arrays use a compact bulk encoding
 - **[Serialization](https://dtronix.github.io/NexNet/articles/serialization.html)** — NexNet MessagePack serializer (no external serializer dependency), generated formatters, Native AOT compatible
 - **[Session management](https://dtronix.github.io/NexNet/articles/sessions-and-lifetimes.html)** — per-session hub instances, named groups for targeted broadcasting, automatic reconnection

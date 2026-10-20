@@ -12,6 +12,44 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
     [TestCase(Type.TcpTls)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    public async Task Client_PipeReceivesFullFrames(Type type)
+    {
+        // 4 MiB in maximum-size frames: exceeds the transport's receive pause threshold, the pipe's high watermark
+        // and its cutoff, so every one of them has to resume.
+        var (server, _, cNexus, tcs) = await Setup(type);
+        var sNexus = server.NexusCreatedQueue.First();
+        const int total = 4 * 1024 * 1024;
+        long received = 0;
+
+        cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        {
+            while (true)
+            {
+                var result = await pipe.Input.ReadAsync().Timeout(5);
+                received += result.Buffer.Length;
+                pipe.Input.AdvanceTo(result.Buffer.End);
+                if (result.IsCompleted || received >= total)
+                    break;
+            }
+
+            tcs.SetResult();
+        };
+
+        await using var pipe = sNexus.Context.CreatePipe();
+        await sNexus.Context.Clients.Caller.ClientTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.ReadyTask.Timeout(1);
+        await pipe.Output.WriteAsync(new byte[total]).Timeout(5);
+
+        await tcs.Task.Timeout(10);
+        Assert.That(received, Is.EqualTo(total));
+    }
+
+    [TestCase(Type.Quic)]
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task Client_PipeReaderReceivesDataMultipleTimes(Type type)
     {
         var (server, _, cNexus, tcs) = await Setup(type);

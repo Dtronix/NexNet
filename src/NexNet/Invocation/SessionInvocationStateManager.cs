@@ -76,9 +76,13 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
     public void UpdateInvocationResult(InvocationResultMessage message)
     {
-        // If we can not remove the state any longer, then it has already been handled.
+        // If we can not remove the state any longer, then it has already been handled (or the result is unsolicited).
+        // Nothing else holds the message, so return it and its pooled result here.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
+        {
+            message.Dispose();
             return;
+        }
 
         // Remove the invocation from the current invocations list.
         lock (_currentInvocationsLock)
@@ -123,15 +127,16 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         using var message = _poolManager.Rent<InvocationMessage>();
         message.ArgumentsOwner = argumentsOwner;
 
-        message.InvocationId = GetNextId(true);
         message.MethodId = methodId;
         message.Flags = InvocationFlags.None;
 
-        // Try to set the arguments. If we can not, then the arguments are too large.
-        if (!message.TrySetArguments(serializedArguments))
-        {
-            throw new ArgumentOutOfRangeException($"Message arguments exceeds maximum size allowed Must be {IInvocationMessage.MaxArgumentSize} bytes or less.");
-        }
+        // Larger than one frame is streamed; larger than the peer accepts fails here, before taking an ID.
+        if (serializedArguments.Length > session.SendMaxMessageSize)
+            throw new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize);
+        message.SetArguments(serializedArguments);
+
+        // Taken after the size check so a rejected call does not hold an ID.
+        message.InvocationId = GetNextId(true);
 
         var state = _poolManager.RegisteredInvocationStatePool.Rent();
 
@@ -146,7 +151,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
                 state.TrySetCanceled(true);
             }
 
-            cancellationToken.Value.Register(Callback, state);
+            state.CancellationRegistration = cancellationToken.Value.Register(Callback, state);
         }
 
         // Add the state information to the active states.
@@ -155,7 +160,24 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         {
             _invocationStates.TryAdd(message.InvocationId, state);
 
-            await session.SendMessage(message).ConfigureAwait(false);
+            try
+            {
+                if (!await session.SendInvocation(message, cancellationToken ?? default).ConfigureAwait(false))
+                    state.TrySetCanceled(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Canceled while waiting for invocation credit (or while streaming a large argument): never
+                // executed. The cancellation callback already completed the state.
+                ForgetInvocation(message.InvocationId);
+                state.TrySetCanceled(false);
+                return state;
+            }
+            catch
+            {
+                ForgetInvocation(message.InvocationId);
+                throw;
+            }
         }
         else
         {
@@ -165,6 +187,47 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         // Return the message to the cache
         return state;
+    }
+
+    public bool IsOutstanding(ushort invocationId)
+    {
+        lock (_currentInvocationsLock)
+        {
+            return _currentInvocations.Contains(invocationId);
+        }
+    }
+
+    public void FailInvocation(ushort invocationId, Exception exception)
+    {
+        if (!_invocationStates.TryRemove(invocationId, out var state))
+            return;
+
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
+
+        state.TrySetException(exception);
+    }
+
+    public void ReleaseId(ushort invocationId)
+    {
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
+    }
+
+    /// <summary>
+    /// Removes an invocation that was never sent.
+    /// </summary>
+    private void ForgetInvocation(ushort invocationId)
+    {
+        _invocationStates.TryRemove(invocationId, out _);
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Remove(invocationId);
+        }
     }
 
     public void CancelAll()

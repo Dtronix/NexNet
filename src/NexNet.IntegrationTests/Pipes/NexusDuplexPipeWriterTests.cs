@@ -49,7 +49,7 @@ internal class NexusDuplexPipeWriterTests
     }
 
 
-    private NexusPipeWriter CreateWriter(SessionMessengerStub? messenger = null, IPipeStateManager? stateManager = null)
+    private NexusPipeWriter CreateWriter(SessionMessengerStub? messenger = null, IPipeStateManager? stateManager = null, long credit = TestPipes.LargeWindow)
     {
         stateManager ??= new PipeStateManagerStub();
         messenger ??= new SessionMessengerStub();
@@ -59,6 +59,8 @@ internal class NexusDuplexPipeWriterTests
             messenger,
             true,
             1024);
+        if (credit > 0)
+            writer.AddCredit(credit);
         return writer;
     }
 
@@ -103,30 +105,59 @@ internal class NexusDuplexPipeWriterTests
     }
 
     [Test]
-    public async Task WriterPausesWriting()
+    public async Task WriterWaitsWithoutCredit()
     {
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-        var writer = CreateWriter();
-        writer.PauseWriting = true;
+        var writer = CreateWriter(credit: 0);
         await writer.WriteAsync(simpleData, CancellationToken.None).AsTask().AssertTimeout(.1);
     }
 
     [Test]
-    public async Task WriterResumesWriting()
+    public async Task WriterResumesWhenCreditIsGranted()
     {
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var simpleData = new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
-        var writer = CreateWriter();
-        writer.PauseWriting = true;
+        var writer = CreateWriter(credit: 0);
 
         _ = Task.Run(async () =>
         {
             await Task.Delay(100);
-            writer.PauseWriting = false;
+            writer.AddCredit(simpleData.Length);
         });
 
         await writer.WriteAsync(simpleData, CancellationToken.None).Timeout(1);
+    }
+
+    [Test]
+    public async Task WriterSendsOnlyWhatTheCreditAllows()
+    {
+        var messenger = new SessionMessengerStub();
+        var sent = new List<byte>();
+        messenger.OnSendCustomHeaderWithBody = (_, _, body, _) =>
+        {
+            lock (sent)
+                sent.AddRange(body.ToArray());
+            return default;
+        };
+        var writer = CreateWriter(messenger, credit: 4);
+
+        var write = writer.WriteAsync(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, CancellationToken.None).AsTask();
+        await Task.Delay(100);
+        lock (sent)
+            Assert.That(sent, Is.EqualTo(new byte[] { 0, 1, 2, 3 }));
+        Assert.That(write.IsCompleted, Is.False);
+
+        writer.AddCredit(6);
+        await write.Timeout(1);
+        Assert.That(sent, Is.EqualTo(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
+        Assert.That(writer.Credit, Is.Zero);
+    }
+
+    [Test]
+    public void WriterRejectsCreditBeyondTheMaximum()
+    {
+        var writer = CreateWriter(credit: 0);
+        Assert.That(writer.AddCredit(NexusPipeWriter.MaxCredit), Is.True);
+        Assert.That(writer.AddCredit(1), Is.False);
     }
 
 }

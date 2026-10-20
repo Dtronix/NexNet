@@ -49,7 +49,7 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 | `ValueTask` | Await completion | args + CT, OR args + pipes/channels |
 | `ValueTask<T>` | Await + return | args + CT only |
 
-CancellationToken must be last. Max serialized args: 65,526 bytes per invocation (use pipes or channels for larger).
+CancellationToken must be last. Args and results up to `MaxMessageSize` (4 MiB default; larger than one 64 KiB frame are streamed automatically); over the limit throws `NexusMessageTooLargeException`, session stays up. Use pipes or channels for larger data.
 
 ## Serialization
 
@@ -169,8 +169,8 @@ Anything else needs `[NexusObject]` or `[assembly: NexusFormatter<TFormatter, T>
 | `NexusSerializerOptions.Untrusted` (default) | Max nesting depth 64, invalid UTF-8 rejected, randomized hashing for dictionaries/sets with non-string keys, a channel item may buffer at most 16 MiB |
 | `NexusSerializerOptions.Trusted` | No depth limit, invalid UTF-8 replaced, default comparers |
 
-Customize with `with`: `config.SerializerOptions = NexusSerializerOptions.Untrusted with { MaxBufferedItemSize = 64 * 1024 * 1024 };`
-(properties: `Security`, `MaxDepth`, `StrictUtf8`, `MaxBufferedItemSize`). Length checks before allocation and exact
+Customize with `with`: `config.SerializerOptions = NexusSerializerOptions.Untrusted with { MaxDepth = 128 };`
+(properties: `Security`, `MaxDepth`, `StrictUtf8`). Value sizes are limited by `ConfigBase.MaxMessageSize`. Length checks before allocation and exact
 message shapes are always enforced.
 
 ### Diagnostics
@@ -253,10 +253,16 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 | `DisconnectDelay` | 200ms | 0-10000ms |
 | `Timeout` | 30000ms | 50-300000ms, idle timeout |
 | `HandshakeTimeout` | 15000ms | 50-60000ms |
-| `NexusPipeFlushChunkSize` | 8KB | 1KB-1MB |
-| `NexusPipeHighWaterMark` | 192KB | Pause writer threshold |
-| `NexusPipeLowWaterMark` | 16KB | Resume threshold |
-| `NexusPipeHighWaterCutoff` | 256KB | Hard stop threshold |
+| `ReceiveSessionPipeOptions` | pause 256KB, resume 128KB | Pause 0 or at least 131,080 bytes (two frames) |
+| `SessionBudget` | 16MB (64MB trusted) | Receive memory per session; pipe windows are reserved from it |
+| `MaxPipes` | 32 | Pipes open per session; more are refused (`NexusBusyException`) |
+| `PipeWindow` | 256KB (1MB trusted) | Per-pipe receive window (credit granted to the writer) |
+| `MaxMessageSize` | 4MB (16MB trusted) | Largest argument, result or channel item |
+| `InvocationCredits` | 32 (128 trusted) | Invocations the peer may queue on this side |
+| `ProgressTimeout` | 30000ms | Disconnect (`Stalled`) when a transport flush, a pipe close, an inbound large value or an oversized channel item makes no progress; waiting for credit never counts |
+
+"Trusted" means `SerializerOptions = NexusSerializerOptions.Trusted`. Building a client or server throws if
+`MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB` exceeds `SessionBudget`.
 
 ### Client-specific
 
@@ -273,6 +279,7 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 |----------|---------|-------------|
 | `AcceptorBacklog` | 20 | Listen backlog |
 | `Authenticate` | false | Require client auth |
+| `MaxPendingHandshakes` | 256 | Server-wide cap on unauthenticated connections; new transports are closed when full |
 | `RateLimiting` | null | `ConnectionRateLimitConfig`; null = disabled |
 | `AuthorizationCacheDuration` | null | Default auth cache TTL; null = disabled |
 

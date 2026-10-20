@@ -54,6 +54,32 @@ internal static class TestSerialization
     /// <summary>
     /// Deserializes a payload value with its registered formatter.
     /// </summary>
+    /// <summary>
+    /// A channel item as it goes on the wire: its length prefix, then the payload.
+    /// </summary>
+    public static byte[] SerializeChannelItem<T>(T value) => FrameChannelItem(SerializePayload(value));
+
+    /// <summary>
+    /// Prefixes raw item bytes with their length.
+    /// </summary>
+    public static byte[] FrameChannelItem(byte[] payload)
+    {
+        var prefix = new byte[NexNet.Pipes.ChannelFraming.MaxPrefixLength];
+        var prefixLength = NexNet.Pipes.ChannelFraming.WriteLength(prefix, payload.Length);
+        return [.. prefix.AsSpan(0, prefixLength), .. payload];
+    }
+
+    /// <summary>
+    /// Reads one channel item: its length prefix, then exactly that many payload bytes.
+    /// </summary>
+    public static T? DeserializeChannelItem<T>(in ReadOnlySequence<byte> bytes)
+    {
+        var sequence = new SequenceReader<byte>(bytes);
+        if (!NexNet.Pipes.ChannelFraming.TryReadLength(ref sequence, out var length))
+            throw new InvalidOperationException("Incomplete channel item prefix.");
+        return DeserializePayload<T>(bytes.Slice(sequence.Position, length));
+    }
+
     public static T? DeserializePayload<T>(in ReadOnlySequence<byte> bytes)
     {
         var reader = new MsgPackReader(bytes);

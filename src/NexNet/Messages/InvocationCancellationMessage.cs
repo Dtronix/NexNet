@@ -6,7 +6,7 @@ namespace NexNet.Messages;
 
 /// <summary>
 /// Requests cancellation of an in-flight invocation.
-/// Body: <c>[invocationId (int)]</c>.
+/// Body: <c>[invocationId (uint16)]</c>.
 /// </summary>
 internal partial class InvocationCancellationMessage : IMessageBase
 {
@@ -19,14 +19,14 @@ internal partial class InvocationCancellationMessage : IMessageBase
         set => _messageCache = value;
     }
 
-    public int InvocationId { get; set; }
+    public ushort InvocationId { get; set; }
 
     public InvocationCancellationMessage()
     {
 
     }
 
-    public InvocationCancellationMessage(int invocationId)
+    public InvocationCancellationMessage(ushort invocationId)
     {
         InvocationId = invocationId;
     }
@@ -40,7 +40,7 @@ internal partial class InvocationCancellationMessage : IMessageBase
     public void Deserialize(ref MsgPackReader reader)
     {
         reader.ReadArrayHeader(1);
-        InvocationId = reader.ReadInt32();
+        InvocationId = reader.ReadUInt16();
     }
 
     public void Dispose()

@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -42,4 +43,15 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// Rate limiter reference for release on disconnect.
     /// </summary>
     public IConnectionRateLimiter? RateLimiter { get; init; }
+
+    /// <summary>
+    /// Server only: called once when the session completes authentication or ends before that, to free its
+    /// <c>MaxPendingHandshakes</c> slot.
+    /// </summary>
+    public Action? HandshakeEnded { get; init; }
+
+    /// <summary>
+    /// Server only: receives sessions that end before authentication completes.
+    /// </summary>
+    public PreAuthFailureLog? PreAuthFailureLog { get; init; }
 }

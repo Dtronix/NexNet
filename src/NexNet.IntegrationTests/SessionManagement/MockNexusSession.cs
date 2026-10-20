@@ -21,6 +21,13 @@ internal class MockNexusSession : INexusSession
     public ConnectionState State { get; set; } = ConnectionState.Connected;
     public INexusLogger? Logger { get; set; }
 
+    public SessionBudget Budget { get; set; } = new(16 * 1024 * 1024);
+
+    public int SendMaxMessageSize => Config.MaxMessageSize;
+
+    public SessionControlSender ControlSender => _controlSender ??= new SessionControlSender(this);
+    private SessionControlSender? _controlSender;
+
     // Track sent messages for verification
     public List<object> SentMessages { get; } = new();
 
@@ -35,6 +42,23 @@ internal class MockNexusSession : INexusSession
 
         SentMessages.Add(body!);
         return ValueTask.CompletedTask;
+    }
+
+    public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase
+    {
+        await SendMessage(message, cancellationToken);
+        return true;
+    }
+
+    public InvocationWriteResult TryWriteInvocation<TMessage>(TMessage message, ReadOnlySpan<byte> frame = default)
+        where TMessage : IInvocationMessage, IMessageBase
+    {
+        if (ShouldFailSend)
+            throw new InvalidOperationException("Simulated send failure");
+
+        SentMessages.Add(message!);
+        return InvocationWriteResult.Written;
     }
 
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
@@ -73,7 +97,7 @@ internal class MockNexusSession : INexusSession
     public long LastReceived { get; set; }
     public PoolManager PoolManager { get; set; } = null!;
     public NexusCollectionManager CollectionManager { get; set; } = null!;
-    public ConfigBase Config { get; set; } = null!;
+    public ConfigBase Config { get; set; } = new TcpServerConfig { EndPoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, 0) };
     public bool IsServer { get; set; } = true;
     public NexusPipeManager PipeManager { get; set; } = null!;
     public string? RemoteAddress { get; set; } = "127.0.0.1";
@@ -101,6 +125,18 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
     }
 
     public void UpdateInvocationResult(InvocationResultMessage message)
+    {
+        // No-op for testing
+    }
+
+    public bool IsOutstanding(ushort invocationId) => false;
+
+    public void FailInvocation(ushort invocationId, Exception exception)
+    {
+        // No-op for testing
+    }
+
+    public void ReleaseId(ushort invocationId)
     {
         // No-op for testing
     }

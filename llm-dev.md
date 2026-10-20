@@ -20,6 +20,8 @@ src/
 └── Samples/                  # NexNetDemo, Asp and Native AOT samples
 ```
 
+Release: bump `<Version>` in NexNet, NexNet.Asp, NexNet.Generator and NexNet.Quic, add `docs/articles/releases/release-notes-vX.Y.Z.md` (and its row in that folder's `index.md` and `toc.yml`), then push tag `vX.Y.Z`. The tag build (`.github/workflows/dotnet.yml`) uses the page as the GitHub release body (`.github/scripts/release-notes.py`; fails if missing) and publishes the NuGet packages.
+
 Build: `dotnet build src -c Release`. `src/Directory.Build.props` sets `TreatWarningsAsErrors` for every project under
 `src/` (libraries, generator, tests, fuzz, benchmarks, samples), NuGet audit advisories (NU1901-NU1904) and warnings in
 generated code included. Fix the cause of a warning; do not add `NoWarn` or `WarningsNotAsErrors`.
@@ -52,7 +54,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.3 Invocation Layer (src/NexNet/Invocation/)
 
 **Base Classes:**
-- `NexusBase.cs` - Common base; implements IMethodInvoker; manages CTS registry, pipe registration, pooling
+- `NexusBase.cs` - Common base; implements IMethodInvoker; cancellation sources (calls with a result: pooled source keyed by invocation ID, canceled by `InvocationCancellation`; fire-and-forget: one shared source per session, canceled on disconnect), pipe registration (frees the invocation's execution slot), pooling
 - `ServerNexusBase.cs` - Server base; OnAuthenticate, OnNexusInitialize, OnAuthorize virtuals; CheckAuthorization with ConcurrentDictionary cache; InvalidateAuthorizationCache() overloads
 - `ClientNexusBase.cs` - Client base; OnReconnecting virtual
 
@@ -69,7 +71,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 
 **Routing & Registry:**
 - `IInvocationRouter.cs` - Routes invocations to target sessions
-- `LocalInvocationRouter.cs` - Single-server routing implementation
+- `LocalInvocationRouter.cs` - Single-server routing. Two passes: `TryWriteInvocation` to every target without waiting (a single-frame invocation is encoded once with `MessageFrame` and copied), then the busy sessions are sent to concurrently (at most 256 waiting) within one `ProgressTimeout`; sessions still without credit are skipped
 - `LocalSessionRegistry.cs` - ConcurrentDictionary<long, INexusSession> session tracking
 - `LocalGroupRegistry.cs` - Group membership with LocalSessionGroup management
 - `NexusCollectionManager.cs` - Manages synchronized collections per nexus
@@ -78,11 +80,14 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 ### 1.4 Messages (src/NexNet/Messages/)
 
 **Protocol:**
-- `MessageType.cs` - Enum: Ping, Disconnect variants (20-34 incl. DisconnectUnauthorized), DuplexPipeWrite (50), Greetings (100-105), Invocation (110-112)
-- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes (65,535 body minus 9 bytes worst-case overhead)
-- `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token
-- `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash
-- `InvocationMessage.cs` - Remote method invocation payload
+- `MessageType.cs` - Enum: Ping, Disconnect variants (20-37 incl. FlowControl 35, Stalled 37; 36 unassigned), DuplexPipeWrite (50), PipeWindowUpdate (51), Greetings (100-105), Invocation (110-112), MessageStart/Chunk/Abort (113-115), InvocationCredit (116)
+- `IInvocationMessage.cs` - InvocationId, MethodId, Flags, Arguments; MaxArgumentSize=65,526 bytes is the largest argument sent in one frame (larger ones are streamed)
+- `ClientGreetingMessage.cs` - Client handshake: protocol version, nexus hash, auth token, MaxMessageSize, InvocationCredits
+- `ServerGreetingMessage.cs` - Server response: session ID, server nexus hash, MaxMessageSize, InvocationCredits
+- `LargeMessageMessages.cs` - MessageStart/MessageAbort for arguments and results larger than one frame (see `Internals/LargeMessageReceiver.cs`)
+- `InvocationMessage.cs` - Remote method invocation payload; `Serialize` goes through `InvocationBody`
+- `InvocationBody.cs` - Readonly snapshot of an invocation's fields: exact body `Length` and `Write`, the only invocation body encoder
+- `InvocationCreditMessage.cs` - Returns invocation credit to the peer (type 116)
 - `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
 - `DuplexPipeUpdateStateMessage.cs` - Pipe state changes
@@ -96,12 +101,19 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 **Core Session:**
 - `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
-- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization
+- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
 - `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
-- `RegisteredInvocationState.cs` - Pending invocation with TaskCompletionSource<Memory<byte>>
+- `RegisteredInvocationState.cs` - Pending call awaiting its result: pooled `IValueTaskSource<bool>`; completion (result, cancel, exception) is claimed atomically
+- `SessionControlSender.cs` - Sends control replies off the read loop, coalesced: pongs, pipe window grants and close acknowledgements, large-message aborts, invocation credit
+- `SessionBudget.cs` - Per-session receive memory reservations (pipe windows, invocation queue, large values); FIFO `ReserveAsync`
+- `LargeMessageReceiver.cs` - Reassembles streamed arguments/results (MessageStart/Chunk), reserving their size from the budget first
+- `PreAuthFailureLog.cs` - Aggregated warning for sessions that fail before authentication
+- `MessageFrame.cs` - Encodes a complete frame outside a session (pre-encoded broadcast frames)
+- `InvocationWriteResult.cs` - Result of `INexusSession.TryWriteInvocation`: Written (committed to the output), Busy (would wait), Failed
+- `IInvocationSlot.cs` - Execution slot an invocation holds; released when its pipe registers
 
 **Internal State Flags:** ProtocolConfirmed, InitialClientGreetingReceived, InitialServerGreetingReceived, NexusCompletedConnection, ReconnectingInProgress
 
@@ -168,7 +180,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 - `INexusDuplexPipe.cs` - Bidirectional pipe: Id, ReadyTask, CompleteTask, CompleteAsync()
 - `NexusPipeManager.cs` - Manages duplex pipes for large data transfers
-- `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, concatenated on the pipe. The reader deserializes optimistically away from the buffer end; near the end it measures the next item with `MsgPackReader.TryGetNextValueLength` so a partial item waits for more data (bounded by `MaxBufferedItemSize`)
+- `NexusChannelWriter.cs` / `NexusChannelReader.cs` - Typed channel items: one MessagePack value each, preceded by a varint length (`ChannelFraming.cs`). The reader deserializes each item from exactly its slice; a partial item waits for more data, with an extra credit grant from the session budget if it is larger than the pipe window. Items over `MaxMessageSize` or that break the framing reset the pipe
 
 ### 1.11 Logging (src/NexNet/Logging/)
 
@@ -189,7 +201,7 @@ NexNet's own MessagePack implementation (namespace `NexNet.Serialization`, compi
 serializer dependency).
 
 - `MsgPackWriter.cs` - `ref struct` over `IBufferWriter<byte>`; always writes the smallest canonical form; `Flush()` commits
-- `MsgPackReader.cs` - `ref struct` over `ReadOnlySequence<byte>`/`ReadOnlyMemory<byte>`; length checks before allocation, iterative `Skip`, depth tracking (`Enter`/`Exit`), `TryGetNextValueLength`
+- `MsgPackReader.cs` - `ref struct` over `ReadOnlySequence<byte>`/`ReadOnlyMemory<byte>`; length checks before allocation, iterative `Skip`, depth tracking (`Enter`/`Exit`)
 - `MsgPackCode.cs` - Format byte constants
 - `NexusFormatter.cs` - `NexusFormatter<T>` (writes/reads exactly one value), `NexusFormatterCache<T>` (static slot), `NexusFormatterRegistry` (`Register` first-wins, `Get`, `TryGet`)
 - `NexusSerializer.cs` - Convenience `Serialize<T>`/`Deserialize<T>` entry points
@@ -420,14 +432,14 @@ Add each new crash input to `Corpus/*.hex` so `FuzzSmokeTests` keeps replaying i
 ### Protocol
 Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specification.md) (wire protocol version 1).
 - **NnP Header:** 8 bytes `[N][n][P][0x14][reserved x3][Version=1]`; any mismatch -> `ProtocolError`
-- **Framing:** type byte, little-endian `uint16` body length (types with a body), pipe ID for `DuplexPipeWrite`, body
+- **Framing:** type byte, little-endian `uint16` body length (types with a body), post-header (pipe ID for `DuplexPipeWrite`/`PipeWindowUpdate`, stream key for `MessageChunk`), body
 - **Bodies:** MessagePack arrays, hand-written per message (src/NexNet/Messages)
 - **Handshake:** Client greeting -> Server greeting with version hash validation
 
 ### Serialization
 - **NexNet MessagePack serializer** (src/NexNet/Serialization) for arguments, results, channel and collection items
 - Generator emits formatters for `[NexusObject]` types; registry lookup at runtime, no reflection (Native AOT clean; CI publishes the AOT sample and fails on any IL warning)
-- **65,526-byte limit** for serialized arguments per invocation (use INexusDuplexPipe or channels for larger)
+- Arguments and results up to `MaxMessageSize` (4 MiB untrusted / 16 MiB trusted); larger than one frame are streamed (MessageStart/Chunk). Flow control and limits: docs/internals/flow-control.md
 
 ### Session Lifecycle
 1. Client: Create -> ConnectAsync -> Proxy.Method() -> DisconnectAsync

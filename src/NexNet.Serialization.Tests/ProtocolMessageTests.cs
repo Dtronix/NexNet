@@ -31,6 +31,28 @@ public class ProtocolMessageTests
     private static object?[] Reference(byte[] body) => MessagePackSerializer.Deserialize<object?[]>(body);
 
     [Test]
+    public void InvocationBodyLength_MatchesTheSerializedBody()
+    {
+        // Sessions write the frame header from this length before serializing the body, so it must be exact at
+        // every MessagePack integer size boundary.
+        ushort[] values = [0, 1, 127, 128, 255, 256, 65535];
+        InvocationFlags[] flags = [InvocationFlags.None, InvocationFlags.IgnoreReturn, (InvocationFlags)127, (InvocationFlags)128, (InvocationFlags)255];
+        byte[][] arguments = [[], [0x91, 0x01], new byte[200], new byte[65_000]];
+        arguments[2][0] = 0x91;
+        arguments[3][0] = 0x91;
+
+        foreach (var id in values)
+        foreach (var methodId in values)
+        foreach (var flag in flags)
+        foreach (var args in arguments)
+        {
+            var message = new InvocationMessage { InvocationId = id, MethodId = methodId, Flags = flag, Arguments = args };
+            Assert.That(new InvocationBody(message).Length, Is.EqualTo(Body(message).Length),
+                $"id {id}, method {methodId}, flags {flag}, arguments {args.Length}");
+        }
+    }
+
+    [Test]
     public void ClientGreetingGoldenVector()
     {
         var message = new ClientGreetingMessage
@@ -41,8 +63,9 @@ public class ProtocolMessageTests
             AuthenticationToken = new byte[] { 1, 2 }
         };
 
+        // The two trailing fields are the defaults: maxMessageSize 4 MiB, invocationCredits 32.
         var body = Body(message);
-        Assert.That(Hex(body), Is.EqualTo("94" + "a27631" + "cd012c" + "fb" + "c4020102"));
+        Assert.That(Hex(body), Is.EqualTo("96" + "a27631" + "cd012c" + "fb" + "c4020102" + "ce00400000" + "20"));
 
         var parsed = Parse<ClientGreetingMessage>(body);
         Assert.That(parsed.Version, Is.EqualTo("v1"));
@@ -61,7 +84,7 @@ public class ProtocolMessageTests
     public void ClientGreetingWithNullVersionAndEmptyToken()
     {
         var body = Body(new ClientGreetingMessage());
-        Assert.That(Hex(body), Is.EqualTo("94c00000c400"));
+        Assert.That(Hex(body), Is.EqualTo("96c00000c400" + "ce00400000" + "20"));
         var parsed = Parse<ClientGreetingMessage>(body);
         Assert.That(parsed.Version, Is.Null);
         Assert.That(parsed.AuthenticationToken.IsEmpty, Is.True);
@@ -70,10 +93,12 @@ public class ProtocolMessageTests
     [Test]
     public void ServerGreetingGoldenVector()
     {
-        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000 });
-        Assert.That(Hex(body), Is.EqualTo("92" + "01" + "cf0000000100000000"));
+        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000, MaxMessageSize = 65536, InvocationCredits = 128 });
+        Assert.That(Hex(body), Is.EqualTo("94" + "01" + "cf0000000100000000" + "ce00010000" + "cc80"));
         var parsed = Parse<ServerGreetingMessage>(body);
         Assert.That(parsed.ClientId, Is.EqualTo(0x1_0000_0000));
+        Assert.That(parsed.MaxMessageSize, Is.EqualTo(65536));
+        Assert.That(parsed.InvocationCredits, Is.EqualTo(128));
     }
 
     [Test]
@@ -85,13 +110,27 @@ public class ProtocolMessageTests
     }
 
     [Test]
+    public void InvocationCancellationIdIsUInt16()
+    {
+        // The same width as every other invocation ID.
+        var body = Body(new InvocationCancellationMessage(ushort.MaxValue));
+        Assert.That(Parse<InvocationCancellationMessage>(body).InvocationId, Is.EqualTo(ushort.MaxValue));
+
+        // 65536 and negative IDs are rejected.
+        Assert.Throws<NexusSerializationException>(() => Parse<InvocationCancellationMessage>(new byte[] { 0x91, 0xce, 0x00, 0x01, 0x00, 0x00 }));
+        Assert.Throws<NexusSerializationException>(() => Parse<InvocationCancellationMessage>(new byte[] { 0x91, 0xff }));
+    }
+
+    [Test]
     public void DuplexPipeUpdateStateGoldenVector()
     {
-        var body = Body(new DuplexPipeUpdateStateMessage { PipeId = 0x0201, State = NexusDuplexPipe.State.Ready });
-        Assert.That(Hex(body), Is.EqualTo("92cd0201" + ((byte)NexusDuplexPipe.State.Ready).ToString("x2")));
+        // [pipeId, state, window]: the Ready acknowledgement grants a 256 KiB window.
+        var body = Body(new DuplexPipeUpdateStateMessage { PipeId = 0x0201, State = NexusDuplexPipe.State.Ready, Window = 256 * 1024 });
+        Assert.That(Hex(body), Is.EqualTo("93cd0201" + ((byte)NexusDuplexPipe.State.Ready).ToString("x2") + "ce00040000"));
         var parsed = Parse<DuplexPipeUpdateStateMessage>(body);
         Assert.That(parsed.PipeId, Is.EqualTo(0x0201));
         Assert.That(parsed.State, Is.EqualTo(NexusDuplexPipe.State.Ready));
+        Assert.That(parsed.Window, Is.EqualTo(256 * 1024));
     }
 
     [Test]

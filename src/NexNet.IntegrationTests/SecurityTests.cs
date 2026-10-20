@@ -120,115 +120,82 @@ internal class SecurityTests
     }
 
     [Test]
-    public void ConfigBase_NexusPipeFlushChunkSize_ValidValues_Succeeds()
+    public void ConfigBase_ReceiveSessionPipeOptions_DefaultHoldsTwoFrames()
     {
         var config = CreateTestConfig();
 
-        // Minimum value (1KB)
-        config.NexusPipeFlushChunkSize = 1024;
-        Assert.That(config.NexusPipeFlushChunkSize, Is.EqualTo(1024));
-
-        // Maximum value (1MB)
-        config.NexusPipeFlushChunkSize = 1024 * 1024;
-        Assert.That(config.NexusPipeFlushChunkSize, Is.EqualTo(1024 * 1024));
+        // A transport receive pipe that pauses below one maximum frame can never resume: frames are consumed whole.
+        Assert.That(config.ReceiveSessionPipeOptions.PauseWriterThreshold, Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
+        Assert.That(new NexNet.Transports.WebSocket.WebSocketPipeOptions().InputPipeOptions.PauseWriterThreshold,
+            Is.GreaterThanOrEqualTo(2 * (ushort.MaxValue + 5)));
     }
 
     [Test]
-    public void ConfigBase_NexusPipeFlushChunkSize_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public void ConfigBase_ReceiveSessionPipeOptions_PauseBelowTwoFrames_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeFlushChunkSize = 1023);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeFlushChunkSize = 1024 * 1024 + 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
+
+        // 0 never pauses.
+        config.ReceiveSessionPipeOptions = new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0);
+    }
+
+
+
+
+
+
+
+    [Test]
+    public void ConfigBase_FlowControlDefaults_FollowSerializerSecurity()
+    {
+        var untrusted = CreateTestConfig();
+        Assert.That(untrusted.SessionBudget, Is.EqualTo(16 * 1024 * 1024));
+        Assert.That(untrusted.MaxPipes, Is.EqualTo(32));
+        Assert.That(untrusted.PipeWindow, Is.EqualTo(256 * 1024));
+        Assert.That(untrusted.MaxMessageSize, Is.EqualTo(4 * 1024 * 1024));
+        Assert.That(untrusted.InvocationCredits, Is.EqualTo(32));
+
+        var trusted = CreateTestConfig();
+        trusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
+        Assert.That(trusted.SessionBudget, Is.EqualTo(64 * 1024 * 1024));
+        Assert.That(trusted.MaxPipes, Is.EqualTo(32));
+        Assert.That(trusted.PipeWindow, Is.EqualTo(1024 * 1024));
+        Assert.That(trusted.MaxMessageSize, Is.EqualTo(16 * 1024 * 1024));
+        Assert.That(trusted.InvocationCredits, Is.EqualTo(128));
+
+        // Both default sets fit their budget.
+        Assert.DoesNotThrow(untrusted.ValidateFlowControl);
+        Assert.DoesNotThrow(trusted.ValidateFlowControl);
     }
 
     [Test]
-    public void ConfigBase_NexusPipeHighWaterMark_ValidValues_Succeeds()
+    public void ConfigBase_FlowControlSettings_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
 
-        // Minimum value (1KB)
-        config.NexusPipeHighWaterMark = 1024;
-        Assert.That(config.NexusPipeHighWaterMark, Is.EqualTo(1024));
-
-        // Maximum value (10MB)
-        config.NexusPipeHighWaterMark = 10 * 1024 * 1024;
-        Assert.That(config.NexusPipeHighWaterMark, Is.EqualTo(10 * 1024 * 1024));
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.SessionBudget = 64 * 1024 - 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxPipes = 0);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxPipes = 256);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.PipeWindow = 4 * 1024 - 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.MaxMessageSize = 64 * 1024 - 1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationCredits = 0);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.ProgressTimeout = 49);
     }
 
     [Test]
-    public void ConfigBase_NexusPipeHighWaterMark_OutOfRange_ThrowsArgumentOutOfRangeException()
+    public void ConfigBase_BudgetSmallerThanFixedReservations_ThrowsWhenTheServerIsBuilt()
     {
         var config = CreateTestConfig();
 
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterMark = 1023);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterMark = 10 * 1024 * 1024 + 1);
-    }
+        // 32 x 256KB + 4MB + 32 x 64KB = 14MB does not fit in 8MB.
+        config.SessionBudget = 8 * 1024 * 1024;
 
-    [Test]
-    public void ConfigBase_NexusPipeLowWaterMark_ValidValues_Succeeds()
-    {
-        var config = CreateTestConfig();
-
-        // Set high water mark first
-        config.NexusPipeHighWaterMark = 100 * 1024;
-
-        // Minimum value (1KB)
-        config.NexusPipeLowWaterMark = 1024;
-        Assert.That(config.NexusPipeLowWaterMark, Is.EqualTo(1024));
-
-        // At high water mark
-        config.NexusPipeLowWaterMark = 100 * 1024;
-        Assert.That(config.NexusPipeLowWaterMark, Is.EqualTo(100 * 1024));
-    }
-
-    [Test]
-    public void ConfigBase_NexusPipeLowWaterMark_OutOfRange_ThrowsArgumentOutOfRangeException()
-    {
-        var config = CreateTestConfig();
-
-        // Default high water mark is 192KB
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeLowWaterMark = 1023);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeLowWaterMark = 200 * 1024); // Above high water mark
-    }
-
-    [Test]
-    public void ConfigBase_NexusPipeHighWaterCutoff_ValidValues_Succeeds()
-    {
-        var config = CreateTestConfig();
-
-        // At high water mark (default is 192KB)
-        config.NexusPipeHighWaterCutoff = 192 * 1024;
-        Assert.That(config.NexusPipeHighWaterCutoff, Is.EqualTo(192 * 1024));
-
-        // Maximum value (100MB)
-        config.NexusPipeHighWaterCutoff = 100 * 1024 * 1024;
-        Assert.That(config.NexusPipeHighWaterCutoff, Is.EqualTo(100 * 1024 * 1024));
-    }
-
-    [Test]
-    public void ConfigBase_NexusPipeHighWaterCutoff_OutOfRange_ThrowsArgumentOutOfRangeException()
-    {
-        var config = CreateTestConfig();
-
-        // Below high water mark
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterCutoff = 100 * 1024);
-        // Above maximum
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterCutoff = 100 * 1024 * 1024 + 1);
-    }
-
-    [Test]
-    public void ConfigBase_WatermarkRelationships_Enforced()
-    {
-        var config = CreateTestConfig();
-
-        // Set high water mark first, then try to set low water mark above it
-        config.NexusPipeHighWaterMark = 50 * 1024;
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeLowWaterMark = 60 * 1024);
-
-        // Set high water cutoff below current high water mark
-        config.NexusPipeHighWaterMark = 100 * 1024;
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.NexusPipeHighWaterCutoff = 50 * 1024);
+        Assert.Throws<InvalidOperationException>(config.ValidateFlowControl);
+        Assert.Throws<InvalidOperationException>(() =>
+            NexNet.IntegrationTests.TestInterfaces.ServerNexus.CreateServer(config, static () => new NexNet.IntegrationTests.TestInterfaces.ServerNexus()));
     }
 
     [Test]

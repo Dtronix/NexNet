@@ -84,12 +84,29 @@ public enum MessageType : byte
     /// </summary>
     DisconnectUnauthorized = 34,
 
+    /// <summary>
+    /// The peer sent more than the credit it was granted. No body.
+    /// </summary>
+    DisconnectFlowControl = 35,
+
+    // 36 is not assigned.
+
+    /// <summary>
+    /// The session made no progress within the progress timeout. No body.
+    /// </summary>
+    DisconnectStalled = 37,
+
     // Reserved through 39
 
     /// <summary>
     /// Header for data sent to a pipe.
     /// </summary>
     DuplexPipeWrite = 50,
+
+    /// <summary>
+    /// Grants more receive credit on a pipe. Pipe ID in the header; body: credit in bytes (uint32, little-endian).
+    /// </summary>
+    PipeWindowUpdate = 51,
 
     // Messages 100 - 109 are reserved for handshake messages.
 
@@ -124,6 +141,26 @@ public enum MessageType : byte
     /// Header for <see cref="InvocationResultMessage"/>
     /// </summary>
     InvocationResult = 112,
+
+    /// <summary>
+    /// Header for <see cref="MessageStartMessage"/>: starts a large argument or result.
+    /// </summary>
+    MessageStart = 113,
+
+    /// <summary>
+    /// A part of a large message. Post-header: invocation ID (uint16, little-endian) and kind (uint8); body: payload.
+    /// </summary>
+    MessageChunk = 114,
+
+    /// <summary>
+    /// Header for <see cref="MessageAbortMessage"/>.
+    /// </summary>
+    MessageAbort = 115,
+
+    /// <summary>
+    /// Header for <see cref="InvocationCreditMessage"/>.
+    /// </summary>
+    InvocationCredit = 116,
 
     // Messages 120 - 129 are reserved for duplex pipe messages.
     

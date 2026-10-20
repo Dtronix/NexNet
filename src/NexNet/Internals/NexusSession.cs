@@ -19,7 +19,7 @@ using NexNet.RateLimiting;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -55,7 +55,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
 
-    private readonly SemaphoreSlim _invocationSemaphore;
+    // Invocations received and not yet running. The read loop only enqueues; up to
+    // MaxConcurrentConnectionInvocations run at once, each holding a slot until it finishes or registers its pipe.
+    private readonly ConcurrentQueue<InvocationMessage> _invocationQueue = new();
+    private int _freeInvocationSlots;
+
+    private readonly SessionControlSender _controlSender;
     //private bool _isReconnected;
     private DisconnectReason _registeredDisconnectReason = DisconnectReason.None;
 
@@ -72,7 +77,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     private int _versionHash = 0;
 
     // Security limits
-    private const int MaxAuthenticationTokenSize = 8192; // 8KB max for auth tokens
+    // Largest frame body accepted before the connection completes. A greeting is well below this; the length is
+    // checked as soon as it is read, before the body is buffered.
+    internal const int MaxPreAuthBodyLength = 16 * 1024;
     private const int MaxVersionStringLength = 16; // Max length for version strings
     private const int MaxGreetingAttempts = 3; // Max greeting messages per session
     private int _greetingAttempts = 0;
@@ -80,6 +87,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     // Rate limiting
     private readonly string? _rateLimiterAddress;
     private readonly IConnectionRateLimiter? _rateLimiter;
+
+    // Server only: frees this session's MaxPendingHandshakes slot (once), and records pre-auth failures.
+    private Action? _handshakeEnded;
+    private readonly PreAuthFailureLog? _preAuthFailureLog;
 
     /// <summary>
     /// State of the connection that
@@ -99,6 +110,27 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     }
 
     public NexusPipeManager PipeManager { get; }
+
+    public SessionBudget Budget { get; }
+
+    public SessionControlSender ControlSender => _controlSender;
+
+    // Tick count when the current outbound transport flush started; 0 when none is in progress.
+    private long _flushStartedTicks;
+
+    // Invocation credits (docs/internals/flow-control.md, section 4.7). _inboundCredits: invocations the peer may
+    // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
+    private int _inboundCredits;
+    private readonly SemaphoreSlim _outboundCredits = new(0, int.MaxValue);
+    private int _peerInvocationCredits;
+    private int _peerMaxMessageSize;
+    private long _creditDrops;
+    private long _lastCreditDropWarning;
+
+    // Large arguments and results (docs/internals/flow-control.md, section 4.3): streams the peer is sending
+    // here, and streams this side is sending, by (invocation ID, kind).
+    private readonly LargeMessageReceiver _largeMessages;
+    private readonly ConcurrentDictionary<int, OutgoingLargeMessage> _outgoingLargeMessages = new();
 
     public long Id
     {
@@ -176,6 +208,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         // Store rate limiter info for release on disconnect
         _rateLimiterAddress = configurations.RateLimiterAddress;
         _rateLimiter = configurations.RateLimiter;
+        _handshakeEnded = configurations.HandshakeEnded;
+        _preAuthFailureLog = configurations.PreAuthFailureLog;
 
         Logger = configurations.Logger?.CreateLogger($"S{Id}");
         
@@ -187,8 +221,16 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
         SessionStore = new SessionStore();
-        _invocationSemaphore = new SemaphoreSlim(_config.MaxConcurrentConnectionInvocations,
-            _config.MaxConcurrentConnectionInvocations);
+        _freeInvocationSlots = _config.MaxConcurrentConnectionInvocations;
+        Budget = new SessionBudget(_config.SessionBudget);
+
+        // The peer may queue InvocationCredits invocations of up to one frame each; reserve that up front.
+        _inboundCredits = _config.InvocationCredits;
+        Budget.TryReserve((long)_config.InvocationCredits * (ushort.MaxValue + 1));
+        _controlSender = new SessionControlSender(this, _config.InvocationCredits / 2);
+        _largeMessages = new LargeMessageReceiver(this, Budget, _config.MaxMessageSize, _poolManager,
+            _config.SerializerOptions, _config.Time);
+        LastReceived = _config.Time.GetTickCount64();
 
         // Note: Session registration is deferred until after authentication completes
         // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
@@ -218,6 +260,20 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         {
             Logger?.LogTrace($"Timed out session {Id}");
             DisconnectAsync(DisconnectReason.Timeout);
+            return true;
+        }
+
+        // Progress (ConfigBase.ProgressTimeout): an outbound flush that does not complete, a pipe whose close the
+        // peer never confirms, an oversized channel item or large message whose data stops arriving. Waiting for
+        // credit is not measured.
+        var now = _config.Time.GetTickCount64();
+        var flushStarted = Volatile.Read(ref _flushStartedTicks);
+        if ((flushStarted != 0 && now - flushStarted > _config.ProgressTimeout)
+            || PipeManager.HasStalledPipe(now, _config.ProgressTimeout)
+            || _largeMessages.HasStalledStream(now, _config.ProgressTimeout))
+        {
+            Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms.");
+            DisconnectAsync(DisconnectReason.Stalled);
             return true;
         }
 
@@ -253,6 +309,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, TProxy.MethodHash);
         greetingMessage.ClientNexusHash = TNexus.MethodHash;
         greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
+        greetingMessage.MaxMessageSize = _config.MaxMessageSize;
+        greetingMessage.InvocationCredits = _config.InvocationCredits;
         
         await InitializeConnection().ConfigureAwait(false);
         
@@ -290,6 +348,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
         _registeredDisconnectReason = reason;
 
         Logger?.LogInfo($"Session disconnected with reason: {reason}; Source: {Path.GetFileName(filePath)}:{lineNumber}");
+
+        if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+            _preAuthFailureLog?.Record(reason);
+        EndHandshake();
         
         if (sendDisconnect && !_config.InternalForceDisableSendingDisconnectSignal)
         {
@@ -323,17 +385,13 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
             }
         }
 
-        // This can not be stopped on some transports as they don't have an understanding about
-        // shutting down of rending pipes separately from receiving pipes.
-        // Cancel any pending reads.
-        _pipeInput!.CancelPendingRead();
-        
-        // The CompleteAsync method does the exact same action, but introduces overhead into this call.
-        // ReSharper disable once MethodHasAsyncOverload
-        _pipeInput!.Complete();
+        // Wake the read loop; it completes the input itself when it exits. Completing it here could recycle the buffer
+        // the read loop is still processing.
+        _pipeInput?.CancelPendingRead();
         _pipeInput = null;
-        
-        _invocationSemaphore.Dispose();
+
+        while (_invocationQueue.TryDequeue(out var queued))
+            queued.Dispose();
 
         if (_config.InternalNoLingerOnShutdown)
         {
@@ -438,6 +496,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
     
     
     /// <summary>
+    /// Frees this session's <c>MaxPendingHandshakes</c> slot. Safe to call more than once.
+    /// </summary>
+    internal void EndHandshake() => Interlocked.Exchange(ref _handshakeEnded, null)?.Invoke();
+
+    /// <summary>
     /// Method executed at the handshake timeout to verify the connection has been fully established.
     /// </summary>
     /// <param name="timeoutTask">Task which fired this method.</param>
@@ -457,9 +520,151 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
     
-    private class InvocationTaskArguments
+    public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
+        where TMessage : IMessageBase
+    {
+        if (!_outboundCredits.Wait(0))
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disconnectionCts.Token);
+            try
+            {
+                if (!await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, linked.Token).ConfigureAwait(false))
+                {
+                    RecordCreditDrop();
+                    return false;
+                }
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The session ended while waiting.
+                return false;
+            }
+        }
+
+        await SendMessage(message, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Logs, at most once per 10 s, invocations dropped because the peer granted no credit in time.
+    /// </summary>
+    private void RecordCreditDrop()
+    {
+        var drops = Interlocked.Increment(ref _creditDrops);
+        var now = _config.Time.GetTickCount64();
+        var last = Volatile.Read(ref _lastCreditDropWarning);
+        if (now - last < 10_000 || Interlocked.CompareExchange(ref _lastCreditDropWarning, now, last) != last)
+            return;
+
+        Logger?.LogWarning($"Session {Id} dropped invocations because the peer returned no invocation credit within " +
+                           $"{_config.ProgressTimeout} ms ({drops} so far).");
+    }
+
+    /// <summary>
+    /// Applies the peer's advertised limits from its greeting. Returns false if they are invalid.
+    /// </summary>
+    private bool ApplyPeerLimits(int maxMessageSize, int invocationCredits)
+    {
+        if (maxMessageSize < IInvocationMessage.MaxArgumentSize || invocationCredits < 1)
+            return false;
+
+        _peerMaxMessageSize = maxMessageSize;
+        _peerInvocationCredits = invocationCredits;
+        return true;
+    }
+
+    /// <summary>
+    /// Largest value this side may send: the smaller of its own limit and the peer's.
+    /// </summary>
+    public int SendMaxMessageSize => Math.Min(_config.MaxMessageSize, _peerMaxMessageSize);
+
+    /// <summary>
+    /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
+    /// returned, so a queued invocation always finds a free slot.
+    /// </summary>
+    private void DispatchInvocations()
+    {
+        while (!_invocationQueue.IsEmpty && TryTakeInvocationSlot())
+        {
+            if (!_invocationQueue.TryDequeue(out var message))
+            {
+                // Another dispatcher took it.
+                Interlocked.Increment(ref _freeInvocationSlots);
+                continue;
+            }
+
+            if (State != ConnectionState.Connected)
+            {
+                message.Dispose();
+                Interlocked.Increment(ref _freeInvocationSlots);
+                continue;
+            }
+
+
+            if (!_invocationTaskArgumentsPool.TryTake(out var args))
+                args = new InvocationTaskArguments();
+
+            args.Message = message;
+            args.Session = this;
+            args.SlotHeld = 1;
+            message.Slot = args;
+
+            // Dequeued for execution: the peer may queue another.
+            ReturnInvocationCredit();
+
+            _ = Task.Factory.StartNew(InvocationTask, args);
+        }
+    }
+
+    bool LargeMessageReceiver.IOwner.IsCallOutstanding(ushort invocationId)
+        => SessionInvocationStateManager.IsOutstanding(invocationId);
+
+    bool LargeMessageReceiver.IOwner.TryTakeInvocationCredit()
+        => Interlocked.Decrement(ref _inboundCredits) >= 0;
+
+    void LargeMessageReceiver.IOwner.ReturnInvocationCredit() => ReturnInvocationCredit();
+
+    void LargeMessageReceiver.IOwner.SendAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
+        => _controlSender.RequestAbort(invocationId, kind, reason);
+
+    private void ReturnInvocationCredit()
+    {
+        Interlocked.Increment(ref _inboundCredits);
+        _controlSender.ReturnInvocationCredit();
+    }
+
+    private bool TryTakeInvocationSlot()
+    {
+        var free = Volatile.Read(ref _freeInvocationSlots);
+        while (free > 0)
+        {
+            var observed = Interlocked.CompareExchange(ref _freeInvocationSlots, free - 1, free);
+            if (observed == free)
+                return true;
+            free = observed;
+        }
+
+        return false;
+    }
+
+    private void ReturnInvocationSlot()
+    {
+        Interlocked.Increment(ref _freeInvocationSlots);
+        DispatchInvocations();
+    }
+
+    private class InvocationTaskArguments : IInvocationSlot
     {
         public InvocationMessage Message { get; set; } = null!;
         public NexusSession<TNexus, TProxy> Session { get; set; } = null!;
+
+        // 1 while the invocation holds its execution slot.
+        public int SlotHeld;
+
+        public void Release()
+        {
+            if (Interlocked.Exchange(ref SlotHeld, 0) == 1)
+                Session.ReturnInvocationSlot();
+        }
     }
 }

@@ -18,10 +18,19 @@ public abstract class ConfigBase
     private int _disconnectDelay = 200;
     private int _timeout = 30_000;
     private int _handshakeTimeout = 15_000;
-    private int _nexusPipeHighWaterMark = 1024 * 192;
-    private int _nexusPipeLowWaterMark = 1024 * 16;
-    private int _nexusPipeHighWaterCutoff = 1024 * 256;
-    private int _nexusPipeFlushChunkSize = 1024 * 8;
+    private int? _sessionBudget;
+    private int? _maxPipes;
+    private int? _pipeWindow;
+    private int? _maxMessageSize;
+    private int? _invocationCredits;
+    private int _progressTimeout = 30_000;
+    private PipeOptions _receiveSessionPipeOptions = CreateReceivePipeOptions();
+
+    /// <summary>
+    /// Smallest pause threshold for a transport's receive pipe: two maximum frames. A frame is only consumed once it
+    /// is complete, so a pipe that pauses below one frame can never resume.
+    /// </summary>
+    internal const long MinReceivePauseThreshold = 2 * (ushort.MaxValue + 5);
 
     /// <summary>
     /// Logger for the server/client.
@@ -43,11 +52,34 @@ public abstract class ConfigBase
     /// </remarks>
     public TimeProvider Time { get; set; } = TimeProvider.System;
 
+    private NexusSerializerOptions _serializerOptions = NexusSerializerOptions.Untrusted;
+    private NexusSerializerOptions? _resolvedSerializerOptions;
+
     /// <summary>
     /// Options applied when deserializing data received from the remote peer.
-    /// Defaults to <see cref="NexusSerializerOptions.Untrusted"/> (hardening for hostile peers).
+    /// Defaults to <see cref="NexusSerializerOptions.Untrusted"/> (hardening for hostile peers). An unset
+    /// <see cref="NexusSerializerOptions.MaxElements"/> reads back as <c>max(65536, MaxMessageSize / 16)</c>.
     /// </summary>
-    public NexusSerializerOptions SerializerOptions { get; set; } = NexusSerializerOptions.Untrusted;
+    public NexusSerializerOptions SerializerOptions
+    {
+        get
+        {
+            if (_serializerOptions.MaxElements != 0)
+                return _serializerOptions;
+
+            var maxElements = Math.Max(65536, MaxMessageSize / 16);
+            var resolved = _resolvedSerializerOptions;
+            if (resolved == null || resolved.MaxElements != maxElements)
+                _resolvedSerializerOptions = resolved = _serializerOptions with { MaxElements = maxElements };
+            return resolved;
+        }
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            _serializerOptions = value;
+            _resolvedSerializerOptions = null;
+        }
+    }
 
     /// <summary>
     /// The maximum number of concurrent invocations which can occur from a single connection.
@@ -125,70 +157,142 @@ public abstract class ConfigBase
         minimumSegmentSize: ushort.MaxValue);*/
 
     /// <summary>
-    /// Options to configure the receiving pipe with.
+    /// Options to configure the receiving pipe with. Defaults to pausing at 256KB and resuming at 128KB.
+    /// The pause threshold must be 0 (never pause) or at least two maximum frames (131,080 bytes).
     /// </summary>
-    public PipeOptions ReceiveSessionPipeOptions { get; set; } = PipeOptions.Default;
-
-    /// <summary>
-    /// The NexusPipe class will flush this maximum amount of data at once.
-    /// If the data surpasses this limit, it will be divided into chunks of this size and sent until
-    /// the entire data is transmitted. Must be between 1KB and 1MB.
-    /// </summary>
-    public virtual int NexusPipeFlushChunkSize
+    public PipeOptions ReceiveSessionPipeOptions
     {
-        get => _nexusPipeFlushChunkSize;
+        get => _receiveSessionPipeOptions;
         set
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1024, nameof(NexusPipeFlushChunkSize));
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1024 * 1024, nameof(NexusPipeFlushChunkSize));
-            _nexusPipeFlushChunkSize = value;
+            ArgumentNullException.ThrowIfNull(value);
+            ValidateReceivePipeOptions(value, nameof(ReceiveSessionPipeOptions));
+            _receiveSessionPipeOptions = value;
         }
     }
 
     /// <summary>
-    /// Level at which the pipe will pause the writer.
-    /// 192KB default. Must be between 1KB and 10MB.
+    /// Default options for a transport's receive pipe.
     /// </summary>
-    public int NexusPipeHighWaterMark
+    internal static PipeOptions CreateReceivePipeOptions(bool useSynchronizationContext = true)
+        => new(pauseWriterThreshold: 256 * 1024, resumeWriterThreshold: 128 * 1024, useSynchronizationContext: useSynchronizationContext);
+
+    internal static void ValidateReceivePipeOptions(PipeOptions options, string paramName)
     {
-        get => _nexusPipeHighWaterMark;
+        if (options.PauseWriterThreshold != 0 && options.PauseWriterThreshold < MinReceivePauseThreshold)
+            throw new ArgumentOutOfRangeException(paramName, options.PauseWriterThreshold,
+                $"The pause threshold must be 0 or at least {MinReceivePauseThreshold} bytes.");
+    }
+
+    // Reads the options as set: the SerializerOptions getter depends on MaxMessageSize, which depends on this.
+    private bool IsTrusted => _serializerOptions.Security == SerializerSecurity.Trusted;
+
+    /// <summary>
+    /// Receive memory per session, in bytes. Every pipe window and every large-value reservation is drawn from it.
+    /// Defaults to 16MB, or 64MB with <see cref="SerializerSecurity.Trusted"/> serializer options. Must be between
+    /// 64KB and 1GB.
+    /// </summary>
+    public int SessionBudget
+    {
+        get => _sessionBudget ?? (IsTrusted ? 64 * 1024 * 1024 : 16 * 1024 * 1024);
         set
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1024, nameof(NexusPipeHighWaterMark));
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 10 * 1024 * 1024, nameof(NexusPipeHighWaterMark));
-            _nexusPipeHighWaterMark = value;
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 64 * 1024, nameof(SessionBudget));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1024 * 1024 * 1024, nameof(SessionBudget));
+            _sessionBudget = value;
         }
     }
 
     /// <summary>
-    /// Level at which the pipe will notify the other session to pause sending any more data until the amount
-    /// of data buffered is this amount or less.
-    /// 16KB default. Must be between 1KB and NexusPipeHighWaterMark.
+    /// Most pipes (including channels and collection connections) open on a session at once. Opening one more is
+    /// refused. 32 default. Must be between 1 and 255.
     /// </summary>
-    public int NexusPipeLowWaterMark
+    public int MaxPipes
     {
-        get => _nexusPipeLowWaterMark;
+        get => _maxPipes ?? 32;
         set
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1024, nameof(NexusPipeLowWaterMark));
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, _nexusPipeHighWaterMark, nameof(NexusPipeLowWaterMark));
-            _nexusPipeLowWaterMark = value;
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MaxPipes));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 255, nameof(MaxPipes));
+            _maxPipes = value;
         }
     }
 
     /// <summary>
-    /// Level at which the pipe will stop the session from sending any more data until the low water mark is met.
-    /// 256KB default. Must be between NexusPipeHighWaterMark and 100MB.
+    /// Bytes a peer may send on a pipe before this side has read them: the pipe's receive window, reserved from
+    /// <see cref="SessionBudget"/> while the pipe is open. Defaults to 256KB, or 1MB with
+    /// <see cref="SerializerSecurity.Trusted"/> serializer options. Must be between 4KB and 1GB.
     /// </summary>
-    public int NexusPipeHighWaterCutoff
+    public int PipeWindow
     {
-        get => _nexusPipeHighWaterCutoff;
+        get => _pipeWindow ?? (IsTrusted ? 1024 * 1024 : 256 * 1024);
         set
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(value, _nexusPipeHighWaterMark, nameof(NexusPipeHighWaterCutoff));
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 100 * 1024 * 1024, nameof(NexusPipeHighWaterCutoff));
-            _nexusPipeHighWaterCutoff = value;
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 4 * 1024, nameof(PipeWindow));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1024 * 1024 * 1024, nameof(PipeWindow));
+            _pipeWindow = value;
         }
+    }
+
+    /// <summary>
+    /// Largest argument, result or channel item accepted, in bytes. Defaults to 4MB, or 16MB with
+    /// <see cref="SerializerSecurity.Trusted"/> serializer options. Must be between 64KB and 1GB.
+    /// </summary>
+    public int MaxMessageSize
+    {
+        get => _maxMessageSize ?? (IsTrusted ? 16 * 1024 * 1024 : 4 * 1024 * 1024);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 64 * 1024, nameof(MaxMessageSize));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1024 * 1024 * 1024, nameof(MaxMessageSize));
+            _maxMessageSize = value;
+        }
+    }
+
+    /// <summary>
+    /// Invocations the peer may have queued on this side at once. Defaults to 32, or 128 with
+    /// <see cref="SerializerSecurity.Trusted"/> serializer options. Must be between 1 and 10,000.
+    /// </summary>
+    public int InvocationCredits
+    {
+        get => _invocationCredits ?? (IsTrusted ? 128 : 32);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(InvocationCredits));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 10_000, nameof(InvocationCredits));
+            _invocationCredits = value;
+        }
+    }
+
+    /// <summary>
+    /// Longest time without progress before the session disconnects with
+    /// <see cref="NexNet.Messages.DisconnectReason.Stalled"/>, in milliseconds. Progress is measured on a pipe that is closing (until
+    /// the peer confirms the close), on an inbound large argument or result and on a channel item given extra credit
+    /// (since their last data), and on an outbound transport flush. Waiting for credit is never a stall.
+    /// 30000 default. Must be between 50 and 600000.
+    /// </summary>
+    public int ProgressTimeout
+    {
+        get => _progressTimeout;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 50, nameof(ProgressTimeout));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 600_000, nameof(ProgressTimeout));
+            _progressTimeout = value;
+        }
+    }
+
+    /// <summary>
+    /// Throws if <see cref="SessionBudget"/> can't hold the fixed reservations:
+    /// <c>MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB</c>.
+    /// </summary>
+    internal void ValidateFlowControl()
+    {
+        var required = (long)MaxPipes * PipeWindow + MaxMessageSize + (long)InvocationCredits * 64 * 1024;
+        if (required > SessionBudget)
+            throw new InvalidOperationException(
+                $"{nameof(SessionBudget)} ({SessionBudget} bytes) is smaller than {nameof(MaxPipes)} x {nameof(PipeWindow)} + " +
+                $"{nameof(MaxMessageSize)} + {nameof(InvocationCredits)} x 64KB ({required} bytes).");
     }
 
 

@@ -47,6 +47,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private INexusLogger? _logger;
     private NexusCollectionManager _collectionManager = null!;
     private IConnectionRateLimiter? _rateLimiter;
+    private PreAuthFailureLog? _preAuthFailureLog;
+
+    // Connections between accept and completed authentication; bounded by ServerConfig.MaxPendingHandshakes.
+    private int _pendingHandshakes;
+    private readonly Action _handshakeEnded;
     //private Func<TServerNexus, ValueTask>? _configureCollections;
 
     /// <inheritdoc />
@@ -88,6 +93,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     public NexusServer()
     {
         _poolManager = new SessionPoolManager<TClientProxy>();
+        _handshakeEnded = () => Interlocked.Decrement(ref _pendingHandshakes);
     }
 
     /// <summary>
@@ -108,6 +114,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         ArgumentNullException.ThrowIfNull(nexusFactory);
         if(_config != null)
             throw new InvalidOperationException("Server has already been configured.");
+
+        config.ValidateFlowControl();
         
 
         _config = config;
@@ -149,6 +157,22 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         {
             _rateLimiter = new ConnectionRateLimiter(config.RateLimiting, config.Time);
         }
+
+        _preAuthFailureLog = new PreAuthFailureLog(_logger, config.Time);
+    }
+
+    /// <summary>
+    /// Takes a <see cref="ServerConfig.MaxPendingHandshakes"/> slot for a new transport. Returns false when none is
+    /// free; the transport must then be closed.
+    /// </summary>
+    private bool TryBeginHandshake()
+    {
+        if (Interlocked.Increment(ref _pendingHandshakes) <= _config!.MaxPendingHandshakes)
+            return true;
+
+        Interlocked.Decrement(ref _pendingHandshakes);
+        _preAuthFailureLog?.RecordHandshakeLimit();
+        return false;
     }
 
     /// <inheritdoc />
@@ -290,6 +314,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             throw new InvalidOperationException(
                 "Can't accept new transport before server configuration has been completed.");
 
+        if (!TryBeginHandshake())
+        {
+            _ = transport.CloseAsync(false);
+            return ValueTask.CompletedTask;
+        }
+
         // Rate limit check for external transports
         string? remoteAddress = null;
         if (_rateLimiter != null)
@@ -300,6 +330,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             if (result != ConnectionRateLimitResult.Allowed)
             {
                 _logger?.LogDebug($"External transport rejected: {result} from {remoteAddress ?? "unknown"}");
+                _handshakeEnded();
                 _ = transport.CloseAsync(false);
                 return ValueTask.CompletedTask;
             }
@@ -322,7 +353,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             CollectionManager = _collectionManager,
             Logger = _logger,
             RateLimiterAddress = remoteAddress,
-            RateLimiter = _rateLimiter
+            RateLimiter = _rateLimiter,
+            HandshakeEnded = _handshakeEnded,
+            PreAuthFailureLog = _preAuthFailureLog
         }, cancellationToken);
     }
 
@@ -351,6 +384,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             await session.InitializeConnection(cancellationToken).ConfigureAwait(false);
             await session.StartReadAsync(cancellationToken).ConfigureAwait(false);
 
+            // Normally freed by DisconnectCore or a completed handshake; this covers a read loop that ended otherwise.
+            session.EndHandshake();
+
             try
             {
                 // ReSharper disable once MethodHasAsyncOverload
@@ -373,6 +409,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         }
         catch (Exception ex)
         {
+            session.EndHandshake();
             session.Logger?.LogError(ex, "Exception while running session");
             try
             {
@@ -419,6 +456,16 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 if(clientTransport == null)
                     continue;
 
+                if (!TryBeginHandshake())
+                {
+                    try
+                    {
+                        await clientTransport.CloseAsync(false).ConfigureAwait(false);
+                    }
+                    catch { /* ignore close errors */ }
+                    continue;
+                }
+
                 // Rate limit check using ITransport.RemoteAddress
                 string? remoteAddress = null;
                 if (_rateLimiter != null)
@@ -429,6 +476,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                     if (result != ConnectionRateLimitResult.Allowed)
                     {
                         _logger?.LogDebug($"Connection rejected: {result} from {remoteAddress ?? "unknown"}");
+                        _handshakeEnded();
                         try
                         {
                             await clientTransport.CloseAsync(false).ConfigureAwait(false);
@@ -460,7 +508,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         CollectionManager = _collectionManager,
                         Logger = _logger,
                         RateLimiterAddress = remoteAddress,
-                        RateLimiter = _rateLimiter
+                        RateLimiter = _rateLimiter,
+                        HandshakeEnded = _handshakeEnded,
+                        PreAuthFailureLog = _preAuthFailureLog
                     });
             }
         }

@@ -39,6 +39,11 @@ public ref struct MsgPackWriter
     }
 
     /// <summary>
+    /// Bytes written but not yet committed to the output with <see cref="Flush"/>.
+    /// </summary>
+    internal readonly int Buffered => _buffered;
+
+    /// <summary>
     /// Commits all buffered bytes to the output.
     /// </summary>
     public void Flush()
@@ -147,6 +152,15 @@ public ref struct MsgPackWriter
         else
             WriteUInt64Forced(value);
     }
+
+    /// <summary>
+    /// Bytes <see cref="Write(uint)"/> (and the other unsigned writes up to 32 bits) uses for <paramref name="value"/>.
+    /// </summary>
+    internal static int GetUInt32CompactLength(uint value)
+        => value <= MsgPackCode.MaxFixPositive ? 1
+            : value <= byte.MaxValue ? 2
+            : value <= ushort.MaxValue ? 3
+            : 5;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteUInt32Compact(uint value)

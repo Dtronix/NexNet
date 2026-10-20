@@ -66,19 +66,16 @@ internal class NexusChannelReaderWriterTestBase
 
     protected (NexusPipeWriter, NexusPipeReader, DummySessionMessenger) GetConnectedPipeReaderWriter(bool log = false)
     {
-        var nexusPipeReader = new NexusPipeReader(
+        var nexusPipeReader = TestPipes.Reader(
             new DummyPipeStateManager(),
-            log ? new ConsoleLogger() : null,
-            true,
-            ushort.MaxValue,
-            0,
-            0);
+            log ? new ConsoleLogger() : null);
 
         var messenger = new DummySessionMessenger()
         {
-            OnMessageSent = async (type, memory, arg3) =>
+            OnMessageSent = (type, memory, arg3) =>
             {
-                await nexusPipeReader!.BufferData(arg3).Timeout(1);
+                nexusPipeReader!.BufferData(arg3);
+                return default;
             }
         };
 
@@ -87,7 +84,7 @@ internal class NexusChannelReaderWriterTestBase
             log ? new ConsoleLogger() : null,
             messenger,
             true,
-            ushort.MaxValue);
+            ushort.MaxValue).WithCredit();
 
 
         return (nexusPipeWriter, nexusPipeReader, messenger);

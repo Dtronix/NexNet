@@ -76,11 +76,18 @@ jobs:
       with:
         path: artifacts/*
         
+    - name: Release notes
+      # The release body comes from docs/articles/releases/release-notes-<tag>.md; a tag without one fails here,
+      # before anything is released or published.
+      if: startsWith(github.ref, 'refs/tags/')
+      run: python3 .github/scripts/release-notes.py "${{ github.ref_name }}" release-body.md
+
     - name: Create release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: startsWith(github.ref, 'refs/tags/')
       with:
         name: "NexNet ${{ github.ref_name }} Released"
+        body_path: release-body.md
         files: |
           artifacts/*.nupkg
           artifacts/*.snupkg

@@ -30,6 +30,28 @@ public abstract class ServerConfig : ConfigBase
     /// </summary>
     public bool Authenticate { get; set; } = false;
 
+    private int _maxPendingHandshakes = 256;
+
+    /// <summary>
+    /// Most connections that may be between accepting the transport and completing authentication at once,
+    /// server-wide. New transports are closed while the limit is reached. Bounds concurrent
+    /// <c>OnAuthenticate</c> calls and the memory held by unauthenticated connections. 256 default. Must be between
+    /// 1 and 100,000.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ConfigBase.HandshakeTimeout"/> must cover the application's <c>OnAuthenticate</c> latency.
+    /// </remarks>
+    public int MaxPendingHandshakes
+    {
+        get => _maxPendingHandshakes;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MaxPendingHandshakes));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 100_000, nameof(MaxPendingHandshakes));
+            _maxPendingHandshakes = value;
+        }
+    }
+
     /// <summary>
     /// Configuration for connection rate limiting. Null = disabled (default).
     /// </summary>

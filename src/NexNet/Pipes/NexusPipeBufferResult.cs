@@ -3,7 +3,10 @@
 internal enum NexusPipeBufferResult : byte
 {
     Success,
-    HighWatermarkReached,
-    //HighCutoffReached,
     DataIgnored,
+
+    /// <summary>
+    /// The peer sent more than its credit: a protocol violation.
+    /// </summary>
+    CreditExceeded,
 }
