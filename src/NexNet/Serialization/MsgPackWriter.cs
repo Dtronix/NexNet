@@ -153,6 +153,15 @@ public ref struct MsgPackWriter
             WriteUInt64Forced(value);
     }
 
+    /// <summary>
+    /// Bytes <see cref="Write(uint)"/> (and the other unsigned writes up to 32 bits) uses for <paramref name="value"/>.
+    /// </summary>
+    internal static int GetUInt32CompactLength(uint value)
+        => value <= MsgPackCode.MaxFixPositive ? 1
+            : value <= byte.MaxValue ? 2
+            : value <= ushort.MaxValue ? 3
+            : 5;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void WriteUInt32Compact(uint value)
     {

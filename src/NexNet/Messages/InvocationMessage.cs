@@ -11,7 +11,7 @@ namespace NexNet.Messages;
 /// Body: <c>[invocationId (uint16), methodId (uint16), flags (uint8), arguments]</c>.
 /// The arguments are an embedded MessagePack array.
 /// </summary>
-internal partial class InvocationMessage : IMessageBase, IInvocationMessage
+internal partial class InvocationMessage : IMessageBase, IInvocationMessage, IKnownBodyLength
 {
     /// <summary>
     /// True if the arguments were deserialized into a pooled array.
@@ -65,6 +65,16 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     {
         Arguments = serializedArguments;
     }
+
+    /// <summary>
+    /// Length of the body <see cref="Serialize"/> writes, known before writing it.
+    /// </summary>
+    int IKnownBodyLength.BodyLength
+        => 1 // array header
+           + MsgPackWriter.GetUInt32CompactLength(InvocationId)
+           + MsgPackWriter.GetUInt32CompactLength(MethodId)
+           + MsgPackWriter.GetUInt32CompactLength((byte)Flags)
+           + (Arguments.IsEmpty ? 1 : Arguments.Length);
 
     public void Serialize(ref MsgPackWriter writer)
     {

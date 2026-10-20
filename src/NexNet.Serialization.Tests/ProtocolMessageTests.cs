@@ -31,6 +31,28 @@ public class ProtocolMessageTests
     private static object?[] Reference(byte[] body) => MessagePackSerializer.Deserialize<object?[]>(body);
 
     [Test]
+    public void InvocationBodyLength_MatchesTheSerializedBody()
+    {
+        // Sessions write the frame header from this length before serializing the body, so it must be exact at
+        // every MessagePack integer size boundary.
+        ushort[] values = [0, 1, 127, 128, 255, 256, 65535];
+        InvocationFlags[] flags = [InvocationFlags.None, InvocationFlags.IgnoreReturn, (InvocationFlags)127, (InvocationFlags)128, (InvocationFlags)255];
+        byte[][] arguments = [[], [0x91, 0x01], new byte[200], new byte[65_000]];
+        arguments[2][0] = 0x91;
+        arguments[3][0] = 0x91;
+
+        foreach (var id in values)
+        foreach (var methodId in values)
+        foreach (var flag in flags)
+        foreach (var args in arguments)
+        {
+            var message = new InvocationMessage { InvocationId = id, MethodId = methodId, Flags = flag, Arguments = args };
+            Assert.That(((IKnownBodyLength)message).BodyLength, Is.EqualTo(Body(message).Length),
+                $"id {id}, method {methodId}, flags {flag}, arguments {args.Length}");
+        }
+    }
+
+    [Test]
     public void ClientGreetingGoldenVector()
     {
         var message = new ClientGreetingMessage
