@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 namespace NexNet.Internals;
 
 /// <summary>
-/// A session's receive memory budget (docs/internals/flow-control-v2.md, section 3). Counts reservations, not
+/// A session's receive memory budget (docs/internals/flow-control.md, section 3). Counts reservations, not
 /// allocations: credit granted to the peer and space promised for large values are reserved before anything is
 /// sent or allocated, and released when they are no longer needed.
 /// </summary>

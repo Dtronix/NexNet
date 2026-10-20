@@ -5,7 +5,7 @@ using NexNet.Serialization;
 namespace NexNet.Messages;
 
 /// <summary>
-/// What a large message carries (docs/internals/flow-control-v2.md, section 4.3). With the invocation ID it forms the
+/// What a large message carries (docs/internals/flow-control.md, section 4.3). With the invocation ID it forms the
 /// stream's key; an argument flows from caller to callee, a result from callee to caller.
 /// </summary>
 internal enum LargeMessageKind : byte

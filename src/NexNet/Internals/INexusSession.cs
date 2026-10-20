@@ -101,7 +101,7 @@ internal interface INexusSession : ISessionMessenger
     int SendMaxMessageSize { get; }
 
     /// <summary>
-    /// Sends an invocation once the peer has credit for it (docs/internals/flow-control-v2.md, section 4.7). Waits
+    /// Sends an invocation once the peer has credit for it (docs/internals/flow-control.md, section 4.7). Waits
     /// for credit in the caller's task, never in the read loop.
     /// </summary>
     /// <param name="message">The invocation.</param>

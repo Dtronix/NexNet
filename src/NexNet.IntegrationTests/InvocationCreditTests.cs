@@ -10,7 +10,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Invocation credits (docs/internals/flow-control-v2.md, section 4.7).
+/// Invocation credits (docs/internals/flow-control.md, section 4.7).
 /// </summary>
 internal class InvocationCreditTests : BaseTests
 {

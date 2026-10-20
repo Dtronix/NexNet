@@ -20,7 +20,7 @@ public class FuzzSmokeTests
     }
 
     /// <summary>
-    /// Last step of the flow control v2 work sequence (docs/internals/flow-control-v2.md, section 8) that has landed.
+    /// Last step of the flow control work sequence (docs/internals/flow-control.md, section 8) that has landed.
     /// Reproductions fixed by a later step are ignored; each step raises this.
     /// </summary>
     private const int CompletedFlowControlStep = 6;
@@ -31,7 +31,7 @@ public class FuzzSmokeTests
         {
             var data = new TestCaseData(input).SetName($"FlowReproduction({name})");
             yield return fixedInStep > CompletedFlowControlStep
-                ? data.Ignore($"Fails until flow control v2 step {fixedInStep}.")
+                ? data.Ignore($"Fails until flow control step {fixedInStep}.")
                 : data;
         }
     }

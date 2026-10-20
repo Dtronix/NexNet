@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests.Pipes;
 
 /// <summary>
-/// Per-pipe credit, the session budget and two-sided close (docs/internals/flow-control-v2.md, section 4.4 and 4.6).
+/// Per-pipe credit, the session budget and two-sided close (docs/internals/flow-control.md, section 4.4 and 4.6).
 /// </summary>
 internal class FlowControlTests : BaseTests
 {

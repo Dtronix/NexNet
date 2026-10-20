@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// The session read loop waits only on the transport (docs/internals/flow-control-v2.md, section 5.1).
+/// The session read loop waits only on the transport (docs/internals/flow-control.md, section 5.1).
 /// </summary>
 internal class ReadLoopTests : BaseTests
 {

@@ -17,7 +17,7 @@ namespace NexNet.Pipes;
 /// <remarks>
 /// An item that breaks the framing (a length over the limit, a malformed prefix, an item that does not decode to
 /// exactly its length) resets the pipe; the session stays up. An incomplete item waits for more data; one larger
-/// than the pipe's window gets an extra grant from the session budget (docs/internals/flow-control-v2.md, 4.5).
+/// than the pipe's window gets an extra grant from the session budget (docs/internals/flow-control.md, 4.5).
 /// </remarks>
 internal class NexusChannelReader<T> : INexusChannelReader<T>
 {

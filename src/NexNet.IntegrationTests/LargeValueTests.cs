@@ -6,7 +6,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Arguments and results larger than one frame (docs/internals/flow-control-v2.md, section 4.3).
+/// Arguments and results larger than one frame (docs/internals/flow-control.md, section 4.3).
 /// </summary>
 internal class LargeValueTests : BaseTests
 {

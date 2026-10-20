@@ -29,7 +29,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly int _chunkSize;
     private readonly SemaphoreSlim _flushSemaphore = new SemaphoreSlim(1, 1);
 
-    // Send credit granted by the peer (docs/internals/flow-control-v2.md, section 4.4). A flush sends what the
+    // Send credit granted by the peer (docs/internals/flow-control.md, section 4.4). A flush sends what the
     // credit allows and waits, in the writer's task, for more.
     private long _credit;
     private readonly SemaphoreSlim _creditSignal = new SemaphoreSlim(0, 1);

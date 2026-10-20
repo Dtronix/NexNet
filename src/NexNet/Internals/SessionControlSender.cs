@@ -10,7 +10,7 @@ namespace NexNet.Internals;
 
 /// <summary>
 /// Sends the control replies the read loop asks for, so the read loop never waits on a send
-/// (docs/internals/flow-control-v2.md, section 5.1).
+/// (docs/internals/flow-control.md, section 5.1).
 /// </summary>
 /// <remarks>
 /// Requests are coalesced: there is at most one pending item of each kind, so outbound control memory does not grow

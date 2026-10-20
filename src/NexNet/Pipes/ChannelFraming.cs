@@ -5,7 +5,7 @@ using NexNet.Serialization;
 namespace NexNet.Pipes;
 
 /// <summary>
-/// The channel item prefix (docs/internals/flow-control-v2.md, section 4.5): the item's length in bytes as an
+/// The channel item prefix (docs/internals/flow-control.md, section 4.5): the item's length in bytes as an
 /// unsigned LEB128 varint (7 bits per byte, low bits first, high bit set on every byte but the last).
 /// </summary>
 internal static class ChannelFraming

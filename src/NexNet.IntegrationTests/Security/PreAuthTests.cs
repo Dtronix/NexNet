@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace NexNet.IntegrationTests.Security;
 
 /// <summary>
-/// What a server accepts before a connection completes authentication (docs/internals/flow-control-v2.md, section 7).
+/// What a server accepts before a connection completes authentication (docs/internals/flow-control.md, section 7).
 /// </summary>
 internal class PreAuthTests : BaseTests
 {

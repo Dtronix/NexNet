@@ -26,7 +26,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     private bool _isCompleted;
     private bool _isCanceled;
 
-    // Receive window (docs/internals/flow-control-v2.md, section 4.4). _credit is what the peer may still send;
+    // Receive window (docs/internals/flow-control.md, section 4.4). _credit is what the peer may still send;
     // consumed bytes are granted back once they reach half the window. Guarded by _bufferLock.
     private readonly int _window;
     private long _credit;

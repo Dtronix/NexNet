@@ -9,7 +9,7 @@ using NexNet.Serialization;
 namespace NexNet.Internals;
 
 /// <summary>
-/// Reassembles large arguments and results the peer streams to this side (docs/internals/flow-control-v2.md,
+/// Reassembles large arguments and results the peer streams to this side (docs/internals/flow-control.md,
 /// section 4.3). Called from the read loop only, except <see cref="HasStalledStream"/> and <see cref="Clear"/>.
 /// </summary>
 /// <remarks>

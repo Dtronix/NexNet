@@ -437,7 +437,7 @@ Spec: [docs/internals/protocol-specification.md](docs/internals/protocol-specifi
 ### Serialization
 - **NexNet MessagePack serializer** (src/NexNet/Serialization) for arguments, results, channel and collection items
 - Generator emits formatters for `[NexusObject]` types; registry lookup at runtime, no reflection (Native AOT clean; CI publishes the AOT sample and fails on any IL warning)
-- Arguments and results up to `MaxMessageSize` (4 MiB untrusted / 16 MiB trusted); larger than one frame are streamed (MessageStart/Chunk). Flow control and limits: docs/internals/flow-control-v2.md
+- Arguments and results up to `MaxMessageSize` (4 MiB untrusted / 16 MiB trusted); larger than one frame are streamed (MessageStart/Chunk). Flow control and limits: docs/internals/flow-control.md
 
 ### Session Lifecycle
 1. Client: Create -> ConnectAsync -> Proxy.Method() -> DisconnectAsync

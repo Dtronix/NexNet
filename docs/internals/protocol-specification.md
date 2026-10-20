@@ -3,7 +3,7 @@
 This document specifies the bytes NexNet sends over a transport (TCP, TLS, UDS, QUIC, WebSocket, HttpSocket).
 It covers the connection preamble, message framing, every protocol message body, flow control, the payload encoding
 rules for user types, and limits. The design behind the flow control, large values and hostile-peer limits is described in
-[flow-control-v2.md](flow-control-v2.md).
+[flow-control.md](flow-control.md).
 
 Two encodings are used:
 

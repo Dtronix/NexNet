@@ -64,7 +64,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     private volatile State _currentState = State.Unset;
     private readonly object _stateLock = new();
 
-    // Two-sided close (docs/internals/flow-control-v2.md, section 4.6). The pipe is freed once this side sent its
+    // Two-sided close (docs/internals/flow-control.md, section 4.6). The pipe is freed once this side sent its
     // Complete, received the peer's, and the application released it. Between sending and receiving it is Closing.
     private int _sentClose;
     private int _receivedClose;

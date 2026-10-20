@@ -316,7 +316,7 @@ internal partial class NexusSession<TNexus, TProxy>
     }
 
     /// <summary>
-    /// A message body staged for streaming (docs/internals/flow-control-v2.md, section 4.3).
+    /// A message body staged for streaming (docs/internals/flow-control.md, section 4.3).
     /// </summary>
     private readonly record struct LargeMessage(byte[]? Buffer, int Length, ushort InvocationId, LargeMessageKind Kind, MessageType InnerType);
 

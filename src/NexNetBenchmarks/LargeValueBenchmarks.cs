@@ -5,7 +5,7 @@ namespace NexNetBenchmarks;
 
 /// <summary>
 /// Round trip of a byte array argument echoed back as the result. Values larger than one frame are streamed both
-/// ways (docs/internals/flow-control-v2.md, section 4.3). The MB/s column counts the value once.
+/// ways (docs/internals/flow-control.md, section 4.3). The MB/s column counts the value once.
 /// </summary>
 [Config(typeof(ThroughputConfig))]
 public class LargeValueBenchmarks

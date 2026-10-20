@@ -9,7 +9,7 @@ using NexNet.Serialization;
 namespace NexNet.Fuzz;
 
 /// <summary>
-/// Harness 4: flow control and session liveness (docs/internals/flow-control-v2.md). Each input is a program of
+/// Harness 4: flow control and session liveness (docs/internals/flow-control.md). Each input is a program of
 /// operations that a client runs against a long-lived server over an in-memory transport, while it reads and parses
 /// everything the server sends back.
 /// </summary>
@@ -36,7 +36,7 @@ namespace NexNet.Fuzz;
 /// credit the server granted, and answers the server's pipe closes.
 /// </para>
 /// <para>
-/// Operations can also send the v2 control frames (<c>PipeWindowUpdate</c>, <c>MessageStart</c>/<c>Chunk</c>/<c>Abort</c>,
+/// Operations can also send the flow control frames (<c>PipeWindowUpdate</c>, <c>MessageStart</c>/<c>Chunk</c>/<c>Abort</c>,
 /// <c>InvocationCredit</c>) directly, valid or not.
 /// </para>
 /// </remarks>
@@ -45,8 +45,8 @@ public static class FlowHarness
     public static TimeSpan ProbeTimeout = TimeSpan.FromMilliseconds(double.TryParse(Environment.GetEnvironmentVariable("NEXNET_FUZZ_PROBE_TIMEOUT_MS"), out var ms) ? ms : 1000);
 
     /// <summary>
-    /// Value sizes, indexed by an operation argument. Includes the limits of v1 (one frame, the 256 KiB
-    /// high-water cutoff) and of v2 (the default window).
+    /// Value sizes, indexed by an operation argument. Includes the old limits (one frame, the 256 KiB
+    /// high-water cutoff) and the default window.
     /// </summary>
     public static readonly int[] Sizes = [0, 1, 100, 1024, 16 * 1024, 40 * 1024, 65535, 65536, 300 * 1024, 1024 * 1024];
 
@@ -58,7 +58,7 @@ public static class FlowHarness
     private const int MaxPausePerInput = 500;
     private const int MaxFrameBody = ushort.MaxValue;
 
-    // Proposed v2 message types (spec 4.1).
+    // Flow control message types (design 4.1).
     internal const MessageType PipeWindowUpdate = (MessageType)51;
     internal const MessageType MessageStart = (MessageType)113;
     internal const MessageType MessageChunk = (MessageType)114;
@@ -152,7 +152,7 @@ public static class FlowHarness
         yield return Program(Open(FlowPipe.Drain), Op(FlowOp.Complete), Data(0, 100), ProbePing());
         yield return Program(Op(FlowOp.PipeState, 0, (byte)NexusDuplexPipe.State.ClientWriterServerReaderComplete), ProbePing());
 
-        // Every v2 frame once, plus raw frames, pauses and unsolicited pings.
+        // Every flow control frame once, plus raw frames, pauses and unsolicited pings.
         yield return Program(Open(FlowPipe.Drain), Op(FlowOp.WindowUpdate, 0, Size(65536)), ProbePing());
         yield return Program(Call(FlowMethod.Ping), Op(FlowOp.MessageStart, 0, 0, Size(300 * 1024)), Op(FlowOp.MessageChunk, 0, 0, Size(16 * 1024)), ProbePing());
         yield return Program(Op(FlowOp.MessageAbort, 0, 1, 2), ProbePing());

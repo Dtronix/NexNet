@@ -118,7 +118,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     // Tick count when the current outbound transport flush started; 0 when none is in progress.
     private long _flushStartedTicks;
 
-    // Invocation credits (docs/internals/flow-control-v2.md, section 4.7). _inboundCredits: invocations the peer may
+    // Invocation credits (docs/internals/flow-control.md, section 4.7). _inboundCredits: invocations the peer may
     // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
     private int _inboundCredits;
     private readonly SemaphoreSlim _outboundCredits = new(0, int.MaxValue);
@@ -127,7 +127,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private long _creditDrops;
     private long _lastCreditDropWarning;
 
-    // Large arguments and results (docs/internals/flow-control-v2.md, section 4.3): streams the peer is sending
+    // Large arguments and results (docs/internals/flow-control.md, section 4.3): streams the peer is sending
     // here, and streams this side is sending, by (invocation ID, kind).
     private readonly LargeMessageReceiver _largeMessages;
     private readonly ConcurrentDictionary<int, OutgoingLargeMessage> _outgoingLargeMessages = new();
