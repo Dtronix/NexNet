@@ -10,6 +10,9 @@ namespace NexNet.Transports;
 /// </summary>
 public class TcpServerConfig : ServerConfig
 {
+    /// <inheritdoc />
+    protected internal override string TransportName => "tcp";
+
     /// <summary>
     /// dual mode socket
     /// </summary>

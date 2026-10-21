@@ -8,6 +8,9 @@ namespace NexNet.Asp.WebSocket;
 /// </summary>
 public class WebSocketServerConfig : AspServerConfig
 {
+    /// <inheritdoc />
+    protected internal override string TransportName => "websocket";
+
    
     /// <inheritdoc />
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)

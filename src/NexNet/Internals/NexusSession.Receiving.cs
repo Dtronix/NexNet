@@ -138,6 +138,10 @@ internal partial class NexusSession<TNexus, TProxy>
             // Only this loop touches the streams' buffers.
             _largeMessages.Clear();
 
+            // A loop that ended without a disconnect (one in progress retires the session itself).
+            if (State != ConnectionState.Disconnecting)
+                RetireMetrics();
+
             try
             {
                 // The CompleteAsync method does the exact same action, but introduces overhead into this call.

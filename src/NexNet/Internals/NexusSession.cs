@@ -16,10 +16,11 @@ using NexNet.Logging;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Threading;
 using NexNet.RateLimiting;
+using NexNet.Diagnostics;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner, IMeteredSession
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -135,6 +136,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private readonly LargeMessageReceiver _largeMessages;
     private readonly ConcurrentDictionary<int, OutgoingLargeMessage> _outgoingLargeMessages = new();
 
+    // Metrics (docs/articles/metrics.md): the tags this session is counted under, and its slot in their table.
+    private readonly MetricsTagSet _metricsTags;
+    int IMeteredSession.MetricsSlot { get; set; } = -1;
+    long IMeteredSession.MetricsStartTimestamp { get; set; }
+
     public long Id
     {
         get => _id;
@@ -234,6 +240,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _largeMessages = new LargeMessageReceiver(this, Budget, _config.MaxMessageSize, _poolManager,
             _config.SerializerOptions, _config.Time);
         LastReceived = _config.Time.GetTickCount64();
+        _metricsTags = configurations.MetricsTags ?? NexusMetrics.GetTagSet(_config);
 
         // Note: Session registration is deferred until after authentication completes
         // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
@@ -287,7 +294,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     {
         // Send the connection header prior to the greeting
         await SendRaw(_protocolHeader, cancellationToken).ConfigureAwait(false);
-        
+
+        // Counted from here; DisconnectCore or the end of the read loop stops counting it.
+        _metricsTags.Metrics.Register(this);
+
         _state = ConnectionState.Connected;
         OnStateChanged?.Invoke(State);
     }
@@ -396,6 +406,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         while (_invocationQueue.TryDequeue(out var queued))
             queued.Dispose();
 
+        RetireMetrics();
+
         if (_config.InternalNoLingerOnShutdown)
         {
             try
@@ -498,6 +510,25 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     }
     
     
+    /// <summary>
+    /// Stops counting this session in metrics and records its disconnect. Safe to call more than once.
+    /// </summary>
+    private void RetireMetrics()
+        => _metricsTags.Metrics.Retire(this, DisconnectReason, (_internalState & InternalState.NexusCompletedConnection) != 0);
+
+    MetricsTagSet IMeteredSession.MetricsTags => _metricsTags;
+
+    bool IMeteredSession.IsDisconnected => _state == ConnectionState.Disconnected;
+
+    bool IMeteredSession.IsEstablished => (_internalState & InternalState.NexusCompletedConnection) != 0;
+
+    void IMeteredSession.CollectMetrics(ref SessionMetricsTotals totals)
+    {
+        totals.Sessions++;
+        if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+            totals.Handshaking++;
+    }
+
     /// <summary>
     /// Frees this session's <c>MaxPendingHandshakes</c> slot. Safe to call more than once.
     /// </summary>

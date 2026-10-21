@@ -9,6 +9,9 @@ namespace NexNet.Transports.HttpSocket;
 public class HttpSocketClientConfig : HttpClientConfig
 {
     /// <inheritdoc />
+    protected internal override string TransportName => "httpsocket";
+
+    /// <inheritdoc />
     protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
     {
         return HttpSocketTransport.ConnectAsync(this, cancellationToken);

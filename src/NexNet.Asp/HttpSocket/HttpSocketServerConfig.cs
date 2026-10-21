@@ -10,6 +10,9 @@ namespace NexNet.Asp.HttpSocket;
 public class HttpSocketServerConfig : AspServerConfig
 {
     /// <inheritdoc />
+    protected internal override string TransportName => "httpsocket";
+
+    /// <inheritdoc />
     protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
     {
         return ValueTask.FromResult<ITransportListener?>(null);

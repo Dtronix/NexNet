@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -117,7 +118,8 @@ public static partial class NexNetMiddlewareExtensions
 
         var config = new WebSocketServerConfig
         {
-            Logger = new NexusILoggerBridgeLogger(logger)
+            Logger = new NexusILoggerBridgeLogger(logger),
+            MeterFactory = app.Services.GetService<IMeterFactory>()
         };
         configure?.Invoke(new WebSocketConfigure(config));
         

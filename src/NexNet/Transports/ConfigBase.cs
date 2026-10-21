@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Buffers;
+using System.Diagnostics.Metrics;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Internals;
@@ -51,6 +52,19 @@ public abstract class ConfigBase
     /// continuations retain the provider that was active when they were created.
     /// </remarks>
     public TimeProvider Time { get; set; } = TimeProvider.System;
+
+    /// <summary>
+    /// Creates the <c>NexNet</c> meter this server or client reports metrics on
+    /// (<see cref="NexNet.Diagnostics.NexusMeter"/>). When null, a meter shared by the whole process is used. Read
+    /// when the server is configured or the client is created.
+    /// </summary>
+    public IMeterFactory? MeterFactory { get; set; }
+
+    /// <summary>
+    /// Name of the transport, reported as the <c>nexnet.transport</c> metric tag. Must be a fixed value per
+    /// configuration type.
+    /// </summary>
+    protected internal virtual string TransportName => "custom";
 
     private NexusSerializerOptions _serializerOptions = NexusSerializerOptions.Untrusted;
     private NexusSerializerOptions? _resolvedSerializerOptions;

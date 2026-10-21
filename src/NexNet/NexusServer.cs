@@ -9,6 +9,7 @@ using NexNet.Pools;
 using System.IO.Pipelines;
 using System.Threading.Tasks;
 using NexNet.Collections;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.RateLimiting;
@@ -48,6 +49,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private NexusCollectionManager _collectionManager = null!;
     private IConnectionRateLimiter? _rateLimiter;
     private PreAuthFailureLog? _preAuthFailureLog;
+    private MetricsTagSet _metricsTags = null!;
 
     // Connections between accept and completed authentication; bounded by ServerConfig.MaxPendingHandshakes.
     private int _pendingHandshakes;
@@ -159,6 +161,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         }
 
         _preAuthFailureLog = new PreAuthFailureLog(_logger, config.Time);
+        _metricsTags = NexusMetrics.GetTagSet(config);
     }
 
     /// <summary>
@@ -172,6 +175,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         Interlocked.Decrement(ref _pendingHandshakes);
         _preAuthFailureLog?.RecordHandshakeLimit();
+        _metricsTags.Metrics.RecordRejection(_metricsTags, NexusMetrics.RejectionMaxPendingHandshakes);
         return false;
     }
 
@@ -330,6 +334,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             if (result != ConnectionRateLimitResult.Allowed)
             {
                 _logger?.LogDebug($"External transport rejected: {result} from {remoteAddress ?? "unknown"}");
+                _metricsTags.Metrics.RecordRejection(_metricsTags, NexusMetrics.RateLimitReasonName(result));
                 _handshakeEnded();
                 _ = transport.CloseAsync(false);
                 return ValueTask.CompletedTask;
@@ -355,7 +360,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             RateLimiterAddress = remoteAddress,
             RateLimiter = _rateLimiter,
             HandshakeEnded = _handshakeEnded,
-            PreAuthFailureLog = _preAuthFailureLog
+            PreAuthFailureLog = _preAuthFailureLog,
+            MetricsTags = _metricsTags
         }, cancellationToken);
     }
 
@@ -476,6 +482,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                     if (result != ConnectionRateLimitResult.Allowed)
                     {
                         _logger?.LogDebug($"Connection rejected: {result} from {remoteAddress ?? "unknown"}");
+                        _metricsTags.Metrics.RecordRejection(_metricsTags, NexusMetrics.RateLimitReasonName(result));
                         _handshakeEnded();
                         try
                         {
@@ -510,7 +517,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                         RateLimiterAddress = remoteAddress,
                         RateLimiter = _rateLimiter,
                         HandshakeEnded = _handshakeEnded,
-                        PreAuthFailureLog = _preAuthFailureLog
+                        PreAuthFailureLog = _preAuthFailureLog,
+                        MetricsTags = _metricsTags
                     });
             }
         }

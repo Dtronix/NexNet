@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -114,7 +115,8 @@ public static partial class NexNetMiddlewareExtensions
         
         var config = new HttpSocketServerConfig
         {
-            Logger = new NexusILoggerBridgeLogger(logger)
+            Logger = new NexusILoggerBridgeLogger(logger),
+            MeterFactory = app.Services.GetService<IMeterFactory>()
         };
         
         var options = new HttpSocketOptions();
