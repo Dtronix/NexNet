@@ -65,7 +65,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 
     CancellationTokenSource IMethodInvoker.RegisterCancellationToken(IInvocationMessage message)
     {
-        if (message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
+        if ((message.Flags & InvocationFlags.IgnoreReturn) != 0)
         {
             var shared = Volatile.Read(ref _sessionCancellation);
             if (shared != null)
@@ -83,7 +83,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     void IMethodInvoker.ReturnCancellationToken(IInvocationMessage message, CancellationTokenSource cancellationTokenSource)
     {
         // The shared source lives as long as the session.
-        if (message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
+        if ((message.Flags & InvocationFlags.IgnoreReturn) != 0)
             return;
 
         // Removed only if it is this invocation's own source, never one registered by another invocation.
@@ -176,7 +176,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 
         // If we have the flag to ignore the return value, then all we have to do is invoke and then
         // return the rest args to the cache.
-        if (requestArgs.Message.Flags.HasFlag(InvocationFlags.IgnoreReturn))
+        if ((requestArgs.Message.Flags & InvocationFlags.IgnoreReturn) != 0)
         {
             try
             {

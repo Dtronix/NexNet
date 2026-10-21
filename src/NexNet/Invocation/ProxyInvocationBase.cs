@@ -150,7 +150,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.All:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)
@@ -161,7 +161,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Others:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)
@@ -173,7 +173,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
 
             case ProxyInvocationMode.Clients:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)
@@ -192,7 +192,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.AllExcept:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)
@@ -203,7 +203,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.Groups:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)
@@ -214,7 +214,7 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             }
             case ProxyInvocationMode.GroupsExceptCaller:
             {
-                if (flags.HasFlag(InvocationFlags.DuplexPipe))
+                if ((flags & InvocationFlags.DuplexPipe) != 0)
                     throw new InvalidOperationException(CanNotInvokeDuplexPipeMessage);
 
                 if (_invocationRouter == null)

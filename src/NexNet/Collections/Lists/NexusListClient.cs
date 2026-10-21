@@ -120,7 +120,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         if (result != ListProcessResult.DiscardOperation && result != ListProcessResult.Successful)
         {
             Client?.Logger?.LogWarning($"Processing {message} message failed with {result}");
-            if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
+            if ((message.Flags & NexusCollectionMessageFlags.Ack) != 0)
             {
                 _operationCompletionSource.TrySetResult(false);
             }
@@ -132,7 +132,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
             CoreChangedEvent.Raise(args.Value);
         }
 
-        if (message.Flags.HasFlag(NexusCollectionMessageFlags.Ack))
+        if ((message.Flags & NexusCollectionMessageFlags.Ack) != 0)
         {
             _operationCompletionSource.TrySetResult(true);
         }
