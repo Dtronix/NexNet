@@ -26,6 +26,8 @@
   href: asp-net-integration.md
 - name: Rate Limiting
   href: rate-limiting.md
+- name: Metrics & Diagnostics
+  href: metrics.md
 - name: Benchmarks
   href: benchmarks.md
 - name: Release Notes

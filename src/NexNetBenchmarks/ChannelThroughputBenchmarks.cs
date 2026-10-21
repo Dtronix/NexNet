@@ -25,9 +25,20 @@ public class ChannelThroughputBenchmarks
     private int[][] _intArrays = null!;
     private int[] _ints = null!;
 
+    private MetricsListenerScope? _metrics;
+
+    /// <summary>
+    /// With a listener attached to the NexNet meter, collecting once a second.
+    /// </summary>
+    [Params(false, true)]
+    public bool Metrics { get; set; }
+
     [GlobalSetup]
     public async Task GlobalSetup()
     {
+        if (Metrics)
+            _metrics = new MetricsListenerScope();
+
         var path = "channel.sock";
         if (File.Exists(path))
             File.Delete(path);
@@ -50,6 +61,8 @@ public class ChannelThroughputBenchmarks
     {
         await _client.DisconnectAsync();
         await _server.StopAsync();
+        _metrics?.Dispose();
+        _metrics = null;
     }
 
     private static Task<int> ResetDone()
