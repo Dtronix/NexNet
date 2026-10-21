@@ -132,6 +132,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private int _peerMaxMessageSize;
     private long _creditDrops;
     private long _lastCreditDropWarning;
+    private int _pipeResetsSinceWarning;
+    private long _lastPipeResetWarning;
 
     // Large arguments and results (docs/internals/flow-control.md, section 4.3): streams the peer is sending
     // here, and streams this side is sending, by (invocation ID, kind).
@@ -292,16 +294,16 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // credit is not measured.
         var now = _config.Time.GetTickCount64();
         var flushStarted = Volatile.Read(ref _flushStartedTicks);
-        if ((flushStarted != 0 && now - flushStarted > _config.ProgressTimeout)
-            || PipeManager.HasStalledPipe(now, _config.ProgressTimeout)
-            || _largeMessages.HasStalledStream(now, _config.ProgressTimeout))
-        {
-            Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms.");
-            DisconnectAsync(DisconnectReason.Stalled);
-            return true;
-        }
+        var stall = flushStarted != 0 && now - flushStarted > _config.ProgressTimeout
+            ? $"outbound transport flush running for {LogFormat.Seconds(now - flushStarted)}"
+            : PipeManager.FindStalledPipe(now, _config.ProgressTimeout)
+              ?? _largeMessages.FindStalledStream(now, _config.ProgressTimeout);
+        if (stall == null)
+            return false;
 
-        return false;
+        Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms: {stall}.");
+        DisconnectAsync(DisconnectReason.Stalled);
+        return true;
     }
 
     public async ValueTask InitializeConnection(CancellationToken cancellationToken = default)
@@ -674,6 +676,27 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
         Logger?.LogWarning($"Session {Id} dropped invocations because the peer returned no invocation credit within " +
                            $"{_config.ProgressTimeout} ms ({drops} so far).");
+    }
+
+    /// <inheritdoc />
+    public void ReportPipeReset(ushort pipeId, PipeResetReason reason)
+    {
+        _metricsTags.Metrics.RecordPipeReset(_metricsTags, reason);
+
+        // At most one warning per 10 s, with the number of resets since the last one: a peer that keeps sending
+        // broken items does not flood the log.
+        Interlocked.Increment(ref _pipeResetsSinceWarning);
+        var now = _config.Time.GetTickCount64();
+        var last = Volatile.Read(ref _lastPipeResetWarning);
+        if ((last != 0 && now - last < 10_000) || Interlocked.CompareExchange(ref _lastPipeResetWarning, now, last) != last)
+            return;
+
+        var resets = Interlocked.Exchange(ref _pipeResetsSinceWarning, 0);
+        var cause = reason == PipeResetReason.TooLarge
+            ? "a channel item exceeds MaxMessageSize"
+            : "a channel item breaks the framing";
+        Logger?.LogWarning($"Reset pipe P{pipeId:00000}: {cause}" +
+                           (resets > 1 ? $" ({resets} pipe resets since the last warning)." : "."));
     }
 
     /// <summary>

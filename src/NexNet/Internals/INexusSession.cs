@@ -141,6 +141,12 @@ internal interface INexusSession : ISessionMessenger
     /// Snapshot of this session's live state (docs/articles/metrics.md).
     /// </summary>
     NexusSessionSnapshot GetSnapshot();
+
+    /// <summary>
+    /// Records that the pipe <paramref name="pipeId"/> was reset: counts it in metrics and logs a warning, at most
+    /// once per 10 s.
+    /// </summary>
+    void ReportPipeReset(ushort pipeId, Pipes.PipeResetReason reason);
 }
 
 /// <summary>

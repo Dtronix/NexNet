@@ -238,6 +238,28 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     internal bool IsItemStalled(long nowTicks, long timeoutTicks) => _inputPipeReader.IsItemStalled(nowTicks, timeoutTicks);
 
     /// <summary>
+    /// Describes how this pipe stalled (<see cref="IsCloseStalled"/>, <see cref="IsItemStalled"/>) for the log; null
+    /// if it did not.
+    /// </summary>
+    internal string? DescribeStall(long nowTicks, long timeoutTicks)
+    {
+        if (IsCloseStalled(nowTicks, timeoutTicks))
+        {
+            return $"pipe P{Id:00000} closing, the peer has not confirmed for " +
+                   $"{LogFormat.Seconds(nowTicks - Volatile.Read(ref _closingSince))}";
+        }
+
+        if (!IsItemStalled(nowTicks, timeoutTicks))
+            return null;
+
+        var reader = _inputPipeReader.GetState();
+        var item = reader.PendingItemLength > 0
+            ? $"item {LogFormat.Bytes(reader.PendingItemReceived)} of {LogFormat.Bytes(reader.PendingItemLength)}"
+            : $"item with {LogFormat.Bytes(reader.ExtraOutstanding)} of extra credit outstanding";
+        return $"pipe P{Id:00000} {item}, no data for {LogFormat.Seconds(nowTicks - reader.LastDataTicks)}";
+    }
+
+    /// <summary>
     /// Registering side: opens the receive window and sends Ready with it.
     /// </summary>
     internal ValueTask SendReady()
@@ -352,8 +374,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
 
     public void Reset(PipeResetReason reason)
     {
-        Logger?.LogWarning("Resetting the pipe: the peer sent an item that breaks the channel framing or exceeds MaxMessageSize.");
-        _session?.MetricsTags.Metrics.RecordPipeReset(_session.MetricsTags, reason);
+        _session?.ReportPipeReset(Id, reason);
         _ = ResetAsync();
 
         async Task ResetAsync()

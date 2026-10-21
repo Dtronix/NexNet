@@ -139,18 +139,20 @@ internal class NexusPipeManager
     private ushort KeyOf(NexusDuplexPipe pipe) => pipe.Id != 0 ? pipe.Id : GetPartialIdFromLocalId(pipe.LocalId);
 
     /// <summary>
-    /// True if a pipe made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing (this
-    /// side's Complete sent, the peer's not received), or the data of an item given extra credit stopped arriving.
+    /// Describes a pipe that made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing
+    /// (this side's Complete sent, the peer's not received), or the data of an item given extra credit stopped
+    /// arriving. Null if no pipe stalled.
     /// </summary>
-    public bool HasStalledPipe(long nowTicks, long timeoutTicks)
+    public string? FindStalledPipe(long nowTicks, long timeoutTicks)
     {
         foreach (var pipe in _activePipes)
         {
-            if (pipe.Value.IsCloseStalled(nowTicks, timeoutTicks) || pipe.Value.IsItemStalled(nowTicks, timeoutTicks))
-                return true;
+            var stall = pipe.Value.DescribeStall(nowTicks, timeoutTicks);
+            if (stall != null)
+                return stall;
         }
 
-        return false;
+        return null;
     }
 
     /// <summary>

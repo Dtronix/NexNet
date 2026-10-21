@@ -12,7 +12,8 @@ namespace NexNet.Internals;
 
 /// <summary>
 /// Reassembles large arguments and results the peer streams to this side (docs/internals/flow-control.md,
-/// section 4.3). Called from the read loop only, except <see cref="HasStalledStream"/> and <see cref="Clear"/>.
+/// section 4.3). Called from the read loop only, except <see cref="FindStalledStream"/>, <see cref="AddSnapshots"/>,
+/// <see cref="Count"/> and <see cref="Clear"/>.
 /// </summary>
 /// <remarks>
 /// A stream is keyed by (invocation ID, kind). Its total length is reserved from the session budget at Start;
@@ -202,17 +203,22 @@ internal sealed class LargeMessageReceiver
     }
 
     /// <summary>
-    /// True if a stream received nothing for longer than <paramref name="timeoutTicks"/>.
+    /// Describes a stream that received nothing for longer than <paramref name="timeoutTicks"/>; null if none did.
     /// </summary>
-    public bool HasStalledStream(long nowTicks, long timeoutTicks)
+    public string? FindStalledStream(long nowTicks, long timeoutTicks)
     {
-        foreach (var stream in _streams)
+        foreach (var (key, stream) in _streams)
         {
-            if (nowTicks - stream.Value.LastProgress > timeoutTicks)
-                return true;
+            var idle = nowTicks - Volatile.Read(ref stream.LastProgress);
+            if (idle > timeoutTicks)
+            {
+                return $"inbound large {(stream.Kind == LargeMessageKind.Argument ? "argument" : "result")} of invocation " +
+                       $"{(ushort)key}, {LogFormat.Bytes(Volatile.Read(ref stream.Received))} of {LogFormat.Bytes(stream.Total)}, " +
+                       $"no data for {LogFormat.Seconds(idle)}";
+            }
         }
 
-        return false;
+        return null;
     }
 
     /// <summary>
