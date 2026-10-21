@@ -53,7 +53,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private MessageHeader _recMessageHeader = new();
     private long _id;
 
-    private readonly ConcurrentBag<InvocationTaskArguments> _invocationTaskArgumentsPool = new();
+    private readonly ConcurrentBag<InvocationWorkItem> _invocationWorkItemPool = new();
+
+    // Context the invocations run in; captured when the read loop starts. Null if flow was suppressed.
+    private ExecutionContext? _invocationExecutionContext;
 
     // Invocations received and not yet running. The read loop only enqueues; up to
     // MaxConcurrentConnectionInvocations run at once, each holding a slot until it finishes or registers its pipe.
@@ -486,7 +489,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _rateLimiter?.Release(_rateLimiterAddress);
 
         ((IDisposable)SessionStore).Dispose();
-        _invocationTaskArgumentsPool.Clear();
+        _invocationWorkItemPool.Clear();
 
         _disconnectedTaskCompletionSource?.TrySetResult(reason);
 
@@ -601,18 +604,20 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             }
 
 
-            if (!_invocationTaskArgumentsPool.TryTake(out var args))
-                args = new InvocationTaskArguments();
+            if (!_invocationWorkItemPool.TryTake(out var workItem))
+                workItem = new InvocationWorkItem();
 
-            args.Message = message;
-            args.Session = this;
-            args.SlotHeld = 1;
-            message.Slot = args;
+            workItem.Message = message;
+            workItem.Session = this;
+            workItem.SlotHeld = 1;
+            message.Slot = workItem;
 
             // Dequeued for execution: the peer may queue another.
             ReturnInvocationCredit();
 
-            _ = Task.Factory.StartNew(InvocationTask, args);
+            // Local queue: the global queue delays the start under load, which holds execution slots and invocation
+            // credits longer and leaves broadcast senders waiting on busy sessions.
+            ThreadPool.UnsafeQueueUserWorkItem(workItem, preferLocal: true);
         }
     }
 
@@ -653,18 +658,97 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         DispatchInvocations();
     }
 
-    private class InvocationTaskArguments : IInvocationSlot
+    /// <summary>
+    /// Runs one received invocation on the thread pool and awaits it. Pooled per session, so a dispatch allocates
+    /// nothing.
+    /// </summary>
+    private sealed class InvocationWorkItem : IInvocationSlot, IThreadPoolWorkItem
     {
-        public InvocationMessage Message { get; set; } = null!;
-        public NexusSession<TNexus, TProxy> Session { get; set; } = null!;
+        public InvocationMessage Message = null!;
+        public NexusSession<TNexus, TProxy> Session = null!;
 
         // 1 while the invocation holds its execution slot.
         public int SlotHeld;
+
+        private readonly Action _onCompleted;
+        private ConfiguredValueTaskAwaitable.ConfiguredValueTaskAwaiter _awaiter;
+
+        public InvocationWorkItem()
+        {
+            _onCompleted = OnCompleted;
+        }
 
         public void Release()
         {
             if (Interlocked.Exchange(ref SlotHeld, 0) == 1)
                 Session.ReturnInvocationSlot();
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            var context = Session._invocationExecutionContext;
+            if (context == null)
+                Start();
+            else
+                ExecutionContext.Run(context, static state => Unsafe.As<InvocationWorkItem>(state!).Start(), this);
+        }
+
+        private void Start()
+        {
+            try
+            {
+                Session.Logger?.LogTrace($"Invoking method {Message.MethodId}.");
+                var awaiter = Session._nexus.InvokeMethod(Message).ConfigureAwait(false).GetAwaiter();
+                if (!awaiter.IsCompleted)
+                {
+                    // The continuation only finishes this item, so it does not need the context.
+                    _awaiter = awaiter;
+                    awaiter.UnsafeOnCompleted(_onCompleted);
+                    return;
+                }
+
+                awaiter.GetResult();
+            }
+            catch (Exception e)
+            {
+                LogFault(e);
+            }
+
+            Finish();
+        }
+
+        private void OnCompleted()
+        {
+            var awaiter = _awaiter;
+            _awaiter = default;
+            try
+            {
+                awaiter.GetResult();
+            }
+            catch (Exception e)
+            {
+                LogFault(e);
+            }
+
+            Finish();
+        }
+
+        private void LogFault(Exception e)
+        {
+            Session._config.Logger?.LogError(e, $"Invoked method {Message.MethodId} threw exception");
+        }
+
+        private void Finish()
+        {
+            var session = Session;
+
+            // Frees the slot unless a pipe registration already did.
+            Release();
+
+            // Clear out the references before returning to the pool.
+            Session = null!;
+            Message = null!;
+            session._invocationWorkItemPool.Add(this);
         }
     }
 }

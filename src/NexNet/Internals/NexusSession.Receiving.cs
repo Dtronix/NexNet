@@ -14,6 +14,10 @@ internal partial class NexusSession<TNexus, TProxy>
 {
     public async Task StartReadAsync(CancellationToken cancellationToken = default)
     {
+        // Invocations run in the context the session reads in, so methods see the AsyncLocal values (HttpContext,
+        // Activity.Current, logging scopes, culture) of the code that started the session.
+        _invocationExecutionContext = ExecutionContext.Capture();
+
         // Handshake timeout is a real network deadline — the underlying TCP/TLS/WebSocket handshake
         // runs on the OS schedule, so this wait stays on real time. Routing it through TimeProvider
         // would not speed up real handshakes and would deadlock tests using FakeTimeProvider.
@@ -878,30 +882,4 @@ internal partial class NexusSession<TNexus, TProxy>
         return DisconnectReason.None;
     }
 
-    private static async void InvocationTask(object? argumentsObj)
-    {
-        var arguments = Unsafe.As<InvocationTaskArguments>(argumentsObj)!;
-
-        var session = arguments.Session;
-        var message = arguments.Message;
-        try
-        {
-            arguments.Session.Logger?.LogTrace($"Invoking method {message.MethodId}.");
-            await session._nexus.InvokeMethod(message).ConfigureAwait(false);
-        }
-        catch (Exception e)
-        {
-            session._config.Logger?.LogError(e, $"Invoked method {message.MethodId} threw exception");
-        }
-        finally
-        {
-            // Frees the slot unless a pipe registration already did.
-            arguments.Release();
-
-            // Clear out the references before returning to the pool.
-            arguments.Session = null!;
-            arguments.Message = null!;
-            session._invocationTaskArgumentsPool.Add(arguments);
-        }
-    }
 }
