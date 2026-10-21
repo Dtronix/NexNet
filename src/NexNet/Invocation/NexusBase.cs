@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -169,6 +170,8 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         Interlocked.Exchange(ref _sessionCancellation, null)?.Cancel();
     }
 
+    // Pooled: awaited exactly once, by the session's invocation work item.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     private static async ValueTask InvokeMethodCoreTask(InvokeMethodCoreArgs requestArgs)
     {
         var context = requestArgs.SessionContext;

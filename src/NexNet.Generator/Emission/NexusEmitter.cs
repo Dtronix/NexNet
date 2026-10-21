@@ -144,6 +144,7 @@ internal static class NexusEmitter
 
         sb.AppendLine($$"""
 
+                                [global::System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(global::System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder))]
                                 protected override async global::System.Threading.Tasks.ValueTask InvokeMethodCore(global::NexNet.Messages.IInvocationMessage message, global::System.Buffers.IBufferWriter<byte>? returnBuffer)
                                 {
                                     global::System.Threading.CancellationTokenSource? cts = null;

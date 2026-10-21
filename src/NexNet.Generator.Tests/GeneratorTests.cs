@@ -146,6 +146,40 @@ partial class ServerNexus : IServerNexus
     }
 
     [Test]
+    public void InvokeMethodCoreUsesPoolingBuilder()
+    {
+        var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(CSharpGeneratorRunner.CreateCompilation("""
+using NexNet;
+using System.Threading.Tasks;
+namespace NexNetDemo;
+partial interface IClientNexus { ValueTask Update(int value); }
+partial interface IServerNexus { ValueTask<int> Get(); }
+[Nexus<IClientNexus, IServerNexus>(NexusType = NexusType.Client)]
+partial class ClientNexus : IClientNexus
+{
+    public ValueTask Update(int value) => ValueTask.CompletedTask;
+}
+[Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
+partial class ServerNexus : IServerNexus
+{
+    public ValueTask<int> Get() => new(1);
+}
+"""));
+        Assert.That(errors, Is.Empty, string.Join("\n", errors.Select(e => e.ToString())));
+
+        var nexusSources = result.Results.Single().GeneratedSources
+            .Select(s => s.SourceText.ToString())
+            .Where(s => s.Contains("override async global::System.Threading.Tasks.ValueTask InvokeMethodCore("))
+            .ToArray();
+        Assert.That(nexusSources.Length, Is.EqualTo(2));
+        foreach (var code in nexusSources)
+        {
+            Assert.That(code, Does.Contain(
+                "[global::System.Runtime.CompilerServices.AsyncMethodBuilder(typeof(global::System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder))]"));
+        }
+    }
+
+    [Test]
     public void NexusMustNotBeGeneric_Client()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
