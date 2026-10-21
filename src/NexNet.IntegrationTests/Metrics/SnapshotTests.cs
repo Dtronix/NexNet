@@ -72,7 +72,7 @@ internal class SnapshotTests : BaseTests
     }
 
     [Test]
-    public async Task Snapshot_ShowsPartialChannelItemAndWriterWaitingForCredit()
+    public async Task Snapshot_ShowsPartialChannelItem()
     {
         var serverConfig = CreateServerConfig(Type.Uds);
         var reading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -92,7 +92,7 @@ internal class SnapshotTests : BaseTests
         await pipe.ReadyTask.Timeout(1);
         await reading.Task.Timeout(1);
 
-        // Prefix of a 100 KiB item and the first 10 KiB of it.
+        // Prefix of a 100 KiB item and the first 10 KiB of it; the rest never comes.
         const int itemLength = 100 * 1024;
         var prefix = new byte[5];
         var prefixLength = ChannelFraming.WriteLength(prefix, itemLength);
@@ -110,8 +110,23 @@ internal class SnapshotTests : BaseTests
         Assert.That(serverPipe.Window, Is.EqualTo(serverConfig.PipeWindow));
         Assert.That(serverPipe.SinceLastData, Is.Not.Null);
         Assert.That(serverPipe.IsReady, Is.True);
+    }
 
-        // More than the window: the writer runs out of credit and waits with the rest.
+    [Test]
+    public async Task Snapshot_ShowsWriterWaitingForCredit()
+    {
+        // The server never reads, so the writer uses up the window and waits with the rest.
+        var serverConfig = CreateServerConfig(Type.Uds);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, _) => await release.Task);
+        await server.StartAsync().Timeout(1);
+        var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
+        await client.ConnectAsync().Timeout(1);
+
+        await using var pipe = client.CreatePipe();
+        await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
+        await pipe.ReadyTask.Timeout(1);
+
         var writing = pipe.Output.WriteAsync(new byte[serverConfig.PipeWindow * 2]).AsTask();
         NexusPipeSnapshot? clientPipe = null;
         await MetricsSessionTests.WaitFor(() =>
@@ -120,8 +135,14 @@ internal class SnapshotTests : BaseTests
             return clientPipe?.WaitingForCredit != null;
         }).Timeout(2);
 
-        Assert.That(clientPipe!.WaitingBytes, Is.GreaterThan(0));
+        Assert.That(clientPipe!.WaitingBytes, Is.EqualTo(serverConfig.PipeWindow));
         Assert.That(clientPipe.SendCredit, Is.LessThanOrEqualTo(0));
+
+        var serverPipe = server.GetSnapshot().Sessions.Single().Pipes.Single();
+        Assert.That(serverPipe.Buffered, Is.EqualTo(serverConfig.PipeWindow));
+        Assert.That(serverPipe.ReceiveCredit, Is.EqualTo(0));
+
+        release.SetResult();
         _ = writing;
     }
 }
