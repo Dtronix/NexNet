@@ -51,6 +51,7 @@ internal partial class NexusSession<TNexus, TProxy>
                     {
                         // Push the buffer forward.
                         buffer = buffer.Slice(8, buffer.End);
+                        Volatile.Write(ref _bytesReceived, _bytesReceived + 8);
                         
                         // Don't process an empty buffer.
                         if (buffer.Length == 0)
@@ -159,6 +160,7 @@ internal partial class NexusSession<TNexus, TProxy>
     {
         var position = 0;
         var completedFrames = false;
+        var frames = 0;
         var maxLength = sequence.Length;
         var disconnect = DisconnectReason.None;
         var issueDisconnectMessage = true;
@@ -203,6 +205,7 @@ internal partial class NexusSession<TNexus, TProxy>
                         case MessageType.Ping:
                             _recMessageHeader.Reset();
                             completedFrames = true;
+                            frames++;
 
                             // If we are the server, send back a ping message to help the client know if it is still
                             // connected. Coalesced and sent by the control sender: the read loop never waits on a send.
@@ -460,6 +463,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 // Reset the header.
                 _recMessageHeader.Reset();
                 completedFrames = true;
+                frames++;
             }
             catch (Exception e)
             {
@@ -480,6 +484,10 @@ internal partial class NexusSession<TNexus, TProxy>
         // Only complete frames count as activity: a peer trickling bytes of one frame does not hold the session open.
         if (completedFrames)
             LastReceived = Config.Time.GetTickCount64();
+
+        // Metrics: written once per read, by this loop only.
+        Volatile.Write(ref _framesReceived, _framesReceived + frames);
+        Volatile.Write(ref _bytesReceived, _bytesReceived + position);
 
         var seqPosition = sequence.GetPosition(position);
         return new ProcessResult(seqPosition, disconnect, issueDisconnectMessage);

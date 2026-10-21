@@ -141,6 +141,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     int IMeteredSession.MetricsSlot { get; set; } = -1;
     long IMeteredSession.MetricsStartTimestamp { get; set; }
 
+    // Frames and bytes written to the transport (under the write mutex) and read from it (by the read loop).
+    private long _framesSent;
+    private long _bytesSent;
+    private long _framesReceived;
+    private long _bytesReceived;
+
     public long Id
     {
         get => _id;
@@ -527,6 +533,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         totals.Sessions++;
         if ((_internalState & InternalState.NexusCompletedConnection) == 0)
             totals.Handshaking++;
+
+        totals.FramesSent += Volatile.Read(ref _framesSent);
+        totals.BytesSent += Volatile.Read(ref _bytesSent);
+        totals.FramesReceived += Volatile.Read(ref _framesReceived);
+        totals.BytesReceived += Volatile.Read(ref _bytesReceived);
     }
 
     /// <summary>

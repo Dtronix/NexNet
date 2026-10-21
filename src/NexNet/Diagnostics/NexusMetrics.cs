@@ -69,6 +69,17 @@ internal sealed class NexusMetrics
             () => Observe(static s => s.Live.Handshaking), "{session}",
             "Sessions that have not completed the handshake (and, on a server, authentication).");
 
+        meter.CreateObservableCounter("nexnet.io.frames",
+            () => ObserveDirections(static (s, sent) => sent
+                ? s.Live.FramesSent + s.Retired.FramesSent
+                : s.Live.FramesReceived + s.Retired.FramesReceived), "{frame}",
+            "Frames written to and read from the transport.");
+        meter.CreateObservableCounter("nexnet.io.bytes",
+            () => ObserveDirections(static (s, sent) => sent
+                ? s.Live.BytesSent + s.Retired.BytesSent
+                : s.Live.BytesReceived + s.Retired.BytesReceived), "By",
+            "Bytes written to and read from the transport, frame headers included.");
+
         _disconnects = meter.CreateCounter<long>("nexnet.session.disconnects", "{session}",
             "Sessions ended, by disconnect reason and by whether the handshake had completed.");
         _sessionDuration = meter.CreateHistogram("nexnet.session.duration", "s",
@@ -164,6 +175,10 @@ internal sealed class NexusMetrics
         var totals = default(SessionMetricsTotals);
         session.CollectMetrics(ref totals);
         session.MetricsTags.Retired.AddMonotonic(totals);
+
+        // The cached live sums still include this session: sum again on the next collection, or its totals would be
+        // counted twice until then and the counters would go back afterwards.
+        _lastRefresh = 0;
         return true;
     }
 
@@ -228,9 +243,26 @@ internal sealed class NexusMetrics
     }
 
     /// <summary>
-    /// One measurement per tag set of the value <paramref name="select"/> reads, live plus retired.
+    /// One measurement per tag set of the value <paramref name="select"/> reads.
     /// </summary>
     private Measurement<long>[] Observe(Func<MetricsTagSet, long> select)
+        => ObserveMany(static (set, _, select) => new Measurement<long>(select(set), set.Tags), 1, select);
+
+    /// <summary>
+    /// Two measurements per tag set, sent and received, of the value <paramref name="select"/> reads.
+    /// </summary>
+    private Measurement<long>[] ObserveDirections(Func<MetricsTagSet, bool, long> select)
+        => ObserveMany(static (set, i, select) => i == 0
+                ? new Measurement<long>(select(set, true), set.SentTags)
+                : new Measurement<long>(select(set, false), set.ReceivedTags),
+            2, select);
+
+    /// <summary>
+    /// <paramref name="perSet"/> measurements per tag set, each made by <paramref name="measure"/> once the sessions
+    /// are summed. Disconnects of sessions the pass retired are recorded after the lock is released.
+    /// </summary>
+    private Measurement<long>[] ObserveMany<TState>(
+        Func<MetricsTagSet, int, TState, Measurement<long>> measure, int perSet, TState state)
     {
         IMeteredSession[]? retired;
         Measurement<long>[] measurements;
@@ -238,9 +270,12 @@ internal sealed class NexusMetrics
         {
             retired = Refresh();
             var sets = _tagSets;
-            measurements = new Measurement<long>[sets.Length];
+            measurements = new Measurement<long>[sets.Length * perSet];
             for (var i = 0; i < sets.Length; i++)
-                measurements[i] = new Measurement<long>(select(sets[i]), sets[i].Tags);
+            {
+                for (var j = 0; j < perSet; j++)
+                    measurements[i * perSet + j] = measure(sets[i], j, state);
+            }
         }
 
         if (retired != null)

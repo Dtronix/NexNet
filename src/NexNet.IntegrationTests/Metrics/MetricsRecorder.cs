@@ -38,11 +38,17 @@ internal sealed class MetricsRecorder : IMeterFactory
     {
         get
         {
-            var metrics = NexusMetrics.Get(this);
-            metrics.RefreshInterval = 0;
-            return metrics;
+            if (_metrics == null)
+            {
+                _metrics = NexusMetrics.Get(this);
+                _metrics.RefreshInterval = 0;
+            }
+
+            return _metrics;
         }
     }
+
+    private NexusMetrics? _metrics;
 
     public Meter Create(MeterOptions options)
     {

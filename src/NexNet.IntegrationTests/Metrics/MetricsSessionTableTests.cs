@@ -74,6 +74,22 @@ internal class MetricsSessionTableTests
     }
 
     [Test]
+    public void RetireBetweenCollections_CountsTheSessionOnce()
+    {
+        using var recorder = new MetricsRecorder();
+        var metrics = recorder.Metrics;
+        var tags = metrics.GetTagSet(true, "tcp");
+        var session = new FakeSession(tags) { BytesSent = 100 };
+        metrics.Register(session);
+
+        // Collections share one pass for a while; a retire in between must not count the session twice.
+        metrics.RefreshInterval = long.MaxValue / 2;
+        Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent")), Is.EqualTo(100));
+        metrics.Retire(session, DisconnectReason.Graceful, true);
+        Assert.That(recorder.ObserveSum("nexnet.io.bytes", ("nexnet.direction", "sent")), Is.EqualTo(100));
+    }
+
+    [Test]
     public void Collection_RetiresDisconnectedSessionsAndKeepsTheirTotals()
     {
         using var recorder = new MetricsRecorder();

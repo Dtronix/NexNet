@@ -142,6 +142,7 @@ internal partial class NexusSession<TNexus, TProxy>
             if (invocationBody.Length <= ushort.MaxValue)
             {
                 WriteInvocationFrame(in invocationBody, output);
+                CountSent(1, 3 + invocationBody.Length);
                 return 3 + invocationBody.Length;
             }
         }
@@ -175,6 +176,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
             buffer.CopyTo(output.GetSpan(length));
             output.Advance(length);
+            CountSent(1, length);
             return length;
         }
         finally
@@ -244,6 +246,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 _config.InternalOnSend?.Invoke(this, frame.ToArray());
                 frame.CopyTo(output.GetSpan(frame.Length));
                 output.Advance(frame.Length);
+                CountSent(1, frame.Length);
             }
 
             Logger?.LogTrace($"Writing {TMessage.Type}.");
@@ -527,6 +530,7 @@ internal partial class NexusSession<TNexus, TProxy>
             output.Advance(headerLength);
             body.CopyTo(output.GetSpan((int)body.Length));
             output.Advance(length);
+            CountSent(1, headerLength + length);
         }
         catch (InvalidOperationException) when (State != ConnectionState.Connected)
         {
@@ -589,6 +593,18 @@ internal partial class NexusSession<TNexus, TProxy>
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
     
+    /// <summary>
+    /// Counts <paramref name="frames"/> frames of <paramref name="bytes"/> bytes written to the output, for metrics.
+    /// Called with the write mutex held, so the fields have one writer at a time; the volatile writes keep them
+    /// untorn for collections on 32-bit platforms and cost a plain store on 64-bit ones.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CountSent(int frames, int bytes)
+    {
+        Volatile.Write(ref _framesSent, _framesSent + frames);
+        Volatile.Write(ref _bytesSent, _bytesSent + bytes);
+    }
+
     // Only used for debugging (InternalOnSend).
     private static byte[] DebugCopy(MessageType type, ushort contentLength, ReadOnlySequence<byte> body)
     {
@@ -698,6 +714,7 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 output.GetSpan(1)[0] = (byte)type;
                 output.Advance(1);
+                CountSent(1, 1);
                 _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
                 Logger?.LogTrace($"Sending {type} header.");
             }
@@ -713,6 +730,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 var length = data.Length;
                 data.Span.CopyTo(output.GetSpan(length));
                 output.Advance(length);
+                CountSent(0, length);
                 _config.InternalOnSend?.Invoke(this, data.ToArray());
             }
         }
