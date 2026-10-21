@@ -25,9 +25,20 @@ public class InvocationBenchmarks
     [Params(NexNet.Serialization.SerializerSecurity.Untrusted, NexNet.Serialization.SerializerSecurity.Trusted)]
     public NexNet.Serialization.SerializerSecurity Security { get; set; }
 
+    private MetricsListenerScope? _metrics;
+
+    /// <summary>
+    /// With a listener attached to the NexNet meter, collecting once a second.
+    /// </summary>
+    [Params(false, true)]
+    public bool Metrics { get; set; }
+
     [GlobalSetup]
     public async Task GlobalSetup()
     {
+        if (Metrics)
+            _metrics = new MetricsListenerScope();
+
         _uploadBuffer = new byte[(1024 * 16)];
         var path = $"test.sock";
         if (File.Exists(path))
@@ -63,6 +74,8 @@ public class InvocationBenchmarks
     {
         await _client.DisconnectAsync();
         await _server.StopAsync();
+        _metrics?.Dispose();
+        _metrics = null;
     }
 
     [Benchmark]

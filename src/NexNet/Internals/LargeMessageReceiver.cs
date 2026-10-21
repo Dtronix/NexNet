@@ -2,6 +2,8 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
+using NexNet.Diagnostics;
 using NexNet.Messages;
 using NexNet.Pools;
 using NexNet.Serialization;
@@ -10,7 +12,8 @@ namespace NexNet.Internals;
 
 /// <summary>
 /// Reassembles large arguments and results the peer streams to this side (docs/internals/flow-control.md,
-/// section 4.3). Called from the read loop only, except <see cref="HasStalledStream"/> and <see cref="Clear"/>.
+/// section 4.3). Called from the read loop only, except <see cref="FindStalledStream"/>, <see cref="AddSnapshots"/>,
+/// <see cref="Count"/> and <see cref="Clear"/>.
 /// </summary>
 /// <remarks>
 /// A stream is keyed by (invocation ID, kind). Its total length is reserved from the session budget at Start;
@@ -29,6 +32,14 @@ internal sealed class LargeMessageReceiver
     private readonly NexusSerializerOptions _options;
     private readonly TimeProvider _time;
     private readonly IOwner _owner;
+
+    // Streams in _streams; ConcurrentDictionary.Count takes every lock, so it is kept here for metrics.
+    private int _count;
+
+    /// <summary>
+    /// Streams being received.
+    /// </summary>
+    public int Count => Volatile.Read(ref _count);
 
     /// <summary>
     /// What the receiver needs from its session.
@@ -106,6 +117,7 @@ internal sealed class LargeMessageReceiver
         }
 
         _streams[key] = stream;
+        Interlocked.Increment(ref _count);
         return DisconnectReason.None;
     }
 
@@ -129,8 +141,8 @@ internal sealed class LargeMessageReceiver
         if (stream.Aborting)
         {
             // Discarded, up to the total length; then the key closes.
-            if (stream.Received == stream.Total)
-                _streams.TryRemove(key, out _);
+            if (stream.Received == stream.Total && _streams.TryRemove(key, out _))
+                Interlocked.Decrement(ref _count);
             return DisconnectReason.None;
         }
 
@@ -138,7 +150,8 @@ internal sealed class LargeMessageReceiver
         if (stream.Received < stream.Total)
             return DisconnectReason.None;
 
-        _streams.TryRemove(key, out _);
+        if (_streams.TryRemove(key, out _))
+            Interlocked.Decrement(ref _count);
         try
         {
             completed = _poolManager.Deserialize(stream.InnerType, stream.ToSequence(), _options);
@@ -180,6 +193,7 @@ internal sealed class LargeMessageReceiver
 
         if (!_streams.TryRemove(key, out _))
             return;
+        Interlocked.Decrement(ref _count);
 
         // An argument this side had accepted will not be queued now.
         if (stream.Kind == LargeMessageKind.Argument && !stream.Aborting)
@@ -189,17 +203,42 @@ internal sealed class LargeMessageReceiver
     }
 
     /// <summary>
-    /// True if a stream received nothing for longer than <paramref name="timeoutTicks"/>.
+    /// Describes a stream that received nothing for longer than <paramref name="timeoutTicks"/>; null if none did.
     /// </summary>
-    public bool HasStalledStream(long nowTicks, long timeoutTicks)
+    public string? FindStalledStream(long nowTicks, long timeoutTicks)
     {
-        foreach (var stream in _streams)
+        foreach (var (key, stream) in _streams)
         {
-            if (nowTicks - stream.Value.LastProgress > timeoutTicks)
-                return true;
+            var idle = nowTicks - Volatile.Read(ref stream.LastProgress);
+            if (idle > timeoutTicks)
+            {
+                return $"inbound large {(stream.Kind == LargeMessageKind.Argument ? "argument" : "result")} of invocation " +
+                       $"{(ushort)key}, {LogFormat.Bytes(Volatile.Read(ref stream.Received))} of {LogFormat.Bytes(stream.Total)}, " +
+                       $"no data for {LogFormat.Seconds(idle)}";
+            }
         }
 
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Adds a snapshot of every stream being received to <paramref name="snapshots"/>.
+    /// </summary>
+    public void AddSnapshots(List<NexusLargeMessageSnapshot> snapshots, long nowTicks)
+    {
+        foreach (var (key, stream) in _streams)
+        {
+            snapshots.Add(new NexusLargeMessageSnapshot
+            {
+                Direction = NexusDirection.Inbound,
+                Kind = stream.Kind == LargeMessageKind.Argument ? NexusLargeMessageKind.Argument : NexusLargeMessageKind.Result,
+                InvocationId = (ushort)key,
+                Length = stream.Total,
+                Transferred = Volatile.Read(ref stream.Received),
+                SinceLastProgress = TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - Volatile.Read(ref stream.LastProgress))),
+                Aborting = stream.Aborting,
+            });
+        }
     }
 
     /// <summary>
@@ -210,7 +249,10 @@ internal sealed class LargeMessageReceiver
         foreach (var key in _streams.Keys)
         {
             if (_streams.TryRemove(key, out var stream))
+            {
+                Interlocked.Decrement(ref _count);
                 stream.Close(_budget);
+            }
         }
     }
 

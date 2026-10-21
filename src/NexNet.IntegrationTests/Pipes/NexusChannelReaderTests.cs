@@ -255,7 +255,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         public void GrantCredit(int bytes) => Grants.Add(bytes);
         public void ReleaseExtra(int bytes) => ExtraReleased += bytes;
-        public void Reset() => Resets++;
+        public void Reset(PipeResetReason reason) => Resets++;
     }
 
     [Test]

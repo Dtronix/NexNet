@@ -5,6 +5,7 @@ using NexNet.Messages;
 using System.Threading;
 using NexNet.Transports;
 using NexNet.Collections;
+using NexNet.Diagnostics;
 using NexNet.Pools;
 using NexNet.Internals;
 using NexNet.Invocation;
@@ -32,6 +33,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private readonly NexusCollectionManager _collectionManager;
     private bool _isReconnecting = false;
     private readonly INexusLogger? _logger;
+    private readonly MetricsTagSet _metricsTags;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -68,6 +70,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public ClientConfig Config => _config;
 
+    /// <summary>
+    /// Snapshot of the current session's live state, or null when not connected. Not an atomic picture; exposes
+    /// internal state, so do not serve it to unauthenticated callers. See docs/articles/metrics.md.
+    /// </summary>
+    public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot();
+
     /// <inheritdoc />
     public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
 
@@ -85,6 +93,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         _config = config;
         _logger = config.Logger?.CreateLogger($"CL{id}");
         _poolManager = new SessionPoolManager<TServerProxy>();
+        _metricsTags = NexusMetrics.GetTagSet(config);
 
         // Set the collection manager and configure for this nexus.
         _collectionManager = new NexusCollectionManager(_logger, false, _config.Time);
@@ -161,7 +170,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             ReadyTaskCompletionSource = readyTaskCompletionSource,
             DisconnectedTaskCompletionSource = disconnectedTaskCompletionSource,
             CollectionManager = _collectionManager,
-            Logger = _logger
+            Logger = _logger,
+            MetricsTags = _metricsTags
         };
 
         var session = _session = new NexusSession<TClientNexus, TServerProxy>(config)

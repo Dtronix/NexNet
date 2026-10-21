@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -54,4 +55,9 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// Server only: receives sessions that end before authentication completes.
     /// </summary>
     public PreAuthFailureLog? PreAuthFailureLog { get; init; }
+
+    /// <summary>
+    /// Tags the session is counted under in metrics. Resolved from <see cref="Configs"/> when null.
+    /// </summary>
+    public MetricsTagSet? MetricsTags { get; init; }
 }

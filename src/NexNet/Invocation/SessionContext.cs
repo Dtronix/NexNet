@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using System;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Pools;
 using NexNet.Messages;
@@ -77,6 +78,13 @@ public abstract class SessionContext<TProxy> : ISessionContext
     {
         return CreatePipe().GetChannel<T>();
     }
+
+    /// <summary>
+    /// Snapshot of this session's live state: budget, invocations, pipes, large messages and transport counters. Not
+    /// an atomic picture; exposes internal state, so do not serve it to unauthenticated callers. See
+    /// docs/articles/metrics.md.
+    /// </summary>
+    public NexusSessionSnapshot GetSnapshot() => Session.GetSnapshot();
 
     /// <summary>
     /// Disconnect the current connection.

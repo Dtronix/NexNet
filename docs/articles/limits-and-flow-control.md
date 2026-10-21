@@ -69,7 +69,7 @@ An application that frames its own messages on a raw pipe must keep each message
 
 Each channel item is sent with its length in front of it. The reader waits until a whole item has arrived. An item larger than the pipe's window gets extra credit for the difference, reserved from the session budget until the item is consumed.
 
-An item may be at most `MaxMessageSize` bytes. Writing a larger one throws `NexusMessageTooLargeException` and sends nothing. Receiving one, or an item that does not decode to exactly its length, resets the channel's pipe without disconnecting the session.
+An item may be at most `MaxMessageSize` bytes. Writing a larger one throws `NexusMessageTooLargeException` and sends nothing. Receiving one, or an item that does not decode to exactly its length, resets the channel's pipe without disconnecting the session, with a warning logged at most once every 10 seconds per session.
 
 ## Throughput over High-Latency Links
 
@@ -98,7 +98,7 @@ For bulk transfers over long distances, raise `PipeWindow` on the receiving side
 - a pipe that is closing, until the peer confirms the close;
 - a send to the transport that does not complete.
 
-Waiting for credit is never a stall: a writer blocked on a slow reader waits as long as the reader takes. When the timeout is reached the session disconnects with `DisconnectReason.Stalled`.
+Waiting for credit is never a stall: a writer blocked on a slow reader waits as long as the reader takes. When the timeout is reached the session disconnects with `DisconnectReason.Stalled`, and the warning logged names what made no progress. [Metrics and Diagnostics](metrics.md) shows how to watch budgets, windows and queues before that happens.
 
 A peer that sends more than it was granted, on a pipe or in invocations, is disconnected with `DisconnectReason.FlowControl`. This only happens with a faulty or hostile peer.
 

@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,6 +25,11 @@ internal class NexusPipeManager
 
     // Pipes that hold a receive window: open, or closing until both sides confirmed. Bounded by ConfigBase.MaxPipes.
     private int _openPipes;
+
+    /// <summary>
+    /// Pipes holding a receive window.
+    /// </summary>
+    public int OpenPipes => Volatile.Read(ref _openPipes);
 
     public void Setup(INexusSession session)
     {
@@ -48,7 +54,10 @@ internal class NexusPipeManager
             return null;
 
         if (!TryReserveWindow())
+        {
+            _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
             throw new NexusBusyException("Can't open a pipe: the session's pipe limit or budget is reached.");
+        }
 
         byte localId;
         try
@@ -113,7 +122,7 @@ internal class NexusPipeManager
         if (!pipe.IsFullyClosed || !pipe.TryMarkFreed())
             return;
 
-        _activePipes.TryRemove(new System.Collections.Generic.KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
+        _activePipes.TryRemove(new KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
         ReleaseWindow();
         pipe.ReleaseAllExtra();
 
@@ -130,18 +139,31 @@ internal class NexusPipeManager
     private ushort KeyOf(NexusDuplexPipe pipe) => pipe.Id != 0 ? pipe.Id : GetPartialIdFromLocalId(pipe.LocalId);
 
     /// <summary>
-    /// True if a pipe made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing (this
-    /// side's Complete sent, the peer's not received), or the data of an item given extra credit stopped arriving.
+    /// Describes a pipe that made no progress for longer than <paramref name="timeoutTicks"/>: it has been closing
+    /// (this side's Complete sent, the peer's not received), or the data of an item given extra credit stopped
+    /// arriving. Null if no pipe stalled.
     /// </summary>
-    public bool HasStalledPipe(long nowTicks, long timeoutTicks)
+    public string? FindStalledPipe(long nowTicks, long timeoutTicks)
     {
         foreach (var pipe in _activePipes)
         {
-            if (pipe.Value.IsCloseStalled(nowTicks, timeoutTicks) || pipe.Value.IsItemStalled(nowTicks, timeoutTicks))
-                return true;
+            var stall = pipe.Value.DescribeStall(nowTicks, timeoutTicks);
+            if (stall != null)
+                return stall;
         }
 
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Adds a snapshot of every pipe holding a receive window to <paramref name="snapshots"/>.
+    /// </summary>
+    public void AddSnapshots(List<Diagnostics.NexusPipeSnapshot> snapshots, long nowTicks)
+    {
+        foreach (var pipe in _activePipes)
+        {
+            snapshots.Add(pipe.Value.GetSnapshot(nowTicks));
+        }
     }
 
     /// <summary>
@@ -190,6 +212,7 @@ internal class NexusPipeManager
         if (!TryReserveWindow())
         {
             // Refuse the open; the initiating side fails its pipe and frees its ID.
+            _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
             using var refusal = _session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
             refusal.PipeId = _session.IsServer ? ComposeId(otherId, 0) : ComposeId(0, otherId);
             refusal.State = State.Refused;

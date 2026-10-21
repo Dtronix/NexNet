@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -165,8 +166,41 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             Logger,
             _session,
             _session.IsServer,
-            NexusPipeWriter.MaxChunkSize);
+            NexusPipeWriter.MaxChunkSize,
+            _session.Config.Time);
     }
+
+    /// <summary>
+    /// Snapshot of this pipe's state; <paramref name="nowTicks"/> is the session's current tick count.
+    /// </summary>
+    internal NexusPipeSnapshot GetSnapshot(long nowTicks)
+    {
+        var reader = _inputPipeReader.GetState();
+        var (waitSince, waitingBytes) = _outputPipeWriter.CreditWait;
+        var closing = Volatile.Read(ref _sentClose) == 1 && Volatile.Read(ref _receivedClose) == 0;
+        return new NexusPipeSnapshot
+        {
+            Id = Id != 0 ? Id : LocalId,
+            IsReady = (_currentState & State.Ready) != 0,
+            ReaderCompleted = reader.IsCompleted,
+            WriterCompleted = _outputPipeWriter.IsCompleted,
+            Closing = closing ? Since(nowTicks, Volatile.Read(ref _closingSince)) : null,
+            Window = _inputPipeReader.Window,
+            ReceiveCredit = reader.Credit,
+            Buffered = reader.Buffered,
+            ConsumedNotGranted = reader.ConsumedSinceGrant,
+            ExtraOutstanding = reader.ExtraOutstanding,
+            SinceLastData = reader.LastDataTicks == 0 ? null : Since(nowTicks, reader.LastDataTicks),
+            PartialItem = reader.PendingItemLength == 0
+                ? null
+                : new NexusPartialItemSnapshot { Length = reader.PendingItemLength, Received = reader.PendingItemReceived },
+            SendCredit = _outputPipeWriter.Credit,
+            WaitingForCredit = waitSince == 0 ? null : Since(nowTicks, waitSince),
+            WaitingBytes = waitingBytes,
+        };
+    }
+
+    private static TimeSpan Since(long nowTicks, long ticks) => TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - ticks));
 
     /// <summary>
     /// Bytes reserved from the session budget for this pipe's receive window.
@@ -202,6 +236,28 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// True if an item larger than the window got extra credit and its data stopped arriving.
     /// </summary>
     internal bool IsItemStalled(long nowTicks, long timeoutTicks) => _inputPipeReader.IsItemStalled(nowTicks, timeoutTicks);
+
+    /// <summary>
+    /// Describes how this pipe stalled (<see cref="IsCloseStalled"/>, <see cref="IsItemStalled"/>) for the log; null
+    /// if it did not.
+    /// </summary>
+    internal string? DescribeStall(long nowTicks, long timeoutTicks)
+    {
+        if (IsCloseStalled(nowTicks, timeoutTicks))
+        {
+            return $"pipe P{Id:00000} closing, the peer has not confirmed for " +
+                   $"{LogFormat.Seconds(nowTicks - Volatile.Read(ref _closingSince))}";
+        }
+
+        if (!IsItemStalled(nowTicks, timeoutTicks))
+            return null;
+
+        var reader = _inputPipeReader.GetState();
+        var item = reader.PendingItemLength > 0
+            ? $"item {LogFormat.Bytes(reader.PendingItemReceived)} of {LogFormat.Bytes(reader.PendingItemLength)}"
+            : $"item with {LogFormat.Bytes(reader.ExtraOutstanding)} of extra credit outstanding";
+        return $"pipe P{Id:00000} {item}, no data for {LogFormat.Seconds(nowTicks - reader.LastDataTicks)}";
+    }
 
     /// <summary>
     /// Registering side: opens the receive window and sends Ready with it.
@@ -256,6 +312,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// </summary>
     internal void OnRefused()
     {
+        _session?.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: false);
         _readyTcs.TrySetException(new NexusBusyException("The peer refused the pipe: a session limit is reached."));
         _completeTcs.TrySetResult();
         MarkClosedWithoutExchange();
@@ -315,9 +372,9 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _session?.Budget.Release(extra);
     }
 
-    public void Reset()
+    public void Reset(PipeResetReason reason)
     {
-        Logger?.LogWarning("Resetting the pipe: the peer sent an item that breaks the channel framing or exceeds MaxMessageSize.");
+        _session?.ReportPipeReset(Id, reason);
         _ = ResetAsync();
 
         async Task ResetAsync()

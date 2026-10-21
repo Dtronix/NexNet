@@ -189,6 +189,8 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         return state;
     }
 
+    public int OutstandingCount => _invocationStates.Count;
+
     public bool IsOutstanding(ushort invocationId)
     {
         lock (_currentInvocationsLock)

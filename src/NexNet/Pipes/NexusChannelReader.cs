@@ -114,9 +114,11 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
             }
             catch (Exception e) when (e is NexusSerializationException or NexusMessageTooLargeException)
             {
-                Reader.ResetPipe();
+                Reader.ResetPipe(e is NexusMessageTooLargeException ? PipeResetReason.TooLarge : PipeResetReason.InvalidItem);
                 throw;
             }
+
+            Reader.SetPendingItem(pendingItemLength);
 
             if (result.IsCompleted && readAmount == 0)
                 return false;

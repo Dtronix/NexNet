@@ -11,6 +11,9 @@ namespace NexNet.Transports;
 /// </summary>
 public sealed class TcpTlsClientConfig : TcpClientConfig
 {
+    /// <inheritdoc />
+    protected internal override string TransportName => "tls";
+
     private SslClientAuthenticationOptions _sslClientAuthenticationOptions = null!;
 
     /// <summary>

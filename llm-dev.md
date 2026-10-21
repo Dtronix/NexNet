@@ -129,7 +129,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `SocketTransportListener.cs` - Socket-based listener
 
 **Configuration:**
-- `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`)
+- `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`), `MeterFactory`, `TransportName` (metric tag, overridden per transport config)
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
@@ -214,6 +214,18 @@ serializer dependency).
 - `Internal/NexusSerializationModule.cs` - Module initializer that registers the built-ins; `PooledArrayBufferWriter`, `RandomizedEqualityComparer`
 
 Generated formatters for user types register from a `[ModuleInitializer]` in the user's assembly (see 2.4).
+
+### 1.14 Diagnostics (src/NexNet/Diagnostics/)
+
+Meter `NexNet` and session snapshots (docs/articles/metrics.md).
+- `NexusMeter.cs` - Public meter name constant
+- `NexusMetrics.cs` - Instruments on one `Meter` (one instance per meter: `Get(IMeterFactory?)`, null = process-wide meter); session table; `Register`/`Retire` (once per session: `DisconnectCore`, end of read loop, or a collection that finds the session disconnected); `Record*` for rare events. Observable instruments sum per-session fields in one pass per collection (`Refresh`, at most every `RefreshInterval`)
+- `MetricsSessionTable.cs` - Slot array + free list, shrinks when a quarter full; owner's lock only
+- `MetricsTagSet.cs` - One (role, transport) tag combination: precomputed tags, live sums, retired monotonic totals
+- `IMeteredSession.cs` / `SessionMetricsTotals.cs` - What a session gives a collection (lock-free reads only)
+- `NexusSessionSnapshot.cs` - Public snapshot records (session, budget, invocations, pipes, partial item, large messages, server)
+- `LogFormat.cs` - Byte and duration formatting for log messages
+Per-frame counts (`_framesSent`/`_bytesSent` under the write mutex, `_framesReceived`/`_bytesReceived` once per read in `Process`) are single-writer fields updated with `Volatile.Write` (a plain store on 64-bit): never add `Interlocked` or allocations to the per-frame paths. Tags are fixed values only (role, transport via `ConfigBase.TransportName`, reasons); never IDs, addresses or peer data.
 
 ---
 
@@ -364,6 +376,13 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `ConnectTests.cs` - Connection establishment
 - `MutexSlimTests.cs` - Sync primitives
 - `SequenceTests.cs` - ReadOnlySequence ops
+
+**Metrics (Metrics/):**
+- `MetricsRecorder.cs` - Test `IMeterFactory` with a private meter and a `MeterListener`; `Events()` for counters, `Observe()`/`ObserveSum()` collect observable instruments (sets `RefreshInterval = 0`)
+- `MetricsSessionTests.cs`, `MetricsIoTests.cs`, `MetricsFlowControlTests.cs` - Instruments end to end; churn test checks the session table empties and shrinks
+- `MetricsSessionTableTests.cs` - Slot reuse, shrinking, retiring sessions a disconnect missed
+- `SnapshotTests.cs` - Session and server snapshots (partial item, writer waiting for credit, invocations)
+- `DiagnosticLogTests.cs` / `CapturingLogger.cs` - Stall warning content, rate-limited reset warnings
 
 ### 4.4 Test Patterns
 

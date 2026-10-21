@@ -260,6 +260,7 @@ new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 | `MaxMessageSize` | 4MB (16MB trusted) | Largest argument, result or channel item |
 | `InvocationCredits` | 32 (128 trusted) | Invocations the peer may queue on this side |
 | `ProgressTimeout` | 30000ms | Disconnect (`Stalled`) when a transport flush, a pipe close, an inbound large value or an oversized channel item makes no progress; waiting for credit never counts |
+| `MeterFactory` | null | `IMeterFactory` for the `NexNet` meter; null = one meter for the process. NexNet.Asp sets the app's factory |
 
 "Trusted" means `SerializerOptions = NexusSerializerOptions.Trusted`. Building a client or server throws if
 `MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB` exceeds `SessionBudget`.
@@ -626,6 +627,20 @@ config.Logger = new RollingLogger(maxLines: 200);   // circular buffer, Flush(Te
 // NexusLogLevel: Trace, Debug, Information, Warning, Error, Critical, None
 // NexusLogBehaviors flags: Default, ProxyInvocationsLogAsInfo, LocalInvocationsLogAsInfo, LogTransportData
 ```
+
+## Metrics and Snapshots
+
+```csharp
+// System.Diagnostics.Metrics meter "NexNet" (NexusMeter.Name); tags nexnet.role, nexnet.transport.
+builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter("NexNet"));
+
+// Live state of one session or a server; not atomic, exposes internal state: never serve unauthenticated.
+NexusSessionSnapshot s = Context.GetSnapshot();      // inside a nexus method
+NexusSessionSnapshot? c = client.GetSnapshot();      // null when not connected
+NexusServerSnapshot all = server.GetSnapshot();      // authenticated sessions, pending handshakes, rate limiter
+```
+
+Instruments and snapshot fields: docs/articles/metrics.md.
 
 ## CancellationToken
 

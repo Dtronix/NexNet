@@ -12,6 +12,7 @@ using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Threading;
 using System.Collections.Generic;
+using NexNet.Diagnostics;
 
 namespace NexNet.Internals;
 
@@ -142,6 +143,7 @@ internal partial class NexusSession<TNexus, TProxy>
             if (invocationBody.Length <= ushort.MaxValue)
             {
                 WriteInvocationFrame(in invocationBody, output);
+                CountSent(1, 3 + invocationBody.Length);
                 return 3 + invocationBody.Length;
             }
         }
@@ -175,6 +177,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
             buffer.CopyTo(output.GetSpan(length));
             output.Advance(length);
+            CountSent(1, length);
             return length;
         }
         finally
@@ -210,17 +213,17 @@ internal partial class NexusSession<TNexus, TProxy>
 
         // An argument larger than one frame is streamed, which waits for the mutex between frames.
         if (message.Arguments.Length > IInvocationMessage.MaxArgumentSize)
-            return InvocationWriteResult.Busy;
+            return Busy();
 
         if (!_outboundCredits.Wait(0))
-            return InvocationWriteResult.Busy;
+            return Busy();
 
         // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.
         var mutex = _writeMutex.TryWait(MutexSlim.WaitOptions.NoDelay);
         if (!mutex.Success)
         {
             _outboundCredits.Release();
-            return InvocationWriteResult.Busy;
+            return Busy();
         }
 
         ValueTask<FlushResult> flush;
@@ -244,12 +247,15 @@ internal partial class NexusSession<TNexus, TProxy>
                 _config.InternalOnSend?.Invoke(this, frame.ToArray());
                 frame.CopyTo(output.GetSpan(frame.Length));
                 output.Advance(frame.Length);
+                CountSent(1, frame.Length);
             }
 
             Logger?.LogTrace($"Writing {TMessage.Type}.");
 
             WritePendingCredit(output);
-            Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+            var now = _config.Time.GetTickCount64();
+            Volatile.Write(ref _flushStartedTicks, now);
+            _lastSentTicks = now;
             flush = output.FlushAsync();
         }
         catch (InvalidOperationException) when (State != ConnectionState.Connected)
@@ -278,6 +284,12 @@ internal partial class NexusSession<TNexus, TProxy>
         mutex.Dispose();
         OnFlushed(flush);
         return InvocationWriteResult.Written;
+    }
+
+    private InvocationWriteResult Busy()
+    {
+        _metricsTags.Metrics.RecordInvocationBusy(_metricsTags);
+        return InvocationWriteResult.Busy;
     }
 
     /// <summary>
@@ -350,11 +362,12 @@ internal partial class NexusSession<TNexus, TProxy>
     private async ValueTask SendLargeMessage(LargeMessage message, CancellationToken cancellationToken)
     {
         var key = message.InvocationId | ((int)message.Kind << 16);
-        var stream = new OutgoingLargeMessage();
+        var stream = new OutgoingLargeMessage(message.InvocationId, message.Kind, message.Length, _config.Time.GetTickCount64());
         try
         {
             if (!_outgoingLargeMessages.TryAdd(key, stream))
                 throw new InvalidOperationException($"A large {message.Kind} for invocation {message.InvocationId} is already being sent.");
+            Interlocked.Increment(ref _outgoingLargeCount);
 
             using (var start = _poolManager.Rent<MessageStartMessage>())
             {
@@ -382,6 +395,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 if (cancellationToken.IsCancellationRequested)
                 {
+                    _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: false, LargeMessageAbortReason.Cancelled);
                     await SendAbort(message.InvocationId, message.Kind, LargeMessageAbortReason.Cancelled).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
@@ -389,11 +403,13 @@ internal partial class NexusSession<TNexus, TProxy>
                 var count = Math.Min(message.Length - offset, ushort.MaxValue);
                 await SendHeaderWithBody(MessageType.MessageChunk, header, new ReadOnlySequence<byte>(message.Buffer!, offset, count)).ConfigureAwait(false);
                 offset += count;
+                stream.Progress(offset, _config.Time.GetTickCount64());
             }
         }
         finally
         {
-            _outgoingLargeMessages.TryRemove(new KeyValuePair<int, OutgoingLargeMessage>(key, stream));
+            if (_outgoingLargeMessages.TryRemove(new KeyValuePair<int, OutgoingLargeMessage>(key, stream)))
+                Interlocked.Decrement(ref _outgoingLargeCount);
             ArrayPool<byte>.Shared.Return(message.Buffer!);
         }
     }
@@ -410,11 +426,33 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <summary>
     /// A large message this side is sending; the receiver can abort it.
     /// </summary>
-    private sealed class OutgoingLargeMessage
+    private sealed class OutgoingLargeMessage(ushort invocationId, LargeMessageKind kind, int length, long startTicks)
     {
         private int _aborted;
+        private long _sent;
+        private long _lastProgress = startTicks;
+
         public bool Aborted => Volatile.Read(ref _aborted) == 1;
         public void Abort() => Volatile.Write(ref _aborted, 1);
+
+        /// <summary>
+        /// Records that <paramref name="sent"/> bytes have been sent; read by snapshots.
+        /// </summary>
+        public void Progress(long sent, long nowTicks)
+        {
+            Volatile.Write(ref _sent, sent);
+            Volatile.Write(ref _lastProgress, nowTicks);
+        }
+
+        public NexusLargeMessageSnapshot GetSnapshot(long nowTicks) => new()
+        {
+            Direction = NexusDirection.Outbound,
+            Kind = kind == LargeMessageKind.Argument ? NexusLargeMessageKind.Argument : NexusLargeMessageKind.Result,
+            InvocationId = invocationId,
+            Length = length,
+            Transferred = Volatile.Read(ref _sent),
+            SinceLastProgress = TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - Volatile.Read(ref _lastProgress))),
+        };
     }
 
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
@@ -454,7 +492,9 @@ internal partial class NexusSession<TNexus, TProxy>
     private async ValueTask<FlushResult> FlushOutput(PipeWriter output)
     {
         WritePendingCredit(output);
-        Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+        var now = _config.Time.GetTickCount64();
+        Volatile.Write(ref _flushStartedTicks, now);
+        _lastSentTicks = now;
         try
         {
             // ReSharper disable once MethodSupportsCancellation
@@ -527,6 +567,7 @@ internal partial class NexusSession<TNexus, TProxy>
             output.Advance(headerLength);
             body.CopyTo(output.GetSpan((int)body.Length));
             output.Advance(length);
+            CountSent(1, headerLength + length);
         }
         catch (InvalidOperationException) when (State != ConnectionState.Connected)
         {
@@ -589,6 +630,18 @@ internal partial class NexusSession<TNexus, TProxy>
             await DisconnectCore(DisconnectReason.SocketClosedWhenWriting, false).ConfigureAwait(false);
     }
     
+    /// <summary>
+    /// Counts <paramref name="frames"/> frames of <paramref name="bytes"/> bytes written to the output, for metrics.
+    /// Called with the write mutex held, so the fields have one writer at a time; the volatile writes keep them
+    /// untorn for collections on 32-bit platforms and cost a plain store on 64-bit ones.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CountSent(int frames, int bytes)
+    {
+        Volatile.Write(ref _framesSent, _framesSent + frames);
+        Volatile.Write(ref _bytesSent, _bytesSent + bytes);
+    }
+
     // Only used for debugging (InternalOnSend).
     private static byte[] DebugCopy(MessageType type, ushort contentLength, ReadOnlySequence<byte> body)
     {
@@ -698,6 +751,7 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 output.GetSpan(1)[0] = (byte)type;
                 output.Advance(1);
+                CountSent(1, 1);
                 _config.InternalOnSend?.Invoke(this, new[] { (byte)type });
                 Logger?.LogTrace($"Sending {type} header.");
             }
@@ -713,6 +767,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 var length = data.Length;
                 data.Span.CopyTo(output.GetSpan(length));
                 output.Advance(length);
+                CountSent(0, length);
                 _config.InternalOnSend?.Invoke(this, data.ToArray());
             }
         }

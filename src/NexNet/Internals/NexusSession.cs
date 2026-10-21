@@ -16,10 +16,11 @@ using NexNet.Logging;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Threading;
 using NexNet.RateLimiting;
+using NexNet.Diagnostics;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner
+internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, LargeMessageReceiver.IOwner, IMeteredSession
     where TNexus : NexusBase<TProxy>, IMethodInvoker, IInvocationMethodHash
     where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash, new()
 {
@@ -118,8 +119,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     public SessionControlSender ControlSender => _controlSender;
 
-    // Tick count when the current outbound transport flush started; 0 when none is in progress.
+    // Tick count when the current outbound transport flush started; 0 when none is in progress. _lastSentTicks: when
+    // the last flush started (written under the write mutex, 0 before the first).
     private long _flushStartedTicks;
+    private long _lastSentTicks;
 
     // Invocation credits (docs/internals/flow-control.md, section 4.7). _inboundCredits: invocations the peer may
     // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
@@ -129,11 +132,30 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private int _peerMaxMessageSize;
     private long _creditDrops;
     private long _lastCreditDropWarning;
+    private int _pipeResetsSinceWarning;
+    private long _lastPipeResetWarning;
 
     // Large arguments and results (docs/internals/flow-control.md, section 4.3): streams the peer is sending
     // here, and streams this side is sending, by (invocation ID, kind).
     private readonly LargeMessageReceiver _largeMessages;
     private readonly ConcurrentDictionary<int, OutgoingLargeMessage> _outgoingLargeMessages = new();
+
+    // Metrics (docs/articles/metrics.md): the tags this session is counted under, and its slot in their table.
+    private readonly MetricsTagSet _metricsTags;
+    public MetricsTagSet MetricsTags => _metricsTags;
+    int IMeteredSession.MetricsSlot { get; set; } = -1;
+    long IMeteredSession.MetricsStartTimestamp { get; set; }
+
+    // Callers waiting in SendInvocation for outbound credit, and large messages being sent; changed only off the
+    // per-frame paths.
+    private int _creditWaiters;
+    private int _outgoingLargeCount;
+
+    // Frames and bytes written to the transport (under the write mutex) and read from it (by the read loop).
+    private long _framesSent;
+    private long _bytesSent;
+    private long _framesReceived;
+    private long _bytesReceived;
 
     public long Id
     {
@@ -234,6 +256,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _largeMessages = new LargeMessageReceiver(this, Budget, _config.MaxMessageSize, _poolManager,
             _config.SerializerOptions, _config.Time);
         LastReceived = _config.Time.GetTickCount64();
+        _metricsTags = configurations.MetricsTags ?? NexusMetrics.GetTagSet(_config);
 
         // Note: Session registration is deferred until after authentication completes
         // (see NexusSession.Receiving.cs, MessageType.ClientGreeting handler)
@@ -271,23 +294,26 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // credit is not measured.
         var now = _config.Time.GetTickCount64();
         var flushStarted = Volatile.Read(ref _flushStartedTicks);
-        if ((flushStarted != 0 && now - flushStarted > _config.ProgressTimeout)
-            || PipeManager.HasStalledPipe(now, _config.ProgressTimeout)
-            || _largeMessages.HasStalledStream(now, _config.ProgressTimeout))
-        {
-            Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms.");
-            DisconnectAsync(DisconnectReason.Stalled);
-            return true;
-        }
+        var stall = flushStarted != 0 && now - flushStarted > _config.ProgressTimeout
+            ? $"outbound transport flush running for {LogFormat.Seconds(now - flushStarted)}"
+            : PipeManager.FindStalledPipe(now, _config.ProgressTimeout)
+              ?? _largeMessages.FindStalledStream(now, _config.ProgressTimeout);
+        if (stall == null)
+            return false;
 
-        return false;
+        Logger?.LogWarning($"Session {Id} made no progress within {_config.ProgressTimeout} ms: {stall}.");
+        DisconnectAsync(DisconnectReason.Stalled);
+        return true;
     }
 
     public async ValueTask InitializeConnection(CancellationToken cancellationToken = default)
     {
         // Send the connection header prior to the greeting
         await SendRaw(_protocolHeader, cancellationToken).ConfigureAwait(false);
-        
+
+        // Counted from here; DisconnectCore or the end of the read loop stops counting it.
+        _metricsTags.Metrics.Register(this);
+
         _state = ConnectionState.Connected;
         OnStateChanged?.Invoke(State);
     }
@@ -396,6 +422,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         while (_invocationQueue.TryDequeue(out var queued))
             queued.Dispose();
 
+        RetireMetrics();
+
         if (_config.InternalNoLingerOnShutdown)
         {
             try
@@ -499,6 +527,87 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     
     
     /// <summary>
+    /// Stops counting this session in metrics and records its disconnect. Safe to call more than once.
+    /// </summary>
+    private void RetireMetrics()
+        => _metricsTags.Metrics.Retire(this, DisconnectReason, (_internalState & InternalState.NexusCompletedConnection) != 0);
+
+    bool IMeteredSession.IsDisconnected => _state == ConnectionState.Disconnected;
+
+    bool IMeteredSession.IsEstablished => (_internalState & InternalState.NexusCompletedConnection) != 0;
+
+    void IMeteredSession.CollectMetrics(ref SessionMetricsTotals totals)
+    {
+        totals.Sessions++;
+        if ((_internalState & InternalState.NexusCompletedConnection) == 0)
+            totals.Handshaking++;
+
+        totals.BudgetReserved += Budget.Reserved;
+        totals.BudgetLimit += Budget.Limit;
+        var pipes = PipeManager.OpenPipes;
+        totals.PipesOpen += pipes;
+        totals.PipeWindow += (long)pipes * _config.PipeWindow;
+        totals.InvocationsQueued += _invocationQueue.IsEmpty ? 0 : _invocationQueue.Count;
+        totals.InvocationsExecuting += Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots));
+        totals.CreditWaits += Volatile.Read(ref _creditWaiters);
+        totals.LargeMessagesInbound += _largeMessages.Count;
+        totals.LargeMessagesOutbound += Volatile.Read(ref _outgoingLargeCount);
+
+        totals.FramesSent += Volatile.Read(ref _framesSent);
+        totals.BytesSent += Volatile.Read(ref _bytesSent);
+        totals.FramesReceived += Volatile.Read(ref _framesReceived);
+        totals.BytesReceived += Volatile.Read(ref _bytesReceived);
+    }
+
+    /// <inheritdoc />
+    public NexusSessionSnapshot GetSnapshot()
+    {
+        var now = _config.Time.GetTickCount64();
+        var pipes = new List<NexusPipeSnapshot>();
+        PipeManager.AddSnapshots(pipes, now);
+        var largeMessages = new List<NexusLargeMessageSnapshot>();
+        _largeMessages.AddSnapshots(largeMessages, now);
+        foreach (var outgoing in _outgoingLargeMessages)
+            largeMessages.Add(outgoing.Value.GetSnapshot(now));
+
+        var startTimestamp = ((IMeteredSession)this).MetricsStartTimestamp;
+        var flushStarted = Volatile.Read(ref _flushStartedTicks);
+        var lastSent = Volatile.Read(ref _lastSentTicks);
+        return new NexusSessionSnapshot
+        {
+            Id = Id,
+            IsServer = IsServer,
+            Transport = _metricsTags.TransportName,
+            State = _state,
+            IsEstablished = (_internalState & InternalState.NexusCompletedConnection) != 0,
+            Connected = startTimestamp == 0 ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp),
+            SinceLastReceived = Since(now, LastReceived),
+            SinceLastSent = lastSent == 0 ? null : Since(now, lastSent),
+            FlushInProgress = flushStarted == 0 ? null : Since(now, flushStarted),
+            Budget = new NexusBudgetSnapshot { Limit = Budget.Limit, Reserved = Budget.Reserved },
+            Invocations = new NexusInvocationSnapshot
+            {
+                Queued = _invocationQueue.Count,
+                Executing = Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots)),
+                MaxExecuting = _config.MaxConcurrentConnectionInvocations,
+                InboundCredits = Math.Max(0, Volatile.Read(ref _inboundCredits)),
+                OutboundCredits = _outboundCredits.CurrentCount,
+                CreditWaits = Volatile.Read(ref _creditWaiters),
+                AwaitingResults = SessionInvocationStateManager.OutstandingCount,
+                CreditDrops = Interlocked.Read(ref _creditDrops),
+            },
+            Pipes = pipes,
+            LargeMessages = largeMessages,
+            FramesSent = Volatile.Read(ref _framesSent),
+            BytesSent = Volatile.Read(ref _bytesSent),
+            FramesReceived = Volatile.Read(ref _framesReceived),
+            BytesReceived = Volatile.Read(ref _bytesReceived),
+        };
+
+        static TimeSpan Since(long nowTicks, long ticks) => TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - ticks));
+    }
+
+    /// <summary>
     /// Frees this session's <c>MaxPendingHandshakes</c> slot. Safe to call more than once.
     /// </summary>
     internal void EndHandshake() => Interlocked.Exchange(ref _handshakeEnded, null)?.Invoke();
@@ -529,6 +638,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         if (!_outboundCredits.Wait(0))
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disconnectionCts.Token);
+            Interlocked.Increment(ref _creditWaiters);
             try
             {
                 if (!await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, linked.Token).ConfigureAwait(false))
@@ -542,6 +652,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
                 // The session ended while waiting.
                 return false;
             }
+            finally
+            {
+                Interlocked.Decrement(ref _creditWaiters);
+            }
         }
 
         await SendMessage(message, cancellationToken).ConfigureAwait(false);
@@ -554,6 +668,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private void RecordCreditDrop()
     {
         var drops = Interlocked.Increment(ref _creditDrops);
+        _metricsTags.Metrics.RecordCreditDrop(_metricsTags);
         var now = _config.Time.GetTickCount64();
         var last = Volatile.Read(ref _lastCreditDropWarning);
         if (now - last < 10_000 || Interlocked.CompareExchange(ref _lastCreditDropWarning, now, last) != last)
@@ -561,6 +676,27 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
         Logger?.LogWarning($"Session {Id} dropped invocations because the peer returned no invocation credit within " +
                            $"{_config.ProgressTimeout} ms ({drops} so far).");
+    }
+
+    /// <inheritdoc />
+    public void ReportPipeReset(ushort pipeId, PipeResetReason reason)
+    {
+        _metricsTags.Metrics.RecordPipeReset(_metricsTags, reason);
+
+        // At most one warning per 10 s, with the number of resets since the last one: a peer that keeps sending
+        // broken items does not flood the log.
+        Interlocked.Increment(ref _pipeResetsSinceWarning);
+        var now = _config.Time.GetTickCount64();
+        var last = Volatile.Read(ref _lastPipeResetWarning);
+        if ((last != 0 && now - last < 10_000) || Interlocked.CompareExchange(ref _lastPipeResetWarning, now, last) != last)
+            return;
+
+        var resets = Interlocked.Exchange(ref _pipeResetsSinceWarning, 0);
+        var cause = reason == PipeResetReason.TooLarge
+            ? "a channel item exceeds MaxMessageSize"
+            : "a channel item breaks the framing";
+        Logger?.LogWarning($"Reset pipe P{pipeId:00000}: {cause}" +
+                           (resets > 1 ? $" ({resets} pipe resets since the last warning)." : "."));
     }
 
     /// <summary>
@@ -630,7 +766,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     void LargeMessageReceiver.IOwner.ReturnInvocationCredit() => ReturnInvocationCredit();
 
     void LargeMessageReceiver.IOwner.SendAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
-        => _controlSender.RequestAbort(invocationId, kind, reason);
+    {
+        _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: true, reason);
+        _controlSender.RequestAbort(invocationId, kind, reason);
+    }
 
     private void ReturnInvocationCredit()
     {

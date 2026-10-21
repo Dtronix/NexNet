@@ -10,6 +10,9 @@ namespace NexNet.Transports.Uds;
 /// </summary>
 public sealed class UdsServerConfig : ServerConfig
 {
+    /// <inheritdoc />
+    protected internal override string TransportName => "uds";
+
     private UnixDomainSocketEndPoint _endPoint = null!;
 
     /// <summary>

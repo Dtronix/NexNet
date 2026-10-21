@@ -12,6 +12,9 @@ namespace NexNet.Quic;
 /// </summary>
 public class QuicClientConfig : ClientConfig
 {
+    /// <inheritdoc />
+    protected override string TransportName => "quic";
+
 
     private SslClientAuthenticationOptions _sslClientAuthenticationOptions = null!;
 
@@ -44,6 +47,9 @@ public class QuicClientConfig : ClientConfig
 /// </summary>
 public class QuicServerConfig : ServerConfig
 {
+    /// <inheritdoc />
+    protected override string TransportName => "quic";
+
 
     private SslServerAuthenticationOptions _sslServerAuthenticationOptions = null!;
 

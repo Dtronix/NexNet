@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Messages;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -130,6 +131,22 @@ internal interface INexusSession : ISessionMessenger
     /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.
     /// </summary>
     SessionControlSender ControlSender { get; }
+
+    /// <summary>
+    /// Tags this session is counted under in metrics; their <see cref="MetricsTagSet.Metrics"/> records its events.
+    /// </summary>
+    MetricsTagSet MetricsTags { get; }
+
+    /// <summary>
+    /// Snapshot of this session's live state (docs/articles/metrics.md).
+    /// </summary>
+    NexusSessionSnapshot GetSnapshot();
+
+    /// <summary>
+    /// Records that the pipe <paramref name="pipeId"/> was reset: counts it in metrics and logs a warning, at most
+    /// once per 10 s.
+    /// </summary>
+    void ReportPipeReset(ushort pipeId, Pipes.PipeResetReason reason);
 }
 
 /// <summary>
