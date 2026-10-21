@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using NexNet.Diagnostics;
 using NexNet.Messages;
 using NexNet.Pools;
 using NexNet.Serialization;
@@ -212,6 +213,26 @@ internal sealed class LargeMessageReceiver
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Adds a snapshot of every stream being received to <paramref name="snapshots"/>.
+    /// </summary>
+    public void AddSnapshots(List<NexusLargeMessageSnapshot> snapshots, long nowTicks)
+    {
+        foreach (var (key, stream) in _streams)
+        {
+            snapshots.Add(new NexusLargeMessageSnapshot
+            {
+                Direction = NexusDirection.Inbound,
+                Kind = stream.Kind == LargeMessageKind.Argument ? NexusLargeMessageKind.Argument : NexusLargeMessageKind.Result,
+                InvocationId = (ushort)key,
+                Length = stream.Total,
+                Transferred = Volatile.Read(ref stream.Received),
+                SinceLastProgress = TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - Volatile.Read(ref stream.LastProgress))),
+                Aborting = stream.Aborting,
+            });
+        }
     }
 
     /// <summary>

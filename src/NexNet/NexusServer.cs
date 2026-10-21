@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using NexNet.Messages;
@@ -70,6 +71,29 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     
     /// <inheritdoc />
     public ServerNexusContextProvider<TServerNexus, TClientProxy> ContextProvider { get; private set; } = null!;
+
+    /// <summary>
+    /// Snapshot of the server: pending handshakes, rate limiter statistics and a snapshot of every authenticated
+    /// session. Not an atomic picture; exposes internal state, so do not serve it to unauthenticated callers. See
+    /// docs/articles/metrics.md.
+    /// </summary>
+    public NexusServerSnapshot GetSnapshot()
+    {
+        var sessions = new List<NexusSessionSnapshot>();
+        if (_sessionManager != null)
+        {
+            foreach (var session in _sessionManager.Sessions.LocalSessions)
+                sessions.Add(session.GetSnapshot());
+        }
+
+        return new NexusServerSnapshot
+        {
+            State = _state,
+            PendingHandshakes = Math.Max(0, Volatile.Read(ref _pendingHandshakes)),
+            RateLimiter = _rateLimiter?.GetStats(),
+            Sessions = sessions,
+        };
+    }
 
     /// <summary>
     /// Creates a NexNetServer class for handling incoming connections.

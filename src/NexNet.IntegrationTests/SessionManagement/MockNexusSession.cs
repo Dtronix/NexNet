@@ -30,6 +30,7 @@ internal class MockNexusSession : INexusSession
 
     private MetricsTagSet? _metricsTags;
     public MetricsTagSet MetricsTags => _metricsTags ??= NexusMetrics.GetTagSet(Config);
+    public NexusSessionSnapshot GetSnapshot() => new() { Id = Id, IsServer = IsServer, State = State };
     private SessionControlSender? _controlSender;
 
     // Track sent messages for verification

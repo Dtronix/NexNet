@@ -12,6 +12,7 @@ using NexNet.Logging;
 using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Threading;
 using System.Collections.Generic;
+using NexNet.Diagnostics;
 
 namespace NexNet.Internals;
 
@@ -252,7 +253,9 @@ internal partial class NexusSession<TNexus, TProxy>
             Logger?.LogTrace($"Writing {TMessage.Type}.");
 
             WritePendingCredit(output);
-            Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+            var now = _config.Time.GetTickCount64();
+            Volatile.Write(ref _flushStartedTicks, now);
+            _lastSentTicks = now;
             flush = output.FlushAsync();
         }
         catch (InvalidOperationException) when (State != ConnectionState.Connected)
@@ -359,7 +362,7 @@ internal partial class NexusSession<TNexus, TProxy>
     private async ValueTask SendLargeMessage(LargeMessage message, CancellationToken cancellationToken)
     {
         var key = message.InvocationId | ((int)message.Kind << 16);
-        var stream = new OutgoingLargeMessage();
+        var stream = new OutgoingLargeMessage(message.InvocationId, message.Kind, message.Length, _config.Time.GetTickCount64());
         try
         {
             if (!_outgoingLargeMessages.TryAdd(key, stream))
@@ -400,6 +403,7 @@ internal partial class NexusSession<TNexus, TProxy>
                 var count = Math.Min(message.Length - offset, ushort.MaxValue);
                 await SendHeaderWithBody(MessageType.MessageChunk, header, new ReadOnlySequence<byte>(message.Buffer!, offset, count)).ConfigureAwait(false);
                 offset += count;
+                stream.Progress(offset, _config.Time.GetTickCount64());
             }
         }
         finally
@@ -422,11 +426,33 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <summary>
     /// A large message this side is sending; the receiver can abort it.
     /// </summary>
-    private sealed class OutgoingLargeMessage
+    private sealed class OutgoingLargeMessage(ushort invocationId, LargeMessageKind kind, int length, long startTicks)
     {
         private int _aborted;
+        private long _sent;
+        private long _lastProgress = startTicks;
+
         public bool Aborted => Volatile.Read(ref _aborted) == 1;
         public void Abort() => Volatile.Write(ref _aborted, 1);
+
+        /// <summary>
+        /// Records that <paramref name="sent"/> bytes have been sent; read by snapshots.
+        /// </summary>
+        public void Progress(long sent, long nowTicks)
+        {
+            Volatile.Write(ref _sent, sent);
+            Volatile.Write(ref _lastProgress, nowTicks);
+        }
+
+        public NexusLargeMessageSnapshot GetSnapshot(long nowTicks) => new()
+        {
+            Direction = NexusDirection.Outbound,
+            Kind = kind == LargeMessageKind.Argument ? NexusLargeMessageKind.Argument : NexusLargeMessageKind.Result,
+            InvocationId = invocationId,
+            Length = length,
+            Transferred = Volatile.Read(ref _sent),
+            SinceLastProgress = TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - Volatile.Read(ref _lastProgress))),
+        };
     }
 
     public ValueTask SendHeaderWithBody(MessageType type, ReadOnlySequence<byte> body, CancellationToken cancellationToken = default)
@@ -466,7 +492,9 @@ internal partial class NexusSession<TNexus, TProxy>
     private async ValueTask<FlushResult> FlushOutput(PipeWriter output)
     {
         WritePendingCredit(output);
-        Volatile.Write(ref _flushStartedTicks, _config.Time.GetTickCount64());
+        var now = _config.Time.GetTickCount64();
+        Volatile.Write(ref _flushStartedTicks, now);
+        _lastSentTicks = now;
         try
         {
             // ReSharper disable once MethodSupportsCancellation

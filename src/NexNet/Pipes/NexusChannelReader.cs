@@ -118,6 +118,8 @@ internal class NexusChannelReader<T> : INexusChannelReader<T>
                 throw;
             }
 
+            Reader.SetPendingItem(pendingItemLength);
+
             if (result.IsCompleted && readAmount == 0)
                 return false;
 

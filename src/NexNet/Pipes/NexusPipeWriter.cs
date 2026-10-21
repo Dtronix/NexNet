@@ -44,6 +44,29 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private bool _hasPipeId;
     private int _flushCounter;
 
+    // While a flush waits for credit: when the wait started (TimeProvider tick count, 0 when not waiting) and the
+    // bytes left to send. Written on the wait path only, read by snapshots.
+    private readonly TimeProvider _time;
+    private long _creditWaitSince;
+    private long _waitingBytes;
+
+    /// <summary>
+    /// Tick count when the current wait for credit started, or 0; and the bytes left to send.
+    /// </summary>
+    public (long WaitSince, long WaitingBytes) CreditWait
+    {
+        get
+        {
+            var since = Volatile.Read(ref _creditWaitSince);
+            return (since, since == 0 ? 0 : Volatile.Read(ref _waitingBytes));
+        }
+    }
+
+    /// <summary>
+    /// True once the writer completed.
+    /// </summary>
+    public bool IsCompleted => _isCompleted;
+
     /// <summary>
     /// Send credit currently available.
     /// </summary>
@@ -65,9 +88,11 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         IPipeStateManager stateManager, 
         INexusLogger? logger,
         ISessionMessenger sessionMessenger, 
-        bool isServer, int chunkSize)
+        bool isServer, int chunkSize,
+        TimeProvider? time = null)
     {
         _stateManager = stateManager;
+        _time = time ?? TimeProvider.System;
 
         _messenger = sessionMessenger ?? throw new ArgumentNullException(nameof(sessionMessenger));
         _logger = logger;
@@ -205,6 +230,12 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             var credit = Volatile.Read(ref _credit);
             if (credit <= 0)
             {
+                if (_creditWaitSince == 0)
+                {
+                    Volatile.Write(ref _waitingBytes, bufferLength);
+                    Volatile.Write(ref _creditWaitSince, Math.Max(1, _time.GetTickCount64()));
+                }
+
                 try
                 {
                     await _creditSignal.WaitAsync(_flushCts.Token).ConfigureAwait(false);
@@ -217,6 +248,9 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
                 continue;
             }
+
+            if (_creditWaitSince != 0)
+                Volatile.Write(ref _creditWaitSince, 0);
 
             var chunkLength = (int)Math.Min(Math.Min(bufferLength, credit), _chunkSize);
             Interlocked.Add(ref _credit, -chunkLength);
@@ -260,6 +294,8 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         }
 
         _bufferWriter.Deallocate(buffer);
+        if (_creditWaitSince != 0)
+            Volatile.Write(ref _creditWaitSince, 0);
 
         // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
         if (!_flushCts.TryReset())

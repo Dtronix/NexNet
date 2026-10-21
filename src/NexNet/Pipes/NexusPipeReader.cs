@@ -39,6 +39,10 @@ internal class NexusPipeReader : PipeReader, IDisposable
     // When data last arrived (TimeProvider tick count); with extra credit outstanding, no data is a stall.
     private long _lastDataTicks;
 
+    // Length of a channel item that has partly arrived, prefix included; 0 if none. Set by the channel reader,
+    // read by snapshots.
+    private int _pendingItemLength;
+
     private readonly NexusDuplexPipe.State _writingCompleteFlag;
     private readonly INexusLogger? _logger;
     private readonly TimeProvider _time;
@@ -213,6 +217,39 @@ internal class NexusPipeReader : PipeReader, IDisposable
         lock (_bufferLock)
             return _extraOutstanding > 0 && !_isCompleted && nowTicks - _lastDataTicks > timeoutTicks;
     }
+
+    /// <summary>
+    /// Records the length of a channel item at the start of the buffer that has not fully arrived; 0 for none.
+    /// </summary>
+    public void SetPendingItem(int length)
+    {
+        if (_pendingItemLength != length)
+            Volatile.Write(ref _pendingItemLength, length);
+    }
+
+    /// <summary>
+    /// Flow-control state for a snapshot. Takes the buffer lock briefly.
+    /// </summary>
+    public ReaderState GetState()
+    {
+        var pendingItem = Volatile.Read(ref _pendingItemLength);
+        lock (_bufferLock)
+        {
+            var buffered = _buffer.Length;
+            return new ReaderState(_credit, buffered, _consumedSinceGrant, _extraOutstanding, _lastDataTicks,
+                pendingItem, Math.Min(buffered, pendingItem), _isCompleted);
+        }
+    }
+
+    public readonly record struct ReaderState(
+        long Credit,
+        long Buffered,
+        long ConsumedSinceGrant,
+        long ExtraOutstanding,
+        long LastDataTicks,
+        int PendingItemLength,
+        long PendingItemReceived,
+        bool IsCompleted);
 
     /// <summary>
     /// Resets the pipe this reader belongs to; see <see cref="IPipeStateManager.Reset"/>.

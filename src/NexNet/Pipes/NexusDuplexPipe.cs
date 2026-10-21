@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -165,8 +166,41 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             Logger,
             _session,
             _session.IsServer,
-            NexusPipeWriter.MaxChunkSize);
+            NexusPipeWriter.MaxChunkSize,
+            _session.Config.Time);
     }
+
+    /// <summary>
+    /// Snapshot of this pipe's state; <paramref name="nowTicks"/> is the session's current tick count.
+    /// </summary>
+    internal NexusPipeSnapshot GetSnapshot(long nowTicks)
+    {
+        var reader = _inputPipeReader.GetState();
+        var (waitSince, waitingBytes) = _outputPipeWriter.CreditWait;
+        var closing = Volatile.Read(ref _sentClose) == 1 && Volatile.Read(ref _receivedClose) == 0;
+        return new NexusPipeSnapshot
+        {
+            Id = Id != 0 ? Id : LocalId,
+            IsReady = (_currentState & State.Ready) != 0,
+            ReaderCompleted = reader.IsCompleted,
+            WriterCompleted = _outputPipeWriter.IsCompleted,
+            Closing = closing ? Since(nowTicks, Volatile.Read(ref _closingSince)) : null,
+            Window = _inputPipeReader.Window,
+            ReceiveCredit = reader.Credit,
+            Buffered = reader.Buffered,
+            ConsumedNotGranted = reader.ConsumedSinceGrant,
+            ExtraOutstanding = reader.ExtraOutstanding,
+            SinceLastData = reader.LastDataTicks == 0 ? null : Since(nowTicks, reader.LastDataTicks),
+            PartialItem = reader.PendingItemLength == 0
+                ? null
+                : new NexusPartialItemSnapshot { Length = reader.PendingItemLength, Received = reader.PendingItemReceived },
+            SendCredit = _outputPipeWriter.Credit,
+            WaitingForCredit = waitSince == 0 ? null : Since(nowTicks, waitSince),
+            WaitingBytes = waitingBytes,
+        };
+    }
+
+    private static TimeSpan Since(long nowTicks, long ticks) => TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - ticks));
 
     /// <summary>
     /// Bytes reserved from the session budget for this pipe's receive window.

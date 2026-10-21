@@ -70,6 +70,12 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public ClientConfig Config => _config;
 
+    /// <summary>
+    /// Snapshot of the current session's live state, or null when not connected. Not an atomic picture; exposes
+    /// internal state, so do not serve it to unauthenticated callers. See docs/articles/metrics.md.
+    /// </summary>
+    public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot();
+
     /// <inheritdoc />
     public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
 

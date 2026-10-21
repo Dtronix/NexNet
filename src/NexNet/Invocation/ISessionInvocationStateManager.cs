@@ -33,6 +33,11 @@ internal interface ISessionInvocationStateManager
     bool IsOutstanding(ushort invocationId);
 
     /// <summary>
+    /// Calls waiting for their result. For snapshots: may take internal locks.
+    /// </summary>
+    int OutstandingCount => 0;
+
+    /// <summary>
     /// Fails a call that is waiting for its result, e.g. because the peer refused its large argument.
     /// </summary>
     void FailInvocation(ushort invocationId, Exception exception);

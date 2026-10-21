@@ -136,6 +136,11 @@ internal interface INexusSession : ISessionMessenger
     /// Tags this session is counted under in metrics; their <see cref="MetricsTagSet.Metrics"/> records its events.
     /// </summary>
     MetricsTagSet MetricsTags { get; }
+
+    /// <summary>
+    /// Snapshot of this session's live state (docs/articles/metrics.md).
+    /// </summary>
+    NexusSessionSnapshot GetSnapshot();
 }
 
 /// <summary>

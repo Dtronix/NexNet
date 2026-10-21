@@ -119,8 +119,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     public SessionControlSender ControlSender => _controlSender;
 
-    // Tick count when the current outbound transport flush started; 0 when none is in progress.
+    // Tick count when the current outbound transport flush started; 0 when none is in progress. _lastSentTicks: when
+    // the last flush started (written under the write mutex, 0 before the first).
     private long _flushStartedTicks;
+    private long _lastSentTicks;
 
     // Invocation credits (docs/internals/flow-control.md, section 4.7). _inboundCredits: invocations the peer may
     // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
@@ -553,6 +555,54 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         totals.BytesSent += Volatile.Read(ref _bytesSent);
         totals.FramesReceived += Volatile.Read(ref _framesReceived);
         totals.BytesReceived += Volatile.Read(ref _bytesReceived);
+    }
+
+    /// <inheritdoc />
+    public NexusSessionSnapshot GetSnapshot()
+    {
+        var now = _config.Time.GetTickCount64();
+        var pipes = new List<NexusPipeSnapshot>();
+        PipeManager.AddSnapshots(pipes, now);
+        var largeMessages = new List<NexusLargeMessageSnapshot>();
+        _largeMessages.AddSnapshots(largeMessages, now);
+        foreach (var outgoing in _outgoingLargeMessages)
+            largeMessages.Add(outgoing.Value.GetSnapshot(now));
+
+        var startTimestamp = ((IMeteredSession)this).MetricsStartTimestamp;
+        var flushStarted = Volatile.Read(ref _flushStartedTicks);
+        var lastSent = Volatile.Read(ref _lastSentTicks);
+        return new NexusSessionSnapshot
+        {
+            Id = Id,
+            IsServer = IsServer,
+            Transport = _metricsTags.TransportName,
+            State = _state,
+            IsEstablished = (_internalState & InternalState.NexusCompletedConnection) != 0,
+            Connected = startTimestamp == 0 ? TimeSpan.Zero : System.Diagnostics.Stopwatch.GetElapsedTime(startTimestamp),
+            SinceLastReceived = Since(now, LastReceived),
+            SinceLastSent = lastSent == 0 ? null : Since(now, lastSent),
+            FlushInProgress = flushStarted == 0 ? null : Since(now, flushStarted),
+            Budget = new NexusBudgetSnapshot { Limit = Budget.Limit, Reserved = Budget.Reserved },
+            Invocations = new NexusInvocationSnapshot
+            {
+                Queued = _invocationQueue.Count,
+                Executing = Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots)),
+                MaxExecuting = _config.MaxConcurrentConnectionInvocations,
+                InboundCredits = Math.Max(0, Volatile.Read(ref _inboundCredits)),
+                OutboundCredits = _outboundCredits.CurrentCount,
+                CreditWaits = Volatile.Read(ref _creditWaiters),
+                AwaitingResults = SessionInvocationStateManager.OutstandingCount,
+                CreditDrops = Interlocked.Read(ref _creditDrops),
+            },
+            Pipes = pipes,
+            LargeMessages = largeMessages,
+            FramesSent = Volatile.Read(ref _framesSent),
+            BytesSent = Volatile.Read(ref _bytesSent),
+            FramesReceived = Volatile.Read(ref _framesReceived),
+            BytesReceived = Volatile.Read(ref _bytesReceived),
+        };
+
+        static TimeSpan Since(long nowTicks, long ticks) => TimeSpan.FromMilliseconds(Math.Max(0, nowTicks - ticks));
     }
 
     /// <summary>

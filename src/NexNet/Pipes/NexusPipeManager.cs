@@ -2,6 +2,7 @@
 using System.Buffers;
 using System.Collections;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -121,7 +122,7 @@ internal class NexusPipeManager
         if (!pipe.IsFullyClosed || !pipe.TryMarkFreed())
             return;
 
-        _activePipes.TryRemove(new System.Collections.Generic.KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
+        _activePipes.TryRemove(new KeyValuePair<ushort, NexusDuplexPipe>(KeyOf(pipe), pipe));
         ReleaseWindow();
         pipe.ReleaseAllExtra();
 
@@ -150,6 +151,17 @@ internal class NexusPipeManager
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Adds a snapshot of every pipe holding a receive window to <paramref name="snapshots"/>.
+    /// </summary>
+    public void AddSnapshots(List<Diagnostics.NexusPipeSnapshot> snapshots, long nowTicks)
+    {
+        foreach (var pipe in _activePipes)
+        {
+            snapshots.Add(pipe.Value.GetSnapshot(nowTicks));
+        }
     }
 
     /// <summary>
