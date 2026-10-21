@@ -38,6 +38,10 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         clientConfig.Time = fakeTime;
         serverConfig.Timeout = 300_000;
         clientConfig.Timeout = 300_000;
+        // Each Advance step exceeds the default ProgressTimeout; a flush still completing when the clock
+        // jumps would otherwise read as a stall and disconnect the session.
+        serverConfig.ProgressTimeout = 300_000;
+        clientConfig.ProgressTimeout = 300_000;
 
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
         server.OnNexusCreated = nexus =>
