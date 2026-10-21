@@ -219,7 +219,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// </summary>
     internal DisconnectReason OnRemoteState(State state, uint window)
     {
-        if (state.HasFlag(State.Refused))
+        if ((state & State.Refused) != 0)
         {
             // Only meaningful for a pipe this side opened and the peer has not acknowledged.
             if (_currentState == State.Unset)
@@ -234,7 +234,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         UpdateState(state);
 
         // Initiating side: the peer's Ready carried its window; grant ours in return.
-        if (wasUnset && state.HasFlag(State.Ready) && _session != null)
+        if (wasUnset && (state & State.Ready) != 0 && _session != null)
         {
             _inputPipeReader.OpenWindow();
             GrantCredit(_inputPipeReader.Window);
@@ -457,8 +457,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         // Get a copy of the current state.
         var currentState = _currentState;
         if (_session == null
-            || (!remove && currentState.HasFlag(updatedState))
-            || (remove && !currentState.HasFlag(updatedState)))
+            || (!remove && (currentState & updatedState) == updatedState)
+            || (remove && (currentState & updatedState) != updatedState))
         {
             Logger?.LogTrace($"Current State: {currentState}; Canceled state update of: {updatedState} because it is already set.");
             return false;
@@ -537,7 +537,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
         }
 
         // Check if the pipe is complete.
-        if (_currentState.HasFlag(State.Complete))
+        if ((_currentState & State.Complete) == State.Complete)
         {
             // Set the complete task.
             _completeTcs.TrySetResult();
@@ -549,7 +549,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasState(State has, State notHave, State flag)
     {
-        return has.HasFlag(flag) && !notHave.HasFlag(flag);
+        return (has & flag) == flag && (notHave & flag) != flag;
     }
 
     public void Dispose()

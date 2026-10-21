@@ -54,6 +54,10 @@ Cancelling the token on the caller side propagates the cancellation to the remot
 
 When a method is invoked without waiting for its result (a broadcast, or a `ValueTask` method invoked on several clients), the caller can't cancel it. Its token is canceled when the session ends.
 
+## Execution Context
+
+Invoked methods run on the thread pool, in the execution context of the code that started the session: on a client the code that called `ConnectAsync`, on a server the code that called `StartAsync` or, with the ASP.NET Core transports, the upgrade request. Methods therefore see its `AsyncLocal` values, such as `IHttpContextAccessor.HttpContext` (when registered with `AddHttpContextAccessor`), `Activity.Current`, logging scopes and `CultureInfo.CurrentCulture`. Each invocation runs in its own copy, so values one method sets are not seen by other invocations.
+
 ## Server Broadcasting
 
 The server can invoke methods on multiple connected clients with a single call through the session context:

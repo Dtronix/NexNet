@@ -39,6 +39,10 @@ The benchmark project is located at `src/NexNetBenchmarks/`. Run with:
 dotnet run -c Release --project src/NexNetBenchmarks/NexNetBenchmarks.csproj
 ```
 
+Pass BenchmarkDotNet arguments to select benchmarks, for example `-- --filter *BroadcastBenchmarks*`.
+
+`BroadcastBenchmarks` sends server-to-client fire-and-forget invocations to 16 clients through `Proxy.All`, `Group` and `Clients(ids)`. The other side runs in a second process, so each row measures one side only: `Sender` is the server, `Receivers` is all 16 clients together (divide Allocated by 16 for one received invocation). Mean and Allocated are per broadcast.
+
 ## See Also
 
 - [Hub Invocations](hub-invocations.md) — Method patterns that affect performance characteristics
