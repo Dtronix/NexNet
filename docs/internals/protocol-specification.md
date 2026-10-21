@@ -126,8 +126,9 @@ it; nothing can cancel such an invocation except the session ending.
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`
 - With a result, which may itself be nil: `[invocationId: uint16, state: uint8, result: embedded value]`
 
-`state`: 0 Unset, 1 CompletedResult, 2 Exception, 3 Unauthorized. A result for an invocation ID the receiver is not
-waiting on is a protocol error. A result whose body exceeds one frame is streamed (§6).
+`state`: 0 Unset, 1 CompletedResult, 2 Exception, 3 Unauthorized. An invocation without IgnoreReturn gets exactly one
+result, unless the session ends first. A result for an invocation ID the receiver is not waiting on is a protocol
+error. A result whose body exceeds one frame is streamed (§6).
 
 ### 4.5 InvocationCancellation
 `[invocationId: uint16]`

@@ -205,6 +205,21 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         try
         {
             await requestArgs.InvokeMethodCore(requestArgs.Message, bufferWriter).ConfigureAwait(false);
+
+            // Refused by authorization: the method did not run. A disconnecting session gets no result.
+            if (requestArgs.Message.AuthorizeResult != AuthorizeResult.Allowed)
+            {
+                bufferWriterCache.Add(bufferWriter);
+                if (requestArgs.Message.AuthorizeResult == AuthorizeResult.Unauthorized)
+                {
+                    message.Result = null;
+                    message.State = InvocationResultMessage.StateType.Unauthorized;
+                    await context.Session.SendMessage(message).ConfigureAwait(false);
+                }
+
+                return;
+            }
+
             Sequence<byte>? bufferResult = null;
             // If the length is zero, there is no return value.
             if (bufferWriter.Length == 0)

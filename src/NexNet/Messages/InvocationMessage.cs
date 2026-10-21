@@ -47,6 +47,14 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     /// </summary>
     internal NexNet.Internals.IInvocationSlot? Slot;
 
+    /// <summary>
+    /// Receiving side: the outcome of the method's authorization check. Anything but
+    /// <see cref="AuthorizeResult.Allowed"/> means the method did not run; the invocation then ends with an
+    /// <see cref="InvocationResultMessage.StateType.Unauthorized"/> result, or with none if the session is being
+    /// disconnected.
+    /// </summary>
+    internal AuthorizeResult AuthorizeResult;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<T>()
     {
@@ -109,6 +117,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         Interlocked.Exchange(ref _reservedFrom, null)?.Release(_reservedBytes);
         Interlocked.Exchange(ref ArgumentsOwner, null)?.Return();
         Slot = null;
+        AuthorizeResult = AuthorizeResult.Allowed;
 
         var cache = Interlocked.Exchange(ref _messageCache, null);
 

@@ -379,6 +379,54 @@ internal class NexusServerTests_Authorization : BaseTests
             await client.Proxy.ProtectedWithReturn(21).Timeout(1));
     }
 
+    [TestCase(Type.Uds, false)]
+    [TestCase(Type.Tcp, false)]
+    [TestCase(Type.TcpTls, false)]
+    [TestCase(Type.Quic, false)]
+    [TestCase(Type.WebSocket, false)]
+    [TestCase(Type.HttpSocket, false)]
+    [TestCase(Type.Uds, true)]
+    [TestCase(Type.Tcp, true)]
+    [TestCase(Type.TcpTls, true)]
+    [TestCase(Type.Quic, true)]
+    [TestCase(Type.WebSocket, true)]
+    [TestCase(Type.HttpSocket, true)]
+    public async Task Unauthorized_SessionRemainsUsable(Type type, bool cacheEnabled)
+    {
+        var unprotectedInvoked = 0;
+        var (server, client, _) = CreateAuthServerClient(type,
+            cacheEnabled ? TimeSpan.FromSeconds(30) : null);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+            nexus.UnprotectedMethodHandler = _ =>
+            {
+                Interlocked.Increment(ref unprotectedInvoked);
+                return ValueTask.CompletedTask;
+            };
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // Twice each, so that with the cache enabled the second refusal comes from the cache.
+        for (var i = 0; i < 2; i++)
+        {
+            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+                await client.Proxy.ProtectedMethod("test").Timeout(1));
+            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+                await client.Proxy.ProtectedWithReturn(21).Timeout(1));
+
+            // Results arrive in order, so any extra result for a refused call has been read by the time this
+            // call completes.
+            await client.Proxy.UnprotectedMethod().Timeout(1);
+        }
+
+        Assert.That(unprotectedInvoked, Is.EqualTo(2));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     [TestCase(Type.TcpTls)]
