@@ -87,23 +87,21 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
     }
 
     /// <summary>
-    /// Called by generated auth guard code. Runs the authorization check and handles
-    /// Unauthorized (sends error result) and Disconnect (disconnects session) outcomes.
-    /// Returns true if the method invocation should proceed, false otherwise.
+    /// Called by generated auth guard code. Runs the authorization check and records a refusal on the invocation;
+    /// the invocation then ends with an Unauthorized result instead of the method's result. Disconnect also
+    /// disconnects the session. Returns true if the method invocation should proceed, false otherwise.
     /// </summary>
     /// <param name="methodId">The method ID being invoked.</param>
     /// <param name="methodName">The name of the method being invoked.</param>
     /// <param name="requiredPermissions">The required permission int values from the attribute.</param>
-    /// <param name="invocationId">The invocation ID for sending result messages.</param>
-    /// <param name="hasReturnChannel">Whether the caller expects a return value (returnBuffer != null).</param>
+    /// <param name="message">The invocation being authorized.</param>
     /// <param name="cacheDurationSeconds">Per-method cache override: -1 = use server config, 0 = no cache, positive = seconds.</param>
-    /// <returns>True if authorized and the method should proceed; false if handled (unauthorized or disconnected).</returns>
+    /// <returns>True if authorized and the method should proceed; false if refused (unauthorized or disconnected).</returns>
     protected async ValueTask<bool> CheckAuthorization(
         int methodId,
         string methodName,
         ReadOnlyMemory<int> requiredPermissions,
-        ushort invocationId,
-        bool hasReturnChannel,
+        IInvocationMessage message,
         int cacheDurationSeconds)
     {
         // Resolve effective cache duration in milliseconds
@@ -133,8 +131,7 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
             if (now < cached.ExpiresAtTicks)
             {
                 // Cache hit
-                return await HandleAuthResult(cached.Result, invocationId, hasReturnChannel)
-                    .ConfigureAwait(false);
+                return await HandleAuthResult(cached.Result, message).ConfigureAwait(false);
             }
 
             // Expired
@@ -159,43 +156,22 @@ public abstract class ServerNexusBase<TProxy> : NexusBase<TProxy>
             _authCache[methodId] = (result, SessionContext.Session.Config.Time.GetTickCount64() + cacheDurationMs);
         }
 
-        return await HandleAuthResult(result, invocationId, hasReturnChannel).ConfigureAwait(false);
+        return await HandleAuthResult(result, message).ConfigureAwait(false);
     }
 
-    private async ValueTask<bool> HandleAuthResult(
-        AuthorizeResult result,
-        ushort invocationId,
-        bool hasReturnChannel)
+    private async ValueTask<bool> HandleAuthResult(AuthorizeResult result, IInvocationMessage message)
     {
-        switch (result)
-        {
-            case AuthorizeResult.Allowed:
-                return true;
+        if (result == AuthorizeResult.Allowed)
+            return true;
 
-            case AuthorizeResult.Disconnect:
-                await SessionContext.Session.DisconnectAsync(DisconnectReason.Unauthorized).ConfigureAwait(false);
-                return false;
+        // The result for the refused call is sent by the invocation itself (NexusBase.InvokeMethodCoreTask), so
+        // that it is the call's only result.
+        if (message is InvocationMessage invocationMessage)
+            invocationMessage.AuthorizeResult = result;
 
-            case AuthorizeResult.Unauthorized:
-                if (hasReturnChannel)
-                {
-                    var message = SessionContext.PoolManager.Rent<InvocationResultMessage>();
-                    try
-                    {
-                        message.InvocationId = invocationId;
-                        message.Result = null;
-                        message.State = InvocationResultMessage.StateType.Unauthorized;
-                        await SessionContext.Session.SendMessage(message).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        message.Dispose();
-                    }
-                }
-                return false;
+        if (result == AuthorizeResult.Disconnect)
+            await SessionContext.Session.DisconnectAsync(DisconnectReason.Unauthorized).ConfigureAwait(false);
 
-            default:
-                return false;
-        }
+        return false;
     }
 }
