@@ -12,6 +12,12 @@ namespace NexNetBenchmarks
                 return;
             }
 
+            if (args.Length == 3 && args[0] == "--broadcast-peer")
+            {
+                BroadcastBenchmarks.RunPeer(args[1], args[2]).GetAwaiter().GetResult();
+                return;
+            }
+
             // If arguments are available use BenchmarkSwitcher to run benchmarks
             if (args.Length > 0)
             {
