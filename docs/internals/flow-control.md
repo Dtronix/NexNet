@@ -309,7 +309,7 @@ Each step is a PR on master that keeps the test suite green. `ProtocolVersion` s
 
 | Item | Tracking |
 |---|---|
-| Caller-path allocations (pooled `IValueTaskSource<T>`), server dispatch via `IThreadPoolWorkItem` | #79 |
+| Caller-path allocations (pooled `IValueTaskSource<T>`) | #79 |
 | Metrics meter and session snapshot API | #80 |
 | Pipe methods with results and `CancellationToken`. Today the proxy returns once the call is sent and callers then use the pipe; awaiting a remote result would deadlock that pattern, so this needs its own API design (e.g. the result on `pipe.CompleteTask`). | — |
 | Remote exception detail (Off / Message option plus an application mapping hook) | — |

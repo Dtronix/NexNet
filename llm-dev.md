@@ -101,6 +101,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 **Core Session:**
 - `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
+  - Received invocations: `DispatchInvocations` runs each on a pooled `InvocationWorkItem` (`IThreadPoolWorkItem`, local queue) inside the ExecutionContext captured when `StartReadAsync` begins (pinned by `InvocationExecutionContextTests`)
 - `NexusSession.Sending.cs` - Write logic with MutexSlim serialization; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
 - `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
