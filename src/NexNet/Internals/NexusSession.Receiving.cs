@@ -808,6 +808,9 @@ internal partial class NexusSession<TNexus, TProxy>
                     return DisconnectReason.FlowControl;
                 }
 
+                // Tracked first: the caller's cancellation can follow right behind it, before it runs.
+                _nexus.TrackInvocation(invocationRequestMessage);
+
                 // Queued, never awaited: the read loop must not wait for an execution slot.
                 _invocationQueue.Enqueue(invocationRequestMessage);
                 DispatchInvocations();

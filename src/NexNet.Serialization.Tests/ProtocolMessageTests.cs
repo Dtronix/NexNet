@@ -185,6 +185,14 @@ public class ProtocolMessageTests
     }
 
     [Test]
+    public void InvocationResultCanceled()
+    {
+        var body = Body(new InvocationResultMessage { InvocationId = 3, State = InvocationResultMessage.StateType.Canceled });
+        Assert.That(Hex(body), Is.EqualTo("920304"));
+        Assert.That(Parse<InvocationResultMessage>(body).State, Is.EqualTo(InvocationResultMessage.StateType.Canceled));
+    }
+
+    [Test]
     public void InvocationRejectsTruncatedEmbeddedArguments()
     {
         var body = new byte[] { 0x94, 0x01, 0x02, 0x00, 0x92, 0x05 };

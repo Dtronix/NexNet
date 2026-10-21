@@ -15,6 +15,12 @@ public interface IMethodInvoker
     internal void CancelInvocation(InvocationCancellationMessage message);
 
     /// <summary>
+    /// Starts tracking a received invocation that expects a result, before it is queued, so that a cancellation that
+    /// arrives before its method starts still cancels it.
+    /// </summary>
+    internal void TrackInvocation(InvocationMessage message);
+
+    /// <summary>
     /// Gets the cancellation token source for an invocation whose method takes a cancellation token. An invocation
     /// that expects a result gets its own source, registered under its invocation ID so the caller can cancel it. A
     /// fire-and-forget invocation gets the session's shared source, canceled when the session ends: its invocation ID

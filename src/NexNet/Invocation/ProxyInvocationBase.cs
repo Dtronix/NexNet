@@ -425,48 +425,21 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         if (state == null)
             return null;
 
-        try
+        // A cancellation, including one during the send, completes the state through its token callback, which
+        // also asks the peer to cancel.
+        await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
+
+        // Failed before any result arrived (e.g. the peer refused a large argument).
+        if (state.Result == null && state.Exception is { } failure)
         {
-            if (cancellationToken?.IsCancellationRequested == true)
-            {
-                ReturnState(state);
-                return null;
-            }
-
-            await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
-
-            // Failed before any result arrived (e.g. the peer refused a large argument).
-            if (state.Result == null && state.Exception is { } failure)
-            {
-                ReturnState(state);
-                throw failure;
-            }
-
-            if (state.IsCanceled)
-            {
-                if (state.NotifyConnection)
-                {
-                    using var message = PoolManager.Rent<InvocationCancellationMessage>();
-                    message.InvocationId = state.InvocationId;
-                    await session.SendMessage(message).ConfigureAwait(false);
-                }
-
-                ReturnState(state);
-                throw new TaskCanceledException();
-            }
-
+            ReturnState(state);
+            throw failure;
         }
-        catch (TaskCanceledException)
+
+        if (state.IsCanceled)
         {
-            throw;
-        }
-        catch (Exception e) when (e is NexusBusyException or NexusMessageTooLargeException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            //noop
+            ReturnState(state);
+            throw new TaskCanceledException();
         }
 
         return state;

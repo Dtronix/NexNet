@@ -126,12 +126,18 @@ it; nothing can cancel such an invocation except the session ending.
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`
 - With a result, which may itself be nil: `[invocationId: uint16, state: uint8, result: embedded value]`
 
-`state`: 0 Unset, 1 CompletedResult, 2 Exception, 3 Unauthorized. An invocation without IgnoreReturn gets exactly one
-result, unless the session ends first. A result for an invocation ID the receiver is not waiting on is a protocol
+`state`: 0 Unset, 1 CompletedResult, 2 Exception, 3 Unauthorized, 4 Canceled. An invocation without IgnoreReturn gets
+exactly one result, unless the session ends first; that includes a method that was canceled (by an
+InvocationCancellation or on its own), which gets Canceled. A result for an invocation ID the receiver is not waiting on is a protocol
 error. A result whose body exceeds one frame is streamed (§6).
 
 ### 4.5 InvocationCancellation
 `[invocationId: uint16]`
+
+Asks the receiver to cancel an invocation it has received, including one still queued for execution: that one starts
+with its cancellation token already canceled. The receiver still sends its result (§4.4), Canceled if the method
+stopped. A cancellation for an invocation that has already completed is ignored. The canceling side keeps the invocation ID outstanding until that result arrives, so the result is not a
+protocol error and the ID is not reused before it.
 
 ### 4.6 DuplexPipeUpdateState
 `[pipeId: uint16, state: uint8, window: uint32]`

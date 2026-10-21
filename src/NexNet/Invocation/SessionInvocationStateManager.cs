@@ -80,28 +80,26 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         // Nothing else holds the message, so return it and its pooled result here.
         if (!_invocationStates.TryRemove(message.InvocationId, out var state))
         {
+            // The reply to a call this side canceled after sending it: its id was kept until now.
+            ReleaseId(message.InvocationId);
             message.Dispose();
             return;
         }
 
-        // Remove the invocation from the current invocations list.
-        lock (_currentInvocationsLock)
-        {
-            _currentInvocations.Remove(message.InvocationId);
-        }
+        ReleaseId(message.InvocationId);
 
         state.Result = message;
 
         switch (message.State)
         {
-            //case InvocationProxyResultMessage.StateType.RequestCancel:
-            //    state.TrySetCanceled();
-            //    break;
             case InvocationResultMessage.StateType.CompletedResult:
                 state.TrySetResult();
                 break;
             case InvocationResultMessage.StateType.Exception:
                 state.TrySetException(new InvocationException(message.InvocationId));
+                break;
+            case InvocationResultMessage.StateType.Canceled:
+                state.TrySetCanceled();
                 break;
 
             default:
@@ -139,54 +137,87 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         message.InvocationId = GetNextId(true);
 
         var state = _poolManager.RegisteredInvocationStatePool.Rent();
-
         state.InvocationId = message.InvocationId;
-        // Reset state information for this invocation.
+        state.Owner = this;
+
+        // Registered before the token so that the cancellation callback always finds it, even when the token is
+        // already canceled and the callback runs inside Register.
+        _invocationStates.TryAdd(message.InvocationId, state);
 
         if (cancellationToken != null)
         {
             static void Callback(object? arg)
             {
                 var state = (RegisteredInvocationState)arg!;
-                state.TrySetCanceled(true);
+                state.Owner?.CancelInvocation(state);
             }
 
             state.CancellationRegistration = cancellationToken.Value.Register(Callback, state);
         }
 
-        // Add the state information to the active states.
-
-        if (cancellationToken == null || cancellationToken?.IsCancellationRequested == false)
+        try
         {
-            _invocationStates.TryAdd(message.InvocationId, state);
-
-            try
+            if (!await session.SendInvocation(message, cancellationToken ?? default).ConfigureAwait(false))
             {
-                if (!await session.SendInvocation(message, cancellationToken ?? default).ConfigureAwait(false))
-                    state.TrySetCanceled(false);
-            }
-            catch (OperationCanceledException)
-            {
-                // Canceled while waiting for invocation credit (or while streaming a large argument): never
-                // executed. The cancellation callback already completed the state.
-                ForgetInvocation(message.InvocationId);
-                state.TrySetCanceled(false);
+                // The session ended while waiting for invocation credit.
+                ForgetUnsent(state);
+                state.TrySetCanceled();
                 return state;
             }
-            catch
-            {
-                ForgetInvocation(message.InvocationId);
-                throw;
-            }
         }
-        else
+        catch (OperationCanceledException)
         {
+            // Canceled while waiting for invocation credit (or while streaming a large argument): never executed,
+            // so no reply comes. Like any call canceled before it is sent, it returns nothing. Nothing awaits the
+            // state: return it whether or not the cancellation callback completed it.
+            ForgetUnsent(state);
             _poolManager.RegisteredInvocationStatePool.Return(state);
             return null;
         }
+        catch
+        {
+            ForgetUnsent(state);
+            _poolManager.RegisteredInvocationStatePool.Return(state);
+            throw;
+        }
 
-        // Return the message to the cache
+        // Canceled while sending: the peer has the invocation now, so tell it. Its id stays reserved for the reply.
+        if (!state.MarkSent())
+            _nexusSession.ControlSender.RequestInvocationCancellation(message.InvocationId);
+
         return state;
+    }
+
+    /// <summary>
+    /// Cancellation callback of a caller's token. Completes the invocation as canceled unless a result, failure or
+    /// disconnect completed it first, and asks the peer to cancel it if it was already sent.
+    /// </summary>
+    /// <remarks>
+    /// The id stays reserved: the peer replies to every invocation it received, and a reply for an id that is not
+    /// outstanding is a protocol error. The reply finds no state, so it releases the id and is discarded.
+    /// </remarks>
+    internal void CancelInvocation(RegisteredInvocationState state)
+    {
+        // Read before the state can be completed and returned to its pool.
+        var invocationId = state.InvocationId;
+        if (!_invocationStates.TryRemove(new KeyValuePair<int, RegisteredInvocationState>(invocationId, state)))
+            return;
+
+        var sent = state.MarkCanceled();
+        state.TrySetCanceled();
+
+        if (sent)
+            _nexusSession.ControlSender.RequestInvocationCancellation(invocationId);
+    }
+
+    /// <summary>
+    /// Removes an invocation that was never sent and releases its id, whether or not the cancellation callback
+    /// removed it first. No reply will come for it.
+    /// </summary>
+    private void ForgetUnsent(RegisteredInvocationState state)
+    {
+        _invocationStates.TryRemove(new KeyValuePair<int, RegisteredInvocationState>(state.InvocationId, state));
+        ReleaseId(state.InvocationId);
     }
 
     public int OutstandingCount => _invocationStates.Count;
@@ -201,13 +232,11 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
     public void FailInvocation(ushort invocationId, Exception exception)
     {
+        // The peer refused the invocation, so no reply comes: release the id even if a cancellation already
+        // removed the state.
+        ReleaseId(invocationId);
         if (!_invocationStates.TryRemove(invocationId, out var state))
             return;
-
-        lock (_currentInvocationsLock)
-        {
-            _currentInvocations.Remove(invocationId);
-        }
 
         state.TrySetException(exception);
     }
@@ -220,25 +249,20 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         }
     }
 
-    /// <summary>
-    /// Removes an invocation that was never sent.
-    /// </summary>
-    private void ForgetInvocation(ushort invocationId)
-    {
-        _invocationStates.TryRemove(invocationId, out _);
-        lock (_currentInvocationsLock)
-        {
-            _currentInvocations.Remove(invocationId);
-        }
-    }
-
     public void CancelAll()
     {
+        // Each state is completed only by the path that removes it, so a result racing the disconnect can not
+        // complete a state this has already completed.
         foreach (var invocationState in _invocationStates)
-            invocationState.Value.TrySetCanceled(false);
+        {
+            if (_invocationStates.TryRemove(invocationState))
+                invocationState.Value.TrySetCanceled();
+        }
 
-        _invocationStates.Clear();
-        _currentInvocations.Clear();
+        lock (_currentInvocationsLock)
+        {
+            _currentInvocations.Clear();
+        }
 
         //foreach (var invocationState in _waitingPipes)
         //    invocationState.Value.Pipe.UpstreamComplete(PipeCompleteMessage.Flags.Canceled);

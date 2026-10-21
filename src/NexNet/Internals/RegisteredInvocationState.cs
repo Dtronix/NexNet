@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks.Sources;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Pools;
 
@@ -13,6 +14,11 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     /// </summary>
     public ushort InvocationId { get; set; }
 
+    /// <summary>
+    /// Manager the invocation is registered with. Its cancellation callback removes the invocation through it.
+    /// </summary>
+    public SessionInvocationStateManager? Owner { get; set; }
+
     // Mutable struct.
     private ManualResetValueTaskSourceCore<bool> _source;
 
@@ -20,11 +26,24 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     // race with the sending task.
     private int _complete;
 
+    // SendPhase value. Decides who sends the cancellation frame when the call is canceled during its send.
+    private int _sendPhase;
+
+    /// <summary>
+    /// Sending: the invocation is being sent. Sent: the peer has the invocation. CanceledWhileSending: canceled
+    /// before the send finished; the sender sends the cancellation frame once the invocation is out.
+    /// </summary>
+    public enum SendPhase
+    {
+        Sending = 0,
+        Sent = 1,
+        CanceledWhileSending = 2
+    }
+
     public bool IsComplete => Volatile.Read(ref _complete) != 0;
 
-    public bool IsCanceled { get; set; }
+    public bool IsCanceled { get; private set; }
 
-    public bool NotifyConnection { get; set; }
     public Exception? Exception { get; set; }
 
     public InvocationResultMessage? Result { get; set; } = null;
@@ -43,14 +62,34 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
 
     public void Reset()
     {
-        // Unregister rather than Dispose: Dispose blocks while the callback runs on another thread.
-        CancellationRegistration.Unregister();
+        // Dispose rather than Unregister: waits for a callback already running, which could otherwise cancel the
+        // invocation that reuses this state. The callback never runs the awaiting continuation inline, so this
+        // can not wait on itself.
+        CancellationRegistration.Dispose();
         CancellationRegistration = default;
         _source.Reset();
         Volatile.Write(ref _complete, 0);
+        Volatile.Write(ref _sendPhase, (int)SendPhase.Sending);
         IsCanceled = false;
         Exception = null;
+        Owner = null;
     }
+
+    /// <summary>
+    /// Marks the invocation as sent. Returns false if it was canceled while sending; the caller then sends the
+    /// cancellation frame.
+    /// </summary>
+    public bool MarkSent()
+        => Interlocked.CompareExchange(ref _sendPhase, (int)SendPhase.Sent, (int)SendPhase.Sending)
+           == (int)SendPhase.Sending;
+
+    /// <summary>
+    /// Records a cancellation. Returns true if the invocation was already sent; the caller then sends the
+    /// cancellation frame. Otherwise the sender sends it once the send finishes.
+    /// </summary>
+    public bool MarkCanceled()
+        => Interlocked.CompareExchange(ref _sendPhase, (int)SendPhase.CanceledWhileSending, (int)SendPhase.Sending)
+           == (int)SendPhase.Sent;
 
     public short Version => _source.Version;
     public bool TrySetResult()
@@ -65,15 +104,12 @@ internal class RegisteredInvocationState : IValueTaskSource<bool>, IResettable
     /// <summary>
     /// Cancels the current pending invocation.
     /// </summary>
-    /// <param name="notifyConnection">Set to true to send a notification that this invocation
-    /// has been canceled.  False to just cancel.</param>
     /// <returns>True if the call succeeded.  False if the state has already been set.</returns>
-    public bool TrySetCanceled(bool notifyConnection)
+    public bool TrySetCanceled()
     {
         if (Interlocked.Exchange(ref _complete, 1) != 0)
             return false;
         IsCanceled = true;
-        NotifyConnection = notifyConnection;
         _source.SetResult(false);
         return true;
     }

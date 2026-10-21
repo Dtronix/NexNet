@@ -88,7 +88,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `InvocationMessage.cs` - Remote method invocation payload; `Serialize` goes through `InvocationBody`
 - `InvocationBody.cs` - Readonly snapshot of an invocation's fields: exact body `Length` and `Write`, the only invocation body encoder
 - `InvocationCreditMessage.cs` - Returns invocation credit to the peer (type 116)
-- `InvocationResultMessage.cs` - Return value, exception, or Unauthorized from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized
+- `InvocationResultMessage.cs` - Return value, exception, Unauthorized or Canceled from invocation; StateType: Unset, CompletedResult, Exception, Unauthorized, Canceled
 - `InvocationCancellationMessage.cs` - Cancel ongoing invocation
 - `DuplexPipeUpdateStateMessage.cs` - Pipe state changes
 
