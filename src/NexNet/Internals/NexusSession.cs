@@ -658,7 +658,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             }
         }
 
-        await SendMessage(message, cancellationToken).ConfigureAwait(false);
+        // The credit is spent: only the peer returns it, when it takes the invocation, so the invocation is always
+        // written. A cancellation from here on stops only a streamed argument; otherwise the caller sends an
+        // InvocationCancellation once the invocation is out.
+        await SendMessage(message, CancellationToken.None, cancellationToken).ConfigureAwait(false);
         return true;
     }
 

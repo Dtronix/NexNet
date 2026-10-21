@@ -82,6 +82,38 @@ internal class InvocationCreditTests : BaseTests
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
+    public async Task CancellationAfterCreditIsTaken_StillSendsTheInvocation(Type type)
+    {
+        // One credit: if the canceled send kept it without writing the invocation, the next call would wait forever.
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.InvocationCredits = 1;
+        var voidCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(serverConfig, nexus =>
+        {
+            nexus.ServerVoidEvent = _ => voidCalled.TrySetResult();
+            nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
+        });
+        await server.StartAsync().Timeout(1);
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+        var message = new InvocationMessage
+        {
+            Arguments = Memory<byte>.Empty,
+            Flags = InvocationFlags.IgnoreReturn,
+            InvocationId = 0,
+            MethodId = 0 // ServerVoid
+        };
+        Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1), Is.True);
+
+        await voidCalled.Task.Timeout(1);
+        Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
     public async Task FireAndForgetBurst_StaysWithinCredit(Type type)
     {
         // Fire-and-forget calls use credit too: a burst much larger than the credits is paced, not a violation.
