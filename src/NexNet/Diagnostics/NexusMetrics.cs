@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using NexNet.Messages;
+using NexNet.Pipes;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 
@@ -29,6 +30,9 @@ internal sealed class NexusMetrics
     public const string TagDisconnectReason = "nexnet.disconnect.reason";
     public const string TagPhase = "nexnet.session.phase";
     public const string TagRejectionReason = "nexnet.rejection.reason";
+    public const string TagResetReason = "nexnet.reset.reason";
+    public const string TagRefusalSide = "nexnet.refusal.side";
+    public const string TagAbortReason = "nexnet.abort.reason";
 
     public const string RejectionMaxPendingHandshakes = "max_pending_handshakes";
 
@@ -39,6 +43,15 @@ internal sealed class NexusMetrics
     private static readonly string[] DisconnectReasonNames = CreateDisconnectReasonNames();
     private static readonly KeyValuePair<string, object?> PhaseHandshake = new(TagPhase, "handshake");
     private static readonly KeyValuePair<string, object?> PhaseEstablished = new(TagPhase, "established");
+    private static readonly KeyValuePair<string, object?> ResetInvalidItem = new(TagResetReason, "invalid_item");
+    private static readonly KeyValuePair<string, object?> ResetTooLarge = new(TagResetReason, "too_large");
+    private static readonly KeyValuePair<string, object?> RefusalLocal = new(TagRefusalSide, "local");
+    private static readonly KeyValuePair<string, object?> RefusalRemote = new(TagRefusalSide, "remote");
+    private static readonly KeyValuePair<string, object?> DirectionInbound = new(TagDirection, "inbound");
+    private static readonly KeyValuePair<string, object?> DirectionOutbound = new(TagDirection, "outbound");
+    private static readonly KeyValuePair<string, object?> AbortBusy = new(TagAbortReason, "busy");
+    private static readonly KeyValuePair<string, object?> AbortTooLarge = new(TagAbortReason, "too_large");
+    private static readonly KeyValuePair<string, object?> AbortCancelled = new(TagAbortReason, "cancelled");
 
     private readonly Lock _lock = new();
     private readonly MetricsSessionTable _sessions = new();
@@ -49,6 +62,11 @@ internal sealed class NexusMetrics
     private readonly Counter<long> _disconnects;
     private readonly Histogram<double> _sessionDuration;
     private readonly Counter<long> _connectionRejections;
+    private readonly Counter<long> _pipeResets;
+    private readonly Counter<long> _pipeRefusals;
+    private readonly Counter<long> _invocationBusy;
+    private readonly Counter<long> _creditDrops;
+    private readonly Counter<long> _largeMessageAborts;
 
     /// <summary>
     /// Shortest time between two passes over the sessions, in <see cref="Stopwatch"/> ticks: the instruments of one
@@ -80,6 +98,34 @@ internal sealed class NexusMetrics
                 : s.Live.BytesReceived + s.Retired.BytesReceived), "By",
             "Bytes written to and read from the transport, frame headers included.");
 
+        meter.CreateObservableUpDownCounter("nexnet.budget.reserved",
+            () => Observe(static s => s.Live.BudgetReserved), "By",
+            "Session budget reserved: pipe windows, invocation queues and large values.");
+        meter.CreateObservableUpDownCounter("nexnet.budget.limit",
+            () => Observe(static s => s.Live.BudgetLimit), "By",
+            "Session budget in total.");
+        meter.CreateObservableUpDownCounter("nexnet.pipe.open",
+            () => Observe(static s => s.Live.PipesOpen), "{pipe}",
+            "Pipes holding a receive window: open, or closing until both sides confirmed.");
+        meter.CreateObservableUpDownCounter("nexnet.pipe.window",
+            () => Observe(static s => s.Live.PipeWindow), "By",
+            "Receive windows reserved by open pipes.");
+        meter.CreateObservableUpDownCounter("nexnet.invocation.queued",
+            () => Observe(static s => s.Live.InvocationsQueued), "{invocation}",
+            "Invocations received and waiting for an execution slot.");
+        meter.CreateObservableUpDownCounter("nexnet.invocation.executing",
+            () => Observe(static s => s.Live.InvocationsExecuting), "{invocation}",
+            "Invocations running.");
+        meter.CreateObservableUpDownCounter("nexnet.invocation.credit_waits",
+            () => Observe(static s => s.Live.CreditWaits), "{invocation}",
+            "Calls waiting for the peer to return invocation credit.");
+        meter.CreateObservableUpDownCounter("nexnet.large_message.in_flight",
+            () => ObserveMany(static (set, i, _) => i == 0
+                    ? new Measurement<long>(set.Live.LargeMessagesInbound, set.InboundTags)
+                    : new Measurement<long>(set.Live.LargeMessagesOutbound, set.OutboundTags),
+                2, 0), "{message}",
+            "Arguments and results larger than one frame being received or sent.");
+
         _disconnects = meter.CreateCounter<long>("nexnet.session.disconnects", "{session}",
             "Sessions ended, by disconnect reason and by whether the handshake had completed.");
         _sessionDuration = meter.CreateHistogram("nexnet.session.duration", "s",
@@ -90,6 +136,16 @@ internal sealed class NexusMetrics
             });
         _connectionRejections = meter.CreateCounter<long>("nexnet.connection.rejections", "{connection}",
             "Connections a server closed before starting a session: handshake limit or rate limiting.");
+        _pipeResets = meter.CreateCounter<long>("nexnet.pipe.resets", "{pipe}",
+            "Pipes reset because the peer sent a channel item that breaks the framing or exceeds MaxMessageSize.");
+        _pipeRefusals = meter.CreateCounter<long>("nexnet.pipe.refusals", "{pipe}",
+            "Pipe opens refused because a session limit was reached.");
+        _invocationBusy = meter.CreateCounter<long>("nexnet.invocation.busy", "{invocation}",
+            "Invocations to several sessions that found a session busy on the first pass.");
+        _creditDrops = meter.CreateCounter<long>("nexnet.invocation.credit_drops", "{invocation}",
+            "Invocations skipped because the peer returned no invocation credit in time.");
+        _largeMessageAborts = meter.CreateCounter<long>("nexnet.large_message.aborts", "{message}",
+            "Arguments and results larger than one frame stopped before completing.");
     }
 
     /// <summary>
@@ -199,6 +255,29 @@ internal sealed class NexusMetrics
     /// </summary>
     public void RecordRejection(MetricsTagSet tags, string reason)
         => _connectionRejections.Add(1, tags.Role, tags.Transport, new(TagRejectionReason, reason));
+
+    public void RecordPipeReset(MetricsTagSet tags, PipeResetReason reason)
+        => _pipeResets.Add(1, tags.Role, tags.Transport, reason == PipeResetReason.TooLarge ? ResetTooLarge : ResetInvalidItem);
+
+    public void RecordPipeRefusal(MetricsTagSet tags, bool local)
+        => _pipeRefusals.Add(1, tags.Role, tags.Transport, local ? RefusalLocal : RefusalRemote);
+
+    public void RecordInvocationBusy(MetricsTagSet tags)
+        => _invocationBusy.Add(1, tags.Role, tags.Transport);
+
+    public void RecordCreditDrop(MetricsTagSet tags)
+        => _creditDrops.Add(1, tags.Role, tags.Transport);
+
+    public void RecordLargeMessageAbort(MetricsTagSet tags, bool inbound, LargeMessageAbortReason reason)
+    {
+        var reasonTag = reason switch
+        {
+            LargeMessageAbortReason.Busy => AbortBusy,
+            LargeMessageAbortReason.TooLarge => AbortTooLarge,
+            _ => AbortCancelled,
+        };
+        _largeMessageAborts.Add(1, tags.Role, tags.Transport, inbound ? DirectionInbound : DirectionOutbound, reasonTag);
+    }
 
     /// <summary>
     /// Sums the live sessions into each tag set, unless a pass ran within <see cref="RefreshInterval"/>. Sessions found

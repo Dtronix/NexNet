@@ -138,8 +138,14 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     // Metrics (docs/articles/metrics.md): the tags this session is counted under, and its slot in their table.
     private readonly MetricsTagSet _metricsTags;
+    public MetricsTagSet MetricsTags => _metricsTags;
     int IMeteredSession.MetricsSlot { get; set; } = -1;
     long IMeteredSession.MetricsStartTimestamp { get; set; }
+
+    // Callers waiting in SendInvocation for outbound credit, and large messages being sent; changed only off the
+    // per-frame paths.
+    private int _creditWaiters;
+    private int _outgoingLargeCount;
 
     // Frames and bytes written to the transport (under the write mutex) and read from it (by the read loop).
     private long _framesSent;
@@ -522,8 +528,6 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private void RetireMetrics()
         => _metricsTags.Metrics.Retire(this, DisconnectReason, (_internalState & InternalState.NexusCompletedConnection) != 0);
 
-    MetricsTagSet IMeteredSession.MetricsTags => _metricsTags;
-
     bool IMeteredSession.IsDisconnected => _state == ConnectionState.Disconnected;
 
     bool IMeteredSession.IsEstablished => (_internalState & InternalState.NexusCompletedConnection) != 0;
@@ -533,6 +537,17 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         totals.Sessions++;
         if ((_internalState & InternalState.NexusCompletedConnection) == 0)
             totals.Handshaking++;
+
+        totals.BudgetReserved += Budget.Reserved;
+        totals.BudgetLimit += Budget.Limit;
+        var pipes = PipeManager.OpenPipes;
+        totals.PipesOpen += pipes;
+        totals.PipeWindow += (long)pipes * _config.PipeWindow;
+        totals.InvocationsQueued += _invocationQueue.IsEmpty ? 0 : _invocationQueue.Count;
+        totals.InvocationsExecuting += Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots));
+        totals.CreditWaits += Volatile.Read(ref _creditWaiters);
+        totals.LargeMessagesInbound += _largeMessages.Count;
+        totals.LargeMessagesOutbound += Volatile.Read(ref _outgoingLargeCount);
 
         totals.FramesSent += Volatile.Read(ref _framesSent);
         totals.BytesSent += Volatile.Read(ref _bytesSent);
@@ -571,6 +586,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         if (!_outboundCredits.Wait(0))
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disconnectionCts.Token);
+            Interlocked.Increment(ref _creditWaiters);
             try
             {
                 if (!await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, linked.Token).ConfigureAwait(false))
@@ -584,6 +600,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
                 // The session ended while waiting.
                 return false;
             }
+            finally
+            {
+                Interlocked.Decrement(ref _creditWaiters);
+            }
         }
 
         await SendMessage(message, cancellationToken).ConfigureAwait(false);
@@ -596,6 +616,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private void RecordCreditDrop()
     {
         var drops = Interlocked.Increment(ref _creditDrops);
+        _metricsTags.Metrics.RecordCreditDrop(_metricsTags);
         var now = _config.Time.GetTickCount64();
         var last = Volatile.Read(ref _lastCreditDropWarning);
         if (now - last < 10_000 || Interlocked.CompareExchange(ref _lastCreditDropWarning, now, last) != last)
@@ -672,7 +693,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     void LargeMessageReceiver.IOwner.ReturnInvocationCredit() => ReturnInvocationCredit();
 
     void LargeMessageReceiver.IOwner.SendAbort(ushort invocationId, LargeMessageKind kind, LargeMessageAbortReason reason)
-        => _controlSender.RequestAbort(invocationId, kind, reason);
+    {
+        _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: true, reason);
+        _controlSender.RequestAbort(invocationId, kind, reason);
+    }
 
     private void ReturnInvocationCredit()
     {

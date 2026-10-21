@@ -256,6 +256,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     /// </summary>
     internal void OnRefused()
     {
+        _session?.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: false);
         _readyTcs.TrySetException(new NexusBusyException("The peer refused the pipe: a session limit is reached."));
         _completeTcs.TrySetResult();
         MarkClosedWithoutExchange();
@@ -315,9 +316,10 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _session?.Budget.Release(extra);
     }
 
-    public void Reset()
+    public void Reset(PipeResetReason reason)
     {
         Logger?.LogWarning("Resetting the pipe: the peer sent an item that breaks the channel framing or exceeds MaxMessageSize.");
+        _session?.MetricsTags.Metrics.RecordPipeReset(_session.MetricsTags, reason);
         _ = ResetAsync();
 
         async Task ResetAsync()

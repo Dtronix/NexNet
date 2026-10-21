@@ -837,6 +837,8 @@ internal partial class NexusSession<TNexus, TProxy>
                 var abort = message.As<MessageAbortMessage>();
                 if (abort.Reason is LargeMessageAbortReason.Busy or LargeMessageAbortReason.TooLarge)
                 {
+                    _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: false, abort.Reason);
+
                     // From the receiver of a stream this side is sending: stop it (the stream answers with Ack).
                     if (_outgoingLargeMessages.TryGetValue(abort.InvocationId | ((int)abort.Kind << 16), out var stream))
                         stream.Abort();
@@ -852,6 +854,8 @@ internal partial class NexusSession<TNexus, TProxy>
                 else
                 {
                     // From the sender of a stream this side is receiving.
+                    if (abort.Reason == LargeMessageAbortReason.Cancelled)
+                        _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: true, abort.Reason);
                     _largeMessages.OnAbort(abort);
                 }
 

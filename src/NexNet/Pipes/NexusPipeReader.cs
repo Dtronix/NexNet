@@ -217,7 +217,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
     /// <summary>
     /// Resets the pipe this reader belongs to; see <see cref="IPipeStateManager.Reset"/>.
     /// </summary>
-    public void ResetPipe() => _stateManager.Reset();
+    public void ResetPipe(PipeResetReason reason) => _stateManager.Reset(reason);
 
     public override ValueTask CompleteAsync(Exception? exception = null)
     {

@@ -212,17 +212,17 @@ internal partial class NexusSession<TNexus, TProxy>
 
         // An argument larger than one frame is streamed, which waits for the mutex between frames.
         if (message.Arguments.Length > IInvocationMessage.MaxArgumentSize)
-            return InvocationWriteResult.Busy;
+            return Busy();
 
         if (!_outboundCredits.Wait(0))
-            return InvocationWriteResult.Busy;
+            return Busy();
 
         // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.
         var mutex = _writeMutex.TryWait(MutexSlim.WaitOptions.NoDelay);
         if (!mutex.Success)
         {
             _outboundCredits.Release();
-            return InvocationWriteResult.Busy;
+            return Busy();
         }
 
         ValueTask<FlushResult> flush;
@@ -281,6 +281,12 @@ internal partial class NexusSession<TNexus, TProxy>
         mutex.Dispose();
         OnFlushed(flush);
         return InvocationWriteResult.Written;
+    }
+
+    private InvocationWriteResult Busy()
+    {
+        _metricsTags.Metrics.RecordInvocationBusy(_metricsTags);
+        return InvocationWriteResult.Busy;
     }
 
     /// <summary>
@@ -358,6 +364,7 @@ internal partial class NexusSession<TNexus, TProxy>
         {
             if (!_outgoingLargeMessages.TryAdd(key, stream))
                 throw new InvalidOperationException($"A large {message.Kind} for invocation {message.InvocationId} is already being sent.");
+            Interlocked.Increment(ref _outgoingLargeCount);
 
             using (var start = _poolManager.Rent<MessageStartMessage>())
             {
@@ -385,6 +392,7 @@ internal partial class NexusSession<TNexus, TProxy>
 
                 if (cancellationToken.IsCancellationRequested)
                 {
+                    _metricsTags.Metrics.RecordLargeMessageAbort(_metricsTags, inbound: false, LargeMessageAbortReason.Cancelled);
                     await SendAbort(message.InvocationId, message.Kind, LargeMessageAbortReason.Cancelled).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
@@ -396,7 +404,8 @@ internal partial class NexusSession<TNexus, TProxy>
         }
         finally
         {
-            _outgoingLargeMessages.TryRemove(new KeyValuePair<int, OutgoingLargeMessage>(key, stream));
+            if (_outgoingLargeMessages.TryRemove(new KeyValuePair<int, OutgoingLargeMessage>(key, stream)))
+                Interlocked.Decrement(ref _outgoingLargeCount);
             ArrayPool<byte>.Shared.Return(message.Buffer!);
         }
     }

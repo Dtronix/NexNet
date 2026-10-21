@@ -51,7 +51,7 @@ internal interface IPipeStateManager
     /// <summary>
     /// Resets the pipe after the peer sent an item that breaks the channel framing; the session stays up.
     /// </summary>
-    void Reset()
+    void Reset(PipeResetReason reason)
     {
     }
 }

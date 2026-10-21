@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Messages;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -130,6 +131,11 @@ internal interface INexusSession : ISessionMessenger
     /// Sends control replies (pongs, window grants, close acknowledgements) off the read loop.
     /// </summary>
     SessionControlSender ControlSender { get; }
+
+    /// <summary>
+    /// Tags this session is counted under in metrics; their <see cref="MetricsTagSet.Metrics"/> records its events.
+    /// </summary>
+    MetricsTagSet MetricsTags { get; }
 }
 
 /// <summary>

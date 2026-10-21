@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Logging;
@@ -26,6 +27,9 @@ internal class MockNexusSession : INexusSession
     public int SendMaxMessageSize => Config.MaxMessageSize;
 
     public SessionControlSender ControlSender => _controlSender ??= new SessionControlSender(this);
+
+    private MetricsTagSet? _metricsTags;
+    public MetricsTagSet MetricsTags => _metricsTags ??= NexusMetrics.GetTagSet(Config);
     private SessionControlSender? _controlSender;
 
     // Track sent messages for verification

@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using NexNet.Messages;
 using NexNet.Pools;
 using NexNet.Serialization;
@@ -29,6 +30,14 @@ internal sealed class LargeMessageReceiver
     private readonly NexusSerializerOptions _options;
     private readonly TimeProvider _time;
     private readonly IOwner _owner;
+
+    // Streams in _streams; ConcurrentDictionary.Count takes every lock, so it is kept here for metrics.
+    private int _count;
+
+    /// <summary>
+    /// Streams being received.
+    /// </summary>
+    public int Count => Volatile.Read(ref _count);
 
     /// <summary>
     /// What the receiver needs from its session.
@@ -106,6 +115,7 @@ internal sealed class LargeMessageReceiver
         }
 
         _streams[key] = stream;
+        Interlocked.Increment(ref _count);
         return DisconnectReason.None;
     }
 
@@ -129,8 +139,8 @@ internal sealed class LargeMessageReceiver
         if (stream.Aborting)
         {
             // Discarded, up to the total length; then the key closes.
-            if (stream.Received == stream.Total)
-                _streams.TryRemove(key, out _);
+            if (stream.Received == stream.Total && _streams.TryRemove(key, out _))
+                Interlocked.Decrement(ref _count);
             return DisconnectReason.None;
         }
 
@@ -138,7 +148,8 @@ internal sealed class LargeMessageReceiver
         if (stream.Received < stream.Total)
             return DisconnectReason.None;
 
-        _streams.TryRemove(key, out _);
+        if (_streams.TryRemove(key, out _))
+            Interlocked.Decrement(ref _count);
         try
         {
             completed = _poolManager.Deserialize(stream.InnerType, stream.ToSequence(), _options);
@@ -180,6 +191,7 @@ internal sealed class LargeMessageReceiver
 
         if (!_streams.TryRemove(key, out _))
             return;
+        Interlocked.Decrement(ref _count);
 
         // An argument this side had accepted will not be queued now.
         if (stream.Kind == LargeMessageKind.Argument && !stream.Aborting)
@@ -210,7 +222,10 @@ internal sealed class LargeMessageReceiver
         foreach (var key in _streams.Keys)
         {
             if (_streams.TryRemove(key, out var stream))
+            {
+                Interlocked.Decrement(ref _count);
                 stream.Close(_budget);
+            }
         }
     }
 

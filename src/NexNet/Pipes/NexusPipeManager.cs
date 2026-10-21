@@ -25,6 +25,11 @@ internal class NexusPipeManager
     // Pipes that hold a receive window: open, or closing until both sides confirmed. Bounded by ConfigBase.MaxPipes.
     private int _openPipes;
 
+    /// <summary>
+    /// Pipes holding a receive window.
+    /// </summary>
+    public int OpenPipes => Volatile.Read(ref _openPipes);
+
     public void Setup(INexusSession session)
     {
         lock (_usedIdsLock)
@@ -48,7 +53,10 @@ internal class NexusPipeManager
             return null;
 
         if (!TryReserveWindow())
+        {
+            _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
             throw new NexusBusyException("Can't open a pipe: the session's pipe limit or budget is reached.");
+        }
 
         byte localId;
         try
@@ -190,6 +198,7 @@ internal class NexusPipeManager
         if (!TryReserveWindow())
         {
             // Refuse the open; the initiating side fails its pipe and frees its ID.
+            _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
             using var refusal = _session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
             refusal.PipeId = _session.IsServer ? ComposeId(otherId, 0) : ComposeId(0, otherId);
             refusal.State = State.Refused;
