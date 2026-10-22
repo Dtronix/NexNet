@@ -109,7 +109,10 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         }
     }
 
-    public async ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
+    // Pooled: awaited or read exactly once, by the proxy.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    public async ValueTask<bool> InvokeMethodWithResultCore(
+        RegisteredInvocationState state,
         ushort methodId,
         Memory<byte> serializedArguments,
         INexusSession session,
@@ -119,7 +122,8 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (cancellationToken?.IsCancellationRequested == true)
         {
             argumentsOwner?.Return();
-            return null;
+            state.Return();
+            return false;
         }
 
         using var message = _poolManager.Rent<InvocationMessage>();
@@ -130,13 +134,16 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
         // Larger than one frame is streamed; larger than the peer accepts fails here, before taking an ID.
         if (serializedArguments.Length > session.SendMaxMessageSize)
+        {
+            state.Return();
             throw new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize);
+        }
+
         message.SetArguments(serializedArguments);
 
         // Taken after the size check so a rejected call does not hold an ID.
         message.InvocationId = GetNextId(true);
 
-        var state = _poolManager.RegisteredInvocationStatePool.Rent();
         state.InvocationId = message.InvocationId;
         state.Owner = this;
 
@@ -162,7 +169,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
                 // The session ended while waiting for invocation credit.
                 ForgetUnsent(state);
                 state.TrySetCanceled();
-                return state;
+                return true;
             }
         }
         catch (OperationCanceledException)
@@ -171,13 +178,13 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
             // so no reply comes. Like any call canceled before it is sent, it returns nothing. Nothing awaits the
             // state: return it whether or not the cancellation callback completed it.
             ForgetUnsent(state);
-            _poolManager.RegisteredInvocationStatePool.Return(state);
-            return null;
+            state.Return();
+            return false;
         }
         catch
         {
             ForgetUnsent(state);
-            _poolManager.RegisteredInvocationStatePool.Return(state);
+            state.Return();
             throw;
         }
 
@@ -185,7 +192,7 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (!state.MarkSent())
             _nexusSession.ControlSender.RequestInvocationCancellation(message.InvocationId);
 
-        return state;
+        return true;
     }
 
     /// <summary>

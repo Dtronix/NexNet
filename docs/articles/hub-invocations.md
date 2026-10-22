@@ -12,6 +12,8 @@ Nexus interface methods support three return types:
 | `ValueTask` | The caller awaits completion but receives no return value. |
 | `ValueTask<T>` | The caller awaits and receives a return value from the remote method. |
 
+The `ValueTask` a call returns follows the usual `ValueTask` rules: consume it once, by awaiting it, blocking on it, or converting it with `AsTask()`. It is backed by pooled state that is reused once the result has been read, so consuming it a second time throws `InvalidOperationException`. Call `AsTask()` first if the result is needed more than once.
+
 ```csharp
 public interface IServerNexus
 {

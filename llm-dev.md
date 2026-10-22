@@ -65,7 +65,7 @@ Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
 - `LocalSessionContext.cs` - Local session registry and key-value store
 
 **Proxy Infrastructure:**
-- `ProxyInvocationBase.cs` - Base for generated proxies; Configure() sets session/mode; supports All/Client/Group modes; handles Unauthorized state
+- `ProxyInvocationBase.cs` - Base for generated proxies; Configure() sets session/mode; supports All/Client/Group modes. A call that waits for its result is not `async`: it rents a `RegisteredInvocationState`, starts the send and returns a `ValueTask` backed by the state; only an asynchronous send or client lookup goes through an `async` slow path
 - `ProxyUnauthorizedException.cs` - Thrown client-side when server denies method invocation
 - `IProxyBase.cs` - Interface for proxy client selection (All, Client(id), Group(name), etc.)
 
@@ -107,7 +107,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
-- `RegisteredInvocationState.cs` - Pending call awaiting its result: pooled `IValueTaskSource<bool>`; completion (result, cancel, exception) is claimed atomically
+- `RegisteredInvocationState.cs` - Pending call awaiting its result: `IValueTaskSource` (void) and `RegisteredInvocationState<T>` (`IValueTaskSource<T>`), pooled statically per result type. `GetResult` maps the outcome (result, remote exception, Unauthorized, Canceled) and returns the state to its pool, so the proxy's `ValueTask` may be consumed once; blocking on an unfinished call waits on a lazily created event. Completion is claimed atomically and unregisters the caller's token
 - `SessionControlSender.cs` - Sends control replies off the read loop, coalesced: pongs, pipe window grants and close acknowledgements, large-message aborts, invocation credit
 - `SessionBudget.cs` - Per-session receive memory reservations (pipe windows, invocation queue, large values); FIFO `ReserveAsync`
 - `LargeMessageReceiver.cs` - Reassembles streamed arguments/results (MessageStart/Chunk), reserving their size from the budget first

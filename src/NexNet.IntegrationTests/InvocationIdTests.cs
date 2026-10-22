@@ -205,19 +205,19 @@ internal class InvocationIdTests
     }
 
     [Test]
-    public async Task InvokeMethodWithResultCore_ReturnedState_ReleasesCancellationRegistration()
+    public async Task InvokeMethodWithResultCore_CompletedState_ReleasesCancellationRegistration()
     {
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
         using var cts = new CancellationTokenSource();
 
-        var state = await manager.InvokeMethodWithResultCore(0, Memory<byte>.Empty, _mockSession, cts.Token);
-        Assert.That(state, Is.Not.Null);
-        state!.TrySetResult();
-        _poolManager.RegisteredInvocationStatePool.Return(state);
+        var state = NexNet.Internals.RegisteredInvocationState.Rent();
+        Assert.That(await manager.InvokeMethodWithResultCore(state, 0, Memory<byte>.Empty, _mockSession, cts.Token), Is.True);
+        state.TrySetResult();
 
-        // The registration used to outlive the call: cancelling later reached the pooled state.
+        // Released on completion, also when nothing reads the result: cancelling later does not reach the state.
         cts.Cancel();
         Assert.That(state.IsCanceled, Is.False);
+        state.Return();
     }
 
     [Test]
@@ -227,7 +227,7 @@ internal class InvocationIdTests
         var arguments = new byte[_mockSession.SendMaxMessageSize + 1];
 
         await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () =>
-            await manager.InvokeMethodWithResultCore(0, arguments, _mockSession));
+            await manager.InvokeMethodWithResultCore(NexNet.Internals.RegisteredInvocationState.Rent(), 0, arguments, _mockSession));
 
         // The rejected call took no ID, so the next ID is the first one.
         Assert.That(manager.GetNextId(true), Is.EqualTo(1));
