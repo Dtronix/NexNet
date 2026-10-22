@@ -149,6 +149,143 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await AssertThrows<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.WebSocket)]
+    public async Task LateResultOfCanceledInvocationDoesNotCompleteLaterInvocation(Type type)
+    {
+        // The server method ignores the token, so the canceled call still sends its result, after the next call starts.
+        var firstGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = async (_, value, _) =>
+        {
+            if (value == 1)
+            {
+                await firstGate.Task;
+                firstSent.TrySetResult();
+            }
+            else
+            {
+                await secondGate.Task;
+            }
+
+            return value * 10;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        using var cts = new CancellationTokenSource();
+        var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
+        cts.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await first.Timeout(1));
+
+        var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, CancellationToken.None).AsTask();
+        firstGate.SetResult();
+        await firstSent.Task.Timeout(1);
+
+        // Give the late result time to arrive before the second call's own result.
+        await Task.Delay(100);
+        secondGate.SetResult();
+
+        Assert.That(await second.Timeout(1), Is.EqualTo(20));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task CanceledInvocationReleasesItsIdOnTheCanceledReply(Type type)
+    {
+        // The server honors the token and replies Canceled; the id is reserved until then.
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = async (_, value, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return value;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        using var cts = new CancellationTokenSource();
+        var call = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
+        cts.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await call.Timeout(1));
+
+        var stateManager = client.Session!.SessionInvocationStateManager;
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+        while (stateManager.IsOutstanding(1) && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.That(stateManager.IsOutstanding(1), Is.False);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task CancellationOfAQueuedInvocation_CancelsItWhenItStarts(Type type)
+    {
+        // One execution slot: the second call is still queued on the server when its cancellation arrives.
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.MaxConcurrentConnectionInvocations = 1;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueWithValueAndCancellationEvent = async (_, value, token) =>
+        {
+            if (value == 1)
+            {
+                started.TrySetResult();
+                await release.Task;
+                return value;
+            }
+
+            await Task.Delay(Timeout.Infinite, token);
+            return value;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, CancellationToken.None).AsTask();
+        await started.Task.Timeout(1);
+
+        using var cts = new CancellationTokenSource();
+        var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, cts.Token).AsTask();
+        await Task.Delay(100);
+        cts.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await second.Timeout(1));
+        await Task.Delay(100);
+
+        release.SetResult();
+        Assert.That(await first.Timeout(1), Is.EqualTo(1));
+
+        // The second call starts with its token already canceled and replies Canceled, releasing its id.
+        var stateManager = client.Session!.SessionInvocationStateManager;
+        var deadline = DateTime.UtcNow.AddSeconds(1);
+        while (stateManager.IsOutstanding(2) && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.That(stateManager.IsOutstanding(2), Is.False);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task RemoteMethodCanceledOnItsOwn_CancelsTheCaller(Type type)
+    {
+        // Without a reply the caller, which has no token, would wait forever.
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new OperationCanceledException();
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValue().AsTask().Timeout(1));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
 
 
     private async Task<Task> ClientSendsMessage<T>(

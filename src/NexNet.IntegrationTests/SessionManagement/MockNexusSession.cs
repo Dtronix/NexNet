@@ -147,7 +147,8 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
         // No-op for testing
     }
 
-    public ValueTask<RegisteredInvocationState?> InvokeMethodWithResultCore(
+    public ValueTask<bool> InvokeMethodWithResultCore(
+        RegisteredInvocationState state,
         ushort methodId,
         Memory<byte> serializedArguments,
         INexusSession session,
@@ -155,8 +156,9 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
         NexNet.Serialization.PooledArrayBufferWriter? argumentsOwner = null)
     {
         argumentsOwner?.Return();
-        // No-op for testing - return null
-        return ValueTask.FromResult<RegisteredInvocationState?>(null);
+        state.Return();
+        // No-op for testing: never started
+        return ValueTask.FromResult(false);
     }
 
     public void CancelAll()

@@ -20,11 +20,6 @@ internal class PoolManager
     private const int MessagePoolOffsetModifier = 100;
 
     /// <summary>
-    /// Pool for registered invocation states.
-    /// </summary>
-    public readonly ResettablePool<RegisteredInvocationState> RegisteredInvocationStatePool = new(128);
-
-    /// <summary>
     /// Pool for cancellation token sources.
     /// </summary>
     public readonly CancellationTokenSourcePool CancellationTokenSourcePool = new();
@@ -115,7 +110,6 @@ internal class PoolManager
         foreach (var pool in _messagePools)
             pool?.Clear();
 
-        RegisteredInvocationStatePool.Clear();
         CancellationTokenSourcePool.Clear();
     }
 }

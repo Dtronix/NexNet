@@ -240,37 +240,54 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     ValueTask IProxyInvoker.ProxyInvokeAndWaitForResultCore(ushort methodId, PooledArrayBufferWriter serializedArguments, CancellationToken? cancellationToken)
         => ProxyInvokeAndWaitForResultCoreInternal(methodId, serializedArguments.WrittenMemory, cancellationToken, serializedArguments);
 
-    private async ValueTask ProxyInvokeAndWaitForResultCoreInternal(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
+    // A call that waits for its result returns a ValueTask backed by the pooled invocation state: when the
+    // session is known and the send completes synchronously (the usual case), nothing is allocated for the call.
+    private ValueTask ProxyInvokeAndWaitForResultCoreInternal(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
     {
-        // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
-        if (_sessionManager == null && _session?.State != ConnectionState.Connected)
+        INexusSession? session;
+        ValueTask<INexusSession?> lookup;
+        ResultTarget target;
+        try
         {
-            argumentsOwner?.Return();
-            throw new InvalidOperationException("Session is not connected");
+            target = GetResultTarget(argumentsOwner, out session, out lookup);
+        }
+        catch (Exception e)
+        {
+            return ValueTask.FromException(e);
         }
 
-        var state = await InvokeWaitForResultCore(methodId, serializedArguments, cancellationToken, argumentsOwner).ConfigureAwait(false);
+        if (target == ResultTarget.Sessions)
+            return ProxyInvokeMethodCoreInternal(methodId, serializedArguments, InvocationFlags.None, argumentsOwner);
 
-        if (state == null)
-            return;
+        if (target == ResultTarget.Lookup)
+            return InvokeAfterLookup(lookup, methodId, serializedArguments, cancellationToken, argumentsOwner);
 
-        var messageState = state.Result!.State;
-        ReturnState(state);
+        var state = RegisteredInvocationState.Rent();
+        var start = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            state, methodId, serializedArguments, session, cancellationToken, argumentsOwner);
 
-        switch (messageState)
-        {
-            case InvocationResultMessage.StateType.CompletedResult:
-                return;
+        if (!start.IsCompletedSuccessfully)
+            return AwaitStart(start, state);
 
-            case InvocationResultMessage.StateType.Exception:
-                throw new ProxyRemoteInvocationException();
+        // Not started: canceled before it was sent, which completes the call without a result.
+        return start.Result ? new ValueTask(state, state.Version) : default;
+    }
 
-            case InvocationResultMessage.StateType.Unauthorized:
-                throw new ProxyUnauthorizedException();
+    // Pooled like the state: the call's ValueTask may be consumed once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    private static async ValueTask AwaitStart(ValueTask<bool> start, RegisteredInvocationState state)
+    {
+        if (await start.ConfigureAwait(false))
+            await new ValueTask(state, state.Version).ConfigureAwait(false);
+    }
 
-            default:
-                throw new InvalidOperationException($"Unknown state {messageState}");
-        }
+    private async ValueTask InvokeAfterLookup(ValueTask<INexusSession?> lookup, ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
+    {
+        var session = await lookup.ConfigureAwait(false) ?? throw ClientNotFound(argumentsOwner);
+        var state = RegisteredInvocationState.Rent();
+        if (await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+                state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false))
+            await new ValueTask(state, state.Version).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -281,8 +298,87 @@ public abstract class ProxyInvocationBase : IProxyInvoker
     ValueTask<TReturn> IProxyInvoker.ProxyInvokeAndWaitForResultCore<TReturn>(ushort methodId, PooledArrayBufferWriter serializedArguments, CancellationToken? cancellationToken)
         => ProxyInvokeAndWaitForResultCoreInternal<TReturn>(methodId, serializedArguments.WrittenMemory, cancellationToken, serializedArguments);
 
-    private async ValueTask<TReturn> ProxyInvokeAndWaitForResultCoreInternal<TReturn>(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
+    private ValueTask<TReturn> ProxyInvokeAndWaitForResultCoreInternal<TReturn>(ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
     {
+        INexusSession? session;
+        ValueTask<INexusSession?> lookup;
+        ResultTarget target;
+        try
+        {
+            target = GetResultTarget(argumentsOwner, out session, out lookup);
+        }
+        catch (Exception e)
+        {
+            return ValueTask.FromException<TReturn>(e);
+        }
+
+        if (target == ResultTarget.Sessions)
+            return InvokeOnSessions<TReturn>(methodId, serializedArguments, argumentsOwner);
+
+        if (target == ResultTarget.Lookup)
+            return InvokeAfterLookup<TReturn>(lookup, methodId, serializedArguments, cancellationToken, argumentsOwner);
+
+        var state = RegisteredInvocationState<TReturn>.Rent();
+        var start = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            state, methodId, serializedArguments, session, cancellationToken, argumentsOwner);
+
+        if (!start.IsCompletedSuccessfully)
+            return AwaitStart(start, state);
+
+        // Not started: canceled before it was sent, which returns the default value.
+        return start.Result ? new ValueTask<TReturn>(state, state.Version) : default;
+    }
+
+    // Pooled like the state: the call's ValueTask may be consumed once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
+    private static async ValueTask<TReturn> AwaitStart<TReturn>(ValueTask<bool> start, RegisteredInvocationState<TReturn> state)
+    {
+        if (!await start.ConfigureAwait(false))
+            return default!;
+
+        return await new ValueTask<TReturn>(state, state.Version).ConfigureAwait(false);
+    }
+
+    private async ValueTask<TReturn> InvokeAfterLookup<TReturn>(ValueTask<INexusSession?> lookup, ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
+    {
+        var session = await lookup.ConfigureAwait(false) ?? throw ClientNotFound(argumentsOwner);
+        var state = RegisteredInvocationState<TReturn>.Rent();
+        if (!await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+                state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false))
+            return default!;
+
+        return await new ValueTask<TReturn>(state, state.Version).ConfigureAwait(false);
+    }
+
+    private async ValueTask<TReturn> InvokeOnSessions<TReturn>(ushort methodId, Memory<byte> serializedArguments, PooledArrayBufferWriter? argumentsOwner)
+    {
+        await ProxyInvokeMethodCoreInternal(methodId, serializedArguments, InvocationFlags.None, argumentsOwner)
+            .ConfigureAwait(false);
+
+        // Sent to every session, but there is no single result to return.
+        throw new InvalidOperationException("A method that returns a value can not be invoked on several sessions.");
+    }
+
+    /// <summary>
+    /// Where a call that waits for its result goes.
+    /// </summary>
+    private enum ResultTarget
+    {
+        // The proxy's session, or a client session found at once.
+        Session,
+
+        // Several sessions: the call is sent without waiting for results.
+        Sessions,
+
+        // A client session that is still being looked up.
+        Lookup
+    }
+
+    private ResultTarget GetResultTarget(PooledArrayBufferWriter? argumentsOwner, out INexusSession? session, out ValueTask<INexusSession?> lookup)
+    {
+        session = null;
+        lookup = default;
+
         // Verify if we are on the server or client.  Server will use the _sessionManager and the client will use _session.
         if (_sessionManager == null && _session?.State != ConnectionState.Connected)
         {
@@ -290,39 +386,41 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             throw new InvalidOperationException("Session is not connected");
         }
 
-        var state = await InvokeWaitForResultCore(methodId, serializedArguments, cancellationToken, argumentsOwner).ConfigureAwait(false);
+        // If we are invoking on multiple sessions, then we are not going to wait
+        // on the results on this proxy invocation.
+        if (_mode == ProxyInvocationMode.All
+            || _mode == ProxyInvocationMode.Groups
+            || _mode == ProxyInvocationMode.GroupsExceptCaller
+            || _mode == ProxyInvocationMode.AllExcept
+            || _mode == ProxyInvocationMode.Clients
+            || _mode == ProxyInvocationMode.Others)
+            return ResultTarget.Sessions;
 
-        if (state == null)
+        if (_mode != ProxyInvocationMode.Client)
         {
-            if(cancellationToken?.IsCancellationRequested == true)
-                return default!;
-
-            throw new InvalidOperationException("Invocation state is null when it should not be.");
+            session = _session!;
+            return ResultTarget.Session;
         }
 
-        switch (state.Result!.State)
+        // Get the specific client if we are invoking on it.
+        if (_sessionManager == null)
         {
-            case InvocationResultMessage.StateType.CompletedResult:
-                var success = state.Result.TryGetResult<TReturn>(out var result);
-                ReturnState(state);
-
-                if(!success)
-                    throw new InvalidOperationException($"Could not get result of type {typeof(TReturn)} from invocation result.");
-
-                return result!;
-
-            case InvocationResultMessage.StateType.Exception:
-                ReturnState(state);
-                throw new ProxyRemoteInvocationException();
-
-            case InvocationResultMessage.StateType.Unauthorized:
-                ReturnState(state);
-                throw new ProxyUnauthorizedException();
-
-            default:
-                ReturnState(state);
-                throw new InvalidOperationException($"Unknown state {state.Result.State}");
+            argumentsOwner?.Return();
+            throw new ArgumentNullException(nameof(_sessionManager), SessionManagerNullMessage);
         }
+
+        lookup = _sessionManager.Sessions.GetSessionAsync(_modeClientArguments![0]);
+        if (!lookup.IsCompletedSuccessfully)
+            return ResultTarget.Lookup;
+
+        session = lookup.Result ?? throw ClientNotFound(argumentsOwner);
+        return ResultTarget.Session;
+    }
+
+    private InvalidOperationException ClientNotFound(PooledArrayBufferWriter? argumentsOwner)
+    {
+        argumentsOwner?.Return();
+        return new InvalidOperationException($"Can't invoke on client {_modeClientArguments![0]} as it does not exist.");
     }
 
     /// <inheritdoc />
@@ -362,113 +460,5 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         
         var list = session.CollectionManager.GetList<T>(id);
         return list;
-    }
-
-
-    private void ReturnState(RegisteredInvocationState state)
-    {
-        state.Result?.Dispose();
-
-        state.Result = null;
-        _poolManager.RegisteredInvocationStatePool.Return(state);
-    }
-
-    private async ValueTask<RegisteredInvocationState?> InvokeWaitForResultCore(
-        ushort methodId,
-        Memory<byte> serializedArguments,
-        CancellationToken? cancellationToken = null,
-        PooledArrayBufferWriter? argumentsOwner = null)
-    {
-        // If we are invoking on multiple sessions, then we are not going to wait
-        // on the results on this proxy invocation.
-        if (_mode == ProxyInvocationMode.All
-            || _mode == ProxyInvocationMode.Groups
-            || _mode == ProxyInvocationMode.GroupsExceptCaller
-            || _mode == ProxyInvocationMode.AllExcept
-            || _mode == ProxyInvocationMode.Clients
-            || _mode == ProxyInvocationMode.Others)
-        {
-            await ProxyInvokeMethodCoreInternal(methodId, serializedArguments, InvocationFlags.None, argumentsOwner)
-                .ConfigureAwait(false);
-            return null;
-        }
-
-        INexusSession? session = _session!;
-
-        // Get the specific client if we are invoking on it.
-        if (_mode == ProxyInvocationMode.Client)
-        {
-            if (_sessionManager == null)
-            {
-                argumentsOwner?.Return();
-                throw new ArgumentNullException(nameof(_sessionManager),
-                    SessionManagerNullMessage);
-            }
-
-            session = await _sessionManager.Sessions.GetSessionAsync(_modeClientArguments![0]).ConfigureAwait(false);
-
-            if (session == null)
-            {
-                argumentsOwner?.Return();
-                throw new InvalidOperationException(
-                    $"Can't invoke on client {_modeClientArguments![0]} as it does not exist.");
-            }
-        }
-
-        var state = await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
-            methodId,
-            serializedArguments,
-            session,
-            cancellationToken,
-            argumentsOwner).ConfigureAwait(false);
-
-        if (state == null)
-            return null;
-
-        try
-        {
-            if (cancellationToken?.IsCancellationRequested == true)
-            {
-                ReturnState(state);
-                return null;
-            }
-
-            await new ValueTask<bool>(state, state.Version).ConfigureAwait(false);
-
-            // Failed before any result arrived (e.g. the peer refused a large argument).
-            if (state.Result == null && state.Exception is { } failure)
-            {
-                ReturnState(state);
-                throw failure;
-            }
-
-            if (state.IsCanceled)
-            {
-                if (state.NotifyConnection)
-                {
-                    using var message = PoolManager.Rent<InvocationCancellationMessage>();
-                    message.InvocationId = state.InvocationId;
-                    await session.SendMessage(message).ConfigureAwait(false);
-                }
-
-                ReturnState(state);
-                throw new TaskCanceledException();
-            }
-
-        }
-        catch (TaskCanceledException)
-        {
-            throw;
-        }
-        catch (Exception e) when (e is NexusBusyException or NexusMessageTooLargeException)
-        {
-            throw;
-        }
-        catch (Exception)
-        {
-            //noop
-        }
-
-        return state;
     }
 }

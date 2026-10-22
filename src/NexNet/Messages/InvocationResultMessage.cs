@@ -19,7 +19,8 @@ internal partial class InvocationResultMessage : IMessageBase
         Unset = 0,
         CompletedResult = 1,
         Exception = 2,
-        Unauthorized = 3
+        Unauthorized = 3,
+        Canceled = 4
     }
 
     public static MessageType Type { get; } = MessageType.InvocationResult;

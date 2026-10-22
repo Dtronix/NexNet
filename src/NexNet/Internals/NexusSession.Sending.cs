@@ -34,7 +34,18 @@ internal partial class NexusSession<TNexus, TProxy>
     /// | Body            | Variable     | The body of the message. Its length is specified by the 'Content Length'.   |
     /// </remarks>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
-    public async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
+    public ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken = default)
+        where TMessage : IMessageBase
+        => SendMessage(body, cancellationToken, cancellationToken);
+
+    /// <summary>
+    /// Sends <paramref name="body"/>. <paramref name="cancellationToken"/> cancels the frame write (and skips it if
+    /// already canceled); <paramref name="streamCancellation"/> stops a body that is streamed as a large message.
+    /// </summary>
+    // Pooled: every caller awaits it exactly once. It suspends when the write mutex is contended.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    private async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken,
+        CancellationToken streamCancellation)
         where TMessage : IMessageBase
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
@@ -72,7 +83,7 @@ internal partial class NexusSession<TNexus, TProxy>
             {
                 mutexResult.Dispose();
                 mutexHeld = false;
-                await SendLargeMessage(large, cancellationToken).ConfigureAwait(false);
+                await SendLargeMessage(large, streamCancellation).ConfigureAwait(false);
                 return;
             }
 

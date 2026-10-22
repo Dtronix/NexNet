@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -26,7 +27,21 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 {
     private delegate ValueTask InvokeMethodCoreDelegate(InvocationMessage message, IBufferWriter<byte>? returnBuffer);
 
-    private readonly ConcurrentDictionary<int, CancellationTokenSource> _cancellableInvocations = new();
+    // Invocations that expect a result, by invocation ID, from receipt until they complete. A cancellation that
+    // arrives before the method has registered its token (queued for a slot, or just started) cancels it when it
+    // does. A Dictionary under a lock rather than a ConcurrentDictionary: it reuses its entries, so tracking an
+    // invocation allocates nothing.
+    private readonly Dictionary<int, InvocationCancellation> _resultInvocations = new();
+    private readonly Lock _resultInvocationsLock = new();
+
+    private struct InvocationCancellation
+    {
+        // The invocation's own source, while its method runs and nothing has canceled it.
+        public CancellationTokenSource? Source;
+
+        // The caller canceled the invocation.
+        public bool Requested;
+    }
 
     // Shared by the session's fire-and-forget invocations; canceled when the session ends. Created on first use.
     private CancellationTokenSource? _sessionCancellation;
@@ -61,6 +76,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         args.Message = message;
         args.SessionContext = SessionContext;
         args.InvokeMethodCore = _invokeMethodCoreDelegate;
+        args.Nexus = this;
         return InvokeMethodCoreTask(args);
     }
 
@@ -77,7 +93,20 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         }
 
         var cts = SessionContext.PoolManager.CancellationTokenSourcePool.Rent();
-        _cancellableInvocations.TryAdd(message.InvocationId, cts);
+        bool requested;
+        lock (_resultInvocationsLock)
+        {
+            ref var entry = ref CollectionsMarshal.GetValueRefOrAddDefault(_resultInvocations, message.InvocationId, out _);
+            requested = entry.Requested;
+
+            // Canceled before the method started: the source is canceled below and not kept for the pool.
+            if (!requested)
+                entry.Source = cts;
+        }
+
+        if (requested)
+            cts.Cancel();
+
         return cts;
     }
 
@@ -87,10 +116,15 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         if ((message.Flags & InvocationFlags.IgnoreReturn) != 0)
             return;
 
-        // Removed only if it is this invocation's own source, never one registered by another invocation.
-        if (!_cancellableInvocations.TryRemove(
-                new KeyValuePair<int, CancellationTokenSource>(message.InvocationId, cancellationTokenSource)))
-            return;
+        // Taken back only if it is this invocation's own source and no cancellation is using it.
+        lock (_resultInvocationsLock)
+        {
+            ref var entry = ref CollectionsMarshal.GetValueRefOrNullRef(_resultInvocations, message.InvocationId);
+            if (Unsafe.IsNullRef(ref entry) || entry.Source != cancellationTokenSource)
+                return;
+
+            entry.Source = null;
+        }
 
         // Try to reset the cts for another operation.
         SessionContext.PoolManager.CancellationTokenSourcePool.Return(cancellationTokenSource);
@@ -113,12 +147,44 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         return SessionContext.Session.PipeManager.DeregisterPipe(pipe);
     }
 
-    void IMethodInvoker.CancelInvocation(InvocationCancellationMessage message)
+    void IMethodInvoker.TrackInvocation(InvocationMessage message)
     {
-        if (!_cancellableInvocations.TryRemove(message.InvocationId, out var cts))
+        if ((message.Flags & InvocationFlags.IgnoreReturn) != 0)
             return;
 
-        cts.Cancel();
+        lock (_resultInvocationsLock)
+        {
+            _resultInvocations.TryAdd(message.InvocationId, default);
+        }
+    }
+
+    void IMethodInvoker.CancelInvocation(InvocationCancellationMessage message)
+    {
+        CancellationTokenSource? cts;
+        lock (_resultInvocationsLock)
+        {
+            // Not tracked: completed already, or never received.
+            ref var entry = ref CollectionsMarshal.GetValueRefOrNullRef(_resultInvocations, message.InvocationId);
+            if (Unsafe.IsNullRef(ref entry))
+                return;
+
+            entry.Requested = true;
+            cts = entry.Source;
+            entry.Source = null;
+        }
+
+        cts?.Cancel();
+    }
+
+    /// <summary>
+    /// Stops tracking a completed invocation that expected a result.
+    /// </summary>
+    private void UntrackInvocation(InvocationMessage message)
+    {
+        lock (_resultInvocationsLock)
+        {
+            _resultInvocations.Remove(message.InvocationId);
+        }
     }
 
     /// <summary>
@@ -161,10 +227,13 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
     {
         OnDisconnected(reason);
 
-        foreach (var cancellationTokenSource in _cancellableInvocations)
-            cancellationTokenSource.Value.Dispose();
+        lock (_resultInvocationsLock)
+        {
+            foreach (var invocation in _resultInvocations.Values)
+                invocation.Source?.Dispose();
 
-        _cancellableInvocations.Clear();
+            _resultInvocations.Clear();
+        }
 
         // Not disposed: running fire-and-forget invocations may still observe the token.
         Interlocked.Exchange(ref _sessionCancellation, null)?.Cancel();
@@ -248,10 +317,13 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 
             bufferWriterCache.Add(bufferWriter);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
+            // Every invocation that expects a result gets one: the caller keeps its id reserved until then.
             context.Session.Logger?.LogTrace("Invocation canceled.");
-            // noop
+            message.Result = null;
+            message.State = InvocationResultMessage.StateType.Canceled;
+            await context.Session.SendMessage(message).ConfigureAwait(false);
         }
         catch (Exception e) when (e is NexusMessageTooLargeException or NexusBusyException)
         {
@@ -274,6 +346,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         {
             message.Result = null;
             message.Dispose();
+            requestArgs.Nexus.UntrackInvocation(requestArgs.Message);
             ReturnArgsToCache(context, requestArgs);
         }
 
@@ -292,6 +365,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         public InvocationMessage Message = null!;
         public SessionContext<TProxy> SessionContext = null!;
         public InvokeMethodCoreDelegate InvokeMethodCore = null!;
+        public NexusBase<TProxy> Nexus = null!;
 
         public static InvokeMethodCoreArgs Get() =>
             _cache.TryTake(out var result) ? result : new InvokeMethodCoreArgs();
@@ -300,6 +374,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         {
             args.Message = null!;
             args.SessionContext = null!;
+            args.Nexus = null!;
             _cache.Add(args);
         }
     }
