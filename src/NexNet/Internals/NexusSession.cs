@@ -632,6 +632,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     public override string ToString() => $"NexusSession [{Id}] IsServer:{IsServer}";
     
+    // Pooled: every caller awaits it exactly once. It suspends while waiting for credit or the write mutex.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
         where TMessage : IMessageBase
     {

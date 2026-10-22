@@ -273,6 +273,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         return start.Result ? new ValueTask(state, state.Version) : default;
     }
 
+    // Pooled like the state: the call's ValueTask may be consumed once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     private static async ValueTask AwaitStart(ValueTask<bool> start, RegisteredInvocationState state)
     {
         if (await start.ConfigureAwait(false))
@@ -327,6 +329,8 @@ public abstract class ProxyInvocationBase : IProxyInvoker
         return start.Result ? new ValueTask<TReturn>(state, state.Version) : default;
     }
 
+    // Pooled like the state: the call's ValueTask may be consumed once.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private static async ValueTask<TReturn> AwaitStart<TReturn>(ValueTask<bool> start, RegisteredInvocationState<TReturn> state)
     {
         if (!await start.ConfigureAwait(false))

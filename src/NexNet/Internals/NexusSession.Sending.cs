@@ -42,6 +42,8 @@ internal partial class NexusSession<TNexus, TProxy>
     /// Sends <paramref name="body"/>. <paramref name="cancellationToken"/> cancels the frame write (and skips it if
     /// already canceled); <paramref name="streamCancellation"/> stops a body that is streamed as a large message.
     /// </summary>
+    // Pooled: every caller awaits it exactly once. It suspends when the write mutex is contended.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
     private async ValueTask SendMessage<TMessage>(TMessage body, CancellationToken cancellationToken,
         CancellationToken streamCancellation)
         where TMessage : IMessageBase
