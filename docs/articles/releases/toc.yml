@@ -1,5 +1,7 @@
 - name: Overview
   href: index.md
+- name: v0.19.0
+  href: release-notes-v0.19.0.md
 - name: v0.18.0
   href: release-notes-v0.18.0.md
 - name: v0.17.0
