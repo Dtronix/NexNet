@@ -76,7 +76,9 @@ public static partial class NexNetMiddlewareExtensions
                     context,
                     config.TrustProxyHeaders);
 
-                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(new WebSocketTransport(pipe, remoteAddress, remotePort), cts.Token).ConfigureAwait(false);
+                var transport = new WebSocketTransport(pipe, remoteAddress, remotePort,
+                    context.Connection.ClientCertificate);
+                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(transport, cts.Token).ConfigureAwait(false);
             }
             else
             {

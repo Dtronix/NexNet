@@ -4,6 +4,7 @@ using NexNet.Pools;
 using NexNet.Transports;
 using NexNet.Invocation;
 using System.IO.Pipelines;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
@@ -192,6 +193,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     public string? RemoteAddress { get; }
     public int? RemotePort { get; }
+    public X509Certificate2? RemoteCertificate { get; }
 
     public ConnectionState State
     {
@@ -229,6 +231,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // Store remote endpoint info from transport
         RemoteAddress = configurations.Transport.RemoteAddress;
         RemotePort = configurations.Transport.RemotePort;
+        RemoteCertificate = configurations.Transport.RemoteCertificate;
 
         // Store rate limiter info for release on disconnect
         _rateLimiterAddress = configurations.RateLimiterAddress;

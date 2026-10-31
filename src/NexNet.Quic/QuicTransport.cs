@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Net.Quic;
 using System.Net.Security;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Transports;
@@ -22,6 +23,7 @@ internal class QuicTransport : ITransport
     public PipeWriter Output { get; }
     public string? RemoteAddress { get; }
     public int? RemotePort { get; }
+    public X509Certificate2? RemoteCertificate => _quicConnection.RemoteCertificate as X509Certificate2;
 
     private QuicTransport(QuicConnection quicConnection, QuicStream stream)
     {

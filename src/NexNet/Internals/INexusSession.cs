@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Diagnostics;
@@ -82,6 +83,11 @@ internal interface INexusSession : ISessionMessenger
     /// The remote port of the connected client.
     /// </summary>
     int? RemotePort { get; }
+
+    /// <summary>
+    /// The certificate the remote peer presented during the TLS handshake, if any.
+    /// </summary>
+    X509Certificate2? RemoteCertificate { get; }
 
     /// <summary>
     /// Disconnects the session if the last received time is less than the timeout ticks.

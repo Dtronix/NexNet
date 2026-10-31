@@ -3,6 +3,8 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals.Pipelines;
@@ -18,6 +20,7 @@ internal class TcpTlsTransport : ITransport
     public PipeWriter Output { get; }
     public string? RemoteAddress { get; }
     public int? RemotePort { get; }
+    public X509Certificate2? RemoteCertificate => _sslStream.RemoteCertificate as X509Certificate2;
 
     private TcpTlsTransport(Socket socket, NetworkStream networkStream, SslStream sslStream,
         string? remoteAddress, int? remotePort)
@@ -99,6 +102,10 @@ internal class TcpTlsTransport : ITransport
         catch (SocketException e)
         {
             throw new TransportException(e.SocketErrorCode, e.Message, e);
+        }
+        catch (AuthenticationException e)
+        {
+            throw new TransportException(TransportError.AuthenticationError, $"TLS authentication failed: {e.Message}", e);
         }
         catch (Exception e)
         {

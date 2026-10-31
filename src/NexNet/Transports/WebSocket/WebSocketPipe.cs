@@ -26,7 +26,8 @@ internal class WebSocketPipe : IWebSocketPipe
     readonly System.Net.WebSockets.WebSocket _webSocket;
     readonly WebSocketPipeOptions _options;
 
-    bool _completed;
+    volatile bool _completed;
+    readonly object _inputWriterLock = new();
     private readonly ConfigBase _config;
 
     public WebSocketPipe(
@@ -70,10 +71,15 @@ internal class WebSocketPipe : IWebSocketPipe
         if (_completed)
             return;
 
-        _completed = true;
+        // The read loop may be inside a receive; it advances the writer only under this lock and only while the
+        // pipe is not completed, so it never advances a completed writer.
+        lock (_inputWriterLock)
+        {
+            _completed = true;
+            _inputPipe.Writer.Complete();
+        }
 
         // NOTE: invoking these more than once is no-op.
-        await _inputPipe.Writer.CompleteAsync().ConfigureAwait(false);
         await _inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
 
         if (_options.CloseWhenCompleted || closeStatus != null)
@@ -115,7 +121,8 @@ internal class WebSocketPipe : IWebSocketPipe
                     if (enableTransportLog)
                         _config.Logger!.LogTraceArray($"Received {message.Count}:", buffer.Slice(0, message.Count));
 
-                    _inputPipe.Writer.Advance(message.Count);
+                    if (!TryAdvanceInput(message.Count))
+                        break;
                     buffer = _inputPipe.Writer.GetMemory(DefaultBufferSize);
                    
                     message = await _webSocket.ReceiveAsync(buffer, cancellation).ConfigureAwait(false);
@@ -129,7 +136,8 @@ internal class WebSocketPipe : IWebSocketPipe
                     _config.Logger!.LogTraceArray($"Received {message.Count}:", buffer.Slice(0, message.Count));
 
                 // Advance the EndOfMessage bytes before flushing.
-                _inputPipe.Writer.Advance(message.Count);
+                if (!TryAdvanceInput(message.Count))
+                    break;
                 var result = await _inputPipe.Writer.FlushAsync(cancellation).ConfigureAwait(false);
                 if (result.IsCompleted)
                     break;
@@ -145,6 +153,22 @@ internal class WebSocketPipe : IWebSocketPipe
 
         // Preserve the close status since it might be triggered by a received Close message containing the status and description.
         await CompleteAsync(_webSocket.CloseStatus, _webSocket.CloseStatusDescription).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Advances the input writer by <paramref name="count"/> received bytes unless the pipe has been completed.
+    /// </summary>
+    /// <returns>False if the pipe was completed and the bytes were dropped.</returns>
+    private bool TryAdvanceInput(int count)
+    {
+        lock (_inputWriterLock)
+        {
+            if (_completed)
+                return false;
+
+            _inputPipe.Writer.Advance(count);
+            return true;
+        }
     }
 
     public void Dispose()

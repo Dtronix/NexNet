@@ -240,7 +240,26 @@ new QuicServerConfig {
 new WebSocketClientConfig { Url = new Uri("ws://localhost:5000/nexus") };
 new HttpSocketClientConfig { Url = new Uri("http://localhost:5000/nexus") };
 // Both support: AuthenticationHeader = new AuthenticationHeaderValue("Bearer", "token")
+// https:// / wss://: SslClientAuthenticationOptions (client certificate, server certificate validation/pinning);
+// copied per connection, never modified. Null = no client certificate, system chain validation.
+new HttpSocketClientConfig {
+    Url = new Uri("https://host:5001/nexus"),
+    SslClientAuthenticationOptions = new() {
+        ClientCertificates = new X509CertificateCollection { clientCert },
+        RemoteCertificateValidationCallback = (_, cert, _, _) =>
+            cert is X509Certificate2 c && c.GetCertHashString(HashAlgorithmName.SHA256) == pin
+    }
+};
+// TLS handshake failure (rejected server cert / refused client cert) and HTTP 401/403 ->
+// TransportException with TransportError.AuthenticationError (all TLS transports).
+// HttpSocket upgrades with "Upgrade: nexnet-httpsockets"; a reverse proxy must forward it.
 ```
+
+Peer certificate: `Context.RemoteCertificate` (X509Certificate2?) — server nexus: client certificate; client nexus:
+server certificate. Set for TcpTls, QUIC, WebSocket/HttpSocket over HTTPS; null otherwise. Available in
+`OnAuthenticate`. ASP servers: `HttpContext.Connection.ClientCertificate` at accept (Kestrel
+`ClientCertificateMode.AllowCertificate`/`RequireCertificate`; `DelayCertificate` is not seen; null when a proxy
+terminates TLS). Valid while connected; copy to keep.
 
 ## Configuration
 
@@ -359,6 +378,7 @@ var names = await Context.Groups.GetNamesAsync();
 
 // Session info
 long id = Context.Id;
+X509Certificate2? peerCert = Context.RemoteCertificate;  // TLS peer certificate, if any
 string? user = Context.Identity?.DisplayName;
 
 // Per-session key-value store (lifetime = connection)
