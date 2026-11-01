@@ -91,6 +91,15 @@ internal sealed class BenchConnection : IAsyncDisposable
             clientConfig = new TcpClientConfig { EndPoint = clientEndPoint };
         }
 
+        // Experiment: NEXNET_BENCH_SEND_INLINE=1 runs the send loop's continuation inline on the flushing thread.
+        if (Environment.GetEnvironmentVariable("NEXNET_BENCH_SEND_INLINE") == "1")
+        {
+            var sendOptions = new System.IO.Pipelines.PipeOptions(
+                readerScheduler: System.IO.Pipelines.PipeScheduler.Inline, useSynchronizationContext: false);
+            serverConfig.SendSessionPipeOptions = sendOptions;
+            clientConfig.SendSessionPipeOptions = sendOptions;
+        }
+
         connection.Server = ServerNexus.CreateServer(serverConfig, static () => new ServerNexus());
         connection.Client = ClientNexus.CreateClient(clientConfig, new ClientNexus());
         await connection.Server.StartAsync();

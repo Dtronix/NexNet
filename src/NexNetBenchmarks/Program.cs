@@ -12,6 +12,12 @@ namespace NexNetBenchmarks
                 return;
             }
 
+            if (args.Length > 0 && args[0] == "--alloc-profile")
+            {
+                AllocationProfile.Run(args).GetAwaiter().GetResult();
+                return;
+            }
+
             if (args.Length == 3 && args[0] == "--broadcast-peer")
             {
                 BroadcastBenchmarks.RunPeer(args[1], args[2]).GetAwaiter().GetResult();
