@@ -108,6 +108,7 @@ internal class MockNexusSession : INexusSession
     public NexusPipeManager PipeManager { get; set; } = null!;
     public string? RemoteAddress { get; set; } = "127.0.0.1";
     public int? RemotePort { get; set; } = 12345;
+    public System.Security.Cryptography.X509Certificates.X509Certificate2? RemoteCertificate { get; set; }
 
     // Mock SessionInvocationStateManager
     private MockSessionInvocationStateManager? _sessionInvocationStateManager;

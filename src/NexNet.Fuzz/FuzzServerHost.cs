@@ -127,6 +127,7 @@ internal sealed class FuzzTransport : ITransport
 
     public string? RemoteAddress => "fuzz";
     public int? RemotePort => null;
+    public System.Security.Cryptography.X509Certificates.X509Certificate2? RemoteCertificate => null;
 
     /// <param name="readsOutput">True if the harness reads <see cref="ServerOutput"/>. Otherwise the output is
     /// discarded when the transport closes.</param>

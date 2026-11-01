@@ -5,6 +5,7 @@ using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NexNet.Asp;
 using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
@@ -50,6 +51,12 @@ internal abstract class BaseTests
     
     
     public RollingLogger Logger => _logger;
+
+    /// <summary>
+    /// Applied to the Kestrel endpoint of ASP servers created by this test, e.g. to enable HTTPS.
+    /// Cleared after each test.
+    /// </summary>
+    protected Action<ListenOptions>? AspListenOptions { get; set; }
 
     public int? CurrentTcpPort
     {
@@ -109,6 +116,7 @@ internal abstract class BaseTests
         }
 
         CurrentUdsPath = null;
+        AspListenOptions = null;
         _currentTcpPort = null;
         _currentUdpPort = null;
 
@@ -376,7 +384,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
             
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
@@ -426,7 +434,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
             
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 
@@ -510,7 +518,7 @@ internal abstract class BaseTests
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel((context, serverOptions) =>
-                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value));
+                serverOptions.Listen(IPAddress.Loopback, _currentTcpPort.Value, listen => AspListenOptions?.Invoke(listen)));
 
             builder.Services.AddNexusServer<TServerNexus, TClientProxy>();
 

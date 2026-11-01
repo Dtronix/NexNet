@@ -1,4 +1,5 @@
 ﻿using System.IO.Pipelines;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
 namespace NexNet.Transports;
@@ -21,6 +22,16 @@ public interface ITransport : IDuplexPipe
     /// Null for transports that don't use ports (e.g., Unix Domain Sockets).
     /// </summary>
     int? RemotePort { get; }
+
+    /// <summary>
+    /// The certificate the remote peer presented during the TLS handshake. On a server this is the client
+    /// certificate; on a client it is the server certificate. Null when the connection is not TLS or the peer
+    /// presented no certificate.
+    /// </summary>
+    /// <remarks>
+    /// Belongs to the connection and is valid until the transport is closed. Copy it to keep it longer.
+    /// </remarks>
+    X509Certificate2? RemoteCertificate { get; }
 
     /// <summary>
     /// Closes the connection.

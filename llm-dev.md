@@ -121,7 +121,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 ### 1.6 Transports (src/NexNet/Transports/)
 
 **Abstraction:**
-- `ITransport.cs` - Extends IDuplexPipe; Input/Output pipes, RemoteAddress, RemotePort, CloseAsync
+- `ITransport.cs` - Extends IDuplexPipe; Input/Output pipes, RemoteAddress, RemotePort, RemoteCertificate (TLS peer certificate; read once into the session, exposed as `ISessionContext.RemoteCertificate`), CloseAsync (the only teardown the session calls; a transport releases everything it owns there)
 - `ITransportListener.cs` - Accepts incoming connections
 
 **Implementation:**
@@ -131,6 +131,13 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 **Configuration:**
 - `ConfigBase.cs` - Base: Timeout, PingInterval, Logger, PipeOptions, `SerializerOptions` (default `NexusSerializerOptions.Untrusted`), `MeterFactory`, `TransportName` (metric tag, overridden per transport config)
 - `ClientConfig.cs` - ConnectionTimeout, ReconnectionPolicy, Authenticate func
+- `HttpClientConfig.cs` - Base of WebSocket/HttpSocket client configs: Url, AuthenticationHeader, SslClientAuthenticationOptions
+
+**HTTP client transports:**
+- `HttpConnector.cs` - One connect attempt: `SocketsHttpHandler` + `HttpMessageInvoker` built from `HttpClientConfig`. Copies the TLS options (never mutates the config's), wraps certificate validation to keep a copy of the accepted server certificate (`TakeServerCertificate`), `IsTlsAuthenticationFailure`. When `SslClientAuthenticationOptions` gains properties, add them to `CreateSslOptions`
+- `HttpSocket/HttpSocketTransport.cs` - Client: upgrade GET (`Upgrade: nexnet-httpsockets`) through the connector; owns response + connector until `CloseAsync`. Server: built by NexNet.Asp with address, port and `Connection.ClientCertificate`
+- `WebSocket/WebSocketTransport.cs` - Client: `ClientWebSocket.ConnectAsync(uri, invoker)` with the same connector. Both map TLS failures and 401/403 to `TransportError.AuthenticationError`
+- `WebSocket/WebSocketPipe.cs` - Receive loop into a `Pipe`; `TryAdvanceInput` and `CompleteAsync` share `_inputWriterLock` so a receive finishing after completion drops its bytes instead of advancing a completed writer
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
 **Socket Pipeline (src/NexNet/Internals/Pipelines/):**
@@ -293,6 +300,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 **HttpSocket (HttpSocket/):**
 - `HttpSocketMiddleware.cs` - ASP.NET middleware for dynamic HTTP/WebSocket upgrade
+- Both `Map*Nexus` paths build the transport with `ProxyHeaderResolver.GetRemoteEndPoint` and `context.Connection.ClientCertificate`
 - `HttpSocketServerConfig.cs` - HttpSocket transport config
 
 **Utilities:**
@@ -305,7 +313,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.1 Base Classes
 
-- `BaseTests.cs` - Abstract base: lifecycle (SetUp/TearDown), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking
+- `BaseTests.cs` - Abstract base: lifecycle (SetUp/TearDown), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test
 - `BasePipeTests.cs` - Pipe test base: LogMode enum (None/OnTestFail/Always), Setup() with auto server/client connection
 - `NexusCollectionBaseTests.cs` (Collections/) - Collection base: ConnectServerAndClient(), CreateRelayCollectionClientServers() for relay topology
 - `BaseAspTests.cs` - ASP.NET base: AspCreateAuthServices(), AspAppAuthConfigure()
@@ -370,6 +378,11 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `LocalInvocationRouterTests.cs` - Routing
 - `LocalGroupRegistryTests.cs` - Group management
 - `MockNexusSession.cs` - INexusSession mock with ShouldFailSend flag
+
+**TLS and transports:**
+- `TlsCertificateTests.cs` - Client certificate reaches server `Context.RemoteCertificate`, client sees server certificate, fingerprint pinning, untrusted certificate rejection (WebSocket/HttpSocket/TcpTls/Quic), Host header port. HTTPS ASP host via `BaseTests.AspListenOptions`
+- `WebSocketPipeTests.cs` - Receive completing after the pipe is completed (fake `WebSocket`)
+- `RemoteEndpointTests.cs` - RemoteAddress/RemotePort per transport
 
 **Sockets (Sockets/, 7 files):**
 - `BufferWriterTests.cs` - Buffer ops

@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using System;
+using System.Security.Cryptography.X509Certificates;
 using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Pools;
@@ -48,6 +49,9 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// Null for transports that don't use ports (e.g., Unix Domain Sockets).
     /// </summary>
     public int? RemotePort => Session.RemotePort;
+
+    /// <inheritdoc />
+    public X509Certificate2? RemoteCertificate => Session.RemoteCertificate;
 
     internal SessionContext(INexusSession<TProxy> session, IServerSessionManager? sessionManager)
     {

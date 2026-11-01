@@ -55,6 +55,55 @@ HttpSockets establish a bidirectional, long-lived data stream by upgrading a sta
 
 Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md).
 
+HttpSockets upgrade with the custom token `Upgrade: nexnet-httpsockets`. A reverse proxy must forward that header and the upgraded stream; one that only passes WebSocket upgrades will reject the connection. A direct connection, or a network layer that forwards TCP (for example a VPN), needs no configuration.
+
+## TLS and Certificates
+
+### Client options for HTTPS
+
+`WebSocketClientConfig` and `HttpSocketClientConfig` take `SslClientAuthenticationOptions` for `https://` and `wss://` URLs, the same type as `TcpTlsClientConfig` and `QuicClientConfig`. Use it to present a client certificate or to judge the server's certificate, for example by pinning its fingerprint:
+
+```csharp
+var config = new HttpSocketClientConfig
+{
+    Url = new Uri("https://100.64.0.10:9001/nexus"),
+    SslClientAuthenticationOptions = new SslClientAuthenticationOptions
+    {
+        ClientCertificates = new X509CertificateCollection { clientCertificate },
+        RemoteCertificateValidationCallback = (_, certificate, _, _) =>
+            certificate is X509Certificate2 cert
+            && cert.GetCertHashString(HashAlgorithmName.SHA256) == pinnedSha256Hex,
+    },
+};
+```
+
+- Null options use the platform defaults: no client certificate and system chain validation.
+- The config's options instance is copied for each connection and never modified, so one config can be shared.
+- For these two transports the validation callback's `sender` is the `HttpRequestMessage`, not an `SslStream`.
+
+A TLS handshake failure (the server certificate was rejected, or the server refused the client certificate) fails the connect with `TransportException` and `TransportError.AuthenticationError`, on every TLS transport. HTTP 401 and 403 responses map to the same error.
+
+### The peer's certificate in a nexus
+
+`Context.RemoteCertificate` is the certificate the other side presented during the TLS handshake:
+
+| Nexus | Value |
+|-------|-------|
+| Server | The client certificate, or null if the client presented none |
+| Client | The server certificate |
+
+It is set for TLS over TCP, QUIC, and WebSockets and HttpSockets over HTTPS, and is null for UDS, TCP and plain HTTP. It is available from `OnAuthenticate` onward, so a server can check it together with the authentication token:
+
+```csharp
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token)
+{
+    var fingerprint = Context.RemoteCertificate?.GetCertHashString(HashAlgorithmName.SHA256);
+    return ValueTask.FromResult(IsEnrolled(fingerprint, token) ? CreateIdentity(fingerprint) : null);
+}
+```
+
+The certificate belongs to the connection and is valid while the session is connected; copy it (`X509CertificateLoader.LoadCertificate(cert.RawData)`) to keep it longer. For ASP.NET Core servers see [Client certificates](asp-net-integration.md#client-certificates).
+
 ## Transport Selection Guide
 
 | Scenario | Recommended Transport | Reason |

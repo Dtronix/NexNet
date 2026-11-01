@@ -32,6 +32,8 @@ public partial class ServerNexus
 }
 ```
 
+Over TLS, `Context.RemoteCertificate` holds the client certificate inside `OnAuthenticate`, so the token and the certificate can be checked together. See [TLS and Certificates](transports.md#tls-and-certificates).
+
 The `IIdentity` returned by `OnAuthenticate` is available throughout the session via `Context.Identity`, which is used by the [Authorization](authorization.md) system for method-level access control.
 
 ## Client-Side Token

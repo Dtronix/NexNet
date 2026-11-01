@@ -63,6 +63,26 @@ var client = ClientNexus.CreateClient(config, new ClientNexus());
 await client.ConnectAsync();
 ```
 
+For `https://`/`wss://` URLs, `SslClientAuthenticationOptions` on the client config sets the client certificate and server certificate validation. See [TLS and Certificates](transports.md#tls-and-certificates).
+
+## Client Certificates
+
+When Kestrel terminates TLS and accepts client certificates, the certificate reaches the nexus as `Context.RemoteCertificate` for both WebSocket and HttpSocket sessions:
+
+```csharp
+builder.WebHost.ConfigureKestrel(options => options.ListenAnyIP(9001, listen =>
+    listen.UseHttps(new HttpsConnectionAdapterOptions
+    {
+        ServerCertificate = serverCertificate,
+        ClientCertificateMode = ClientCertificateMode.AllowCertificate,
+        // Accept any certificate here and decide in the nexus, e.g. against an enrolled fingerprint.
+        ClientCertificateValidation = (_, _, _) => true,
+    })));
+```
+
+- The value is `HttpContext.Connection.ClientCertificate` when the connection is accepted. NexNet does not call `GetClientCertificateAsync`, so with `ClientCertificateMode.DelayCertificate` the session sees no certificate.
+- When a reverse proxy terminates TLS, the application server never sees the client certificate and `Context.RemoteCertificate` is null.
+
 ## Reverse Proxy Configuration
 
 ### Nginx
@@ -84,6 +104,8 @@ server {
     }
 }
 ```
+
+The HttpSocket upgrade token is `nexnet-httpsockets`; the configuration above forwards it because it passes the client's `Upgrade` header through.
 
 ## See Also
 

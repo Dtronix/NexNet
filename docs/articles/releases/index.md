@@ -6,6 +6,7 @@ Per-version release notes for NexNet. Each page is also the body of the matching
 
 | Version | Released | Highlights |
 |---------|----------|------------|
+| [v0.19.1](release-notes-v0.19.1.md) | 2026-10-31 | TLS options (client certificate, server certificate pinning) for WebSocket and HttpSocket clients; `Context.RemoteCertificate`; fix for an unobserved WebSocket receive fault; HttpSocket client resource fixes. |
 | [v0.19.0](release-notes-v0.19.0.md) | 2026-10-25 | Fix: a call refused by `OnAuthorize` no longer disconnects the session; `NexNet` metrics meter and session snapshots; fewer allocations per call; caller-side cancellation fixes. |
 | [v0.18.0](release-notes-v0.18.0.md) | 2026-10-20 | Flow control and limits for every session: large values streamed up to `MaxMessageSize`, per-pipe credit windows, invocation credits, a session memory budget, stall detection and pre-authentication limits. |
 | [v0.17.0](release-notes-v0.17.0.md) | 2026-10-08 | NexNet now uses its own MessagePack serializer and MemoryPack is removed. |
