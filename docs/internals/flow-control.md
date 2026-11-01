@@ -215,6 +215,12 @@ The read loop awaits only `PipeReader.ReadAsync` on the transport. Specifically:
 - Large messages and pipe data take `_writeMutex` once per frame.
 - Pipe writes send every chunk the granted credit allows, and flush the transport once per pipe flush rather than
   once per chunk.
+- Every transport's output is a pipe drained by a send loop: `SocketConnection` for TCP and UDS, `StreamSendPipe`
+  for the stream transports (TLS, QUIC, HttpSocket, WebSocket). A flush completes once the frame is in the pipe and
+  the pipe is below `SendSessionPipeOptions`' pause threshold, not when the stream write completes, so the write
+  mutex is not held across a network write. The stream send loop copies the segments of one read into writes of up
+  to 64 KiB, so frames queued during a write go out together (one TLS record run, QUIC send or WebSocket message). A
+  graceful close waits up to 2 s for buffered data to reach the stream; an abortive close drops it.
 
 ### 5.3 Timeouts
 

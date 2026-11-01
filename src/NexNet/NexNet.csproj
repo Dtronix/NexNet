@@ -9,6 +9,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="NexNet.IntegrationTests" />
     <InternalsVisibleTo Include="NexNet.Asp" />
+    <InternalsVisibleTo Include="NexNet.Quic" />
     <InternalsVisibleTo Include="NexNetBenchmarks" />
     <InternalsVisibleTo Include="NexNet.Serialization.Tests" />
     <InternalsVisibleTo Include="NexNet.Fuzz" />

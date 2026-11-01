@@ -6,6 +6,7 @@ using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipelines;
 using NexNet.Transports;
 
 #pragma warning disable CA1416
@@ -18,19 +19,20 @@ internal class QuicTransport : ITransport
     private readonly QuicConnection _quicConnection;
 
     private readonly QuicStream _quicStream;
+    private readonly StreamSendPipe _sendPipe;
 
     public PipeReader Input { get; }
-    public PipeWriter Output { get; }
+    public PipeWriter Output => _sendPipe.Writer;
     public string? RemoteAddress { get; }
     public int? RemotePort { get; }
     public X509Certificate2? RemoteCertificate => _quicConnection.RemoteCertificate as X509Certificate2;
 
-    private QuicTransport(QuicConnection quicConnection, QuicStream stream)
+    private QuicTransport(QuicConnection quicConnection, QuicStream stream, PipeOptions sendPipeOptions)
     {
         _quicConnection = quicConnection;
         _quicStream = stream;
         Input = PipeReader.Create(stream);
-        Output = PipeWriter.Create(stream);
+        _sendPipe = new StreamSendPipe(stream, sendPipeOptions);
 
         // Extract from QUIC connection's RemoteEndPoint
         if (quicConnection.RemoteEndPoint is System.Net.IPEndPoint ipEndPoint)
@@ -45,9 +47,19 @@ internal class QuicTransport : ITransport
         }
     }
 
-    public ValueTask CloseAsync(bool linger)
+    public async ValueTask CloseAsync(bool linger)
     {
-        return _quicConnection.CloseAsync(0);
+        if (linger)
+        {
+            // Let the send loop write what the session flushed before it completed the output.
+            await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
+        }
+        else
+        {
+            _sendPipe.Abort();
+        }
+
+        await _quicConnection.CloseAsync(0).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -61,7 +73,7 @@ internal class QuicTransport : ITransport
     public static async ValueTask<ITransport> CreateFromConnection(QuicConnection connection, QuicServerConfig config)
     {
         var stream = await connection.AcceptInboundStreamAsync(CancellationToken.None).ConfigureAwait(false);
-        return new QuicTransport(connection, stream);
+        return new QuicTransport(connection, stream, config.SendSessionPipeOptions);
     }
 
     /// <summary>
@@ -107,7 +119,7 @@ internal class QuicTransport : ITransport
 
         var mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token).ConfigureAwait(false);
 
-        return new QuicTransport(quicConnection, mainStream);
+        return new QuicTransport(quicConnection, mainStream, clientConfig.SendSessionPipeOptions);
     }
 
 }

@@ -137,7 +137,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `HttpConnector.cs` - One connect attempt: `SocketsHttpHandler` + `HttpMessageInvoker` built from `HttpClientConfig`. Copies the TLS options (never mutates the config's), wraps certificate validation to keep a copy of the accepted server certificate (`TakeServerCertificate`), `IsTlsAuthenticationFailure`. When `SslClientAuthenticationOptions` gains properties, add them to `CreateSslOptions`
 - `HttpSocket/HttpSocketTransport.cs` - Client: upgrade GET (`Upgrade: nexnet-httpsockets`) through the connector; owns response + connector until `CloseAsync`. Server: built by NexNet.Asp with address, port and `Connection.ClientCertificate`
 - `WebSocket/WebSocketTransport.cs` - Client: `ClientWebSocket.ConnectAsync(uri, invoker)` with the same connector. Both map TLS failures and 401/403 to `TransportError.AuthenticationError`
-- `WebSocket/WebSocketPipe.cs` - Receive loop into a `Pipe`; `TryAdvanceInput` and `CompleteAsync` share `_inputWriterLock` so a receive finishing after completion drops its bytes instead of advancing a completed writer
+- `WebSocket/WebSocketPipe.cs` - Receive loop into a `Pipe`; output through `StreamSendPipe` (one binary message per coalesced write); `TryAdvanceInput` and `CompleteAsync` share `_inputWriterLock` so a receive finishing after completion drops its bytes instead of advancing a completed writer
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
 **Socket Pipeline (src/NexNet/Internals/Pipelines/):**
@@ -145,6 +145,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `SocketConnection.Connect.cs` - Connection establishment
 - `SocketConnection.Receive.cs` - Receive loop
 - `SocketConnection.Send.cs` - Send loop
+- `StreamSendPipe.cs` - Output of the stream transports (TLS, QUIC, HttpSocket, WebSocket): `Pipe` (`SendSessionPipeOptions`) + send loop writing to the stream, coalescing a read's segments into writes of up to 64 KiB. A flush returns once the frame is in the pipe, so the write mutex is not held across stream writes. `DrainAsync` on graceful close (waits up to 2 s if the writer was completed, else aborts), `Abort` otherwise. A stream error completes the reader, so the session's next flush ends the session. NexNet.Quic uses it through `InternalsVisibleTo`
 
 ### 1.7 Collections (src/NexNet/Collections/)
 
