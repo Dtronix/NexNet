@@ -196,10 +196,81 @@ internal class BufferWriterTests
         Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 7 }).AsCollection);
     }
 
+    // Pool return: each test writes 16-byte blocks into 16-byte segments, so segment i holds block i and the
+    // arrays rented are known in order.
+
+    [Test]
+    public void Deallocate_ReturnsReleasedArraysToThePool()
+    {
+        var pool = new RecordingArrayPool();
+        var writer = BufferWriter.Create(pool, 16);
+        for (var i = 0; i < 3; i++)
+            Write(writer, new byte[16]);
+        Assert.That(pool.Rented, Has.Count.EqualTo(3));
+
+        writer.Deallocate(writer.GetBuffer());
+
+        // The last segment stays as the head (the writer continues in it); the others go back to the pool.
+        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
+
+        writer.Dispose();
+        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
+    }
+
+    [Test]
+    public void ReleaseTo_ReturnsOnlyFullyConsumedSegments()
+    {
+        var pool = new RecordingArrayPool();
+        var writer = BufferWriter.Create(pool, 16);
+        for (var i = 0; i < 3; i++)
+            Write(writer, new byte[16]);
+
+        // All of the first segment and part of the second.
+        writer.ReleaseTo(20);
+        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(1)).AsCollection);
+
+        writer.ReleaseTo(writer.GetBuffer().GetPosition(12));
+        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
+        Assert.That(writer.Length, Is.EqualTo(16));
+    }
+
+    [Test]
+    public void Dispose_ReturnsEveryRentedArray()
+    {
+        var pool = new RecordingArrayPool();
+        var writer = BufferWriter.Create(pool, 16);
+        for (var i = 0; i < 5; i++)
+            Write(writer, new byte[16]);
+        writer.ReleaseTo(24);
+
+        writer.Dispose();
+
+        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
+        Assert.That(pool.Returned.Distinct().Count(), Is.EqualTo(pool.Returned.Count), "an array was returned twice");
+    }
+
     private static void Write(BufferWriter writer, ReadOnlySpan<byte> data)
     {
         data.CopyTo(writer.GetSpan(data.Length));
         writer.Advance(data.Length);
+    }
+
+    /// <summary>
+    /// Array pool that rents new arrays of exactly the requested length and records what is rented and returned.
+    /// </summary>
+    private sealed class RecordingArrayPool : ArrayPool<byte>
+    {
+        public List<byte[]> Rented { get; } = new();
+        public List<byte[]> Returned { get; } = new();
+
+        public override byte[] Rent(int minimumLength)
+        {
+            var array = new byte[minimumLength];
+            Rented.Add(array);
+            return array;
+        }
+
+        public override void Return(byte[] array, bool clearArray = false) => Returned.Add(array);
     }
 
     [Test]

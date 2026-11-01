@@ -12,8 +12,8 @@ using NexNet.Internals.Pipelines.Internal;
 namespace NexNet.Internals.Pipelines.Buffers;
 
 /// <summary>
-/// An <see cref="IBufferWriter{T}"/> over a chain of reference-counted segments rented from
-/// <see cref="ArrayPool{T}.Shared"/>. The buffered data is read as a <see cref="ReadOnlySequence{T}"/>
+/// An <see cref="IBufferWriter{T}"/> over a chain of reference-counted segments rented from an array pool
+/// (<see cref="ArrayPool{T}.Shared"/> unless a test passes its own). The buffered data is read as a <see cref="ReadOnlySequence{T}"/>
 /// (<see cref="GetBuffer"/>); consumed data is returned to the pool from the head (<see cref="ReleaseTo(int)"/>,
 /// <see cref="ReleaseTo(SequencePosition)"/>, <see cref="Deallocate"/>) while writing continues at the tail.
 /// </summary>
@@ -26,6 +26,7 @@ internal sealed class BufferWriter : IDisposable, IBufferWriter<byte>
     private const int DefaultBlockSize = 8 * 1024;
 
     private readonly int _blockSize;
+    private readonly ArrayPool<byte> _arrayPool;
 
     // Released segments are reused by this writer.
     private readonly ConcurrentBag<RefCountedSegment> _segmentPool = new();
@@ -33,16 +34,24 @@ internal sealed class BufferWriter : IDisposable, IBufferWriter<byte>
     private RefCountedSegment _head, _tail, _final;
     private int _headOffset, _tailOffset, _tailRemaining;
 
-    private BufferWriter(int blockSize)
+    private BufferWriter(ArrayPool<byte> arrayPool, int blockSize)
     {
         if (blockSize <= 0) Throw.ArgumentOutOfRange(nameof(blockSize));
+        _arrayPool = arrayPool ?? throw new ArgumentNullException(nameof(arrayPool));
         _blockSize = blockSize;
     }
 
     /// <summary>
-    /// Creates a writer renting blocks of at least <paramref name="blockSize"/> bytes (default 8 KiB).
+    /// Creates a writer renting blocks of at least <paramref name="blockSize"/> bytes (default 8 KiB) from
+    /// <see cref="ArrayPool{T}.Shared"/>.
     /// </summary>
-    public static BufferWriter Create(int? blockSize = null) => new(blockSize ?? DefaultBlockSize);
+    public static BufferWriter Create(int? blockSize = null) => new(ArrayPool<byte>.Shared, blockSize ?? DefaultBlockSize);
+
+    /// <summary>
+    /// Creates a writer renting blocks from <paramref name="arrayPool"/> (tests observe what is rented and returned).
+    /// </summary>
+    internal static BufferWriter Create(ArrayPool<byte> arrayPool, int? blockSize = null)
+        => new(arrayPool, blockSize ?? DefaultBlockSize);
 
     /// <summary>
     /// Gets the amount of data buffered by the writer
@@ -300,26 +309,29 @@ internal sealed class BufferWriter : IDisposable, IBufferWriter<byte>
 
     private RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
     {
-        var array = ArrayPool<byte>.Shared.Rent(size);
+        var array = _arrayPool.Rent(size);
         if (!_segmentPool.TryTake(out var segment))
-            return new RefCountedSegment(_segmentPool, array, previous);
+            return new RefCountedSegment(_segmentPool, _arrayPool, array, previous);
 
         segment.Setup(array, previous);
         return segment;
     }
 
     /// <summary>
-    /// A segment over an array rented from <see cref="ArrayPool{T}.Shared"/>, returned when the last reference is
+    /// A segment over an array rented from the writer's array pool, returned to it when the last reference is
     /// released.
     /// </summary>
     internal sealed class RefCountedSegment : ReadOnlySequenceSegment<byte>
     {
         private readonly ConcurrentBag<RefCountedSegment> _segmentPool;
+        private readonly ArrayPool<byte> _arrayPool;
         private int _count;
 
-        public RefCountedSegment(ConcurrentBag<RefCountedSegment> segmentPool, byte[] array, RefCountedSegment previous)
+        public RefCountedSegment(ConcurrentBag<RefCountedSegment> segmentPool, ArrayPool<byte> arrayPool, byte[] array,
+            RefCountedSegment previous)
         {
             _segmentPool = segmentPool;
+            _arrayPool = arrayPool;
             Setup(array, previous);
         }
 
@@ -424,7 +436,7 @@ internal sealed class BufferWriter : IDisposable, IBufferWriter<byte>
             {
                 Next = null; // break the chain, in case of dangling references
                 if (MemoryMarshal.TryGetArray(Memory, out var segment) && segment.Array is not null)
-                    ArrayPool<byte>.Shared.Return(segment.Array);
+                    _arrayPool.Return(segment.Array);
                 SetMemory(default);
                 _segmentPool.Add(this);
             }
