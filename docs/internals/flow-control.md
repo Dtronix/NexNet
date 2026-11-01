@@ -183,7 +183,9 @@ Ignore an `Abort` for an unknown key, since it can race with completion. Dispose
 
 - Each side advertises `InvocationCredits` in its greeting. The caller decrements a counter per invocation sent,
   including fire-and-forget calls and large-argument `Start`s. At zero, the caller waits locally (cancellable)
-  for credit.
+  for credit, in FIFO order (`CreditGate`). A waiting call parks a pooled waiter; it allocates a cancellation
+  registration only for a cancelable token and a timer only for a timeout (the router's `ProgressTimeout`). The
+  session closes the gate when it ends, which ends the waits.
 - The receiver queues invocations without waiting. It returns credit with a coalesced `InvocationCredit[+n]` when
   an invocation is dequeued for execution, not when it finishes.
 - Execution concurrency (`MaxConcurrentConnectionInvocations`) is local and is not advertised.

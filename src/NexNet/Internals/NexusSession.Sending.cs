@@ -236,7 +236,7 @@ internal partial class NexusSession<TNexus, TProxy>
         if (message.Arguments.Length > IInvocationMessage.MaxArgumentSize)
             return Busy();
 
-        if (!_outboundCredits.Wait(0))
+        if (!_outboundCredits.TryTake())
             return Busy();
 
         // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.

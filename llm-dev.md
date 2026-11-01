@@ -109,6 +109,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
 - `RegisteredInvocationState.cs` - Pending call awaiting its result: `IValueTaskSource` (void) and `RegisteredInvocationState<T>` (`IValueTaskSource<T>`), pooled statically per result type. `GetResult` maps the outcome (result, remote exception, Unauthorized, Canceled) and returns the state to its pool, so the proxy's `ValueTask` may be consumed once; blocking on an unfinished call waits on a lazily created event. Completion is claimed atomically and unregisters the caller's token
 - `SessionControlSender.cs` - Sends control replies off the read loop, coalesced: pongs, pipe window grants and close acknowledgements, large-message aborts, invocation credit
+- `CreditGate.cs` - Outbound invocation credits: `TryTake` (lock-free), FIFO `WaitAsync(timeout, token)` -> `CreditWaitResult` (Acquired, TimedOut, Closed) over pooled `IValueTaskSource` waiters, `Release(n)` serves waiters first, `Close()` on disconnect. A waiter whose timer or cancellation callback may still run is not reused
 - `SessionBudget.cs` - Per-session receive memory reservations (pipe windows, invocation queue, large values); FIFO `ReserveAsync`
 - `LargeMessageReceiver.cs` - Reassembles streamed arguments/results (MessageStart/Chunk), reserving their size from the budget first
 - `PreAuthFailureLog.cs` - Aggregated warning for sessions that fail before authentication
@@ -392,6 +393,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `StreamSendPipeTests.cs` - Stream send loop: flush while a write is pending, coalescing, failure, drain/abort
 
 `BufferWriterTests.cs` (test root) - `BufferWriter` writes, `ReleaseTo`, `Deallocate`
+`CreditGateTests.cs` (test root) - Credit gate: waiters served first and in queue order, timeout, cancellation, close, waiter reuse, concurrent stress
 
 **Metrics (Metrics/):**
 - `MetricsRecorder.cs` - Test `IMeterFactory` with a private meter and a `MeterListener`; `Events()` for counters, `Observe()`/`ObserveSum()` collect observable instruments (sets `RefreshInterval = 0`)

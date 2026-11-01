@@ -128,7 +128,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     // Invocation credits (docs/internals/flow-control.md, section 4.7). _inboundCredits: invocations the peer may
     // still queue here. _outboundCredits: invocations this side may still send, released as the peer returns credit.
     private int _inboundCredits;
-    private readonly SemaphoreSlim _outboundCredits = new(0, int.MaxValue);
+    private readonly CreditGate _outboundCredits = new();
     private int _peerInvocationCredits;
     private int _peerMaxMessageSize;
     private long _creditDrops;
@@ -496,6 +496,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         
         _state = ConnectionState.Disconnected;
 
+        // Ends invocations still waiting for credit (they return false), at the point the disconnection token was
+        // canceled when they waited on it.
+        _outboundCredits.Close();
         await _disconnectionCts.CancelAsync().ConfigureAwait(false);
         OnStateChanged?.Invoke(State);
 
@@ -640,27 +643,29 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     public async ValueTask<bool> SendInvocation<TMessage>(TMessage message, CancellationToken cancellationToken = default, TimeSpan? creditTimeout = null)
         where TMessage : IMessageBase
     {
-        if (!_outboundCredits.Wait(0))
+        if (!_outboundCredits.TryTake())
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disconnectionCts.Token);
             Interlocked.Increment(ref _creditWaiters);
+            CreditWaitResult wait;
             try
             {
-                if (!await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, linked.Token).ConfigureAwait(false))
-                {
-                    RecordCreditDrop();
-                    return false;
-                }
-            }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-            {
-                // The session ended while waiting.
-                return false;
+                // The gate is closed when the session ends, which ends this wait with Closed.
+                wait = await _outboundCredits.WaitAsync(creditTimeout ?? Timeout.InfiniteTimeSpan, cancellationToken)
+                    .ConfigureAwait(false);
             }
             finally
             {
                 Interlocked.Decrement(ref _creditWaiters);
             }
+
+            if (wait == CreditWaitResult.TimedOut)
+            {
+                RecordCreditDrop();
+                return false;
+            }
+
+            if (wait == CreditWaitResult.Closed)
+                return false; // The session ended while waiting.
         }
 
         // The credit is spent: only the peer returns it, when it takes the invocation, so the invocation is always
