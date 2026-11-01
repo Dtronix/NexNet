@@ -48,7 +48,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private PipeWriter? _pipeOutput;
 
     private readonly MutexSlim _writeMutex = new MutexSlim(int.MaxValue);
-    private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 8);
+    private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 8);
     private readonly byte[] _readBuffer = new byte[8];
 
     // mutable struct.  Don't set to readonly.

@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 
@@ -19,7 +18,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
 
     private record CancellationRegistrationArgs(SemaphoreSlim Semaphore);
 
-    private readonly BufferWriter<byte> _buffer = BufferWriter<byte>.Create();
+    private readonly BufferWriter _buffer = BufferWriter.Create();
     private readonly Lock _bufferLock = new Lock();
     private readonly IPipeStateManager _stateManager;
 
@@ -449,7 +448,7 @@ internal class NexusPipeReader : PipeReader, IDisposable
         var examinedObject = examined.GetObject();
         if (examinedObject != null)
         {
-            if (examinedObject is SequenceSegment<byte> examinedSegment)
+            if (examinedObject is ReadOnlySequenceSegment<byte> examinedSegment)
             {
                 _examinedPosition = examinedSegment.RunningIndex + examined.GetInteger();
             }

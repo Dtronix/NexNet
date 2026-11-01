@@ -173,7 +173,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `ResettablePool.cs` - Pool for resettable objects
 - `MessagePool.cs` - Pool for message objects
 - `CancellationTokenSourcePool.cs` - Pools CTS instances
-- `BufferWriter.cs` (Internals/Pipelines/Buffers/) - Custom IBufferWriter<T> for message payloads
+- `BufferWriter.cs` (Internals/Pipelines/Buffers/) - Byte `IBufferWriter` over reference-counted segments rented from `ArrayPool<byte>.Shared`; `GetBuffer()` returns a `ReadOnlySequence<byte>`; consumed data is returned from the head (`ReleaseTo`, `Deallocate`) while writing continues. Session staging buffer, result buffers, `NexusPipeReader`/`NexusPipeWriter` buffers. (The vendored `Sequence<T>`/Arenas types were removed; nothing outside the writer used them.)
 
 **Session Pooling:**
 - `SessionPoolManager.cs` - Manages proxy instance pooling per session
@@ -385,11 +385,13 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `WebSocketPipeTests.cs` - Receive completing after the pipe is completed (fake `WebSocket`)
 - `RemoteEndpointTests.cs` - RemoteAddress/RemotePort per transport
 
-**Sockets (Sockets/, 7 files):**
-- `BufferWriterTests.cs` - Buffer ops
+**Sockets (Sockets/, 4 files):**
 - `ConnectTests.cs` - Connection establishment
 - `MutexSlimTests.cs` - Sync primitives
-- `SequenceTests.cs` - ReadOnlySequence ops
+- `PipeTests.cs` - Pipe basics
+- `StreamSendPipeTests.cs` - Stream send loop: flush while a write is pending, coalescing, failure, drain/abort
+
+`BufferWriterTests.cs` (test root) - `BufferWriter` writes, `ReleaseTo`, `Deallocate`
 
 **Metrics (Metrics/):**
 - `MetricsRecorder.cs` - Test `IMeterFactory` with a private meter and a `MeterListener`; `Events()` for counters, `Observe()`/`ObserveSum()` collect observable instruments (sets `RefreshInterval = 0`)

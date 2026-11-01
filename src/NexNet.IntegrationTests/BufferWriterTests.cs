@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NUnit.Framework;
 using NUnit.Framework.Legacy;
@@ -14,7 +13,7 @@ internal class BufferWriterTests
     [Test]
     public void FuzzBufferTests()
     {
-        var bufferWriter = BufferWriter<byte>.Create(128);
+        var bufferWriter = BufferWriter.Create(128);
         var bufferSize = 0;
 
         var increaseSize = 201;
@@ -52,7 +51,7 @@ internal class BufferWriterTests
     [Test]
     public void FuzzBufferTestsSequencePosition()
     {
-        var bufferWriter = BufferWriter<byte>.Create(128);
+        var bufferWriter = BufferWriter.Create(128);
         var bufferSize = 0;
 
         var increaseSize = 201;
@@ -88,7 +87,7 @@ internal class BufferWriterTests
     [Test]
     public void ReleasesLargeDataSpan()
     {
-        var bufferWriter = BufferWriter<byte>.Create(8 * 1024);
+        var bufferWriter = BufferWriter.Create(8 * 1024);
         var loops = 9000;
         var dataLength = 10;
         Span<byte> data = new byte[dataLength];
@@ -101,19 +100,19 @@ internal class BufferWriterTests
             bufferWriter.Advance(dataLength);
         }
 
-        var sequence = bufferWriter.GetBuffer().AsReadOnly();
+        var sequence = bufferWriter.GetBuffer();
         Assert.That(sequence.Length, Is.EqualTo(loops * dataLength));
 
         bufferWriter.ReleaseTo(3000 * 16);
 
-        sequence = bufferWriter.GetBuffer().AsReadOnly();
+        sequence = bufferWriter.GetBuffer();
         Assert.That(sequence.Length, Is.EqualTo(loops * dataLength - 3000 * 16));
     }    
     
     [Test]
     public void AllowsUseAfterDisposal()
     {
-        var bufferWriter = BufferWriter<byte>.Create(8 * 1024);
+        var bufferWriter = BufferWriter.Create(8 * 1024);
  
         Span<byte> data = new byte[50];
 
@@ -127,7 +126,7 @@ internal class BufferWriterTests
         data.CopyTo(bufferWriter.GetSpan(data.Length));
         bufferWriter.Advance(data.Length);
 
-        var sequence = bufferWriter.GetBuffer().AsReadOnly();
+        var sequence = bufferWriter.GetBuffer();
         Assert.That(sequence.Length, Is.EqualTo(data.Length));
 
 
@@ -136,75 +135,77 @@ internal class BufferWriterTests
     [Test]
     public void GetBuffer_Empty_ReturnsZeroLength()
     {
-        var writer = BufferWriter<byte>.Create(128);
+        var writer = BufferWriter.Create(128);
         Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
     }
 
     [Test]
     public void Advance_Negative_ThrowsArgumentOutOfRangeException()
     {
-        var writer = BufferWriter<byte>.Create(128);
+        var writer = BufferWriter.Create(128);
         Assert.Throws<ArgumentOutOfRangeException>(() => writer.Advance(-1));
     }
 
     [Test]
-    public void Flush_LongCount_Negative_ThrowsArgumentOutOfRangeException()
+    public void Deallocate_KeepsDataWrittenAfterGetBuffer()
     {
-        var writer = BufferWriter<byte>.Create(128);
-        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Flush(-5));
-    }
-    
-    
-    [Test]
-    public void Flush_CountGreaterThanBuffered_ThrowsArgumentOutOfRangeException()
-    {
-        var writer = BufferWriter<byte>.Create(128);
-        var data = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
-        data.CopyTo(writer.GetSpan(data.Length));
-        writer.Advance(data.Length);
-
-        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Flush(data.Length + 1));
-    }
-
-    [Test]
-    public void Flush_ZeroCount_ReturnsEmptySequence()
-    {
-        var writer = BufferWriter<byte>.Create(128);
-        var owned = writer.Flush(0);
-        // Owned.Value is a ReadOnlySequence<byte>
-        Assert.That(owned.Value.Length, Is.EqualTo(0));
-    }
-    
-    [Test]
-    public void Flush_PartialAndFull_WorksAsExpected()
-    {
-        var writer = BufferWriter<byte>.Create(4);
+        var writer = BufferWriter.Create(4);
         var data = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
-        // write all 10 bytes
+        Write(writer, data.AsSpan(0, 6));
+
+        var first = writer.GetBuffer();
+        Write(writer, data.AsSpan(6));
+
+        Assert.That(first.ToArray(), Is.EqualTo(data.Take(6).ToArray()).AsCollection);
+        writer.Deallocate(first);
+
+        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(data.Skip(6).ToArray()).AsCollection);
+    }
+
+    [Test]
+    public void Deallocate_EndingAtSegmentBoundary_ContinuesInNextSegment()
+    {
+        // Blocks are rented with at least 16 bytes; fill the first block exactly, then start a second one.
+        var writer = BufferWriter.Create(16);
+        var firstBlock = writer.GetMemory(16).Length;
+        Write(writer, new byte[firstBlock]);
+        var buffer = writer.GetBuffer();
+        Write(writer, new byte[] { 1, 2, 3 });
+
+        writer.Deallocate(buffer);
+
+        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }).AsCollection);
+        Assert.That(writer.Length, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void Deallocate_MultipleSegments_ReleasesThemAll()
+    {
+        var writer = BufferWriter.Create(16);
+        for (var i = 0; i < 10; i++)
+            Write(writer, new byte[16]);
+
+        var buffer = writer.GetBuffer();
+        Assert.That(buffer.IsSingleSegment, Is.False);
+
+        writer.Deallocate(buffer);
+        Assert.That(writer.Length, Is.Zero);
+
+        // The writer keeps working on the remaining (or new) segments.
+        Write(writer, new byte[] { 7 });
+        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 7 }).AsCollection);
+    }
+
+    private static void Write(BufferWriter writer, ReadOnlySpan<byte> data)
+    {
         data.CopyTo(writer.GetSpan(data.Length));
         writer.Advance(data.Length);
-
-        // flush 6
-        var ownedPartial = writer.Flush(6);
-        var seqPartial = ownedPartial.Value;
-        Assert.That(seqPartial.Length, Is.EqualTo(6));
-        Assert.That(seqPartial.ToArray(), Is.EqualTo(data.Take(6).ToArray()).AsCollection);
-
-        // remaining should be 4
-        Assert.That(writer.GetBuffer().Length, Is.EqualTo(4));
-        Assert.That(writer.GetBuffer().ToArray(),
-            Is.EqualTo(data.Skip(6).ToArray()).AsCollection);
-
-        // flush all remaining
-        var ownedAll = writer.Flush();
-        Assert.That(ownedAll.Value.Length, Is.EqualTo(4));
-        Assert.That(writer.GetBuffer().Length, Is.EqualTo(0));
     }
-    
+
     [Test]
     public void Deallocate_FullSequence_ClearsBuffer()
     {
-        var writer = BufferWriter<byte>.Create(128);
+        var writer = BufferWriter.Create(128);
         var data = Enumerable.Range(0, 5).Select(i => (byte)i).ToArray();
         data.CopyTo(writer.GetSpan(data.Length));
         writer.Advance(data.Length);
@@ -217,7 +218,7 @@ internal class BufferWriterTests
     [Test]
     public void ReleaseTo_CountGreaterThanBuffered_Throws()
     {
-        var writer = BufferWriter<byte>.Create(128);
+        var writer = BufferWriter.Create(128);
         var data = new byte[20];
         var span = writer.GetSpan(data.Length);
         data.CopyTo(span);
@@ -229,7 +230,7 @@ internal class BufferWriterTests
     [Test]
     public void Dispose_ClearsBuffer_And_IsIdempotent()
     {
-        var writer = BufferWriter<byte>.Create(64);
+        var writer = BufferWriter.Create(64);
         writer.GetSpan(10);
         writer.Advance(10);
 
@@ -243,7 +244,7 @@ internal class BufferWriterTests
     [Test]
     public void GetSpan_DoesNotCommitUntilAdvance()
     {
-        var writer = BufferWriter<byte>.Create(32);
+        var writer = BufferWriter.Create(32);
         var span = writer.GetSpan(10);
         for (int i = 0; i < 10; i++) span[i] = (byte)i;
 

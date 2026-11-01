@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using NexNet.Serialization;
 using NexNet.Logging;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Threading;
 using System.Collections.Generic;
 using NexNet.Diagnostics;

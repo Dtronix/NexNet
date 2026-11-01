@@ -14,7 +14,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
 
         var baseObject = ComplexMessage.Random();
-        var bufferWriter = BufferWriter<byte>.Create();
+        var bufferWriter = BufferWriter.Create();
 
         var bytes = TestSerialization.SerializeChannelItem(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
@@ -22,10 +22,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         bufferWriter.Write(bytes);
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(0, 1));
 
-        using (var buffer = bufferWriter.Flush())
-        {
-            pipeReader.BufferData(buffer);
-        }
+        Flush(bufferWriter, pipeReader);
 
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
@@ -34,10 +31,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
 
-        using (var buffer = bufferWriter.Flush())
-        {
-            pipeReader.BufferData(buffer);
-        }
+        Flush(bufferWriter, pipeReader);
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
@@ -51,7 +45,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         var reader = new NexusChannelReader<ComplexMessage>(pipeReader);
 
         var baseObject = ComplexMessage.Random();
-        var bufferWriter = BufferWriter<byte>.Create();
+        var bufferWriter = BufferWriter.Create();
 
         var bytes = TestSerialization.SerializeChannelItem(baseObject);
         var header = BitConverter.GetBytes((ushort)bytes.Length);
@@ -61,10 +55,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // Perform a partial write.
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(0, 1));
 
-        using (var buffer = bufferWriter.Flush())
-        {
-            pipeReader.BufferData(buffer);
-        }
+        Flush(bufferWriter, pipeReader);
 
         var result = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
@@ -73,10 +64,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         //Write the rest of the data
         bufferWriter.Write(new ReadOnlySpan<byte>(bytes).Slice(1, bytes.Length - 1));
 
-        using (var buffer = bufferWriter.Flush())
-        {
-            pipeReader.BufferData(buffer);
-        }
+        Flush(bufferWriter, pipeReader);
 
         var result2 = await reader.ReadAsync(CancellationToken.None).Timeout(1);
 
@@ -85,10 +73,19 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
     private static async Task Buffer(NexusPipeReader pipeReader, byte[] data)
     {
-        var bufferWriter = BufferWriter<byte>.Create();
+        var bufferWriter = BufferWriter.Create();
         bufferWriter.Write(data.AsSpan());
-        using var buffer = bufferWriter.Flush();
+        Flush(bufferWriter, pipeReader);
+    }
+
+    /// <summary>
+    /// Hands everything written to <paramref name="bufferWriter"/> since the last call to the pipe reader.
+    /// </summary>
+    private static void Flush(BufferWriter bufferWriter, NexusPipeReader pipeReader)
+    {
+        var buffer = bufferWriter.GetBuffer();
         pipeReader.BufferData(buffer);
+        bufferWriter.Deallocate(buffer);
     }
 
     [Test]
