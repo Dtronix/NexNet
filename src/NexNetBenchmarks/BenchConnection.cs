@@ -1,9 +1,13 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using NexNet;
+using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.Uds;
 
@@ -13,11 +17,13 @@ public enum BenchTransport
 {
     Uds,
     Tcp,
+    TcpTls,
+    Quic,
 }
 
 /// <summary>
-/// A connected client and server over UDS or loopback TCP, optionally with the client connecting through a
-/// <see cref="LatencyProxy"/>.
+/// A connected client and server over UDS, loopback TCP, TCP with TLS 1.3 or QUIC, optionally (plain TCP only) with
+/// the client connecting through a <see cref="LatencyProxy"/>.
 /// </summary>
 internal sealed class BenchConnection : IAsyncDisposable
 {
@@ -42,6 +48,34 @@ internal sealed class BenchConnection : IAsyncDisposable
                 File.Delete(path);
             serverConfig = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint(path) };
             clientConfig = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint(path) };
+        }
+        else if (transport == BenchTransport.TcpTls)
+        {
+            var endPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort());
+            serverConfig = new TcpTlsServerConfig
+            {
+                EndPoint = endPoint,
+                SslServerAuthenticationOptions = ServerTls(),
+            };
+            clientConfig = new TcpTlsClientConfig
+            {
+                EndPoint = endPoint,
+                SslClientAuthenticationOptions = ClientTls(),
+            };
+        }
+        else if (transport == BenchTransport.Quic)
+        {
+            var endPoint = new IPEndPoint(IPAddress.Loopback, FreeUdpPort());
+            serverConfig = new QuicServerConfig
+            {
+                EndPoint = endPoint,
+                SslServerAuthenticationOptions = ServerTls(),
+            };
+            clientConfig = new QuicClientConfig
+            {
+                EndPoint = endPoint,
+                SslClientAuthenticationOptions = ClientTls(),
+            };
         }
         else
         {
@@ -69,6 +103,33 @@ internal sealed class BenchConnection : IAsyncDisposable
         await Client.DisconnectAsync();
         await Server.StopAsync();
         _proxy?.Dispose();
+    }
+
+    // TLS 1.3 on both sides, the certificate shared with the integration tests (src/server.pfx).
+    private static SslServerAuthenticationOptions ServerTls() => new()
+    {
+        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+        ClientCertificateRequired = false,
+        AllowRenegotiation = false,
+        EnabledSslProtocols = SslProtocols.Tls13,
+        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass"),
+    };
+
+    private static SslClientAuthenticationOptions ClientTls() => new()
+    {
+        // msquic fails the TLS handshake without a DNS server name (SNI).
+        TargetHost = "localhost",
+        EnabledSslProtocols = SslProtocols.Tls13,
+        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+        AllowRenegotiation = false,
+        RemoteCertificateValidationCallback = (_, _, _, _) => true,
+    };
+
+    private static int FreeUdpPort()
+    {
+        using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return ((IPEndPoint)socket.LocalEndPoint!).Port;
     }
 
     private static int FreeTcpPort()

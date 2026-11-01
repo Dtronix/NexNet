@@ -12,11 +12,19 @@
     <Configuration>Release</Configuration>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
+    <!-- NexNet.Quic's configs are marked as preview features. -->
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>    
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
     <!-- In-process comparison baseline for SerializerBenchmarks (benchmark-only dependency). -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\server.pfx" Link="server.pfx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>
