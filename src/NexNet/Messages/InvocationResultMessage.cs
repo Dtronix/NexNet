@@ -59,21 +59,7 @@ internal partial class InvocationResultMessage : IMessageBase
         return true;
     }
 
-    public void Serialize(ref MsgPackWriter writer)
-    {
-        if (_result == null)
-        {
-            writer.WriteArrayHeader(2);
-            writer.Write(InvocationId);
-            writer.Write((byte)State);
-            return;
-        }
-
-        writer.WriteArrayHeader(3);
-        writer.Write(InvocationId);
-        writer.Write((byte)State);
-        writer.WriteRaw(_result.Value);
-    }
+    public void Serialize(ref MsgPackWriter writer) => new InvocationResultBody(this).Write(ref writer);
 
     public void Deserialize(ref MsgPackReader reader)
     {

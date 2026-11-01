@@ -146,16 +146,21 @@ internal partial class NexusSession<TNexus, TProxy>
     {
         large = default;
 
-        // An invocation's body length is known up front (from one snapshot of its fields, so the length and the
-        // bytes agree): it is written straight to the output, after its header.
-        if (body is InvocationMessage invocation && _config.InternalOnSend == null)
+        // The body length of an invocation or a result is known up front (from one snapshot of its fields, so the
+        // length and the bytes agree): it is written straight to the output, after its header.
+        if (_config.InternalOnSend == null)
         {
-            var invocationBody = new InvocationBody(invocation);
-            if (invocationBody.Length <= ushort.MaxValue)
+            if (body is InvocationMessage invocation)
             {
-                WriteInvocationFrame(in invocationBody, output);
-                CountSent(1, 3 + invocationBody.Length);
-                return 3 + invocationBody.Length;
+                var invocationBody = new InvocationBody(invocation);
+                if (invocationBody.Length <= ushort.MaxValue)
+                    return WriteDirectFrame(MessageType.Invocation, in invocationBody, output);
+            }
+            else if (body is InvocationResultMessage result)
+            {
+                var resultBody = new InvocationResultBody(result);
+                if (resultBody.Length <= ushort.MaxValue)
+                    return WriteDirectFrame(MessageType.InvocationResult, in resultBody, output);
             }
         }
 
@@ -198,18 +203,24 @@ internal partial class NexusSession<TNexus, TProxy>
     }
 
     /// <summary>
-    /// Writes the frame header for <paramref name="body"/>, then the body, straight to <paramref name="output"/>.
+    /// Writes the frame header for <paramref name="body"/>, then the body, straight to <paramref name="output"/>,
+    /// and returns the frame's length. The body must fit one frame.
     /// </summary>
-    private static void WriteInvocationFrame(in InvocationBody body, PipeWriter output)
+    private int WriteDirectFrame<TBody>(MessageType type, in TBody body, PipeWriter output)
+        where TBody : struct, IFrameBody
     {
         var header = output.GetSpan(3);
-        header[0] = (byte)MessageType.Invocation;
+        header[0] = (byte)type;
         BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(1, 2), (ushort)body.Length);
         output.Advance(3);
 
         var writer = new MsgPackWriter(output);
         body.Write(ref writer);
         writer.Flush();
+
+        var length = 3 + body.Length;
+        CountSent(1, length);
+        return length;
     }
 
     /// <summary>
