@@ -8,7 +8,7 @@ namespace NexNet.Messages;
 /// produces come from the same values, so a session can write the frame header before the body and the two always
 /// agree, even if the message is changed while it is being sent.
 /// </summary>
-internal readonly struct InvocationBody
+internal readonly struct InvocationBody : IFrameBody
 {
     public readonly ushort InvocationId;
     public readonly ushort MethodId;
@@ -19,10 +19,12 @@ internal readonly struct InvocationBody
     /// </summary>
     public readonly ReadOnlyMemory<byte> Arguments;
 
+    private readonly int _length;
+
     /// <summary>
     /// Exact number of bytes <see cref="Write"/> writes.
     /// </summary>
-    public readonly int Length;
+    public int Length => _length;
 
     public InvocationBody(IInvocationMessage message)
     {
@@ -30,7 +32,7 @@ internal readonly struct InvocationBody
         MethodId = message.MethodId;
         Flags = (byte)message.Flags;
         Arguments = message.Arguments;
-        Length = 1 // array header
+        _length = 1 // array header
                  + MsgPackWriter.GetUInt32CompactLength(InvocationId)
                  + MsgPackWriter.GetUInt32CompactLength(MethodId)
                  + MsgPackWriter.GetUInt32CompactLength(Flags)

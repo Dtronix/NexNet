@@ -102,13 +102,14 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 **Core Session:**
 - `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
   - Received invocations: `DispatchInvocations` runs each on a pooled `InvocationWorkItem` (`IThreadPoolWorkItem`, local queue) inside the ExecutionContext captured when `StartReadAsync` begins (pinned by `InvocationExecutionContextTests`)
-- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
+- `NexusSession.Sending.cs` - Write logic serialized by `AsyncMutex`; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
 - `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
 - `MessageHeader.cs` - Mutable struct: Type + BodyLength for framing
 - `RegisteredInvocationState.cs` - Pending call awaiting its result: `IValueTaskSource` (void) and `RegisteredInvocationState<T>` (`IValueTaskSource<T>`), pooled statically per result type. `GetResult` maps the outcome (result, remote exception, Unauthorized, Canceled) and returns the state to its pool, so the proxy's `ValueTask` may be consumed once; blocking on an unfinished call waits on a lazily created event. Completion is claimed atomically and unregisters the caller's token
 - `SessionControlSender.cs` - Sends control replies off the read loop, coalesced: pongs, pipe window grants and close acknowledgements, large-message aborts, invocation credit
+- `CreditGate.cs` - Outbound invocation credits: `TryTake` (lock-free), FIFO `WaitAsync(timeout, token)` -> `CreditWaitResult` (Acquired, TimedOut, Closed) over pooled `IValueTaskSource` waiters, `Release(n)` serves waiters first, `Close()` on disconnect. A waiter whose timer or cancellation callback may still run is not reused
 - `SessionBudget.cs` - Per-session receive memory reservations (pipe windows, invocation queue, large values); FIFO `ReserveAsync`
 - `LargeMessageReceiver.cs` - Reassembles streamed arguments/results (MessageStart/Chunk), reserving their size from the budget first
 - `PreAuthFailureLog.cs` - Aggregated warning for sessions that fail before authentication
@@ -125,7 +126,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `ITransportListener.cs` - Accepts incoming connections
 
 **Implementation:**
-- `SocketTransport.cs` - Wraps System.Net.Sockets.Socket via SocketConnection
+- `SocketTransport.cs` - TCP and Unix domain sockets: receive loop (`Socket.ReceiveAsync(Memory)`) into a `Pipe` (`ReceiveSessionPipeOptions`, read-ahead with back pressure; end of stream completes it, a socket error completes it with an `IOException`); output through `StreamSendPipe` over a `NetworkStream` that does not own the socket. Graceful close drains the send pipe, then `Shutdown(Both)`; abortive close resets (linger 0). Connect: `Socket.ConnectAsync` with a `ConnectionTimeout` token. `SetNoDelay` for TCP sockets (also used by TLS)
 - `SocketTransportListener.cs` - Socket-based listener
 
 **Configuration:**
@@ -137,14 +138,11 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `HttpConnector.cs` - One connect attempt: `SocketsHttpHandler` + `HttpMessageInvoker` built from `HttpClientConfig`. Copies the TLS options (never mutates the config's), wraps certificate validation to keep a copy of the accepted server certificate (`TakeServerCertificate`), `IsTlsAuthenticationFailure`. When `SslClientAuthenticationOptions` gains properties, add them to `CreateSslOptions`
 - `HttpSocket/HttpSocketTransport.cs` - Client: upgrade GET (`Upgrade: nexnet-httpsockets`) through the connector; owns response + connector until `CloseAsync`. Server: built by NexNet.Asp with address, port and `Connection.ClientCertificate`
 - `WebSocket/WebSocketTransport.cs` - Client: `ClientWebSocket.ConnectAsync(uri, invoker)` with the same connector. Both map TLS failures and 401/403 to `TransportError.AuthenticationError`
-- `WebSocket/WebSocketPipe.cs` - Receive loop into a `Pipe`; `TryAdvanceInput` and `CompleteAsync` share `_inputWriterLock` so a receive finishing after completion drops its bytes instead of advancing a completed writer
+- `WebSocket/WebSocketPipe.cs` - Receive loop into a `Pipe`; output through `StreamSendPipe` (one binary message per coalesced write); `TryAdvanceInput` and `CompleteAsync` share `_inputWriterLock` so a receive finishing after completion drops its bytes instead of advancing a completed writer
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
-**Socket Pipeline (src/NexNet/Internals/Pipelines/):**
-- `SocketConnection.cs` - Low-level socket-to-pipe adapter with read/write loops
-- `SocketConnection.Connect.cs` - Connection establishment
-- `SocketConnection.Receive.cs` - Receive loop
-- `SocketConnection.Send.cs` - Send loop
+**Send pipe (src/NexNet/Internals/Pipelines/):**
+- `StreamSendPipe.cs` - Output of every transport (TCP/UDS over `NetworkStream`, TLS, QUIC, HttpSocket, WebSocket): `Pipe` (`SendSessionPipeOptions`) + send loop writing to the stream, copying a multi-segment read into one write of up to 1 MiB (buffer rented per batch; the limit must exceed a frame, or the peer waits for the frame's tail). A flush returns once the frame is in the pipe, so the write mutex is not held across stream writes. `DrainAsync` on graceful close (waits up to 2 s if the writer was completed, else aborts), `Abort` otherwise. A stream error completes the reader, so the session's next flush ends the session. NexNet.Quic uses it through `InternalsVisibleTo`
 
 ### 1.7 Collections (src/NexNet/Collections/)
 
@@ -172,7 +170,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `ResettablePool.cs` - Pool for resettable objects
 - `MessagePool.cs` - Pool for message objects
 - `CancellationTokenSourcePool.cs` - Pools CTS instances
-- `BufferWriter.cs` (Internals/Pipelines/Buffers/) - Custom IBufferWriter<T> for message payloads
+- `BufferWriter.cs` (Internals/Pipelines/Buffers/) - Byte `IBufferWriter` over reference-counted segments rented from `ArrayPool<byte>.Shared`; `GetBuffer()` returns a `ReadOnlySequence<byte>`; consumed data is returned from the head (`ReleaseTo`, `Deallocate`) while writing continues. Session staging buffer, result buffers, `NexusPipeReader`/`NexusPipeWriter` buffers. (The vendored `Sequence<T>`/Arenas types were removed; nothing outside the writer used them.)
 
 **Session Pooling:**
 - `SessionPoolManager.cs` - Manages proxy instance pooling per session
@@ -180,9 +178,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 ### 1.9 Synchronization (src/NexNet/Internals/Threading/)
 
-- `MutexSlim.cs` - Lock-free async mutex; LockToken (sync), PendingLockToken (async)
-- `MutexSlim.LockState.cs` - Lock state management
-- `MutexSlim.AsyncDirectPendingLockSlab.cs` - Efficient async waiting
+- `AsyncMutex.cs` - Session write lock: `TryEnter()` (lock-free, fails if held), `EnterAsync(token)` (short spin, then a pooled FIFO waiter; canceled -> `TaskCanceledException`), `LockToken` (disposing releases; a stale or second release throws). Release hands the lock straight to the next waiter
 
 ### 1.10 Pipes (src/NexNet/Pipes/)
 
@@ -384,11 +380,12 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `WebSocketPipeTests.cs` - Receive completing after the pipe is completed (fake `WebSocket`)
 - `RemoteEndpointTests.cs` - RemoteAddress/RemotePort per transport
 
-**Sockets (Sockets/, 7 files):**
-- `BufferWriterTests.cs` - Buffer ops
-- `ConnectTests.cs` - Connection establishment
-- `MutexSlimTests.cs` - Sync primitives
-- `SequenceTests.cs` - ReadOnlySequence ops
+**Sockets (Sockets/, 1 file):**
+- `StreamSendPipeTests.cs` - Stream send loop: flush while a write is pending, coalescing, failure, drain/abort
+
+`BufferWriterTests.cs` (test root) - `BufferWriter` writes, `ReleaseTo`, `Deallocate`
+`AsyncMutexTests.cs` (test root) - Write lock: try-enter, FIFO hand-over without barging, cancellation, stale/double release, waiter reuse, mutual exclusion under 16 workers
+`CreditGateTests.cs` (test root) - Credit gate: waiters served first and in queue order, timeout, cancellation, close, waiter reuse, concurrent stress
 
 **Metrics (Metrics/):**
 - `MetricsRecorder.cs` - Test `IMeterFactory` with a private meter and a `MeterListener`; `Events()` for counters, `Observe()`/`ObserveSum()` collect observable instruments (sets `RefreshInterval = 0`)

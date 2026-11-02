@@ -183,7 +183,9 @@ Ignore an `Abort` for an unknown key, since it can race with completion. Dispose
 
 - Each side advertises `InvocationCredits` in its greeting. The caller decrements a counter per invocation sent,
   including fire-and-forget calls and large-argument `Start`s. At zero, the caller waits locally (cancellable)
-  for credit.
+  for credit, in FIFO order (`CreditGate`). A waiting call parks a pooled waiter; it allocates a cancellation
+  registration only for a cancelable token and a timer only for a timeout (the router's `ProgressTimeout`). The
+  session closes the gate when it ends, which ends the waits.
 - The receiver queues invocations without waiting. It returns credit with a coalesced `InvocationCredit[+n]` when
   an invocation is dequeued for execution, not when it finishes.
 - Execution concurrency (`MaxConcurrentConnectionInvocations`) is local and is not advertised.
@@ -215,6 +217,14 @@ The read loop awaits only `PipeReader.ReadAsync` on the transport. Specifically:
 - Large messages and pipe data take `_writeMutex` once per frame.
 - Pipe writes send every chunk the granted credit allows, and flush the transport once per pipe flush rather than
   once per chunk.
+- Every transport's output is a pipe drained by a send loop (`StreamSendPipe`): over a `NetworkStream` for TCP and
+  UDS, over the transport stream for TLS, QUIC, HttpSocket and WebSocket. A flush completes once the frame is in the pipe and
+  the pipe is below `SendSessionPipeOptions`' pause threshold, not when the stream write completes, so the write
+  mutex is not held across a network write. The send loop copies the segments of one read into one write (up to
+  1 MiB, buffer rented per batch), so frames queued during a write go out together (one socket send, TLS record run,
+  QUIC send or WebSocket message). The limit must exceed a frame: a frame split across writes leaves the peer
+  waiting for its tail (a 64 KiB limit halved TCP/UDS pipe throughput). A
+  graceful close waits up to 2 s for buffered data to reach the stream; an abortive close drops it.
 
 ### 5.3 Timeouts
 

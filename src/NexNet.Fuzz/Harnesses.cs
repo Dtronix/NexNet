@@ -1,5 +1,4 @@
 using System.Buffers;
-using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
 using NexNet.Pipes;
 using NexNet.Serialization;
@@ -153,10 +152,7 @@ public static class Harnesses
             var list = new List<FuzzOrder>();
             for (var i = 0; i < data.Length; i += chunk)
             {
-                var writer = BufferWriter<byte>.Create();
-                writer.Write(data.AsSpan(i, Math.Min(chunk, data.Length - i)));
-                using (var buffer = writer.Flush())
-                    pipeReader.BufferData(buffer);
+                pipeReader.BufferData(new ReadOnlySequence<byte>(data, i, Math.Min(chunk, data.Length - i)));
 
                 // Decode whatever is complete without waiting; an incomplete item stays buffered for the next chunk.
                 list.Clear();

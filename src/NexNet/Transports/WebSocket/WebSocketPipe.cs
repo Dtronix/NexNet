@@ -4,6 +4,7 @@ using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipelines;
 using NexNet.Logging;
 
 namespace NexNet.Transports.WebSocket;
@@ -21,7 +22,7 @@ internal class WebSocketPipe : IWebSocketPipe
 
     readonly CancellationTokenSource _disposeCancellation = new CancellationTokenSource();
     readonly Pipe _inputPipe;
-    readonly PipeWriter _outputWriter;
+    readonly StreamSendPipe _sendPipe;
 
     readonly System.Net.WebSockets.WebSocket _webSocket;
     readonly WebSocketPipeOptions _options;
@@ -39,14 +40,15 @@ internal class WebSocketPipe : IWebSocketPipe
         this._webSocket = webSocket;
         this._options = options;
         _inputPipe = new Pipe(options.InputPipeOptions);
-        _outputWriter = PipeWriter.Create(new WebSocketStream(webSocket, config));
+        // Each stream write is one binary message; the send pipe coalesces queued frames into fewer messages.
+        _sendPipe = new StreamSendPipe(new WebSocketStream(webSocket, config), config.SendSessionPipeOptions);
     }
 
     bool IsClient => _webSocket is ClientWebSocket;
 
     public PipeReader Input => _inputPipe.Reader;
 
-    public PipeWriter Output => _outputWriter;
+    public PipeWriter Output => _sendPipe.Writer;
 
     public WebSocketCloseStatus? CloseStatus => _webSocket.CloseStatus;
 
@@ -81,6 +83,10 @@ internal class WebSocketPipe : IWebSocketPipe
 
         // NOTE: invoking these more than once is no-op.
         await _inputPipe.Reader.CompleteAsync().ConfigureAwait(false);
+
+        // If the output was completed (graceful close), let the send loop write what was flushed before the close
+        // frame; otherwise stop it.
+        await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
 
         if (_options.CloseWhenCompleted || closeStatus != null)
             await CloseAsync(closeStatus ?? WebSocketCloseStatus.NormalClosure, closeStatusDescription ?? "").ConfigureAwait(false);
@@ -173,6 +179,7 @@ internal class WebSocketPipe : IWebSocketPipe
 
     public void Dispose()
     {
+        _sendPipe.Abort();
         _disposeCancellation.Cancel();
         _webSocket.Dispose();
     }

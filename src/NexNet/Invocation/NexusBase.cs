@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
 using NexNet.Collections.Lists;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -272,7 +271,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
 
         var bufferWriterCache = requestArgs.SessionContext.PoolManager.BufferWriterPool;
         if (!bufferWriterCache.TryTake(out var bufferWriter))
-            bufferWriter = BufferWriter<byte>.Create();
+            bufferWriter = BufferWriter.Create();
 
         try
         {
@@ -292,7 +291,7 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
                 return;
             }
 
-            Sequence<byte>? bufferResult = null;
+            ReadOnlySequence<byte>? bufferResult = null;
             // If the length is zero, there is no return value.
             if (bufferWriter.Length == 0)
             {

@@ -7,86 +7,51 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Internal;
 
 namespace NexNet.Internals.Pipelines.Buffers;
 
 /// <summary>
-/// Represents a <typeparamref name="T"/> with lifetime management over the data
+/// An <see cref="IBufferWriter{T}"/> over a chain of reference-counted segments rented from an array pool
+/// (<see cref="ArrayPool{T}.Shared"/> unless a test passes its own). The buffered data is read as a <see cref="ReadOnlySequence{T}"/>
+/// (<see cref="GetBuffer"/>); consumed data is returned to the pool from the head (<see cref="ReleaseTo(int)"/>,
+/// <see cref="ReleaseTo(SequencePosition)"/>, <see cref="Deallocate"/>) while writing continues at the tail.
 /// </summary>
-internal readonly struct Owned<T> : IDisposable
+/// <remarks>
+/// Derived from Pipelines.Sockets.Unofficial (MIT, Marc Gravell; see LICENSE in this folder), reduced to bytes and
+/// <see cref="ReadOnlySequence{T}"/>.
+/// </remarks>
+internal sealed class BufferWriter : IDisposable, IBufferWriter<byte>
 {
-    private readonly Action<T> _onDispose;
-    private readonly T _value;
-    /// <summary>
-    /// The data represented by this value
-    /// </summary>
-    public T Value
+    private const int DefaultBlockSize = 8 * 1024;
+
+    private readonly int _blockSize;
+    private readonly ArrayPool<byte> _arrayPool;
+
+    // Released segments are reused by this writer.
+    private readonly ConcurrentBag<RefCountedSegment> _segmentPool = new();
+
+    private RefCountedSegment _head, _tail, _final;
+    private int _headOffset, _tailOffset, _tailRemaining;
+
+    private BufferWriter(ArrayPool<byte> arrayPool, int blockSize)
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => _value;
+        if (blockSize <= 0) Throw.ArgumentOutOfRange(nameof(blockSize));
+        _arrayPool = arrayPool ?? throw new ArgumentNullException(nameof(arrayPool));
+        _blockSize = blockSize;
     }
 
     /// <summary>
-    /// Release any resources associated with this value
+    /// Creates a writer renting blocks of at least <paramref name="blockSize"/> bytes (default 8 KiB) from
+    /// <see cref="ArrayPool{T}.Shared"/>.
     /// </summary>
-    public void Dispose() => _onDispose?.Invoke(Value);
+    public static BufferWriter Create(int? blockSize = null) => new(ArrayPool<byte>.Shared, blockSize ?? DefaultBlockSize);
 
     /// <summary>
-    /// Create a new instance with a call-defined lifetime management callback
+    /// Creates a writer renting blocks from <paramref name="arrayPool"/> (tests observe what is rented and returned).
     /// </summary>
-    public Owned(T value, Action<T> onDispose)
-    {
-        _value = value;
-        _onDispose = onDispose;
-    }
-
-    /// <summary>
-    /// Access the underlying data directly
-    /// </summary>
-    /// <param name="value"></param>
-    public static implicit operator T(in Owned<T> value) => value._value;
-    /// <summary>
-    /// Represent an existing value with dummy lifetime management
-    /// </summary>
-    public static implicit operator Owned<T>(in T value) => new Owned<T>(value, null);
-}
-
-/// <summary>
-/// Implements a buffer-writer over arbitrary memory
-/// </summary>
-internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
-{
-    private protected int BlockSize { get; }
-
-    /// <summary>
-    /// Create a new buffer-writer instance that uses a memory pool as the backing store; if the provided pool is null, the shared instance is used
-    /// </summary>
-    public static BufferWriter<T> Create(MemoryPool<T> memoryPool, int? blockSize = null)
-        => new MemoryPoolBufferWriter(memoryPool, blockSize ?? DefaultBlockSize);
-
-    /// <summary>
-    /// Create a new buffer-writer instance that uses an array-pool as the backing store; if the provided pool is null, the shared instance is used
-    /// </summary>
-    public static BufferWriter<T> Create(ArrayPool<T> arrayPool, int? blockSize = null)
-        => new ArrayPoolBufferWriter(arrayPool, blockSize ?? DefaultBlockSize);
-
-    /// <summary>
-    /// Create a new buffer-writer instance that uses an array-pool as the backing store; if the provided pool is null, the shared instance is used
-    /// </summary>
-    public static BufferWriter<T> Create(int? blockSize = null) => Create(ArrayPool<T>.Shared, blockSize);
-
-    const int DefaultBlockSize = 8 * 1024; // we can change the internal default without breaking the API
-
-    /// <summary>
-    /// Get the writer used to append data to this instance
-    /// </summary>
-    public IBufferWriter<T> Writer
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get => this;
-    }
+    internal static BufferWriter Create(ArrayPool<byte> arrayPool, int? blockSize = null)
+        => new(arrayPool, blockSize ?? DefaultBlockSize);
 
     /// <summary>
     /// Gets the amount of data buffered by the writer
@@ -94,29 +59,15 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
     public long Length => _head is null ? 0 :
         _tail.RunningIndex + _tailOffset - (_head.RunningIndex + _headOffset);
 
-#pragma warning disable IDE0069
-    // field never disposed - not needed, this is just 
-    // from IMemoryOwner<T> on segment; see also DiscardChain
-    private RefCountedSegment _head, _tail, _final;
-#pragma warning restore IDE0069
-
-    private int _headOffset, _tailOffset, _tailRemaining;
-
-    private protected BufferWriter(int blockSize)
-    {
-        if (blockSize <= 0) Throw.ArgumentOutOfRange(nameof(blockSize));
-        BlockSize = blockSize;
-    }
-
     /// <summary>
     /// Release all resources associate with this instance
     /// </summary>
-    public virtual void Dispose() => DiscardChain();
+    public void Dispose() => Reset();
 
     /// <summary>
     /// Release all resources associate with this instance and reset it to its initial state.
     /// </summary>
-    public virtual void Reset()
+    public void Reset()
     {
         // release anything that is in the pending buffer
         var node = _head;
@@ -124,102 +75,43 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         _tailRemaining = _tailOffset = _headOffset = 0;
         while (node is not null)
         {
-            var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
-            node.Release();
-            node = next;
-        }
-    }
-
-    private void DiscardChain()
-    {
-        // release anything that is in the pending buffer
-        var node = _head;
-        _head = _tail = _final = null;
-        _tailRemaining = _tailOffset = _headOffset = 0;
-        while (node is not null)
-        {
-            var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
+            var next = node.NextSegment; // need to do this *first*, since Release nukes it
             node.Release();
             node = next;
         }
     }
 
     /// <summary>
-    /// Gets the currently buffered data as a sequence of read-write buffer-segments
+    /// Gets the currently buffered data.
     /// </summary>
-    public Sequence<T> GetBuffer()
+    public ReadOnlySequence<byte> GetBuffer()
     {
         // is it a trivial sequence? (this includes the null case)
         if (ReferenceEquals(_head, _tail) && _tailOffset == _headOffset) return default;
 
-        // create a new sequence from the current chain
-        var value = new Sequence<T>(_head, _tail, _headOffset, _tailOffset);
-        return value.IsEmpty ? default : value;
-    }
-
-    /*
-    /// <summary>
-    /// Get the logical start of the committed data
-    /// </summary>
-    public SequencePosition Start => _head is null ? default : new SequencePosition(_head, _headOffset);
-
-    /// <summary>
-    /// Get the logical end of the committed data
-    /// </summary>
-    public SequencePosition End => _head is null ? default : new SequencePosition(_tail, _tailOffset);
-    */
-
-    /// <summary>
-    /// Gets some subset of the currently buffered data as a sequence of read-only buffer-segments (with lifetime management); you
-    /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
-    /// that can be fetched by the next call to <c>Flush</c>
-    /// </summary>
-    public Owned<ReadOnlySequence<T>> Flush(long count)
-    {
-        if (count < 0) Throw.ArgumentOutOfRange(nameof(count));
-        return FlushImpl(count);
+        return new ReadOnlySequence<byte>(_head, _headOffset, _tail, _tailOffset);
     }
 
     /// <summary>
-    /// Gets the currently buffered data as a sequence of read-only buffer-segments (with lifetime management); you
-    /// can continue to append data after calling <c>Flush</c> - any additional data will form a new payload
-    /// that can be fetched by the next call to <c>Flush</c>
+    /// Releases <paramref name="value"/>, a sequence returned by <see cref="GetBuffer"/>, once it is no longer
+    /// needed: the head moves to its end, and its segments are returned to the pool. Data written after
+    /// <see cref="GetBuffer"/> stays buffered.
     /// </summary>
-    public Owned<ReadOnlySequence<T>> Flush() => FlushImpl(-1);
-
-    private Owned<ReadOnlySequence<T>> FlushImpl(long count)
-    {
-        if (count == 0) return default;
-
-        var value = GetBuffer();
-        if (count > 0) value = value.Slice(0, count);
-        else if (value.IsEmpty) return default; // "all of nothing"
-        var end = value.End;
-
-        _head = (RefCountedSegment)end.GetObject();
-        _headOffset = end.GetInteger();
-        // we have some capacity left in the head; we'll keep that one, so:
-        // increment the tail and continue from there
-        // this is a short-cut for:
-        // - AddRef on all the elements in the result
-        // - Release on everything in the old chain *except* the new head (if it will be shared)
-        if (_headOffset != 0) _head.AddRef();
-
-        return new Owned<ReadOnlySequence<T>>(value, RefCountedSegment.s_Release);
-    }
-
-    /// <summary>
-    /// Deallocates the passed sequence. This is beneficial when utilizing 
-    /// the <see cref="GetBuffer"/> method and when the sequence is no longer needed.
-    /// </summary>
-    /// <param name="value">The sequence to be flushed and disposed.</param>
-    public void Deallocate(in Sequence<T> value)
+    public void Deallocate(in ReadOnlySequence<byte> value)
     {
         if (value.IsEmpty) return; // "all of nothing"
-        var end = value.End;
 
-        _head = (RefCountedSegment)end.GetObject();
-        _headOffset = end.GetInteger();
+        // An end at the very end of a segment that has a successor is the start of that successor.
+        var endSegment = (RefCountedSegment)value.End.GetObject();
+        var endOffset = value.End.GetInteger();
+        if (endOffset == endSegment.Length && endSegment.NextSegment is not null)
+        {
+            endSegment = endSegment.NextSegment;
+            endOffset = 0;
+        }
+
+        _head = endSegment;
+        _headOffset = endOffset;
         // we have some capacity left in the head; we'll keep that one, so:
         // increment the tail and continue from there
         // this is a short-cut for:
@@ -264,15 +156,18 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
 
             // This node has entirely been used.  Release the data.
             count -= node.Length;
-            var next = node.Next;
+            var next = node.NextSegment;
             node.Release();
-            node = Unsafe.As<RefCountedSegment>(next);
+            node = next;
         } while (node is not null);
 
         _head = node;
         _headOffset = count;
     }
 
+    /// <summary>
+    /// Releases the data before <paramref name="position"/>, a position in a sequence from <see cref="GetBuffer"/>.
+    /// </summary>
     public void ReleaseTo(SequencePosition position)
     {
         if (position.GetObject() is not RefCountedSegment target)
@@ -286,9 +181,9 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
                 break;
 
             // This node has entirely been used.  Release the data.
-            var next = node.Next;
+            var next = node.NextSegment;
             node.Release();
-            node = Unsafe.As<RefCountedSegment>(next);
+            node = next;
         }
 
         _head = node;
@@ -330,7 +225,7 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         while (node is not null)
         {
             sb.Append(node.RefCount).Append('/');
-            node = (RefCountedSegment)node.Next;
+            node = node.NextSegment;
         }
         return sb.ToString();
     }
@@ -339,18 +234,18 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
     {
         // consume the current node
         count -= _tailRemaining;
-        var node = _tail.Next;
+        var node = _tail.NextSegment;
 
         // consume nodes until the required data fits
         while (node is not null & count > node.Length)
         {
             count -= node.Length;
-            node = node.Next;
+            node = node.NextSegment;
         }
         if (node is null) Throw.ArgumentOutOfRange(nameof(count));
 
         // consume part of the final node
-        _tail = (RefCountedSegment)node;
+        _tail = node;
         _tailOffset = count;
         _tailRemaining = node.Length - count;
     }
@@ -359,61 +254,24 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
     /// Access a contiguous write buffer
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Span<T> GetSpan(int sizeHint)
+    public Span<byte> GetSpan(int sizeHint)
     {
         sizeHint = Math.Max(sizeHint, 1);
-        return _tailRemaining >= sizeHint ? _tail.Memory.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
+        return _tailRemaining >= sizeHint ? _tail.WritableMemory.Span.Slice(_tailOffset) : GetMemorySlow(sizeHint).Span;
     }
 
     /// <summary>
     /// Access a contiguous write buffer
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Memory<T> GetMemory(int sizeHint)
+    public Memory<byte> GetMemory(int sizeHint)
     {
         sizeHint = Math.Max(sizeHint, 1);
-        return _tailRemaining >= sizeHint ? _tail.Memory.Slice(_tailOffset) : GetMemorySlow(sizeHint);
-    }
-
-    /// <summary>
-    /// Access a non-contiguous write buffer
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Sequence<T> GetSequence(int sizeHint)
-    {
-        sizeHint = Math.Max(sizeHint, 1);
-        long availableLength;
-        if (_final is null)
-        {
-            availableLength = 0;
-        }
-        else
-        {
-            var seq = new Sequence<T>(_tail, _final, _tailOffset, _final.Length);
-            availableLength = seq.Length;
-            if (availableLength >= sizeHint) return seq;
-        }
-        return GetSequenceSlow((int)(sizeHint - availableLength));
-    }
-
-    private Sequence<T> GetSequenceSlow(int extraSpaceNeeded)
-    {
-        do
-        {
-            _final = CreateNewSegment(_final, BlockSize);
-            if (_head is null)
-            {
-                _head = _tail = _final;
-                _tailOffset = 0;
-                _tailRemaining = _tail.Length;
-            }
-            extraSpaceNeeded -= _final.Length;
-        } while (extraSpaceNeeded > 0);
-        return new Sequence<T>(_tail, _final, _tailOffset, _final.Length);
+        return _tailRemaining >= sizeHint ? _tail.WritableMemory.Slice(_tailOffset) : GetMemorySlow(sizeHint);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private Memory<T> GetMemorySlow(int sizeHint)
+    private Memory<byte> GetMemorySlow(int sizeHint)
     {
         Debug.Assert(sizeHint > _tailRemaining, "shouldn't have called slow impl");
 
@@ -421,14 +279,14 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         _tail?.Trim(_tailOffset);
         var wasHead = ReferenceEquals(_tail, _head);
 
-        var next = (RefCountedSegment)_tail?.Next;
+        var next = _tail?.NextSegment;
         if (next is not null)
         {   // we already have an onwards chain
             _tail = next;
         }
         else
         {   // rent new block in the chain
-            _final = _tail = CreateNewSegment(_final, Math.Max(sizeHint, BlockSize));
+            _final = _tail = CreateNewSegment(_final, Math.Max(sizeHint, _blockSize));
         }
 
         if (_head is null) { _head = _tail; }
@@ -436,58 +294,139 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         {
             // the old head had capacity that we couldn't use and was trimmed; we can
             // release the old head and start from the next - this avoids starting with
-            // a zero-length segment, which could cause leaks because Sequence<T>
-            // *rolls forwards over them* and they would therefore never get released
+            // a zero-length segment, which would never be released when sequences
+            // roll forwards over it
             var oldHead = _head;
-            _head = (RefCountedSegment)oldHead.Next;
+            _head = oldHead.NextSegment;
             _headOffset = 0;
             oldHead.Release();
         }
         _tailOffset = 0;
         _tailRemaining = _tail.Length;
 
-        return _tail.Memory;
+        return _tail.WritableMemory;
     }
 
-    private protected abstract RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size);
-
-    internal abstract partial class RefCountedSegment : SequenceSegment<T>
+    private RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
     {
+        var array = _arrayPool.Rent(size);
+        if (!_segmentPool.TryTake(out var segment))
+            return new RefCountedSegment(_segmentPool, _arrayPool, array, previous);
+
+        segment.Setup(array, previous);
+        return segment;
+    }
+
+    /// <summary>
+    /// A segment over an array rented from the writer's array pool, returned to it when the last reference is
+    /// released.
+    /// </summary>
+    internal sealed class RefCountedSegment : ReadOnlySequenceSegment<byte>
+    {
+        private readonly ConcurrentBag<RefCountedSegment> _segmentPool;
+        private readonly ArrayPool<byte> _arrayPool;
         private int _count;
-        internal static readonly Action<ReadOnlySequence<T>> s_Release = value => Release(value);
+
+        public RefCountedSegment(ConcurrentBag<RefCountedSegment> segmentPool, ArrayPool<byte> arrayPool, byte[] array,
+            RefCountedSegment previous)
+        {
+            _segmentPool = segmentPool;
+            _arrayPool = arrayPool;
+            Setup(array, previous);
+        }
 
         internal int RefCount => Volatile.Read(ref _count);
 
-        internal static void Release(ReadOnlySequence<T> value)
+        /// <summary>
+        /// Length of this segment's memory.
+        /// </summary>
+        public int Length
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get;
+            private set;
+        }
+
+        /// <summary>
+        /// The next segment of the chain, or null.
+        /// </summary>
+        public RefCountedSegment NextSegment
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => Unsafe.As<RefCountedSegment>(Next);
+        }
+
+        /// <summary>
+        /// The segment's memory, writable: the buffer writer writes into it.
+        /// </summary>
+        public Memory<byte> WritableMemory
+        {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => MemoryMarshal.AsMemory(Memory);
+        }
+
+        public void Setup(byte[] array, RefCountedSegment previous)
+        {
+            if (previous is not null)
+            {
+                if (previous.Next is not null) Throw.InvalidOperation("The previous segment already has an onwards chain");
+                previous.Next = this;
+                RunningIndex = previous.RunningIndex + previous.Length;
+            }
+            else
+            {
+                RunningIndex = 0;
+            }
+
+            SetMemory(array);
+            _count = 1;
+        }
+
+        private void SetMemory(Memory<byte> memory)
+        {
+            Memory = memory;
+            Length = memory.Length;
+        }
+
+        /// <summary>
+        /// Shortens the segment to <paramref name="length"/> and moves the running index of later segments back.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal void Trim(int length)
+        {
+            long delta = Length - length;
+            if (delta < 0) Throw.ArgumentOutOfRange(nameof(length));
+            else if (delta != 0)
+            {
+                SetMemory(WritableMemory.Slice(0, length));
+                // fixup the running index of any later segments
+                var node = NextSegment;
+                while (node is not null)
+                {
+                    node.RunningIndex -= delta;
+                    node = node.NextSegment;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Releases one reference to every segment of <paramref name="value"/>.
+        /// </summary>
+        internal static void Release(ReadOnlySequence<byte> value)
         {
             if (value.IsEmpty) return;
 
             var start = value.Start;
             var len = value.Length + start.GetInteger(); // we'll be counting the full length of every segment, including the first
-            var node = value.Start.GetObject() as RefCountedSegment;
+            var node = start.GetObject() as RefCountedSegment;
 
             while (len > 0 & node is not null)
             {
                 len -= node.Length;
-                var next = (RefCountedSegment)node.Next; // need to do this *first*, since Release nukes it
+                var next = node.NextSegment; // need to do this *first*, since Release nukes it
                 node.Release();
                 node = next;
             }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        protected RefCountedSegment(Memory<T> memory, RefCountedSegment previous)
-            : base(memory, previous)
-        {
-            _count = 1;
-            IncrLiveCount();
-        }
-
-        public void Setup(Memory<T> memory, RefCountedSegment previous)
-        {
-            base.Setup(memory, previous);
-            _count = 1;
-            IncrLiveCount();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -495,127 +434,19 @@ internal abstract partial class BufferWriter<T> : IDisposable, IBufferWriter<T>
         {
             if (Volatile.Read(ref _count) > 0 && Interlocked.Decrement(ref _count) == 0)
             {
-                DecrLiveCount();
-                DetachNext(); // break the chain, in case of dangling references
-                ReleaseImpl();
-                Memory = default;
+                Next = null; // break the chain, in case of dangling references
+                if (MemoryMarshal.TryGetArray(Memory, out var segment) && segment.Array is not null)
+                    _arrayPool.Return(segment.Array);
+                SetMemory(default);
+                _segmentPool.Add(this);
             }
         }
-
-        static partial void IncrLiveCount();
-        static partial void DecrLiveCount();
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void AddRef()
         {
             if (Volatile.Read(ref _count) == 0) Throw.ObjectDisposed(nameof(RefCountedSegment));
             Interlocked.Increment(ref _count);
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        protected abstract void ReleaseImpl();
-    }
-
-
-    internal sealed class MemoryPoolBufferWriter : BufferWriter<T>
-    {
-        private MemoryPool<T> _memoryPool;
-        private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
-        {
-            if (size > _memoryPool.MaxBufferSize)
-            {
-                // caller is requesting an over-sized buffer; we'll have to use a fallback
-                return ArrayPoolBufferWriter.CreateNewSegment(ArrayPool<T>.Shared, previous, size);
-            }
-
-            var owner = _memoryPool.Rent(BlockSize);
-            return new MemoryPoolRefCountedSegment(owner, previous);
-        }
-
-
-        public MemoryPoolBufferWriter(MemoryPool<T> memoryPool, int blockSize)
-            : base(Math.Min(memoryPool.MaxBufferSize, blockSize))
-        {
-            _memoryPool = memoryPool ?? MemoryPool<T>.Shared;
-        }
-
-        public override void Dispose()
-        {
-            _memoryPool = null;
-            base.Dispose();
-        }
-
-        private sealed class MemoryPoolRefCountedSegment : RefCountedSegment
-        {
-            private readonly IMemoryOwner<T> _memoryOwner;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public MemoryPoolRefCountedSegment(IMemoryOwner<T> memoryOwner, RefCountedSegment previous)
-                : base(memoryOwner.Memory, previous)
-                => _memoryOwner = memoryOwner;
-
-            protected override void ReleaseImpl() => _memoryOwner.Dispose();
-        }
-    }
-
-    internal sealed class ArrayPoolBufferWriter : BufferWriter<T>
-    {
-        private ArrayPool<T> _arrayPool;
-
-        private readonly ConcurrentBag<ArrayPoolRefCountedSegment> _segmentPool = new();
-        private protected override RefCountedSegment CreateNewSegment(RefCountedSegment previous, int size)
-        {
-            var array = _arrayPool.Rent(size);
-            if (!_segmentPool.TryTake(out var segment))
-                return new ArrayPoolRefCountedSegment(_segmentPool, _arrayPool, array, previous);
-
-            segment.Setup(array, previous);
-            return segment;
-
-        }
-
-        internal static RefCountedSegment CreateNewSegment(ArrayPool<T> arrayPool, RefCountedSegment previous, int size)
-        {
-            var array = arrayPool.Rent(size);
-            return new ArrayPoolRefCountedSegment(null, arrayPool, array, previous);
-        }
-
-        public ArrayPoolBufferWriter(ArrayPool<T> arrayPool, int blockSize)
-            : base(blockSize)
-        {
-            _arrayPool = arrayPool ?? ArrayPool<T>.Shared;
-        }
-
-        public override void Dispose()
-        {
-            _arrayPool = null;
-            base.Dispose();
-        }
-        public override void Reset()
-        {
-            base.Reset();
-        }
-
-        private sealed class ArrayPoolRefCountedSegment : RefCountedSegment
-        {
-            private readonly ConcurrentBag<ArrayPoolRefCountedSegment> _segmentPool;
-
-            private readonly ArrayPool<T> _arrayPool;
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public ArrayPoolRefCountedSegment(ConcurrentBag<ArrayPoolRefCountedSegment> segmentPool, ArrayPool<T> arrayPool, Memory<T> memory, RefCountedSegment previous)
-                : base(memory, previous)
-            {
-                _segmentPool = segmentPool;
-                _arrayPool = arrayPool;
-            }
-
-            protected override void ReleaseImpl()
-            {
-                T[] arr;
-                if (MemoryMarshal.TryGetArray<T>(Memory, out var segment) && (arr = segment.Array) is not null)
-                    _arrayPool.Return(arr);
-
-                _segmentPool?.Add(this);
-            }
         }
     }
 }

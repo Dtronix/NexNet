@@ -13,6 +13,7 @@ interface IServerNexus
 {
     ValueTask InvocationNoArgument();
     ValueTask InvocationUnmanagedArgument(int argument);
+    void InvocationFireAndForget(int argument);
     ValueTask InvocationUnmanagedMultipleArguments(int argument1, long argument2, ushort argument3, ulong argument4, double argument5);
     ValueTask<int> InvocationNoArgumentWithResult();
 
@@ -48,6 +49,10 @@ partial class ServerNexus
     public ValueTask InvocationUnmanagedArgument(int argument)
     {
         return ValueTask.CompletedTask;
+    }
+
+    public void InvocationFireAndForget(int argument)
+    {
     }
 
     public ValueTask InvocationUnmanagedMultipleArguments(

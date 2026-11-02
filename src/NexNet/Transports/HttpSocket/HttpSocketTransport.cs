@@ -95,7 +95,7 @@ internal class HttpSocketTransport : ITransport
             // ReSharper disable once MethodSupportsCancellation
             var connectedStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
 
-            var pipe = new HttpSocketDuplexPipe(connectedStream, false);
+            var pipe = new HttpSocketDuplexPipe(connectedStream, false, config.SendSessionPipeOptions);
 
             return new HttpSocketTransport(pipe, response, connector);
         }

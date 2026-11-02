@@ -20,7 +20,7 @@ public class PipeThroughputBenchmarks
     [Params(1, 64)]
     public int SizeMiB { get; set; }
 
-    [Params(BenchTransport.Uds, BenchTransport.Tcp)]
+    [Params(BenchTransport.Uds, BenchTransport.Tcp, BenchTransport.TcpTls, BenchTransport.Quic)]
     public BenchTransport Transport { get; set; }
 
     [GlobalSetup]

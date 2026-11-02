@@ -27,7 +27,7 @@ internal class PoolManager
     /// <summary>
     /// Pool for buffer writers.
     /// </summary>
-    public readonly ConcurrentBag<BufferWriter<byte>> BufferWriterPool = new();
+    public readonly ConcurrentBag<BufferWriter> BufferWriterPool = new();
 
     private readonly IPooledMessage?[] _messagePools = new IPooledMessage?[50];
 

@@ -4,7 +4,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Internals;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Threading;
 using NexNet.Logging;
@@ -16,7 +15,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 {
     private readonly IPipeStateManager _stateManager;
 
-    private readonly BufferWriter<byte> _bufferWriter = BufferWriter<byte>.Create(1024 * 64);
+    private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 64);
     private bool _isCanceled;
     private bool _isCompleted;
     private CancellationTokenSource? _flushCts;

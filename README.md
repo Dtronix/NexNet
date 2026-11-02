@@ -151,7 +151,7 @@ Platform=X64  Runtime=.NET 9.0
 ## Dependencies
 
 - No external serializer: NexNet includes its own [MessagePack](https://msgpack.org) serializer (`NexNet.Serialization`).
-- Internally packages Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) with additional performance modifications for pipeline socket transports.
+- The internal pooled buffer writer is derived from Marc Gravell's [Pipelines.Sockets.Unofficial](https://github.com/Dtronix/Pipelines.Sockets.Unofficial/tree/nexnet-v1) (MIT).
 - QUIC transport requires `libmsquic` on Linux. [Windows Support](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview)
 
 ---

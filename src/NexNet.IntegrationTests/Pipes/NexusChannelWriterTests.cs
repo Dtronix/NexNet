@@ -16,7 +16,7 @@ internal class NexusChannelWriterTests
         var messenger = new DummySessionMessenger();
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue).WithCredit();
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
-        var bufferWriter = BufferWriter<byte>.Create();
+        var bufferWriter = BufferWriter.Create();
         var baseObject = ComplexMessage.Random();
         messenger.OnMessageSent = (type, header, body) =>
         {
@@ -37,7 +37,7 @@ internal class NexusChannelWriterTests
         var messenger = new DummySessionMessenger();
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, 1).WithCredit();
         var writer = new NexusChannelWriter<ComplexMessage>(nexusPipeWriter);
-        var bufferWriter = BufferWriter<byte>.Create();
+        var bufferWriter = BufferWriter.Create();
         var baseObject = ComplexMessage.Random();
         messenger.OnMessageSent = (type, header, body) =>
         {

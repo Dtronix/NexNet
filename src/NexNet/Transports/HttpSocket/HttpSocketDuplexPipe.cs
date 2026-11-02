@@ -5,6 +5,7 @@ using System.IO.Pipelines;
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Internals.Pipelines;
 
 namespace NexNet.Transports.HttpSocket;
 
@@ -15,6 +16,7 @@ namespace NexNet.Transports.HttpSocket;
 public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
 {
     private readonly Stream? _stream;
+    private readonly StreamSendPipe _sendPipe;
     readonly PipeReader _inputPipe;
     readonly PipeWriter _outputPipe;
     private readonly TaskCompletionSource? _pipeClosedTcs;
@@ -32,31 +34,45 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
     /// <param name="isServer">Set to true if this is a server pipe.</param>
     /// <exception cref="ArgumentNullException">Throws if the stream is null.</exception>
     public HttpSocketDuplexPipe(Stream stream, bool isServer)
+        : this(stream, isServer, null)
     {
+    }
+
+    /// <summary>
+    /// Creates a HttpSocket duplex pipe from a stream, with the options of the send pipe.
+    /// </summary>
+    /// <param name="stream">Stream to wrap into a duplex pipe.</param>
+    /// <param name="isServer">Set to true if this is a server pipe.</param>
+    /// <param name="sendPipeOptions">Options of the pipe buffering output ahead of the stream; null uses
+    /// <see cref="PipeOptions.Default"/>.</param>
+    internal HttpSocketDuplexPipe(Stream stream, bool isServer, PipeOptions? sendPipeOptions)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
         Debug.Assert(stream.CanWrite);
         Debug.Assert(stream.CanRead);
         _stream = stream;
+        _sendPipe = new StreamSendPipe(stream, sendPipeOptions);
         if (isServer)
         {
-            _inputPipe = new NotifiedCompletePipeReader(this, stream ?? throw new ArgumentNullException(nameof(stream)));
-            //_inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)), new StreamPipeReaderOptions(leaveOpen: true));
-            _outputPipe = new NotifiedCompletePipeWriter(this, stream);
-            //_outputPipe = PipeWriter.Create(stream);
+            _inputPipe = new NotifiedCompletePipeReader(this, stream);
+            _outputPipe = new NotifiedCompletePipeWriter(this, _sendPipe.Writer);
             _pipeClosedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         else
         {
-            _inputPipe = PipeReader.Create(stream ?? throw new ArgumentNullException(nameof(stream)),
-                new StreamPipeReaderOptions(leaveOpen: true));
-            _outputPipe = PipeWriter.Create(stream);
+            _inputPipe = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+            _outputPipe = _sendPipe.Writer;
         }
     }
-    
+
     /// <summary>
     /// Completes the connection and each input and output pipe.
     /// </summary>
     public async ValueTask CompleteAsync()
     {
+        // If the output was completed (graceful close), let the send loop write what was flushed; otherwise stop it.
+        await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
+
         try
         {
             await _inputPipe.CompleteAsync().ConfigureAwait(false);
@@ -102,10 +118,10 @@ public class HttpSocketDuplexPipe : IDuplexPipe, IAsyncDisposable
         private readonly HttpSocketDuplexPipe _duplexPipe;
         private readonly PipeWriter _pipeWriter;
 
-        public NotifiedCompletePipeWriter(HttpSocketDuplexPipe duplexPipe, Stream stream)
+        public NotifiedCompletePipeWriter(HttpSocketDuplexPipe duplexPipe, PipeWriter pipeWriter)
         {
             _duplexPipe = duplexPipe;
-            _pipeWriter = Create(stream);
+            _pipeWriter = pipeWriter;
         }
         public override void Advance(int bytes)
         {

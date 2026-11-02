@@ -16,37 +16,40 @@ internal class TcpTlsTransport : ITransport
     private readonly NetworkStream _networkStream;
     private readonly SslStream _sslStream;
     private readonly Socket _socket;
+    private readonly StreamSendPipe _sendPipe;
     public PipeReader Input { get; }
-    public PipeWriter Output { get; }
+    public PipeWriter Output => _sendPipe.Writer;
     public string? RemoteAddress { get; }
     public int? RemotePort { get; }
     public X509Certificate2? RemoteCertificate => _sslStream.RemoteCertificate as X509Certificate2;
 
     private TcpTlsTransport(Socket socket, NetworkStream networkStream, SslStream sslStream,
-        string? remoteAddress, int? remotePort)
+        PipeOptions sendPipeOptions, string? remoteAddress, int? remotePort)
     {
         _networkStream = networkStream;
         _sslStream = sslStream;
         _socket = socket;
         Input = PipeReader.Create(sslStream);
-        Output = PipeWriter.Create(sslStream);
+        _sendPipe = new StreamSendPipe(sslStream, sendPipeOptions);
         RemoteAddress = remoteAddress;
         RemotePort = remotePort;
     }
 
-    public ValueTask CloseAsync(bool linger)
+    public async ValueTask CloseAsync(bool linger)
     {
         if (!linger)
         {
+            _sendPipe.Abort();
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
-            return ValueTask.CompletedTask;
+            return;
         }
 
-        _sslStream.Dispose();
-        _networkStream.Dispose();
+        // Let the send loop write what the session flushed before it completed the output.
+        await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
+        await _sslStream.DisposeAsync().ConfigureAwait(false);
+        await _networkStream.DisposeAsync().ConfigureAwait(false);
         _socket.Close();
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -66,7 +69,7 @@ internal class TcpTlsTransport : ITransport
         // Extract remote endpoint
         var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
 
-        return new TcpTlsTransport(socket, networkStream, sslStream, remoteAddress, remotePort);
+        return new TcpTlsTransport(socket, networkStream, sslStream, config.SendSessionPipeOptions, remoteAddress, remotePort);
     }
 
     /// <summary>
@@ -83,7 +86,7 @@ internal class TcpTlsTransport : ITransport
         {
             await socket.ConnectAsync(clientConfig.EndPoint, timeoutCancellation.Token).ConfigureAwait(false);
 
-            SocketConnection.SetRecommendedClientOptions(socket);
+            SocketTransport.SetNoDelay(socket);
 
             var networkStream = new NetworkStream(socket, false);
             var sslStream = new SslStream(networkStream, true);
@@ -97,7 +100,7 @@ internal class TcpTlsTransport : ITransport
 
             var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);
 
-            return new TcpTlsTransport(socket, networkStream, sslStream, remoteAddress, remotePort);
+            return new TcpTlsTransport(socket, networkStream, sslStream, clientConfig.SendSessionPipeOptions, remoteAddress, remotePort);
         }
         catch (SocketException e)
         {

@@ -9,7 +9,6 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using NexNet.Serialization;
 using NexNet.Logging;
-using NexNet.Internals.Pipelines.Arenas;
 using NexNet.Internals.Threading;
 using System.Collections.Generic;
 using NexNet.Diagnostics;
@@ -55,7 +54,7 @@ internal partial class NexusSession<TNexus, TProxy>
             return;
 
         // Released by hand: a large message gives the mutex up to stream its frames (see SendLargeMessage).
-        var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
         var mutexHeld = true;
         try
         {
@@ -146,16 +145,21 @@ internal partial class NexusSession<TNexus, TProxy>
     {
         large = default;
 
-        // An invocation's body length is known up front (from one snapshot of its fields, so the length and the
-        // bytes agree): it is written straight to the output, after its header.
-        if (body is InvocationMessage invocation && _config.InternalOnSend == null)
+        // The body length of an invocation or a result is known up front (from one snapshot of its fields, so the
+        // length and the bytes agree): it is written straight to the output, after its header.
+        if (_config.InternalOnSend == null)
         {
-            var invocationBody = new InvocationBody(invocation);
-            if (invocationBody.Length <= ushort.MaxValue)
+            if (body is InvocationMessage invocation)
             {
-                WriteInvocationFrame(in invocationBody, output);
-                CountSent(1, 3 + invocationBody.Length);
-                return 3 + invocationBody.Length;
+                var invocationBody = new InvocationBody(invocation);
+                if (invocationBody.Length <= ushort.MaxValue)
+                    return WriteDirectFrame(MessageType.Invocation, in invocationBody, output);
+            }
+            else if (body is InvocationResultMessage result)
+            {
+                var resultBody = new InvocationResultBody(result);
+                if (resultBody.Length <= ushort.MaxValue)
+                    return WriteDirectFrame(MessageType.InvocationResult, in resultBody, output);
             }
         }
 
@@ -198,18 +202,24 @@ internal partial class NexusSession<TNexus, TProxy>
     }
 
     /// <summary>
-    /// Writes the frame header for <paramref name="body"/>, then the body, straight to <paramref name="output"/>.
+    /// Writes the frame header for <paramref name="body"/>, then the body, straight to <paramref name="output"/>,
+    /// and returns the frame's length. The body must fit one frame.
     /// </summary>
-    private static void WriteInvocationFrame(in InvocationBody body, PipeWriter output)
+    private int WriteDirectFrame<TBody>(MessageType type, in TBody body, PipeWriter output)
+        where TBody : struct, IFrameBody
     {
         var header = output.GetSpan(3);
-        header[0] = (byte)MessageType.Invocation;
+        header[0] = (byte)type;
         BinaryPrimitives.WriteUInt16LittleEndian(header.Slice(1, 2), (ushort)body.Length);
         output.Advance(3);
 
         var writer = new MsgPackWriter(output);
         body.Write(ref writer);
         writer.Flush();
+
+        var length = 3 + body.Length;
+        CountSent(1, length);
+        return length;
     }
 
     /// <summary>
@@ -226,11 +236,11 @@ internal partial class NexusSession<TNexus, TProxy>
         if (message.Arguments.Length > IInvocationMessage.MaxArgumentSize)
             return Busy();
 
-        if (!_outboundCredits.Wait(0))
+        if (!_outboundCredits.TryTake())
             return Busy();
 
         // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.
-        var mutex = _writeMutex.TryWait(MutexSlim.WaitOptions.NoDelay);
+        var mutex = _writeMutex.TryEnter();
         if (!mutex.Success)
         {
             _outboundCredits.Release();
@@ -306,7 +316,7 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <summary>
     /// Completes a <see cref="TryWriteInvocation{TMessage}"/> whose flush did not complete synchronously.
     /// </summary>
-    private async Task CompleteWriteAsync(ValueTask<FlushResult> flush, MutexSlim.LockToken mutex)
+    private async Task CompleteWriteAsync(ValueTask<FlushResult> flush, AsyncMutex.LockToken mutex)
     {
         try
         {
@@ -548,7 +558,7 @@ internal partial class NexusSession<TNexus, TProxy>
         if (State != ConnectionState.Connected)
             return;
 
-        using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
@@ -746,7 +756,7 @@ internal partial class NexusSession<TNexus, TProxy>
         if (State != ConnectionState.Connected && !force)
             return;
         
-        using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");

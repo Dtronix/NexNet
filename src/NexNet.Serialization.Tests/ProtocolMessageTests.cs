@@ -53,6 +53,31 @@ public class ProtocolMessageTests
     }
 
     [Test]
+    public void InvocationResultBodyLength_MatchesTheSerializedBody()
+    {
+        // Sessions write the frame header from this length before serializing the body, so it must be exact at
+        // every MessagePack integer size boundary, with and without a result.
+        ushort[] ids = [0, 1, 127, 128, 255, 256, 65535];
+        byte[]?[] results = [null, [0xC0], [0x01], new byte[200], new byte[65_000]];
+        results[3]![0] = 0xC4; // bin 8 header byte; the length test does not parse the value
+        results[4]![0] = 0xC5;
+
+        foreach (var id in ids)
+        foreach (InvocationResultMessage.StateType state in Enum.GetValues(typeof(InvocationResultMessage.StateType)))
+        foreach (var result in results)
+        {
+            var message = new InvocationResultMessage
+            {
+                InvocationId = id,
+                State = state,
+                Result = result == null ? null : new ReadOnlySequence<byte>(result)
+            };
+            Assert.That(new InvocationResultBody(message).Length, Is.EqualTo(Body(message).Length),
+                $"id {id}, state {state}, result {result?.Length.ToString() ?? "none"}");
+        }
+    }
+
+    [Test]
     public void ClientGreetingGoldenVector()
     {
         var message = new ClientGreetingMessage
