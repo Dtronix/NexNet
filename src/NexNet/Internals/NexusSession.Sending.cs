@@ -54,7 +54,7 @@ internal partial class NexusSession<TNexus, TProxy>
             return;
 
         // Released by hand: a large message gives the mutex up to stream its frames (see SendLargeMessage).
-        var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
         var mutexHeld = true;
         try
         {
@@ -240,7 +240,7 @@ internal partial class NexusSession<TNexus, TProxy>
             return Busy();
 
         // Held while a send, including its flush, is in progress: a session whose transport is backed up is busy.
-        var mutex = _writeMutex.TryWait(MutexSlim.WaitOptions.NoDelay);
+        var mutex = _writeMutex.TryEnter();
         if (!mutex.Success)
         {
             _outboundCredits.Release();
@@ -316,7 +316,7 @@ internal partial class NexusSession<TNexus, TProxy>
     /// <summary>
     /// Completes a <see cref="TryWriteInvocation{TMessage}"/> whose flush did not complete synchronously.
     /// </summary>
-    private async Task CompleteWriteAsync(ValueTask<FlushResult> flush, MutexSlim.LockToken mutex)
+    private async Task CompleteWriteAsync(ValueTask<FlushResult> flush, AsyncMutex.LockToken mutex)
     {
         try
         {
@@ -558,7 +558,7 @@ internal partial class NexusSession<TNexus, TProxy>
         if (State != ConnectionState.Connected)
             return;
 
-        using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");
@@ -756,7 +756,7 @@ internal partial class NexusSession<TNexus, TProxy>
         if (State != ConnectionState.Connected && !force)
             return;
         
-        using var mutexResult = await _writeMutex.TryWaitAsync(cancellationToken).ConfigureAwait(false);
+        using var mutexResult = await _writeMutex.EnterAsync(cancellationToken).ConfigureAwait(false);
 
         if (mutexResult.Success != true)
             throw new InvalidOperationException("Could not acquire write lock");

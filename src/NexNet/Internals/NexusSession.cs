@@ -47,7 +47,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private PipeReader? _pipeInput;
     private PipeWriter? _pipeOutput;
 
-    private readonly MutexSlim _writeMutex = new MutexSlim(int.MaxValue);
+    private readonly AsyncMutex _writeMutex = new();
     private readonly BufferWriter _bufferWriter = BufferWriter.Create(1024 * 8);
     private readonly byte[] _readBuffer = new byte[8];
 
@@ -447,7 +447,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         // Complete the output under the write lock: PipeWriter is not thread-safe, and invocations may still be
         // sending results. A writer blocked on back pressure is released first so the lock can be taken.
         var output = _pipeOutput;
-        MutexSlim.LockToken writeLock = default;
+        AsyncMutex.LockToken writeLock = default;
         try
         {
             output?.CancelPendingFlush();
@@ -460,7 +460,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         try
         {
             using var lockTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            writeLock = await _writeMutex.TryWaitAsync(lockTimeout.Token).ConfigureAwait(false);
+            writeLock = await _writeMutex.EnterAsync(lockTimeout.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {

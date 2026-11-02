@@ -102,7 +102,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 **Core Session:**
 - `NexusSession.cs` - Central lifecycle: protocol, framing, routing; NnP protocol header [N][n][P][0x14][3 reserved][Version=1] (`_protocolHeader`)
   - Received invocations: `DispatchInvocations` runs each on a pooled `InvocationWorkItem` (`IThreadPoolWorkItem`, local queue) inside the ExecutionContext captured when `StartReadAsync` begins (pinned by `InvocationExecutionContextTests`)
-- `NexusSession.Sending.cs` - Write logic with MutexSlim serialization; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
+- `NexusSession.Sending.cs` - Write logic serialized by `AsyncMutex`; invocations are written header-first straight to the output (`InvocationBody`), others through a staging buffer; streams bodies over one frame; `TryWriteInvocation` writes without waiting
 - `NexusSession.Receiving.cs` - Read loop and message dispatch; `ConfirmProtocol` rejects wrong magic, non-zero reserved bytes or another version with `ProtocolError`
 - `PayloadSerializer.cs` - Serializes user payload values through `NexusFormatterRegistry` for runtime-typed paths (results, collections, broadcasts)
 - `NexusSessionConfigurations.cs` - Immutable session config passed at creation
@@ -182,9 +182,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 
 ### 1.9 Synchronization (src/NexNet/Internals/Threading/)
 
-- `MutexSlim.cs` - Lock-free async mutex; LockToken (sync), PendingLockToken (async)
-- `MutexSlim.LockState.cs` - Lock state management
-- `MutexSlim.AsyncDirectPendingLockSlab.cs` - Efficient async waiting
+- `AsyncMutex.cs` - Session write lock: `TryEnter()` (lock-free, fails if held), `EnterAsync(token)` (short spin, then a pooled FIFO waiter; canceled -> `TaskCanceledException`), `LockToken` (disposing releases; a stale or second release throws). Release hands the lock straight to the next waiter
 
 ### 1.10 Pipes (src/NexNet/Pipes/)
 
@@ -386,13 +384,13 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `WebSocketPipeTests.cs` - Receive completing after the pipe is completed (fake `WebSocket`)
 - `RemoteEndpointTests.cs` - RemoteAddress/RemotePort per transport
 
-**Sockets (Sockets/, 4 files):**
+**Sockets (Sockets/, 3 files):**
 - `ConnectTests.cs` - Connection establishment
-- `MutexSlimTests.cs` - Sync primitives
 - `PipeTests.cs` - Pipe basics
 - `StreamSendPipeTests.cs` - Stream send loop: flush while a write is pending, coalescing, failure, drain/abort
 
 `BufferWriterTests.cs` (test root) - `BufferWriter` writes, `ReleaseTo`, `Deallocate`
+`AsyncMutexTests.cs` (test root) - Write lock: try-enter, FIFO hand-over without barging, cancellation, stale/double release, waiter reuse, mutual exclusion under 16 workers
 `CreditGateTests.cs` (test root) - Credit gate: waiters served first and in queue order, timeout, cancellation, close, waiter reuse, concurrent stress
 
 **Metrics (Metrics/):**
