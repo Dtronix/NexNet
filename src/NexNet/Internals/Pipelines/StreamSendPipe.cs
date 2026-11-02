@@ -12,7 +12,7 @@ namespace NexNet.Internals.Pipelines;
 /// <see cref="Pipe"/>; a send loop writes the pipe's contents to the stream. A flush completes once the data is in the
 /// pipe (below its pause threshold) rather than when the stream write completes, so the session's write mutex is not
 /// held across stream writes, and frames written while a stream write is in progress go out together in the next
-/// one. This is the model <see cref="SocketConnection"/> uses for sockets.
+/// one. The TCP and Unix domain socket transport uses it too, over a NetworkStream.
 /// </summary>
 /// <remarks>
 /// When the stream write fails or the pipe is aborted, the pipe reader is completed, so the session's next flush
@@ -131,11 +131,11 @@ internal sealed class StreamSendPipe
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // Aborted by a close: not an error. As in SocketConnection.
+            // Aborted by a close: not an error.
         }
         catch (ObjectDisposedException)
         {
-            // The transport disposed the stream: not an error. As in SocketConnection.
+            // The transport disposed the stream: not an error.
         }
         catch (IOException e)
         {

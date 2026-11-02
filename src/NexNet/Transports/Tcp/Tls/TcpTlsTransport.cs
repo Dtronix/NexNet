@@ -86,7 +86,7 @@ internal class TcpTlsTransport : ITransport
         {
             await socket.ConnectAsync(clientConfig.EndPoint, timeoutCancellation.Token).ConfigureAwait(false);
 
-            SocketConnection.SetRecommendedClientOptions(socket);
+            SocketTransport.SetNoDelay(socket);
 
             var networkStream = new NetworkStream(socket, false);
             var sslStream = new SslStream(networkStream, true);

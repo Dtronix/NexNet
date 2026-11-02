@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using NexNet.Internals.Pipelines;
 using NexNet.Logging;
 
 namespace NexNet.Transports;
@@ -40,7 +39,7 @@ internal class SocketTransportListener : ITransportListener
         {
             clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
-            SocketConnection.SetRecommendedServerOptions(clientSocket);
+            SocketTransport.SetNoDelay(clientSocket);
             return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
