@@ -94,6 +94,9 @@ internal sealed class SocketTransport : ITransport
         {
             while (true)
             {
+                // The rest of the pipe's current segment (at least 1 byte; segments are 4 KiB by default), as the
+                // vendored SocketConnection read. Larger reads, zero-byte waits and an inline-completing
+                // SocketAsyncEventArgs receive were measured and did not help.
                 var memory = writer.GetMemory(1);
                 var received = await _socket.ReceiveAsync(memory, SocketFlags.None, cancellationToken)
                     .ConfigureAwait(false);

@@ -21,11 +21,15 @@ namespace NexNet.Internals.Pipelines;
 internal sealed class StreamSendPipe
 {
     /// <summary>
-    /// Segments of a multi-segment read are copied into one buffer of up to this size per stream write, so a batch
-    /// of small frames becomes one write (one TLS record run, one QUIC send, one WebSocket message) instead of one per
-    /// pipe segment.
+    /// A multi-segment read is copied into one buffer of its size, up to this many bytes per stream write, so the
+    /// frames buffered during the previous write go out in one write (one socket send, TLS record run, QUIC send or
+    /// WebSocket message) instead of one per pipe segment.
     /// </summary>
-    internal const int CoalesceSize = 64 * 1024;
+    /// <remarks>
+    /// The limit must exceed the largest frame: a frame split across writes leaves the peer waiting for its tail.
+    /// With a 64 KiB limit, 65 KiB pipe frames went out as 64 KiB + ~1.5 KiB and halved TCP/UDS pipe throughput.
+    /// </remarks>
+    internal const int CoalesceSize = 1024 * 1024;
 
     /// <summary>
     /// How long a graceful close waits for buffered data to reach the stream. Real time: it waits on network I/O.
@@ -37,7 +41,6 @@ internal sealed class StreamSendPipe
     private readonly SendWriter _writer;
     private readonly CancellationTokenSource _abort = new();
     private readonly Task _sendLoop;
-    private byte[]? _coalesceBuffer;
 
     /// <param name="stream">Stream the send loop writes to. Not disposed by this class.</param>
     /// <param name="options">Options of the send pipe; its pause threshold bounds the data buffered ahead of the
@@ -149,45 +152,29 @@ internal sealed class StreamSendPipe
         {
             // Completing the reader makes the session's next flush return IsCompleted (or throw the error).
             await reader.CompleteAsync(error).ConfigureAwait(false);
-            if (_coalesceBuffer != null)
-            {
-                ArrayPool<byte>.Shared.Return(_coalesceBuffer);
-                _coalesceBuffer = null;
-            }
         }
     }
 
     private async ValueTask WriteSegmentsAsync(ReadOnlySequence<byte> buffer, CancellationToken cancellationToken)
     {
-        var coalesce = _coalesceBuffer ??= ArrayPool<byte>.Shared.Rent(CoalesceSize);
-        var pending = 0;
-        foreach (var segment in buffer)
+        // Rented per batch and sized to it, so an idle connection holds no send buffer.
+        var size = (int)Math.Min(buffer.Length, CoalesceSize);
+        var coalesce = ArrayPool<byte>.Shared.Rent(size);
+        try
         {
-            // A segment at least as large as the coalescing buffer is written as is.
-            if (pending == 0 && segment.Length >= CoalesceSize)
+            while (!buffer.IsEmpty)
             {
-                await _stream.WriteAsync(segment, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            var remaining = segment;
-            while (!remaining.IsEmpty)
-            {
-                var count = Math.Min(CoalesceSize - pending, remaining.Length);
-                remaining.Span.Slice(0, count).CopyTo(coalesce.AsSpan(pending));
-                pending += count;
-                remaining = remaining.Slice(count);
-
-                if (pending == CoalesceSize)
-                {
-                    await _stream.WriteAsync(coalesce.AsMemory(0, pending), cancellationToken).ConfigureAwait(false);
-                    pending = 0;
-                }
+                var chunk = buffer.Slice(0, Math.Min(buffer.Length, size));
+                chunk.CopyTo(coalesce);
+                await _stream.WriteAsync(coalesce.AsMemory(0, (int)chunk.Length), cancellationToken)
+                    .ConfigureAwait(false);
+                buffer = buffer.Slice(chunk.End);
             }
         }
-
-        if (pending > 0)
-            await _stream.WriteAsync(coalesce.AsMemory(0, pending), cancellationToken).ConfigureAwait(false);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(coalesce);
+        }
     }
 
     /// <summary>
