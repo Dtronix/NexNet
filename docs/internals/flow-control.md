@@ -220,8 +220,10 @@ The read loop awaits only `PipeReader.ReadAsync` on the transport. Specifically:
 - Every transport's output is a pipe drained by a send loop (`StreamSendPipe`): over a `NetworkStream` for TCP and
   UDS, over the transport stream for TLS, QUIC, HttpSocket and WebSocket. A flush completes once the frame is in the pipe and
   the pipe is below `SendSessionPipeOptions`' pause threshold, not when the stream write completes, so the write
-  mutex is not held across a network write. The stream send loop copies the segments of one read into writes of up
-  to 64 KiB, so frames queued during a write go out together (one TLS record run, QUIC send or WebSocket message). A
+  mutex is not held across a network write. The send loop copies the segments of one read into one write (up to
+  1 MiB, buffer rented per batch), so frames queued during a write go out together (one socket send, TLS record run,
+  QUIC send or WebSocket message). The limit must exceed a frame: a frame split across writes leaves the peer
+  waiting for its tail (a 64 KiB limit halved TCP/UDS pipe throughput). A
   graceful close waits up to 2 s for buffered data to reach the stream; an abortive close drops it.
 
 ### 5.3 Timeouts

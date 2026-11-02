@@ -142,7 +142,7 @@ exactly one inline MessagePack value. Collection sync messages live in `Collecti
 - `ServerConfig.cs` - AcceptorBacklog, Authenticate bool, RateLimiting config, AuthorizationCacheDuration (nullable TimeSpan)
 
 **Send pipe (src/NexNet/Internals/Pipelines/):**
-- `StreamSendPipe.cs` - Output of every transport (TCP/UDS over `NetworkStream`, TLS, QUIC, HttpSocket, WebSocket): `Pipe` (`SendSessionPipeOptions`) + send loop writing to the stream, coalescing a read's segments into writes of up to 64 KiB. A flush returns once the frame is in the pipe, so the write mutex is not held across stream writes. `DrainAsync` on graceful close (waits up to 2 s if the writer was completed, else aborts), `Abort` otherwise. A stream error completes the reader, so the session's next flush ends the session. NexNet.Quic uses it through `InternalsVisibleTo`
+- `StreamSendPipe.cs` - Output of every transport (TCP/UDS over `NetworkStream`, TLS, QUIC, HttpSocket, WebSocket): `Pipe` (`SendSessionPipeOptions`) + send loop writing to the stream, copying a multi-segment read into one write of up to 1 MiB (buffer rented per batch; the limit must exceed a frame, or the peer waits for the frame's tail). A flush returns once the frame is in the pipe, so the write mutex is not held across stream writes. `DrainAsync` on graceful close (waits up to 2 s if the writer was completed, else aborts), `Abort` otherwise. A stream error completes the reader, so the session's next flush ends the session. NexNet.Quic uses it through `InternalsVisibleTo`
 
 ### 1.7 Collections (src/NexNet/Collections/)
 
