@@ -68,6 +68,33 @@ If you frame your own messages on a raw pipe, a message must fit in the window. 
 
 A pipe has at most one window in flight, so over a link with a long round-trip time its throughput is limited to the window divided by the round-trip time. See [Limits and Flow Control](limits-and-flow-control.md) for sizing the window and the session budget.
 
+## Relaying
+
+A relay or gateway server can pass one session's pipe on to another without copying by hand. `ForwardToAsync` (in `NexNet.Pipes.NexusPipeForwardingExtensions`) copies everything a pipe receives to another pipe's output:
+
+```csharp
+// Inside a server nexus method: forward the caller's upload to a pipe opened with another client.
+public async ValueTask Upload(INexusDuplexPipe pipe)
+{
+    var target = await OpenPipeToOtherClient(); // Your own pairing logic.
+    await pipe.ForwardToAsync(target);
+}
+```
+
+- **Flow control**: the forwarder holds only the buffer it last read. It reads again only after the destination accepted that buffer (send credit), so a slow destination stalls the source's sender instead of buffering on the relay.
+- **Half-close**: when the source's input completes, the destination's output is completed and the forward returns. Neither the source nor the other direction of the destination is completed. If the destination's output is completed first, the forward returns too.
+- **Cancellation**: the `CancellationToken` stops the forward promptly with `OperationCanceledException` and completes neither pipe. What was already forwarded stays delivered; the source's next read returns the rest.
+
+`BridgeAsync` forwards both directions of two pipes at once:
+
+```csharp
+await pipeA.BridgeAsync(pipeB);
+```
+
+It returns once both directions finished (each half-closing its destination). If either pipe ends abnormally while a direction still runs (reset, session disconnect, `CompleteAsync`), both pipes are completed and the bridge returns. If a direction throws, both pipes are completed and the exception is rethrown. Cancellation stops both directions without completing either pipe.
+
+Do not read or write a pipe yourself while a forward on it runs. To relay typed items, see [Channels: Relaying](channels.md#relaying).
+
 ## See Also
 
 - [Channels](channels.md) — Type-safe streaming built on top of duplex pipes
