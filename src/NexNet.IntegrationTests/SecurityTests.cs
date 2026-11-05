@@ -172,6 +172,48 @@ internal class SecurityTests
     }
 
     [Test]
+    public void ConfigBase_MaxConcurrentConnectionInvocations_FollowsSerializerSecurity()
+    {
+        var untrusted = CreateTestConfig();
+        Assert.That(untrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(2));
+
+        var trusted = CreateTestConfig();
+        trusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
+        Assert.That(trusted.MaxConcurrentConnectionInvocations, Is.EqualTo(32));
+
+        // An explicit value wins on both, whichever is set first.
+        var explicitUntrusted = CreateTestConfig();
+        explicitUntrusted.MaxConcurrentConnectionInvocations = 7;
+        Assert.That(explicitUntrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(7));
+
+        var explicitTrusted = CreateTestConfig();
+        explicitTrusted.MaxConcurrentConnectionInvocations = 3;
+        explicitTrusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
+        Assert.That(explicitTrusted.MaxConcurrentConnectionInvocations, Is.EqualTo(3));
+
+        // Validation unchanged: 1 to 1000.
+        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 0);
+        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 1001);
+        trusted.MaxConcurrentConnectionInvocations = 1000;
+        Assert.That(trusted.MaxConcurrentConnectionInvocations, Is.EqualTo(1000));
+    }
+
+    [Test]
+    public void ConfigBase_InvocationQueueWarningThreshold_DefaultsAndRange()
+    {
+        var config = CreateTestConfig();
+        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(5000));
+
+        config.InvocationQueueWarningThreshold = 0;
+        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(0));
+        config.InvocationQueueWarningThreshold = 600_000;
+        Assert.That(config.InvocationQueueWarningThreshold, Is.EqualTo(600_000));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = -1);
+        Assert.Throws<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = 600_001);
+    }
+
+    [Test]
     public void ConfigBase_FlowControlSettings_OutOfRange_ThrowsArgumentOutOfRangeException()
     {
         var config = CreateTestConfig();
