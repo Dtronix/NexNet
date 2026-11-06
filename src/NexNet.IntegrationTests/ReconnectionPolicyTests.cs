@@ -81,6 +81,15 @@ internal class ReconnectionPolicyTests : BaseTests
         }
     }
 
+    [Test]
+    public void DefaultPolicy_ReconnectReasons_NullThrows()
+    {
+        Assert.Throws<ArgumentNullException>(() => _ = new DefaultReconnectionPolicy
+        {
+            ReconnectReasons = null!
+        });
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
     public async Task ReconnectsAfterServerShutdown_WhenPolicyAllowsIt(Type type)
