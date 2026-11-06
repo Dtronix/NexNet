@@ -1,5 +1,6 @@
 ﻿using NexNet.Collections;
 using NexNet.Collections.Lists;
+using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Pipes;
 
@@ -164,6 +165,13 @@ public partial class ClientNexus
 
         return OnReconnectingEvent.Invoke(this);
     }
+
+    public Func<ClientNexus, Exception, int, NexusRemoteError?>? OnInvocationExceptionEvent;
+
+    protected override NexusRemoteError? OnInvocationException(Exception exception, int methodId)
+    {
+        return OnInvocationExceptionEvent?.Invoke(this, exception, methodId);
+    }
 }
 
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
@@ -271,5 +279,12 @@ public partial class ServerNexus
     protected override ValueTask OnNexusInitialize()
     {
         return OnInitializeEvent?.Invoke(this) ?? ValueTask.CompletedTask;
+    }
+
+    public Func<ServerNexus, Exception, int, NexusRemoteError?>? OnInvocationExceptionEvent;
+
+    protected override NexusRemoteError? OnInvocationException(Exception exception, int methodId)
+    {
+        return OnInvocationExceptionEvent?.Invoke(this, exception, methodId);
     }
 }

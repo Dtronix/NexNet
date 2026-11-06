@@ -211,8 +211,8 @@ internal class InvocationIdTests
         using var cts = new CancellationTokenSource();
 
         var state = NexNet.Internals.RegisteredInvocationState.Rent();
-        Assert.That(await manager.InvokeMethodWithResultCore(state, 0, Memory<byte>.Empty, _mockSession, cts.Token), Is.True);
-        state.TrySetResult();
+        await manager.InvokeMethodWithResultCore(state, 0, Memory<byte>.Empty, _mockSession, cts.Token);
+        Assert.That(state.TrySetResult(), Is.True, "The sent call is left for its result");
 
         // Released on completion, also when nothing reads the result: cancelling later does not reach the state.
         cts.Cancel();
@@ -226,8 +226,11 @@ internal class InvocationIdTests
         var manager = new SessionInvocationStateManager(_poolManager, null, _mockSession);
         var arguments = new byte[_mockSession.SendMaxMessageSize + 1];
 
-        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () =>
-            await manager.InvokeMethodWithResultCore(NexNet.Internals.RegisteredInvocationState.Rent(), 0, arguments, _mockSession));
+        // The failure is set on the state, which the call reads.
+        var state = NexNet.Internals.RegisteredInvocationState.Rent();
+        var version = state.Version;
+        await manager.InvokeMethodWithResultCore(state, 0, arguments, _mockSession);
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await new ValueTask(state, version));
 
         // The rejected call took no ID, so the next ID is the first one.
         Assert.That(manager.GetNextId(true), Is.EqualTo(1));
