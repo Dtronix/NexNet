@@ -268,7 +268,8 @@ terminates TLS). Valid while connected; copy to keep.
 | Property | Default | Description |
 |----------|---------|-------------|
 | `Logger` | null | `INexusLogger` instance |
-| `MaxConcurrentConnectionInvocations` | 2 | 1-1000 |
+| `MaxConcurrentConnectionInvocations` | 2 (32 trusted) | 1-1000, invocations from one session running at once on the receiving side |
+| `InvocationQueueWarningThreshold` | 5000ms | 0-600000ms, 0 disables; warns when an invocation waits longer for an execution slot |
 | `DisconnectDelay` | 200ms | 0-10000ms |
 | `Timeout` | 30000ms | 50-300000ms, idle timeout |
 | `HandshakeTimeout` | 15000ms | 50-60000ms |

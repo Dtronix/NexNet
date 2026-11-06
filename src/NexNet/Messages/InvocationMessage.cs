@@ -55,6 +55,11 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
     /// </summary>
     internal AuthorizeResult AuthorizeResult;
 
+    /// <summary>
+    /// Receiving side: when the invocation was queued for an execution slot, in <c>ConfigBase.Time</c> milliseconds.
+    /// </summary>
+    internal long QueuedTicks;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T? DeserializeArguments<T>()
     {
@@ -118,6 +123,7 @@ internal partial class InvocationMessage : IMessageBase, IInvocationMessage
         Interlocked.Exchange(ref ArgumentsOwner, null)?.Return();
         Slot = null;
         AuthorizeResult = AuthorizeResult.Allowed;
+        QueuedTicks = 0;
 
         var cache = Interlocked.Exchange(ref _messageCache, null);
 

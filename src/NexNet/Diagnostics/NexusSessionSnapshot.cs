@@ -105,6 +105,12 @@ public sealed record NexusInvocationSnapshot
 
     /// <summary>Invocations skipped because the peer returned no credit in time.</summary>
     public long CreditDrops { get; init; }
+
+    /// <summary>
+    /// How long the oldest queued invocation has waited for an execution slot, measured on
+    /// <see cref="NexNet.Transports.ConfigBase.Time"/>; null when none is queued.
+    /// </summary>
+    public TimeSpan? OldestQueuedWait { get; init; }
 }
 
 /// <summary>

@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using NexNet.Diagnostics;
 using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Internals.Threading;
@@ -48,6 +49,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
     private readonly TimeProvider _time;
     private long _creditWaitSince;
     private long _waitingBytes;
+    private readonly MetricsTagSet? _metricsTags;
 
     /// <summary>
     /// Tick count when the current wait for credit started, or 0; and the bytes left to send.
@@ -88,10 +90,12 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         INexusLogger? logger,
         ISessionMessenger sessionMessenger, 
         bool isServer, int chunkSize,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        MetricsTagSet? metricsTags = null)
     {
         _stateManager = stateManager;
         _time = time ?? TimeProvider.System;
+        _metricsTags = metricsTags;
 
         _messenger = sessionMessenger ?? throw new ArgumentNullException(nameof(sessionMessenger));
         _logger = logger;
@@ -249,7 +253,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             }
 
             if (_creditWaitSince != 0)
-                Volatile.Write(ref _creditWaitSince, 0);
+                EndCreditWait();
 
             var chunkLength = (int)Math.Min(Math.Min(bufferLength, credit), _chunkSize);
             Interlocked.Add(ref _credit, -chunkLength);
@@ -294,7 +298,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
 
         _bufferWriter.Deallocate(buffer);
         if (_creditWaitSince != 0)
-            Volatile.Write(ref _creditWaitSince, 0);
+            EndCreditWait();
 
         // Try to reset the CTS.  If we can't just set it to null so a new one will be instanced.
         if (!_flushCts.TryReset())
@@ -310,6 +314,16 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
             await cancellationTokenRegistration.Value.DisposeAsync().ConfigureAwait(false);
 
         return new FlushResult(_isCanceled || canceledWhileWaiting, _isCompleted);
+    }
+
+    /// <summary>
+    /// Ends the current wait for credit and records how long it lasted.
+    /// </summary>
+    private void EndCreditWait()
+    {
+        var waitMs = Math.Max(0, _time.GetTickCount64() - _creditWaitSince);
+        Volatile.Write(ref _creditWaitSince, 0);
+        _metricsTags?.Metrics.RecordPipeCreditWait(_metricsTags, waitMs / 1000.0);
     }
 
     public void Dispose()

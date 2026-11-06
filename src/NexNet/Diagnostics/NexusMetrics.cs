@@ -67,6 +67,8 @@ internal sealed class NexusMetrics
     private readonly Counter<long> _invocationBusy;
     private readonly Counter<long> _creditDrops;
     private readonly Counter<long> _largeMessageAborts;
+    private readonly Histogram<double> _invocationQueueWait;
+    private readonly Histogram<double> _pipeCreditWait;
 
     /// <summary>
     /// Shortest time between two passes over the sessions, in <see cref="Stopwatch"/> ticks: the instruments of one
@@ -146,7 +148,15 @@ internal sealed class NexusMetrics
             "Invocations skipped because the peer returned no invocation credit in time.");
         _largeMessageAborts = meter.CreateCounter<long>("nexnet.large_message.aborts", "{message}",
             "Arguments and results larger than one frame stopped before completing.");
+        _invocationQueueWait = meter.CreateHistogram("nexnet.invocation.queue_wait", "s",
+            "Time an invocation waited from being queued until it took an execution slot.",
+            advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = WaitBuckets });
+        _pipeCreditWait = meter.CreateHistogram("nexnet.pipe.credit_wait", "s",
+            "Time a pipe writer waited for the peer to grant window credit, recorded when the wait ends.",
+            advice: new InstrumentAdvice<double> { HistogramBucketBoundaries = WaitBuckets });
     }
+
+    private static readonly double[] WaitBuckets = [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 30, 60];
 
     /// <summary>
     /// The instance for the meter <paramref name="factory"/> creates, or for the shared meter when it is null.
@@ -267,6 +277,29 @@ internal sealed class NexusMetrics
 
     public void RecordCreditDrop(MetricsTagSet tags)
         => _creditDrops.Add(1, tags.Role, tags.Transport);
+
+    /// <summary>
+    /// True when a listener collects <c>nexnet.invocation.queue_wait</c>.
+    /// </summary>
+    public bool InvocationQueueWaitEnabled => _invocationQueueWait.Enabled;
+
+    /// <summary>
+    /// Records the time an invocation waited for an execution slot. Does nothing without a listener.
+    /// </summary>
+    public void RecordInvocationQueueWait(MetricsTagSet tags, double seconds)
+    {
+        if (_invocationQueueWait.Enabled)
+            _invocationQueueWait.Record(seconds, tags.Role, tags.Transport);
+    }
+
+    /// <summary>
+    /// Records the time a pipe writer waited for credit. Does nothing without a listener.
+    /// </summary>
+    public void RecordPipeCreditWait(MetricsTagSet tags, double seconds)
+    {
+        if (_pipeCreditWait.Enabled)
+            _pipeCreditWait.Record(seconds, tags.Role, tags.Transport);
+    }
 
     public void RecordLargeMessageAbort(MetricsTagSet tags, bool inbound, LargeMessageAbortReason reason)
     {
