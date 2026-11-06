@@ -18,9 +18,12 @@ internal static class TimeProviderExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static long GetTickCount64(this TimeProvider time)
     {
-        // Split so the multiplication can't overflow: a fake clock set to a real date has timestamps near 2^60.
         var timestamp = time.GetTimestamp();
         var frequency = time.TimestampFrequency;
-        return timestamp / frequency * 1000L + timestamp % frequency * 1000L / frequency;
+        // Stopwatch timestamps are small: one multiply and divide. Split only when the multiplication would
+        // overflow, as for a fake clock set to a real date (timestamps near 2^60).
+        return timestamp <= long.MaxValue / 1000
+            ? timestamp * 1000L / frequency
+            : timestamp / frequency * 1000L + timestamp % frequency * 1000L / frequency;
     }
 }

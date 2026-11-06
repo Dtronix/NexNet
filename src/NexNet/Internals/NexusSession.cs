@@ -735,9 +735,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     /// <summary>
     /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
-    /// returned, so a queued invocation always finds a free slot.
+    /// returned, so a queued invocation always finds a free slot. <paramref name="now"/> is the current tick count
+    /// when the caller has just read it, else 0; the clock is read at most once per call.
     /// </summary>
-    private void DispatchInvocations()
+    private void DispatchInvocations(long now = 0)
     {
         while (!_invocationQueue.IsEmpty && TryTakeInvocationSlot())
         {
@@ -755,7 +756,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
                 continue;
             }
 
-            RecordQueueWait(message);
+            RecordQueueWait(message, ref now);
 
             if (!_invocationWorkItemPool.TryTake(out var workItem))
                 workItem = new InvocationWorkItem();
@@ -776,16 +777,18 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     /// <summary>
     /// Records how long <paramref name="message"/> waited for its execution slot, and warns, at most once per 30 s,
-    /// when it waited longer than <see cref="ConfigBase.InvocationQueueWarningThreshold"/>.
+    /// when it waited longer than <see cref="ConfigBase.InvocationQueueWarningThreshold"/>. Reads the clock into
+    /// <paramref name="now"/> when it is 0.
     /// </summary>
-    private void RecordQueueWait(InvocationMessage message)
+    private void RecordQueueWait(InvocationMessage message, ref long now)
     {
         var threshold = _config.InvocationQueueWarningThreshold;
         var metrics = _metricsTags.Metrics;
         if (threshold == 0 && !metrics.InvocationQueueWaitEnabled)
             return;
 
-        var now = _config.Time.GetTickCount64();
+        if (now == 0)
+            now = _config.Time.GetTickCount64();
         var waitMs = Math.Max(0, now - message.QueuedTicks);
         metrics.RecordInvocationQueueWait(_metricsTags, waitMs / 1000.0);
 
