@@ -169,6 +169,7 @@ public static class NexusPipeForwardingExtensions
     {
         var input = source.Input;
         var output = destination.Output;
+        var nexusOutput = output as NexusPipeWriter;
 
         // Framed copy: bytes of the current item still to pass through.
         long itemRemaining = 0;
@@ -224,40 +225,69 @@ public static class NexusPipeForwardingExtensions
 
             var copy = buffer.Slice(0, copyLength);
             FlushResult flush = default;
-            if (copyLength > 0)
+            long sent = 0;
+            try
             {
-                foreach (var segment in copy)
-                    output.Write(segment.Span);
+                while (sent < copyLength)
+                {
+                    var chunk = copy.Slice(sent);
+                    var flushToken = cancellationToken;
+                    if (nexusOutput != null)
+                    {
+                        // A canceled NexusPipeWriter flush drops what it has not sent yet. Wait for credit here
+                        // instead and write no more than it, so the flush sends everything without waiting and
+                        // is not canceled: the source is then advanced past exactly what reached the destination.
+                        var credit = await nexusOutput.WaitForCreditAsync(chunk.Length, cancellationToken)
+                            .ConfigureAwait(false);
+                        if (credit == 0)
+                        {
+                            flush = new FlushResult(false, true);
+                            break;
+                        }
 
-                try
-                {
-                    flush = await output.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    input.AdvanceTo(copy.End);
-                    throw;
+                        if (chunk.Length > credit)
+                            chunk = chunk.Slice(0, credit);
+                        flushToken = CancellationToken.None;
+                    }
+
+                    foreach (var segment in chunk)
+                        output.Write(segment.Span);
+
+                    flush = await output.FlushAsync(flushToken).ConfigureAwait(false);
+                    sent += chunk.Length;
+                    if (flush.IsCanceled || flush.IsCompleted)
+                        break;
                 }
             }
+            catch
+            {
+                input.AdvanceTo(copy.GetPosition(sent));
+                throw;
+            }
 
-            if (tooLarge != null)
+            var consumed = copy.GetPosition(sent);
+            if (tooLarge != null && sent == copyLength)
             {
                 // Consumed and examined at the oversized item's prefix: the next read returns it.
-                input.AdvanceTo(copy.End);
+                input.AdvanceTo(consumed);
                 throw tooLarge;
             }
 
             // Keep what was not copied (a split prefix) and wait for more data after it.
-            input.AdvanceTo(copy.End, buffer.End);
+            if (sent == copyLength)
+                input.AdvanceTo(consumed, buffer.End);
+            else
+                input.AdvanceTo(consumed);
+
+            // A closing pipe completes its writer and cancels its flush: completion comes first.
+            if (flush.IsCompleted)
+                return;
 
             if (flush.IsCanceled)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 throw new OperationCanceledException("The flush to the destination was canceled.");
             }
-
-            if (flush.IsCompleted)
-                return;
 
             if (result.IsCompleted)
             {

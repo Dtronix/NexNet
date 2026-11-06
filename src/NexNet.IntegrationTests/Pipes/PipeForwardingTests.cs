@@ -120,6 +120,60 @@ internal class PipeForwardingTests : BaseTests
         r.BPipe.Input.AdvanceTo(atB.Buffer.End);
     }
 
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task ForwardToAsync_DestinationClosesFirst_ReturnsWhileTheSourceIsStillOpen(Type type)
+    {
+        var r = await SetupRelay(type);
+
+        var forward = r.ServerSource.ForwardToAsync(r.ServerDestination).AsTask();
+        await r.APipe.Output.WriteAsync(new byte[1000]).Timeout(1);
+        Assert.That(await ReadExactly(r.BPipe.Input, 1000).Timeout(2), Is.EqualTo(1000));
+
+        // B closes its pipe; A keeps sending without completing. The forward notices on its next write and returns.
+        await r.BPipe.CompleteAsync().Timeout(1);
+        for (var i = 0; i < 40 && !forward.IsCompleted; i++)
+        {
+            await r.APipe.Output.WriteAsync(new byte[100]).Timeout(1);
+            await Task.Delay(50);
+        }
+
+        await forward.Timeout(2);
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task BridgeAsync_Canceled_ThrowsAndLeavesBothPipesOpen(Type type)
+    {
+        var r = await SetupRelay(type);
+        using var cts = new CancellationTokenSource();
+
+        var bridge = r.ServerSource.BridgeAsync(r.ServerDestination, cts.Token).AsTask();
+        await r.APipe.Output.WriteAsync(new byte[] { 1 }).Timeout(1);
+        Assert.That(await ReadExactly(r.BPipe.Input, 1).Timeout(2), Is.EqualTo(1));
+        await r.BPipe.Output.WriteAsync(new byte[] { 2 }).Timeout(1);
+        Assert.That(await ReadExactly(r.APipe.Input, 1).Timeout(2), Is.EqualTo(1));
+
+        cts.Cancel();
+        await Assert.ThatAsync(async () => await bridge.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+
+        // Both pipes still carry data in both directions.
+        await AssertCarries(r.APipe.Output, r.ServerSource.Input, 3);
+        await AssertCarries(r.ServerSource.Output, r.APipe.Input, 4);
+        await AssertCarries(r.BPipe.Output, r.ServerDestination.Input, 5);
+        await AssertCarries(r.ServerDestination.Output, r.BPipe.Input, 6);
+
+        static async Task AssertCarries(PipeWriter output, PipeReader input, byte value)
+        {
+            var write = await output.WriteAsync(new[] { value, value }).Timeout(1);
+            Assert.That(write.IsCompleted, Is.False);
+            var read = await input.ReadAsync().AsTask().Timeout(1);
+            Assert.That(read.IsCompleted, Is.False);
+            Assert.That(read.Buffer.ToArray(), Is.EqualTo(new[] { value, value }));
+            input.AdvanceTo(read.Buffer.End);
+        }
+    }
+
     [TestCase(Type.Uds, true)]
     [TestCase(Type.Uds, false)]
     [TestCase(Type.Tcp, true)]
