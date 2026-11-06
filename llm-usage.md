@@ -220,6 +220,9 @@ new TcpClientConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 1234) };
 
 // UDS
 new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock") };
+// SocketFileMode: Unix only (throws PlatformNotSupportedException on Windows). RemoveStaleSocketFile deletes only a refused, confirmed socket file.
+new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock"),
+    SocketFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite, RemoveStaleSocketFile = true };
 
 // TLS - set SslServerAuthenticationOptions / SslClientAuthenticationOptions
 new TcpTlsServerConfig {
@@ -339,7 +342,15 @@ config.ReconnectionPolicy = new DefaultReconnectionPolicy();
 // Custom intervals
 config.ReconnectionPolicy = new DefaultReconnectionPolicy(
     [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5)], continuousRetry: true);
+// Reasons reconnected for (default: SocketError, Timeout, ServerRestarting); add ServerShutdown for restarting daemons
+config.ReconnectionPolicy = new DefaultReconnectionPolicy {
+    ReconnectReasons = new HashSet<DisconnectReason> {
+        DisconnectReason.SocketError, DisconnectReason.Timeout,
+        DisconnectReason.ServerRestarting, DisconnectReason.ServerShutdown }
+};
 ```
+
+Null `ReconnectionPolicy` (the default) disables reconnection. A custom `IReconnectionPolicy` may override `bool ShouldReconnect(DisconnectReason reason)`.
 
 ### Connection Pooling
 
@@ -531,6 +542,12 @@ public async ValueTask Upload(INexusDuplexPipe pipe) {
 }
 ```
 
+- Relay: `await source.ForwardToAsync(destination, ct)` copies with flow control (a slow destination stalls the
+  source), half-closes the destination's output when the source completes, never completes the source. Cancel:
+  `OperationCanceledException`, neither pipe completed.
+- `await a.BridgeAsync(b, ct)`: both directions; returns when both finished; if one pipe ends abnormally (reset,
+  disconnect) both are completed.
+
 ## Channels (Typed Streaming)
 
 Thread-safe writing. `INexusDuplexChannel<T>`: each item is one MessagePack value (any serializable `T`). For bulk
@@ -555,6 +572,11 @@ public async ValueTask StreamData(INexusDuplexChannel<int> channel) {
 await channel.WriteAndComplete(enumerable, chunkSize: 100);
 var list = await reader.ReadUntilComplete(estimatedSize: 1000);
 ```
+
+- Relay: `await sourceChannel.ForwardToAsync(destinationChannel, ct)` forwards items as raw bytes (no
+  deserialize/serialize), half-closes the destination on completion. An item over the destination's MaxMessageSize
+  throws `NexusMessageTooLargeException` before any of it is sent; the source's next read returns that item. Do not
+  write the destination's writer during a forward.
 
 ### Different types via pipe
 

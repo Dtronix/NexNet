@@ -95,6 +95,26 @@ var items = await channel.ReadUntilComplete(estimatedSize: 1000);
 
 The optional `estimatedSize` parameter pre-allocates collection capacity to reduce resizing during reads.
 
+## Relaying
+
+`ForwardToAsync` relays the items one channel receives to another channel without deserializing or reserializing them: it copies the raw bytes of the channel's pipe, parsing only each item's length prefix.
+
+```csharp
+// Inside a server nexus method: pass a client's items on to another client's channel.
+public async ValueTask StreamData(INexusDuplexChannel<ComplexMessage> channel)
+{
+    var target = await OpenChannelToOtherClient(); // Your own pairing logic.
+    await channel.ForwardToAsync(target);
+}
+```
+
+- Items stream through as they arrive, so an item larger than the pipe window is not buffered whole on the relay, and flow control works as for [pipes](duplex-pipes.md#relaying): a slow destination stalls the source.
+- When the source completes, the destination's output is completed (half-close) and the forward returns. Cancellation throws `OperationCanceledException` and completes neither channel.
+- The destination session may accept smaller items than the source (`MaxMessageSize` is negotiated per session). An item larger than the destination accepts throws `NexusMessageTooLargeException` before any byte of it is sent: the items before it were delivered, neither channel is completed, and the source's next read returns the oversized item, for you to drop or handle.
+- Do not write to the destination's channel writer while a forward runs; writing after it ended is fine.
+
+For relaying raw pipes in both directions, see `BridgeAsync` in [Duplex Pipes](duplex-pipes.md#relaying).
+
 ## See Also
 
 - [Duplex Pipes](duplex-pipes.md) — Low-level byte streaming

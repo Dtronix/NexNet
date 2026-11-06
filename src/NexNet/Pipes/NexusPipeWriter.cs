@@ -85,8 +85,45 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Waits until send credit is available and returns it, or returns 0 once the writer completed. Lets a caller
+    /// write no more than the credit, so a flush that follows sends everything without waiting. The wait shows in
+    /// <see cref="CreditWait"/> like a flush's.
+    /// </summary>
+    /// <param name="bytes">Bytes the caller wants to send, reported while waiting.</param>
+    /// <param name="cancellationToken">Stops the wait.</param>
+    /// <exception cref="OperationCanceledException">The wait was canceled.</exception>
+    internal async ValueTask<long> WaitForCreditAsync(long bytes, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (true)
+            {
+                if (_isCompleted)
+                    return 0;
+
+                var credit = Volatile.Read(ref _credit);
+                if (credit > 0)
+                    return credit;
+
+                if (_creditWaitSince == 0)
+                {
+                    Volatile.Write(ref _waitingBytes, bytes);
+                    Volatile.Write(ref _creditWaitSince, Math.Max(1, _time.GetTickCount64()));
+                }
+
+                await _creditSignal.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            if (_creditWaitSince != 0)
+                Volatile.Write(ref _creditWaitSince, 0);
+        }
+    }
+
     public NexusPipeWriter(
-        IPipeStateManager stateManager, 
+        IPipeStateManager stateManager,
         INexusLogger? logger,
         ISessionMessenger sessionMessenger, 
         bool isServer, int chunkSize,

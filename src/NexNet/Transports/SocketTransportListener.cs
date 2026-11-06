@@ -11,11 +11,13 @@ internal class SocketTransportListener : ITransportListener
 {
     private readonly ServerConfig _config;
     private readonly Socket _socket;
+    private readonly Action? _afterClose;
 
-    private SocketTransportListener(ServerConfig config, Socket socket)
+    internal SocketTransportListener(ServerConfig config, Socket socket, Action? afterClose = null)
     {
         _config = config;
         _socket = socket;
+        _afterClose = afterClose;
     }
 
     public ValueTask CloseAsync(bool linger)
@@ -24,10 +26,12 @@ internal class SocketTransportListener : ITransportListener
         {
             _socket.LingerState = new LingerOption(true, 0);
             _socket.Close(0);
+            _afterClose?.Invoke();
             return ValueTask.CompletedTask;
         }
 
         _socket.Close();
+        _afterClose?.Invoke();
 
         return ValueTask.CompletedTask;
     }
