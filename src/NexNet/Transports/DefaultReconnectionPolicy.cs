@@ -1,12 +1,34 @@
 ﻿using System;
+using System.Collections.Generic;
+using NexNet.Messages;
 
 namespace NexNet.Transports;
 
 /// <summary>
 /// Default reconnection policy retries to connect at 0, 2, 10 &amp; 30 seconds.  Continues to try to reconnect every 30 seconds.
+/// Reconnects only for the disconnect reasons in <see cref="ReconnectReasons"/>.
 /// </summary>
 public class DefaultReconnectionPolicy : IReconnectionPolicy
 {
+    private readonly IReadOnlySet<DisconnectReason> _reconnectReasons = new HashSet<DisconnectReason>
+    {
+        DisconnectReason.SocketError,
+        DisconnectReason.Timeout,
+        DisconnectReason.ServerRestarting
+    };
+
+    /// <summary>
+    /// Disconnect reasons the client reconnects for.  Defaults to <see cref="DisconnectReason.SocketError"/>,
+    /// <see cref="DisconnectReason.Timeout"/> and <see cref="DisconnectReason.ServerRestarting"/>.
+    /// Add <see cref="DisconnectReason.ServerShutdown"/> to reconnect after the server stops and starts again.
+    /// <see cref="DisconnectReason.Graceful"/> and <see cref="DisconnectReason.Authentication"/> are best left out.
+    /// </summary>
+    public IReadOnlySet<DisconnectReason> ReconnectReasons
+    {
+        get => _reconnectReasons;
+        init => _reconnectReasons = value ?? throw new ArgumentNullException(nameof(value));
+    }
+
     /// <summary>
     /// Timespans used for the reconnection times.
     /// </summary>
@@ -60,6 +82,12 @@ public class DefaultReconnectionPolicy : IReconnectionPolicy
         }
 
         return null;
+    }
+
+    /// <inheritdoc />
+    public bool ShouldReconnect(DisconnectReason reason)
+    {
+        return ReconnectReasons.Contains(reason);
     }
 
     /// <inheritdoc />
