@@ -12,11 +12,18 @@ internal static class TimeProviderExtensions
     /// </summary>
     /// <remarks>
     /// On <see cref="TimeProvider.System"/> this is Stopwatch-backed (~15-25 ns/call).
-    /// Wrap-around bound: ~29 years uptime at 10 MHz Stopwatch frequency, well beyond
-    /// any realistic process lifetime. Fake providers (e.g. <c>FakeTimeProvider</c>) drive
-    /// the value off their own timestamp without any wall-clock dependency.
+    /// Fake providers (e.g. <c>FakeTimeProvider</c>) drive the value off their own timestamp
+    /// without any wall-clock dependency; one set to a real date (timestamps near 2^60) does not overflow.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static long GetTickCount64(this TimeProvider time)
-        => (time.GetTimestamp() * 1000L) / time.TimestampFrequency;
+    {
+        var timestamp = time.GetTimestamp();
+        var frequency = time.TimestampFrequency;
+        // Stopwatch timestamps are small: one multiply and divide. Split only when the multiplication would
+        // overflow, as for a fake clock set to a real date (timestamps near 2^60).
+        return timestamp <= long.MaxValue / 1000
+            ? timestamp * 1000L / frequency
+            : timestamp / frequency * 1000L + timestamp % frequency * 1000L / frequency;
+    }
 }

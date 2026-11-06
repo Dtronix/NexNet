@@ -13,7 +13,8 @@ All settings are on `ConfigBase`, so they apply to every client and server confi
 | `PipeWindow` | 256 KiB / 1 MiB | 4 KiB – 1 GiB | Bytes a peer may send on one pipe before this side reads them. |
 | `MaxMessageSize` | 4 MiB / 16 MiB | 64 KiB – 1 GiB | Largest argument, result or channel item accepted. |
 | `InvocationCredits` | 32 / 128 | 1 – 10,000 | Invocations the peer may have queued on this side at once. |
-| `MaxConcurrentConnectionInvocations` | 2 | 1 – 1000 | Invocations from one session that run at the same time. |
+| `MaxConcurrentConnectionInvocations` | 2 / 32 | 1 – 1000 | Invocations from one session that run at the same time on this (the receiving) side. |
+| `InvocationQueueWarningThreshold` | 5 s | 0 – 10 min (0 disables) | An invocation that waits longer than this for an execution slot logs a warning, at most once every 30 s per session. |
 | `ProgressTimeout` | 30 s | 50 ms – 10 min | Longest time an operation that holds resources may go without progress. |
 
 Building a client or server throws `InvalidOperationException` if the budget can't hold the fixed reservations:
@@ -49,6 +50,8 @@ Arguments and results are serialized whole. One up to 64 KiB is sent in a single
 The session stays connected in every case. Results follow the same rules in the other direction.
 
 The receiving side queues up to `InvocationCredits` invocations and runs `MaxConcurrentConnectionInvocations` of them at a time. An invocation with a pipe or channel argument frees its execution slot once the pipe is registered, so long-running streams do not block other calls.
+
+How long invocations wait for a slot is recorded by the `nexnet.invocation.queue_wait` histogram, and a session snapshot shows how long the oldest queued invocation has waited (`OldestQueuedWait`). See [Metrics and Diagnostics](metrics.md).
 
 Invocations sent to several sessions (`All`, `Others`, `Groups`, `Clients`) are delivered in two passes:
 

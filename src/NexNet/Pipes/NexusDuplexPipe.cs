@@ -167,7 +167,8 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
             _session,
             _session.IsServer,
             NexusPipeWriter.MaxChunkSize,
-            _session.Config.Time);
+            _session.Config.Time,
+            _session.MetricsTags);
     }
 
     /// <summary>

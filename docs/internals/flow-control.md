@@ -262,7 +262,7 @@ MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64 KiB ≤ Sessio
 The defaults are selected by `SerializerOptions.Security`. Only the numbers differ between Untrusted and Trusted;
 the behaviour is the same.
 
-Existing settings kept: `MaxConcurrentConnectionInvocations`, `Timeout`, `HandshakeTimeout`.
+Existing settings kept: `MaxConcurrentConnectionInvocations` (2, or 32 Trusted), `Timeout`, `HandshakeTimeout`.
 
 Transport receive `PipeOptions`: pause threshold at least 2 × (maximum frame + header), e.g. 256 KiB, resume at
 half.

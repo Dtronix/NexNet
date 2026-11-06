@@ -76,6 +76,8 @@ See [Limits and Flow Control](limits-and-flow-control.md) for what these quantit
 | `nexnet.invocation.credit_waits` | UpDownCounter | `{invocation}` | | Calls waiting for the peer to return invocation credit. |
 | `nexnet.invocation.busy` | Counter | `{invocation}` | | Invocations sent to several sessions that found a session busy on the first pass. |
 | `nexnet.invocation.credit_drops` | Counter | `{invocation}` | | Invocations skipped because the peer returned no credit within `ProgressTimeout`. |
+| `nexnet.invocation.queue_wait` | Histogram | `s` | | Time a received invocation waited from being queued until it took an execution slot (`MaxConcurrentConnectionInvocations`). Recorded for every invocation that runs, 0 included. |
+| `nexnet.pipe.credit_wait` | Histogram | `s` | | Time a pipe writer waited for the peer to grant window credit, recorded when the wait ends (credit arrived, or the flush was cancelled or completed). |
 | `nexnet.large_message.in_flight` | UpDownCounter | `{message}` | `nexnet.direction` (`inbound`, `outbound`) | Arguments and results larger than one frame being received or sent. |
 | `nexnet.large_message.aborts` | Counter | `{message}` | `nexnet.direction`, `nexnet.abort.reason` (`busy`, `too_large`, `cancelled`) | Large values stopped before completing. |
 
@@ -93,7 +95,7 @@ A snapshot holds:
 |------|----------|
 | Session | ID, role, transport, state, time connected, time since data was last received and sent, whether an outbound flush is in progress and for how long. |
 | Budget | Limit and reserved bytes. |
-| Invocations | Queued, executing, credits the peer has left here, credits this side may still spend, calls waiting for credit, calls waiting for a result, invocations dropped for lack of credit. |
+| Invocations | Queued, executing, credits the peer has left here, credits this side may still spend, calls waiting for credit, calls waiting for a result, invocations dropped for lack of credit, how long the oldest queued invocation has waited for an execution slot (`OldestQueuedWait`, measured on `ConfigBase.Time`; null when none is queued). |
 | Pipes | Per pipe: ID, state, receive window, credit the peer still has, bytes buffered, bytes consumed and not yet granted back, extra credit outstanding, time since data last arrived, partial channel item (bytes received of its total), send credit, how long the writer has waited for credit and how many bytes it holds, how long the pipe has been closing. |
 | Large messages | Per value: direction, kind (argument or result), invocation ID, bytes transferred of the total, time since the last chunk. |
 | Transport | Frames and bytes sent and received. |
@@ -124,3 +126,9 @@ Session 12 made no progress within 30000 ms: pipe P00513 item 182 KiB of 300 KiB
 ```
 
 A pipe reset logs a warning with its reason, at most once every 10 seconds per session, with the number of resets since the last warning.
+
+An invocation that waits longer than `InvocationQueueWarningThreshold` (5 s by default, 0 disables) for an execution slot logs a warning, at most once every 30 seconds per session, with the number of slow invocations since the last warning:
+
+```
+Session 12: invocation of method 3 waited 6.2 s for an execution slot (MaxConcurrentConnectionInvocations 2, threshold 5000 ms) (4 more since the last warning).
+```

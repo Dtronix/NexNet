@@ -812,8 +812,10 @@ internal partial class NexusSession<TNexus, TProxy>
                 _nexus.TrackInvocation(invocationRequestMessage);
 
                 // Queued, never awaited: the read loop must not wait for an execution slot.
+                var queuedTicks = _config.Time.GetTickCount64();
+                invocationRequestMessage.QueuedTicks = queuedTicks;
                 _invocationQueue.Enqueue(invocationRequestMessage);
-                DispatchInvocations();
+                DispatchInvocations(queuedTicks);
                 break;
             }
 

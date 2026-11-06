@@ -16,9 +16,20 @@ public class ConcurrentInvocationBenchmarks
     [Params(1, 8, 32)]
     public int Callers { get; set; }
 
+    private MetricsListenerScope? _metrics;
+
+    /// <summary>
+    /// With a listener attached to the NexNet meter, collecting once a second.
+    /// </summary>
+    [Params(false, true)]
+    public bool Metrics { get; set; }
+
     [GlobalSetup]
     public async Task GlobalSetup()
     {
+        if (Metrics)
+            _metrics = new MetricsListenerScope();
+
         _connection = await BenchConnection.Start(BenchTransport.Uds, $"concurrent-{Callers}");
     }
 
@@ -26,6 +37,8 @@ public class ConcurrentInvocationBenchmarks
     public async Task GlobalCleanup()
     {
         await _connection.DisposeAsync();
+        _metrics?.Dispose();
+        _metrics = null;
     }
 
     [Benchmark(OperationsPerInvoke = TotalCalls)]

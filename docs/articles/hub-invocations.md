@@ -54,6 +54,8 @@ public interface IServerNexus
 
 Cancelling the token on the caller side propagates the cancellation to the remote method. Each call is canceled individually, also when several calls to the same method are running. A remote method that throws `OperationCanceledException` on its own, with or without a token, fails the call with `TaskCanceledException`.
 
+The cancellation reaches the remote method only through its own `CancellationToken` parameter: a method without one runs to completion even if the caller cancels. This also holds while the invocation is still queued for an execution slot (see `MaxConcurrentConnectionInvocations`): a call cancelled while queued still starts, with its token already cancelled, so the method can return at once.
+
 When a method is invoked without waiting for its result (a broadcast, or a `ValueTask` method invoked on several clients), the caller can't cancel it. Its token is canceled when the session ends.
 
 ## Errors

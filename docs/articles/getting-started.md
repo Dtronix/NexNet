@@ -124,6 +124,22 @@ await client.Proxy.UpdateInfoAndWait(1, 2, "Custom Status");
 var status = await client.Proxy.GetStatus(42);
 ```
 
+## Invocation concurrency
+
+`MaxConcurrentConnectionInvocations` limits how many invocations from one connection run at the same time on the side that **receives** them, so it is set on the receiving side's config (the server's config for calls from a client). It defaults to 2, or 32 with `SerializerOptions = NexusSerializerOptions.Trusted`. Further calls queue, up to `InvocationCredits`, and run as slots free; beyond that the caller waits for credit.
+
+Raise it when methods are slow or long-lived and a client makes several calls at once, or on internal links between trusted services:
+
+```csharp
+var serverConfig = new TcpServerConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Loopback, 1234),
+    MaxConcurrentConnectionInvocations = 16
+};
+```
+
+An invocation that waits longer than `InvocationQueueWarningThreshold` (5 s) for a slot logs a warning, and the `nexnet.invocation.queue_wait` histogram records every wait. See [Limits and Flow Control](limits-and-flow-control.md) and [Metrics and Diagnostics](metrics.md).
+
 ## Next Steps
 
 - [Hub Invocations](hub-invocations.md) — Method patterns, return types, and broadcasting

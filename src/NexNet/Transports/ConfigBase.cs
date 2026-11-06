@@ -15,7 +15,8 @@ namespace NexNet.Transports;
 public abstract class ConfigBase
 {
     // Backing fields for validated properties
-    private int _maxConcurrentConnectionInvocations = 2;
+    private int? _maxConcurrentConnectionInvocations;
+    private int _invocationQueueWarningThreshold = 5000;
     private int _disconnectDelay = 200;
     private int _timeout = 30_000;
     private int _handshakeTimeout = 15_000;
@@ -96,17 +97,34 @@ public abstract class ConfigBase
     }
 
     /// <summary>
-    /// The maximum number of concurrent invocations which can occur from a single connection.
-    /// Must be between 1 and 1000.
+    /// The maximum number of invocations from a single connection that run at once on this side; further ones queue
+    /// (up to <see cref="InvocationCredits"/>) until a slot frees. Defaults to 2, or 32 with
+    /// <see cref="SerializerSecurity.Trusted"/> serializer options. Must be between 1 and 1000.
     /// </summary>
     public int MaxConcurrentConnectionInvocations
     {
-        get => _maxConcurrentConnectionInvocations;
+        get => _maxConcurrentConnectionInvocations ?? (IsTrusted ? 32 : 2);
         set
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MaxConcurrentConnectionInvocations));
             ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1000, nameof(MaxConcurrentConnectionInvocations));
             _maxConcurrentConnectionInvocations = value;
+        }
+    }
+
+    /// <summary>
+    /// An invocation that waits longer than this for an execution slot (see
+    /// <see cref="MaxConcurrentConnectionInvocations"/>) logs a warning, at most once per 30 seconds per session, in
+    /// milliseconds. 5000 default; 0 disables the warning. Must be between 0 and 600000.
+    /// </summary>
+    public int InvocationQueueWarningThreshold
+    {
+        get => _invocationQueueWarningThreshold;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 0, nameof(InvocationQueueWarningThreshold));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 600_000, nameof(InvocationQueueWarningThreshold));
+            _invocationQueueWarningThreshold = value;
         }
     }
 

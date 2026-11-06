@@ -136,6 +136,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     private long _lastCreditDropWarning;
     private int _pipeResetsSinceWarning;
     private long _lastPipeResetWarning;
+    private long _lastQueueWarning;
+    private int _queueWarningsSuppressed;
 
     // Large arguments and results (docs/internals/flow-control.md, section 4.3): streams the peer is sending
     // here, and streams this side is sending, by (invocation ID, kind).
@@ -604,6 +606,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
                 CreditWaits = Volatile.Read(ref _creditWaiters),
                 AwaitingResults = SessionInvocationStateManager.OutstandingCount,
                 CreditDrops = Interlocked.Read(ref _creditDrops),
+                OldestQueuedWait = _invocationQueue.TryPeek(out var oldest) ? Since(now, oldest.QueuedTicks) : null,
             },
             Pipes = pipes,
             LargeMessages = largeMessages,
@@ -735,9 +738,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     /// <summary>
     /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
-    /// returned, so a queued invocation always finds a free slot.
+    /// returned, so a queued invocation always finds a free slot. <paramref name="now"/> is the current tick count
+    /// when the caller has just read it, else 0; the clock is read at most once per call.
     /// </summary>
-    private void DispatchInvocations()
+    private void DispatchInvocations(long now = 0)
     {
         while (!_invocationQueue.IsEmpty && TryTakeInvocationSlot())
         {
@@ -755,6 +759,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
                 continue;
             }
 
+            RecordQueueWait(message, ref now);
 
             if (!_invocationWorkItemPool.TryTake(out var workItem))
                 workItem = new InvocationWorkItem();
@@ -771,6 +776,40 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             // credits longer and leaves broadcast senders waiting on busy sessions.
             ThreadPool.UnsafeQueueUserWorkItem(workItem, preferLocal: true);
         }
+    }
+
+    /// <summary>
+    /// Records how long <paramref name="message"/> waited for its execution slot, and warns, at most once per 30 s,
+    /// when it waited longer than <see cref="ConfigBase.InvocationQueueWarningThreshold"/>. Reads the clock into
+    /// <paramref name="now"/> when it is 0.
+    /// </summary>
+    private void RecordQueueWait(InvocationMessage message, ref long now)
+    {
+        var threshold = _config.InvocationQueueWarningThreshold;
+        var metrics = _metricsTags.Metrics;
+        if (threshold == 0 && !metrics.InvocationQueueWaitEnabled)
+            return;
+
+        if (now == 0)
+            now = _config.Time.GetTickCount64();
+        var waitMs = Math.Max(0, now - message.QueuedTicks);
+        metrics.RecordInvocationQueueWait(_metricsTags, waitMs / 1000.0);
+
+        if (threshold == 0 || waitMs <= threshold)
+            return;
+
+        var last = Volatile.Read(ref _lastQueueWarning);
+        if ((last != 0 && now - last < 30_000) || Interlocked.CompareExchange(ref _lastQueueWarning, now, last) != last)
+        {
+            Interlocked.Increment(ref _queueWarningsSuppressed);
+            return;
+        }
+
+        var suppressed = Interlocked.Exchange(ref _queueWarningsSuppressed, 0);
+        Logger?.LogWarning($"Session {Id}: invocation of method {message.MethodId} waited {LogFormat.Seconds(waitMs)} " +
+                           $"for an execution slot (MaxConcurrentConnectionInvocations {_config.MaxConcurrentConnectionInvocations}, " +
+                           $"threshold {threshold} ms)" +
+                           (suppressed > 0 ? $" ({suppressed} more since the last warning)." : "."));
     }
 
     bool LargeMessageReceiver.IOwner.IsCallOutstanding(ushort invocationId)
