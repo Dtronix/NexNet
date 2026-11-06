@@ -538,6 +538,12 @@ public async ValueTask Upload(INexusDuplexPipe pipe) {
 }
 ```
 
+- Relay: `await source.ForwardToAsync(destination, ct)` copies with flow control (a slow destination stalls the
+  source), half-closes the destination's output when the source completes, never completes the source. Cancel:
+  `OperationCanceledException`, neither pipe completed.
+- `await a.BridgeAsync(b, ct)`: both directions; returns when both finished; if one pipe ends abnormally (reset,
+  disconnect) both are completed.
+
 ## Channels (Typed Streaming)
 
 Thread-safe writing. `INexusDuplexChannel<T>`: each item is one MessagePack value (any serializable `T`). For bulk
@@ -562,6 +568,11 @@ public async ValueTask StreamData(INexusDuplexChannel<int> channel) {
 await channel.WriteAndComplete(enumerable, chunkSize: 100);
 var list = await reader.ReadUntilComplete(estimatedSize: 1000);
 ```
+
+- Relay: `await sourceChannel.ForwardToAsync(destinationChannel, ct)` forwards items as raw bytes (no
+  deserialize/serialize), half-closes the destination on completion. An item over the destination's MaxMessageSize
+  throws `NexusMessageTooLargeException` before any of it is sent; the source's next read returns that item. Do not
+  write the destination's writer during a forward.
 
 ### Different types via pipe
 
