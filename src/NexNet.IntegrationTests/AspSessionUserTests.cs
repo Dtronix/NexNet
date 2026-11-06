@@ -2,6 +2,7 @@ using System.IO.Pipelines;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.AspNetCore.Authentication;
 using NexNet.Transports;
 using NUnit.Framework;
 
@@ -14,6 +15,8 @@ internal class AspSessionUserTests : BaseAspTests
 {
     private const string Scheme = "ClaimsToken";
     private const string UserName = "alice";
+    private const string OtherScheme = "OtherDefault";
+    private const string OtherUserName = "bob";
 
     /// <summary>
     /// Adds a scheme that accepts "Bearer Token123" with a principal named <see cref="UserName"/>.
@@ -23,6 +26,33 @@ internal class AspSessionUserTests : BaseAspTests
         var authentication = defaultScheme
             ? builder.Services.AddAuthentication(Scheme)
             : builder.Services.AddAuthentication();
+        AddClaimsScheme(authentication);
+        builder.Services.AddAuthorization();
+    };
+
+    /// <summary>
+    /// Adds <see cref="Scheme"/> and a default scheme that always succeeds with a principal named
+    /// <see cref="OtherUserName"/>, so <c>UseAuthentication</c> fills <c>HttpContext.User</c> with the other principal.
+    /// </summary>
+    private static Action<WebApplicationBuilder> OtherDefaultSchemeServices() => builder =>
+    {
+        var authentication = builder.Services.AddAuthentication(OtherScheme);
+        AddClaimsScheme(authentication);
+        authentication.AddBearerToken(OtherScheme, o =>
+        {
+            o.Events.OnMessageReceived = context =>
+            {
+                context.Principal = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim(ClaimTypes.Name, OtherUserName)], OtherScheme));
+                context.Success();
+                return Task.CompletedTask;
+            };
+        });
+        builder.Services.AddAuthorization();
+    };
+
+    private static void AddClaimsScheme(AuthenticationBuilder authentication)
+    {
         authentication.AddBearerToken(Scheme, o =>
         {
             o.Events.OnMessageReceived = context =>
@@ -39,8 +69,7 @@ internal class AspSessionUserTests : BaseAspTests
                 return Task.CompletedTask;
             };
         });
-        builder.Services.AddAuthorization();
-    };
+    }
 
     private (ServerConfig Server, ClientConfig Client) CreateConfigs(Type type, bool aspAuthentication)
     {
@@ -82,6 +111,30 @@ internal class AspSessionUserTests : BaseAspTests
         Assert.That(user!.Identity?.IsAuthenticated, Is.True);
         Assert.That(user.FindFirst(ClaimTypes.Name)?.Value, Is.EqualTo(UserName));
         Assert.That(user.IsInRole("admin"), Is.True);
+    }
+
+    /// <summary>
+    /// When the default scheme run by <c>UseAuthentication</c> is not <c>AspAuthenticationScheme</c>, the session
+    /// still sees the <c>AspAuthenticationScheme</c> principal.
+    /// </summary>
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    public async Task OtherDefaultScheme_SessionSeesAspAuthenticationSchemePrincipal(Type type)
+    {
+        var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
+
+        var seen = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(serverConfig, nexus => nexus.OnAuthenticateEvent = n =>
+        {
+            seen.TrySetResult(n.Context.User?.FindFirst(ClaimTypes.Name)?.Value);
+            return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
+        }, OtherDefaultSchemeServices(), AspAppAuthConfigure);
+        var (client, _) = CreateClient(clientConfig);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(2);
+
+        Assert.That(await seen.Task.Timeout(1), Is.EqualTo(UserName));
     }
 
     [TestCase(Type.WebSocket)]
