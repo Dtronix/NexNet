@@ -220,6 +220,9 @@ new TcpClientConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 1234) };
 
 // UDS
 new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock") };
+// SocketFileMode: Unix only (throws PlatformNotSupportedException on Windows). RemoveStaleSocketFile deletes only a refused, confirmed socket file.
+new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/app.sock"),
+    SocketFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite, RemoveStaleSocketFile = true };
 
 // TLS - set SslServerAuthenticationOptions / SslClientAuthenticationOptions
 new TcpTlsServerConfig {
