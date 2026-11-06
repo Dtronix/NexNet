@@ -118,7 +118,7 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         finally
         {
             if (_creditWaitSince != 0)
-                Volatile.Write(ref _creditWaitSince, 0);
+                EndCreditWait();
         }
     }
 

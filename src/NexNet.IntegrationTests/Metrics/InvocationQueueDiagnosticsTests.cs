@@ -170,6 +170,9 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
         await WaitForQueue(server, executing: 1, queued: 0);
         await Eventually(() => Warnings().Count() >= 2);
         Assert.That(Warnings().Count(), Is.EqualTo(2));
+        // The second queued call of the first round was suppressed; this warning counts it.
+        Assert.That(Warnings().First(), Does.EndWith("threshold 1000 ms)."));
+        Assert.That(Warnings().Last(), Does.Contain("(1 more since the last warning)."));
 
         gates[3].SetResult();
         await Task.WhenAll(calls).Timeout(2);
@@ -248,5 +251,28 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
         Assert.That(waits.Max(w => w.Value), Is.EqualTo(1.5));
         Assert.That(waits.Sum(w => w.Value), Is.EqualTo(1.5));
         Assert.That(waits.All(w => w.Has("nexnet.role", "client") && w.Has("nexnet.transport", "uds")), Is.True);
+    }
+
+    [Test]
+    public async Task WaitForCreditAsync_RecordsPipeCreditWait()
+    {
+        using var recorder = new MetricsRecorder();
+        var tags = recorder.Metrics.GetTagSet(false, "uds");
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var writer = new NexNet.Pipes.NexusPipeWriter(null!, null,
+            new NexNet.IntegrationTests.Pipes.NexusDuplexPipeWriterTests.SessionMessengerStub(),
+            false, 1024, time, tags);
+
+        var waiting = writer.WaitForCreditAsync(4096, CancellationToken.None).AsTask();
+        await Task.Delay(50);
+        Assert.That(waiting.IsCompleted, Is.False);
+
+        time.Advance(TimeSpan.FromSeconds(1.5));
+        writer.AddCredit(4096);
+        await waiting.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var waits = recorder.Events("nexnet.pipe.credit_wait");
+        Assert.That(waits.Sum(w => w.Value), Is.EqualTo(1.5),
+            "A credit wait through WaitForCreditAsync (pipe relays) ends without recording nexnet.pipe.credit_wait.");
     }
 }
