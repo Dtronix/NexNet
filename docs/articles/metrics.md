@@ -40,6 +40,8 @@ Every instrument carries two tags. Their values are fixed by the program, so the
 | `nexnet.role` | `server`, `client` |
 | `nexnet.transport` | `tcp`, `tls`, `uds`, `websocket`, `httpsocket`, `quic`; `custom` for a configuration type that does not set `ConfigBase.TransportName` |
 
+Some instruments carry one more tag, named in their row below: `nexnet.direction`, a reason, or `nexnet.invocation.pool` (`normal` for plain methods, `separate` for `[NexusMethod(SeparatePool = true)]` methods).
+
 No instrument is tagged with a session, pipe or method ID, an address, or any value the peer sends.
 
 ### Sessions
@@ -71,12 +73,12 @@ See [Limits and Flow Control](limits-and-flow-control.md) for what these quantit
 | `nexnet.pipe.window` | UpDownCounter | `By` | | Receive windows reserved by those pipes. |
 | `nexnet.pipe.resets` | Counter | `{pipe}` | `nexnet.reset.reason` (`invalid_item`, `too_large`) | Pipes reset because the peer sent a channel item that breaks the framing or exceeds `MaxMessageSize`. |
 | `nexnet.pipe.refusals` | Counter | `{pipe}` | `nexnet.refusal.side` (`local`, `remote`) | Pipe opens refused because a session limit was reached, on this side or by the peer. |
-| `nexnet.invocation.queued` | UpDownCounter | `{invocation}` | | Invocations received and waiting for an execution slot. |
-| `nexnet.invocation.executing` | UpDownCounter | `{invocation}` | | Invocations running. One with a pipe or channel argument stops counting once its pipe is registered. |
+| `nexnet.invocation.queued` | UpDownCounter | `{invocation}` | `nexnet.invocation.pool` | Invocations received and waiting for an execution slot, per pool (both always reported). |
+| `nexnet.invocation.executing` | UpDownCounter | `{invocation}` | `nexnet.invocation.pool` | Invocations running, per pool. One with a pipe or channel argument stops counting once its pipe is registered. |
 | `nexnet.invocation.credit_waits` | UpDownCounter | `{invocation}` | | Calls waiting for the peer to return invocation credit. |
 | `nexnet.invocation.busy` | Counter | `{invocation}` | | Invocations sent to several sessions that found a session busy on the first pass. |
 | `nexnet.invocation.credit_drops` | Counter | `{invocation}` | | Invocations skipped because the peer returned no credit within `ProgressTimeout`. |
-| `nexnet.invocation.queue_wait` | Histogram | `s` | | Time a received invocation waited from being queued until it took an execution slot (`MaxConcurrentConnectionInvocations`). Recorded for every invocation that runs, 0 included. |
+| `nexnet.invocation.queue_wait` | Histogram | `s` | `nexnet.invocation.pool` | Time a received invocation waited from being queued until it took an execution slot (`MaxConcurrentConnectionInvocations`, or `MaxSeparatePoolInvocations` for the `separate` pool). Recorded for every invocation that runs, 0 included. |
 | `nexnet.pipe.credit_wait` | Histogram | `s` | | Time a pipe writer waited for the peer to grant window credit, recorded when the wait ends (credit arrived, or the flush was cancelled or completed). |
 | `nexnet.large_message.in_flight` | UpDownCounter | `{message}` | `nexnet.direction` (`inbound`, `outbound`) | Arguments and results larger than one frame being received or sent. |
 | `nexnet.large_message.aborts` | Counter | `{message}` | `nexnet.direction`, `nexnet.abort.reason` (`busy`, `too_large`, `cancelled`) | Large values stopped before completing. |
@@ -95,7 +97,7 @@ A snapshot holds:
 |------|----------|
 | Session | ID, role, transport, state, time connected, time since data was last received and sent, whether an outbound flush is in progress and for how long. |
 | Budget | Limit and reserved bytes. |
-| Invocations | Queued, executing, credits the peer has left here, credits this side may still spend, calls waiting for credit, calls waiting for a result, invocations dropped for lack of credit, how long the oldest queued invocation has waited for an execution slot (`OldestQueuedWait`, measured on `ConfigBase.Time`; null when none is queued). |
+| Invocations | Queued, executing, credits the peer has left here, credits this side may still spend, calls waiting for credit, calls waiting for a result, invocations dropped for lack of credit, how long the oldest queued invocation has waited for an execution slot (`OldestQueuedWait`, measured on `ConfigBase.Time`; null when none is queued). `Queued`, `Executing`, `MaxExecuting` and `OldestQueuedWait` cover the normal pool; `SeparatePoolQueued`, `SeparatePoolExecuting`, `SeparatePoolMaxExecuting` (`MaxSeparatePoolInvocations`) and `SeparatePoolOldestQueuedWait` cover `[NexusMethod(SeparatePool = true)]` methods. |
 | Pipes | Per pipe: ID, state, receive window, credit the peer still has, bytes buffered, bytes consumed and not yet granted back, extra credit outstanding, time since data last arrived, partial channel item (bytes received of its total), send credit, how long the writer has waited for credit and how many bytes it holds, how long the pipe has been closing. |
 | Large messages | Per value: direction, kind (argument or result), invocation ID, bytes transferred of the total, time since the last chunk. |
 | Transport | Frames and bytes sent and received. |
@@ -132,3 +134,5 @@ An invocation that waits longer than `InvocationQueueWarningThreshold` (5 s by d
 ```
 Session 12: invocation of method 3 waited 6.2 s for an execution slot (MaxConcurrentConnectionInvocations 2, threshold 5000 ms) (4 more since the last warning).
 ```
+
+A separate-pool invocation names `MaxSeparatePoolInvocations` and its value instead; both pools share the 30-second limit.

@@ -16,7 +16,8 @@ internal sealed record NexusAttributeData(
 internal sealed record NexusMethodAttributeData(
     bool AttributeExists,
     ushort? MethodId,
-    bool Ignore
+    bool Ignore,
+    bool SeparatePool
 );
 
 /// <summary>

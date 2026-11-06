@@ -38,8 +38,30 @@ Some argument types have restrictions on how they can be combined. The source ge
 - `CancellationToken` cannot be combined with `INexusDuplexPipe` or `INexusDuplexChannel<T>` because pipes and channels have built-in cancellation/completion notifications.
 - `CancellationToken` must be the last parameter, following standard .NET conventions.
 - Arguments and results may each be up to `ConfigBase.MaxMessageSize` (4 MiB by default, the smaller of both sides' settings). Values larger than one 64 KiB frame are streamed automatically. A larger value fails the call with `NexusMessageTooLargeException`, and a value the receiver has no memory for right now fails it with `NexusBusyException`; the session stays connected in both cases. For larger or continuous data, use [Duplex Pipes](duplex-pipes.md) or [Channels](channels.md).
-- The receiving side queues a limited number of invocations per session (`ConfigBase.InvocationCredits`) and runs `MaxConcurrentConnectionInvocations` of them at a time. When the queue is full, a call waits until a slot frees up. See [Limits and Flow Control](limits-and-flow-control.md).
+- The receiving side queues a limited number of invocations per session (`ConfigBase.InvocationCredits`) and runs `MaxConcurrentConnectionInvocations` of them at a time. When the queue is full, a call waits until a slot frees up. Methods marked `[NexusMethod(SeparatePool = true)]` run in a separate pool instead (see [Slow methods](#slow-methods)). See [Limits and Flow Control](limits-and-flow-control.md).
 - Argument and return types must be serializable: built-in types, `[NexusObject]` types, or types with a registered formatter. See [Serialization](serialization.md).
+
+## Slow methods
+
+A plain method holds one of the session's `MaxConcurrentConnectionInvocations` execution slots until it returns, so a slow one (a `git fetch` and merge, a long query: seconds to minutes) makes the fast calls on the same connection queue behind it. Mark such a method `SeparatePool = true`:
+
+```csharp
+public interface IServerNexus
+{
+    [NexusMethod(SeparatePool = true)]
+    ValueTask<int> SyncRepository(string remote, CancellationToken ct);
+
+    ValueTask<Status> GetStatus();
+}
+```
+
+Its invocations run in a second pool of the session, with its own queue and `ConfigBase.MaxSeparatePoolInvocations` slots (4 by default, 16 with `NexusSerializerOptions.Trusted`). They never take or wait for a `MaxConcurrentConnectionInvocations` slot, and plain calls never wait for a separate-pool slot. Both queues share the session's `InvocationCredits`. Cancellation works as for any other method, while queued or running.
+
+- **Not `TaskCreationOptions.LongRunning`.** No dedicated thread is created: the method runs on the thread pool like every other invocation. Only the queue and the cap differ.
+- **The method must be truly asynchronous.** Await the slow work (`await process.WaitForExitAsync(ct)`, not `process.WaitForExit()` or `.Result`): a method that blocks synchronously holds a thread-pool thread for its whole run, and many of them starve the pool for every session.
+- **The cap is per session**, not server-wide: 100 clients may each run `MaxSeparatePoolInvocations` such calls at once. Limit server-wide work in the method itself (a `SemaphoreSlim`, a work queue) when that matters.
+- The executing side decides: the flag is read from its own nexus and changes neither the method hash nor anything on the wire, so peers with and without it stay compatible.
+- No effect on a method with a pipe or channel parameter, which frees its slot once the pipe is registered (warning NEXNET039), nor on a collection property.
 
 ## Cancellation
 

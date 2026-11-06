@@ -110,6 +110,14 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor SeparatePoolOnPipeMethod = new(
+        id: "NEXNET039",
+        title: "SeparatePool has no effect on a pipe or channel method",
+        messageFormat: "SeparatePool has no effect on the Nexus method '{0}': a method with a pipe or channel parameter frees its execution slot once the pipe is registered",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Warning,
+        isEnabledByDefault: true);
+
     public static readonly DiagnosticDescriptor PipeOnMethodWithCancellationToken = new(
         id: "NEXNET014",
         title: "Nexus method support INexusDuplexPipe and CancellationToken on the same method",

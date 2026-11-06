@@ -49,6 +49,8 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 | `ValueTask` | Await completion | args + CT, OR args + pipes/channels |
 | `ValueTask<T>` | Await + return | args + CT only |
 
+`[NexusMethod(SeparatePool = true)]` on a slow plain method: runs in a separate per-session pool (`MaxSeparatePoolInvocations`) instead of taking a `MaxConcurrentConnectionInvocations` slot. Not `LongRunning` (thread pool, no dedicated thread): must be truly async. Not in the method hash. No effect on pipe/channel methods (NEXNET039 warning).
+
 CancellationToken must be last. Args and results up to `MaxMessageSize` (4 MiB default; larger than one 64 KiB frame are streamed automatically); over the limit throws `NexusMessageTooLargeException`, session stays up. Use pipes or channels for larger data.
 
 ## Serialization
@@ -290,6 +292,7 @@ still decides (null refuses). Not mapped to `Context.Identity` automatically.
 |----------|---------|-------------|
 | `Logger` | null | `INexusLogger` instance |
 | `MaxConcurrentConnectionInvocations` | 2 (32 trusted) | 1-1000, invocations from one session running at once on the receiving side |
+| `MaxSeparatePoolInvocations` | 4 (16 trusted) | 1-1000, `[NexusMethod(SeparatePool = true)]` invocations from one session running at once, in their own pool and queue (credits shared) |
 | `InvocationQueueWarningThreshold` | 5000ms | 0-600000ms, 0 disables; warns when an invocation waits longer for an execution slot |
 | `DisconnectDelay` | 200ms | 0-10000ms |
 | `Timeout` | 30000ms | 50-300000ms, idle timeout |
