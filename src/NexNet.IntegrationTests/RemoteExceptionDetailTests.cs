@@ -162,8 +162,16 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.RemoteErrorCode, Is.EqualTo(42));
         Assert.That(exception.RemoteExceptionType, Is.EqualTo("System.InvalidOperationException"));
         Assert.That(exception.RemoteMessage, Is.EqualTo("boom"));
-        Assert.That(exception.Message, Does.StartWith(DefaultMessage));
-        Assert.That(exception.Message, Does.Contain("boom"));
+        Assert.That(exception.Message,
+            Is.EqualTo(DefaultMessage + " System.InvalidOperationException: boom (code 42)"));
+
+        Assert.That(new ProxyRemoteInvocationException(null, "System.InvalidOperationException", "boom").Message,
+            Is.EqualTo(DefaultMessage + " System.InvalidOperationException: boom"));
+        Assert.That(new ProxyRemoteInvocationException(42, null, "denied").Message,
+            Is.EqualTo(DefaultMessage + " denied (code 42)"));
+        Assert.That(new ProxyRemoteInvocationException(7, null, null).Message,
+            Is.EqualTo(DefaultMessage + " (code 7)"));
+        Assert.That(new ProxyRemoteInvocationException(null, null, null).Message, Is.EqualTo(DefaultMessage));
 
         var plain = new ProxyRemoteInvocationException();
         Assert.That(plain.Message, Is.EqualTo(DefaultMessage));
