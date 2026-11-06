@@ -237,6 +237,7 @@ internal partial class NexusServerTests : BaseTests
     /// </summary>
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
     public async Task ServerRejectsAuth_DisconnectIsSentWhenReadLoopExitsFirst(Type type)
     {
         var disconnectHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

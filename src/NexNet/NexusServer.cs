@@ -417,6 +417,13 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             // Normally freed by DisconnectCore or a completed handshake; this covers a read loop that ended otherwise.
             session.EndHandshake();
 
+            // The read loop exits as soon as the session is disconnecting, possibly while DisconnectCore is still
+            // sending the disconnect frame. That disconnect completes the output and closes the transport itself;
+            // completing them here first would drop the frame. Wait for it; the completions below are then no-ops,
+            // except after a no-linger disconnect, which closes the transport without completing the output.
+            if (session.IsDisconnectStarted)
+                await session.DisconnectCompletion.ConfigureAwait(false);
+
             try
             {
                 // ReSharper disable once MethodHasAsyncOverload

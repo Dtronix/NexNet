@@ -78,6 +78,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
     private readonly CancellationTokenSource _disconnectionCts;
 
+    // Set by the DisconnectCore call that changed the state to Disconnecting; completed when that call returns.
+    private bool _disconnectStarted;
+    private readonly TaskCompletionSource _disconnectCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public Action<ConnectionState>? OnStateChanged;
     private readonly INexusClient? _client;
     
@@ -380,6 +384,38 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         if (state == ConnectionState.Disconnecting || state == ConnectionState.Disconnected)
             return;
 
+        // From here on this call owns the teardown: it alone completes the output and closes the transport.
+        Volatile.Write(ref _disconnectStarted, true);
+        try
+        {
+            await DisconnectStartedCore(reason, sendDisconnect, filePath, lineNumber).ConfigureAwait(false);
+        }
+        finally
+        {
+            _disconnectCompleted.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// True once a <see cref="DisconnectCore"/> call has taken over the session's teardown; it then completes the
+    /// output and closes the transport itself.
+    /// </summary>
+    internal bool IsDisconnectStarted
+        => Volatile.Read(ref _disconnectStarted)
+           || _state is ConnectionState.Disconnecting or ConnectionState.Disconnected;
+
+    /// <summary>
+    /// Completes when the <see cref="DisconnectCore"/> call that took over the teardown has finished, whatever its
+    /// outcome. Never completes if no disconnect started; check <see cref="IsDisconnectStarted"/> first.
+    /// </summary>
+    internal Task DisconnectCompletion => _disconnectCompleted.Task;
+
+    private async ValueTask DisconnectStartedCore(
+        DisconnectReason reason,
+        bool sendDisconnect,
+        string? filePath,
+        int? lineNumber)
+    {
         OnStateChanged?.Invoke(State);
 
         DisconnectReason = reason;
@@ -397,6 +433,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             var delay = false;
             try
             {
+                if (_config.InternalOnDisconnectBeforeSend != null)
+                    await _config.InternalOnDisconnectBeforeSend.Invoke(this).ConfigureAwait(false);
+
                 await SendHeaderCore((MessageType)reason, null,true).ConfigureAwait(false);
                 delay = true;
             }

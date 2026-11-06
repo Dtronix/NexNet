@@ -367,4 +367,7 @@ public abstract class ConfigBase
     internal Action<INexusSession>? InternalOnSessionSetup;
     internal bool InternalNoLingerOnShutdown = false;
     internal bool InternalForceDisableSendingDisconnectSignal = false;
+
+    // Test only: awaited by DisconnectCore after its state change and before it sends the disconnect frame.
+    internal Func<INexusSession, ValueTask>? InternalOnDisconnectBeforeSend;
 }
