@@ -83,6 +83,27 @@ builder.WebHost.ConfigureKestrel(options => options.ListenAnyIP(9001, listen =>
 - The value is `HttpContext.Connection.ClientCertificate` when the connection is accepted. NexNet does not call `GetClientCertificateAsync`, so with `ClientCertificateMode.DelayCertificate` the session sees no certificate.
 - When a reverse proxy terminates TLS, the application server never sees the client certificate and `Context.RemoteCertificate` is null.
 
+## The ASP.NET Principal
+
+The principal of the HTTP request that opened the connection (`HttpContext.User`) reaches the nexus as `Context.User` (`ClaimsPrincipal?`) for WebSocket and HttpSocket sessions. It is readable in `OnAuthenticate`, `OnConnected` and every invocation:
+
+```csharp
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte> authToken)
+{
+    var user = Context.User;
+    if (user?.Identity?.IsAuthenticated == true && user.IsInRole("admin"))
+        return new ValueTask<IIdentity?>(new UserIdentity(user.Identity.Name!));
+
+    return new ValueTask<IIdentity?>((IIdentity?)null);
+}
+```
+
+- With `AspEnableAuthentication = true` it is the principal of `AspAuthenticationScheme` (or the default scheme when none is set); a request that fails it is answered 401 and never reaches the nexus.
+- With `AspEnableAuthentication = false` it is whatever the pipeline set, for example `UseAuthentication` with a default scheme; otherwise ASP.NET's empty, unauthenticated principal.
+- It is captured once when the connection is accepted and is not re-validated during the session. Only the principal is kept, not the `HttpContext`.
+- It is extra input, not the session's identity: with `Authenticate = true`, `OnAuthenticate` still decides, and returning null refuses the connection. `Context.Identity` is what `OnAuthenticate` returns.
+- `Context.User` is null for TCP, TLS, UDS and QUIC sessions and in a client nexus.
+
 ## Reverse Proxy Configuration
 
 ### Nginx
