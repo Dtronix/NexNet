@@ -22,6 +22,8 @@ internal sealed class MetricsTagSet
     public KeyValuePair<string, object?>[] ReceivedTags { get; }
     public KeyValuePair<string, object?>[] InboundTags { get; }
     public KeyValuePair<string, object?>[] OutboundTags { get; }
+    public KeyValuePair<string, object?>[] NormalPoolTags { get; }
+    public KeyValuePair<string, object?>[] SeparatePoolTags { get; }
 
     /// <summary>
     /// Sum over the live sessions, as of the last collection. Written under the owner's lock.
@@ -45,5 +47,7 @@ internal sealed class MetricsTagSet
         ReceivedTags = [Role, Transport, new(NexusMetrics.TagDirection, "received")];
         InboundTags = [Role, Transport, new(NexusMetrics.TagDirection, "inbound")];
         OutboundTags = [Role, Transport, new(NexusMetrics.TagDirection, "outbound")];
+        NormalPoolTags = [Role, Transport, NexusMetrics.PoolNormal];
+        SeparatePoolTags = [Role, Transport, NexusMetrics.PoolSeparate];
     }
 }

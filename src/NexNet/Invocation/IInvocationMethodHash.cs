@@ -28,6 +28,14 @@ public interface IInvocationMethodHash
     /// </summary>
     public static abstract FrozenSet<long> VersionMethodHashSet { get; }
 
+    /// <summary>
+    /// True when the method with <paramref name="methodId"/> runs in the session's separate invocation pool
+    /// (<c>[NexusMethod(SeparatePool = true)]</c>). Generated-code infrastructure: the source generator overrides it
+    /// for a nexus with such methods. Must be O(1) and allocation-free; it is read for every received invocation.
+    /// </summary>
+    /// <param name="methodId">The id of the invoked method.</param>
+    public static virtual bool IsSeparatePoolMethod(ushort methodId) => false;
+
 
     /// <summary>
     /// This is a hash based upon the interface's method names, arguments and return values.

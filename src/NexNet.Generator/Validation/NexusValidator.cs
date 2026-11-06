@@ -236,6 +236,15 @@ internal static class NexusValidator
                         location,
                         method.Name));
                 }
+
+                // A pipe method gives its slot back once the pipe registers: the separate pool would change nothing.
+                if (method.MethodAttribute.SeparatePool)
+                {
+                    diagnostics.Add(CreateDiagnostic(
+                        DiagnosticDescriptors.SeparatePoolOnPipeMethod,
+                        location,
+                        method.Name));
+                }
             }
 
             // Return type validation

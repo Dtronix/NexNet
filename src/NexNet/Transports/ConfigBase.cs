@@ -16,6 +16,7 @@ public abstract class ConfigBase
 {
     // Backing fields for validated properties
     private int? _maxConcurrentConnectionInvocations;
+    private int? _maxSeparatePoolInvocations;
     private int _invocationQueueWarningThreshold = 5000;
     private int _disconnectDelay = 200;
     private int _timeout = 30_000;
@@ -113,8 +114,26 @@ public abstract class ConfigBase
     }
 
     /// <summary>
+    /// The maximum number of invocations of <c>[NexusMethod(SeparatePool = true)]</c> methods from a single
+    /// connection that run at once on this side, in a pool separate from
+    /// <see cref="MaxConcurrentConnectionInvocations"/>; further ones queue (sharing <see cref="InvocationCredits"/>)
+    /// until one of these slots frees. Defaults to 4, or 16 with <see cref="SerializerSecurity.Trusted"/> serializer
+    /// options. Per session, not server-wide. Must be between 1 and 1000.
+    /// </summary>
+    public int MaxSeparatePoolInvocations
+    {
+        get => _maxSeparatePoolInvocations ?? (IsTrusted ? 16 : 4);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(value, 1, nameof(MaxSeparatePoolInvocations));
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 1000, nameof(MaxSeparatePoolInvocations));
+            _maxSeparatePoolInvocations = value;
+        }
+    }
+
+    /// <summary>
     /// An invocation that waits longer than this for an execution slot (see
-    /// <see cref="MaxConcurrentConnectionInvocations"/>) logs a warning, at most once per 30 seconds per session, in
+    /// <see cref="MaxConcurrentConnectionInvocations"/> and <see cref="MaxSeparatePoolInvocations"/>) logs a warning, at most once per 30 seconds per session, in
     /// milliseconds. 5000 default; 0 disables the warning. Must be between 0 and 600000.
     /// </summary>
     public int InvocationQueueWarningThreshold

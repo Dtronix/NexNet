@@ -20,6 +20,8 @@ internal struct SessionMetricsTotals
     public long PipeWindow;
     public long InvocationsQueued;
     public long InvocationsExecuting;
+    public long SeparatePoolInvocationsQueued;
+    public long SeparatePoolInvocationsExecuting;
     public long CreditWaits;
     public long LargeMessagesInbound;
     public long LargeMessagesOutbound;

@@ -61,10 +61,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     // Context the invocations run in; captured when the read loop starts. Null if flow was suppressed.
     private ExecutionContext? _invocationExecutionContext;
 
-    // Invocations received and not yet running. The read loop only enqueues; up to
-    // MaxConcurrentConnectionInvocations run at once, each holding a slot until it finishes or registers its pipe.
-    private readonly ConcurrentQueue<InvocationMessage> _invocationQueue = new();
-    private int _freeInvocationSlots;
+    // Invocations received and not yet running, one queue per pool. The read loop only enqueues; up to
+    // MaxConcurrentConnectionInvocations run at once in the normal pool, each holding a slot until it finishes or
+    // registers its pipe, and up to MaxSeparatePoolInvocations in the separate pool ([NexusMethod(SeparatePool = true)]).
+    private readonly InvocationPool _normalPool;
+    private readonly InvocationPool _separatePool;
 
     private readonly SessionControlSender _controlSender;
     //private bool _isReconnected;
@@ -254,7 +255,8 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
         SessionInvocationStateManager = new SessionInvocationStateManager(_poolManager, _config.Logger, this);
         SessionStore = new SessionStore();
-        _freeInvocationSlots = _config.MaxConcurrentConnectionInvocations;
+        _normalPool = new InvocationPool(this, _config.MaxConcurrentConnectionInvocations, separate: false);
+        _separatePool = new InvocationPool(this, _config.MaxSeparatePoolInvocations, separate: true);
         Budget = new SessionBudget(_config.SessionBudget);
 
         // The peer may queue InvocationCredits invocations of up to one frame each; reserve that up front.
@@ -427,7 +429,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _pipeInput?.CancelPendingRead();
         _pipeInput = null;
 
-        while (_invocationQueue.TryDequeue(out var queued))
+        while (_normalPool.Queue.TryDequeue(out var queued))
+            queued.Dispose();
+        while (_separatePool.Queue.TryDequeue(out var queued))
             queued.Dispose();
 
         RetireMetrics();
@@ -558,8 +562,10 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         var pipes = PipeManager.OpenPipes;
         totals.PipesOpen += pipes;
         totals.PipeWindow += (long)pipes * _config.PipeWindow;
-        totals.InvocationsQueued += _invocationQueue.IsEmpty ? 0 : _invocationQueue.Count;
-        totals.InvocationsExecuting += Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots));
+        totals.InvocationsQueued += _normalPool.QueuedCount;
+        totals.InvocationsExecuting += _normalPool.Executing;
+        totals.SeparatePoolInvocationsQueued += _separatePool.QueuedCount;
+        totals.SeparatePoolInvocationsExecuting += _separatePool.Executing;
         totals.CreditWaits += Volatile.Read(ref _creditWaiters);
         totals.LargeMessagesInbound += _largeMessages.Count;
         totals.LargeMessagesOutbound += Volatile.Read(ref _outgoingLargeCount);
@@ -598,15 +604,21 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             Budget = new NexusBudgetSnapshot { Limit = Budget.Limit, Reserved = Budget.Reserved },
             Invocations = new NexusInvocationSnapshot
             {
-                Queued = _invocationQueue.Count,
-                Executing = Math.Max(0, _config.MaxConcurrentConnectionInvocations - Volatile.Read(ref _freeInvocationSlots)),
-                MaxExecuting = _config.MaxConcurrentConnectionInvocations,
+                Queued = _normalPool.QueuedCount,
+                Executing = _normalPool.Executing,
+                MaxExecuting = _normalPool.MaxSlots,
                 InboundCredits = Math.Max(0, Volatile.Read(ref _inboundCredits)),
                 OutboundCredits = _outboundCredits.CurrentCount,
                 CreditWaits = Volatile.Read(ref _creditWaiters),
                 AwaitingResults = SessionInvocationStateManager.OutstandingCount,
                 CreditDrops = Interlocked.Read(ref _creditDrops),
-                OldestQueuedWait = _invocationQueue.TryPeek(out var oldest) ? Since(now, oldest.QueuedTicks) : null,
+                OldestQueuedWait = _normalPool.Queue.TryPeek(out var oldest) ? Since(now, oldest.QueuedTicks) : null,
+                SeparatePoolQueued = _separatePool.QueuedCount,
+                SeparatePoolExecuting = _separatePool.Executing,
+                SeparatePoolMaxExecuting = _separatePool.MaxSlots,
+                SeparatePoolOldestQueuedWait = _separatePool.Queue.TryPeek(out var oldestSeparate)
+                    ? Since(now, oldestSeparate.QueuedTicks)
+                    : null,
             },
             Pipes = pipes,
             LargeMessages = largeMessages,
@@ -737,35 +749,49 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     public int SendMaxMessageSize => Math.Min(_config.MaxMessageSize, _peerMaxMessageSize);
 
     /// <summary>
-    /// Runs queued invocations while slots are free. Called after an invocation is queued and after a slot is
-    /// returned, so a queued invocation always finds a free slot. <paramref name="now"/> is the current tick count
-    /// when the caller has just read it, else 0; the clock is read at most once per call.
+    /// Queues a received invocation in the pool its method runs in and dispatches that pool.
     /// </summary>
-    private void DispatchInvocations(long now = 0)
+    private void QueueInvocation(InvocationMessage message, long queuedTicks)
     {
-        while (!_invocationQueue.IsEmpty && TryTakeInvocationSlot())
+        var pool = TNexus.IsSeparatePoolMethod(message.MethodId) ? _separatePool : _normalPool;
+        message.QueuedTicks = queuedTicks;
+        pool.Queue.Enqueue(message);
+        DispatchInvocations(pool, queuedTicks);
+    }
+
+    /// <summary>
+    /// Runs invocations queued in <paramref name="pool"/> while its slots are free. Called after an invocation is
+    /// queued and after a slot of the pool is returned, so a queued invocation always finds a free slot. Each pool
+    /// dispatches only from its own queue, so neither waits on the other. <paramref name="now"/> is the current tick
+    /// count when the caller has just read it, else 0; the clock is read at most once per call.
+    /// </summary>
+    private void DispatchInvocations(InvocationPool pool, long now = 0)
+    {
+        var queue = pool.Queue;
+        while (!queue.IsEmpty && pool.TryTakeSlot())
         {
-            if (!_invocationQueue.TryDequeue(out var message))
+            if (!queue.TryDequeue(out var message))
             {
                 // Another dispatcher took it.
-                Interlocked.Increment(ref _freeInvocationSlots);
+                Interlocked.Increment(ref pool.FreeSlots);
                 continue;
             }
 
             if (State != ConnectionState.Connected)
             {
                 message.Dispose();
-                Interlocked.Increment(ref _freeInvocationSlots);
+                Interlocked.Increment(ref pool.FreeSlots);
                 continue;
             }
 
-            RecordQueueWait(message, ref now);
+            RecordQueueWait(message, pool, ref now);
 
             if (!_invocationWorkItemPool.TryTake(out var workItem))
                 workItem = new InvocationWorkItem();
 
             workItem.Message = message;
             workItem.Session = this;
+            workItem.Pool = pool;
             workItem.SlotHeld = 1;
             message.Slot = workItem;
 
@@ -779,11 +805,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     }
 
     /// <summary>
-    /// Records how long <paramref name="message"/> waited for its execution slot, and warns, at most once per 30 s,
-    /// when it waited longer than <see cref="ConfigBase.InvocationQueueWarningThreshold"/>. Reads the clock into
-    /// <paramref name="now"/> when it is 0.
+    /// Records how long <paramref name="message"/> waited for its execution slot in <paramref name="pool"/>, and
+    /// warns, at most once per 30 s (shared by both pools), when it waited longer than
+    /// <see cref="ConfigBase.InvocationQueueWarningThreshold"/>. Reads the clock into <paramref name="now"/> when it is 0.
     /// </summary>
-    private void RecordQueueWait(InvocationMessage message, ref long now)
+    private void RecordQueueWait(InvocationMessage message, InvocationPool pool, ref long now)
     {
         var threshold = _config.InvocationQueueWarningThreshold;
         var metrics = _metricsTags.Metrics;
@@ -793,7 +819,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         if (now == 0)
             now = _config.Time.GetTickCount64();
         var waitMs = Math.Max(0, now - message.QueuedTicks);
-        metrics.RecordInvocationQueueWait(_metricsTags, waitMs / 1000.0);
+        metrics.RecordInvocationQueueWait(_metricsTags, pool.IsSeparate, waitMs / 1000.0);
 
         if (threshold == 0 || waitMs <= threshold)
             return;
@@ -806,9 +832,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         }
 
         var suppressed = Interlocked.Exchange(ref _queueWarningsSuppressed, 0);
+        var limit = pool.IsSeparate
+            ? $"MaxSeparatePoolInvocations {pool.MaxSlots}"
+            : $"MaxConcurrentConnectionInvocations {pool.MaxSlots}";
         Logger?.LogWarning($"Session {Id}: invocation of method {message.MethodId} waited {LogFormat.Seconds(waitMs)} " +
-                           $"for an execution slot (MaxConcurrentConnectionInvocations {_config.MaxConcurrentConnectionInvocations}, " +
-                           $"threshold {threshold} ms)" +
+                           $"for an execution slot ({limit}, threshold {threshold} ms)" +
                            (suppressed > 0 ? $" ({suppressed} more since the last warning)." : "."));
     }
 
@@ -832,24 +860,48 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         _controlSender.ReturnInvocationCredit();
     }
 
-    private bool TryTakeInvocationSlot()
+    /// <summary>
+    /// One invocation pool of a session: its queue and its execution slots.
+    /// </summary>
+    private sealed class InvocationPool
     {
-        var free = Volatile.Read(ref _freeInvocationSlots);
-        while (free > 0)
+        public readonly ConcurrentQueue<InvocationMessage> Queue = new();
+        public readonly NexusSession<TNexus, TProxy> Session;
+        public readonly int MaxSlots;
+        public readonly bool IsSeparate;
+        public int FreeSlots;
+
+        public InvocationPool(NexusSession<TNexus, TProxy> session, int maxSlots, bool separate)
         {
-            var observed = Interlocked.CompareExchange(ref _freeInvocationSlots, free - 1, free);
-            if (observed == free)
-                return true;
-            free = observed;
+            Session = session;
+            MaxSlots = maxSlots;
+            FreeSlots = maxSlots;
+            IsSeparate = separate;
         }
 
-        return false;
-    }
+        public int QueuedCount => Queue.IsEmpty ? 0 : Queue.Count;
 
-    private void ReturnInvocationSlot()
-    {
-        Interlocked.Increment(ref _freeInvocationSlots);
-        DispatchInvocations();
+        public int Executing => Math.Max(0, MaxSlots - Volatile.Read(ref FreeSlots));
+
+        public bool TryTakeSlot()
+        {
+            var free = Volatile.Read(ref FreeSlots);
+            while (free > 0)
+            {
+                var observed = Interlocked.CompareExchange(ref FreeSlots, free - 1, free);
+                if (observed == free)
+                    return true;
+                free = observed;
+            }
+
+            return false;
+        }
+
+        public void ReturnSlot()
+        {
+            Interlocked.Increment(ref FreeSlots);
+            Session.DispatchInvocations(this);
+        }
     }
 
     /// <summary>
@@ -860,6 +912,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     {
         public InvocationMessage Message = null!;
         public NexusSession<TNexus, TProxy> Session = null!;
+
+        // The pool the execution slot was taken from; the slot goes back to it.
+        public InvocationPool Pool = null!;
 
         // 1 while the invocation holds its execution slot.
         public int SlotHeld;
@@ -874,8 +929,9 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
         public void Release()
         {
+            var pool = Pool;
             if (Interlocked.Exchange(ref SlotHeld, 0) == 1)
-                Session.ReturnInvocationSlot();
+                pool.ReturnSlot();
         }
 
         void IThreadPoolWorkItem.Execute()
@@ -941,6 +997,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
 
             // Clear out the references before returning to the pool.
             Session = null!;
+            Pool = null!;
             Message = null!;
             session._invocationWorkItemPool.Add(this);
         }

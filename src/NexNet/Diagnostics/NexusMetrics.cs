@@ -33,6 +33,7 @@ internal sealed class NexusMetrics
     public const string TagResetReason = "nexnet.reset.reason";
     public const string TagRefusalSide = "nexnet.refusal.side";
     public const string TagAbortReason = "nexnet.abort.reason";
+    public const string TagInvocationPool = "nexnet.invocation.pool";
 
     public const string RejectionMaxPendingHandshakes = "max_pending_handshakes";
 
@@ -52,6 +53,8 @@ internal sealed class NexusMetrics
     private static readonly KeyValuePair<string, object?> AbortBusy = new(TagAbortReason, "busy");
     private static readonly KeyValuePair<string, object?> AbortTooLarge = new(TagAbortReason, "too_large");
     private static readonly KeyValuePair<string, object?> AbortCancelled = new(TagAbortReason, "cancelled");
+    internal static readonly KeyValuePair<string, object?> PoolNormal = new(TagInvocationPool, "normal");
+    internal static readonly KeyValuePair<string, object?> PoolSeparate = new(TagInvocationPool, "separate");
 
     private readonly Lock _lock = new();
     private readonly MetricsSessionTable _sessions = new();
@@ -113,11 +116,15 @@ internal sealed class NexusMetrics
             () => Observe(static s => s.Live.PipeWindow), "By",
             "Receive windows reserved by open pipes.");
         meter.CreateObservableUpDownCounter("nexnet.invocation.queued",
-            () => Observe(static s => s.Live.InvocationsQueued), "{invocation}",
-            "Invocations received and waiting for an execution slot.");
+            () => ObservePools(static (s, separate) => separate
+                ? s.Live.SeparatePoolInvocationsQueued
+                : s.Live.InvocationsQueued), "{invocation}",
+            "Invocations received and waiting for an execution slot, by invocation pool.");
         meter.CreateObservableUpDownCounter("nexnet.invocation.executing",
-            () => Observe(static s => s.Live.InvocationsExecuting), "{invocation}",
-            "Invocations running.");
+            () => ObservePools(static (s, separate) => separate
+                ? s.Live.SeparatePoolInvocationsExecuting
+                : s.Live.InvocationsExecuting), "{invocation}",
+            "Invocations running, by invocation pool.");
         meter.CreateObservableUpDownCounter("nexnet.invocation.credit_waits",
             () => Observe(static s => s.Live.CreditWaits), "{invocation}",
             "Calls waiting for the peer to return invocation credit.");
@@ -286,10 +293,10 @@ internal sealed class NexusMetrics
     /// <summary>
     /// Records the time an invocation waited for an execution slot. Does nothing without a listener.
     /// </summary>
-    public void RecordInvocationQueueWait(MetricsTagSet tags, double seconds)
+    public void RecordInvocationQueueWait(MetricsTagSet tags, bool separatePool, double seconds)
     {
         if (_invocationQueueWait.Enabled)
-            _invocationQueueWait.Record(seconds, tags.Role, tags.Transport);
+            _invocationQueueWait.Record(seconds, tags.Role, tags.Transport, separatePool ? PoolSeparate : PoolNormal);
     }
 
     /// <summary>
@@ -367,6 +374,15 @@ internal sealed class NexusMetrics
         => ObserveMany(static (set, i, select) => i == 0
                 ? new Measurement<long>(select(set, true), set.SentTags)
                 : new Measurement<long>(select(set, false), set.ReceivedTags),
+            2, select);
+
+    /// <summary>
+    /// Two measurements per tag set, normal and separate invocation pool, of the value <paramref name="select"/> reads.
+    /// </summary>
+    private Measurement<long>[] ObservePools(Func<MetricsTagSet, bool, long> select)
+        => ObserveMany(static (set, i, select) => i == 0
+                ? new Measurement<long>(select(set, false), set.NormalPoolTags)
+                : new Measurement<long>(select(set, true), set.SeparatePoolTags),
             2, select);
 
     /// <summary>

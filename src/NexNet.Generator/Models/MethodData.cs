@@ -51,4 +51,10 @@ internal sealed record MethodData(
 
     public MethodParameterData? DuplexPipeParameter =>
         DuplexPipeParameterIndex >= 0 ? Parameters[DuplexPipeParameterIndex] : null;
+
+    /// <summary>
+    /// Runs in the session's separate invocation pool: [NexusMethod(SeparatePool = true)] on a method without a pipe
+    /// or channel parameter (one with a pipe frees its slot once the pipe registers; NEXNET039).
+    /// </summary>
+    public bool RunsInSeparatePool => MethodAttribute.SeparatePool && !UtilizesPipes;
 }

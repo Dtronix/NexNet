@@ -652,10 +652,11 @@ internal static class NexusDataExtractor
             .FirstOrDefault(a => a.AttributeClass?.Name == "NexusMethodAttribute");
 
         if (attr is null)
-            return new NexusMethodAttributeData(false, null, false);
+            return new NexusMethodAttributeData(false, null, false, false);
 
         ushort? methodId = null;
         bool ignore = false;
+        bool separatePool = false;
 
         // Check constructor arguments - handle both ushort and int types
         if (attr.ConstructorArguments.Length > 0)
@@ -680,9 +681,12 @@ internal static class NexusDataExtractor
             }
             else if (arg.Key == "Ignore" && arg.Value.Value is bool ig)
                 ignore = ig;
+            else if (arg.Key == "SeparatePool" && arg.Value.Value is bool sp)
+                separatePool = sp;
         }
 
-        return new NexusMethodAttributeData(true, methodId, ignore);
+        // SeparatePool is read on the executing side only: it is never part of the method hash.
+        return new NexusMethodAttributeData(true, methodId, ignore, separatePool);
     }
 
     private static NexusMethodAttributeData? ExtractMethodAttributeFromProperty(IPropertySymbol symbol)
@@ -695,6 +699,7 @@ internal static class NexusDataExtractor
 
         ushort? methodId = null;
         bool ignore = false;
+        bool separatePool = false;
 
         // Check constructor arguments - handle both ushort and int types
         if (attr.ConstructorArguments.Length > 0)
@@ -719,9 +724,12 @@ internal static class NexusDataExtractor
             }
             else if (arg.Key == "Ignore" && arg.Value.Value is bool ig)
                 ignore = ig;
+            else if (arg.Key == "SeparatePool" && arg.Value.Value is bool sp)
+                separatePool = sp;
         }
 
-        return new NexusMethodAttributeData(true, methodId, ignore);
+        // SeparatePool is read on the executing side only: it is never part of the method hash.
+        return new NexusMethodAttributeData(true, methodId, ignore, separatePool);
     }
 
     private static NexusCollectionAttributeData ExtractCollectionAttribute(IPropertySymbol symbol)

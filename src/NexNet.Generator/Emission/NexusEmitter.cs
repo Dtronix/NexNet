@@ -328,6 +328,34 @@ internal static class NexusEmitter
 
         sb.AppendLine("        });");
 
+        // Methods of this nexus that run in the session's separate invocation pool, read for each received
+        // invocation. Only emitted when there are any; the interface default answers false.
+        var separatePoolIds = data.NexusInterface.AllMethods
+            .Where(m => m.RunsInSeparatePool)
+            .Select(m => m.Id)
+            .Distinct()
+            .OrderBy(id => id)
+            .ToArray();
+        if (separatePoolIds.Length > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("        /// <summary>");
+            sb.AppendLine("        /// True for the methods marked [NexusMethod(SeparatePool = true)].");
+            sb.AppendLine("        /// </summary>");
+            sb.AppendLine("        static bool global::NexNet.Invocation.IInvocationMethodHash.IsSeparatePoolMethod(ushort methodId) => methodId switch");
+            sb.AppendLine("        {");
+            sb.Append("            ");
+            for (var i = 0; i < separatePoolIds.Length; i++)
+            {
+                if (i > 0)
+                    sb.Append(" or ");
+                sb.Append(separatePoolIds[i]);
+            }
+            sb.AppendLine(" => true,");
+            sb.AppendLine("            _ => false,");
+            sb.AppendLine("        };");
+        }
+
         // Emit proxy implementation - only on client
         InvocationInterfaceEmitter.EmitProxyImpl(
             sb,

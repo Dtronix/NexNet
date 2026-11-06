@@ -14,6 +14,7 @@ All settings are on `ConfigBase`, so they apply to every client and server confi
 | `MaxMessageSize` | 4 MiB / 16 MiB | 64 KiB – 1 GiB | Largest argument, result or channel item accepted. |
 | `InvocationCredits` | 32 / 128 | 1 – 10,000 | Invocations the peer may have queued on this side at once. |
 | `MaxConcurrentConnectionInvocations` | 2 / 32 | 1 – 1000 | Invocations from one session that run at the same time on this (the receiving) side. |
+| `MaxSeparatePoolInvocations` | 4 / 16 | 1 – 1000 | Invocations of `[NexusMethod(SeparatePool = true)]` methods from one session that run at the same time on this side, in their own pool. |
 | `InvocationQueueWarningThreshold` | 5 s | 0 – 10 min (0 disables) | An invocation that waits longer than this for an execution slot logs a warning, at most once every 30 s per session. |
 | `ProgressTimeout` | 30 s | 50 ms – 10 min | Longest time an operation that holds resources may go without progress. |
 
@@ -51,7 +52,9 @@ The session stays connected in every case. Results follow the same rules in the 
 
 The receiving side queues up to `InvocationCredits` invocations and runs `MaxConcurrentConnectionInvocations` of them at a time. An invocation with a pipe or channel argument frees its execution slot once the pipe is registered, so long-running streams do not block other calls.
 
-How long invocations wait for a slot is recorded by the `nexnet.invocation.queue_wait` histogram, and a session snapshot shows how long the oldest queued invocation has waited (`OldestQueuedWait`). See [Metrics and Diagnostics](metrics.md).
+A slow plain method holds its slot until it returns. Mark it `[NexusMethod(SeparatePool = true)]` and it runs in a separate pool of the session instead: its own FIFO queue and `MaxSeparatePoolInvocations` slots, so it never takes a `MaxConcurrentConnectionInvocations` slot and a full separate pool never holds back plain calls (nor the other way round). Both queues together hold at most `InvocationCredits` invocations; the credit is returned when an invocation of either pool starts. It is not `TaskCreationOptions.LongRunning`: the method runs on the thread pool, so it must be truly asynchronous (`Process.WaitForExitAsync`, not `WaitForExit()` or `.Result`), and the cap is per session, not server-wide. See [Hub Invocations: Slow methods](hub-invocations.md#slow-methods).
+
+How long invocations wait for a slot is recorded by the `nexnet.invocation.queue_wait` histogram (tagged `nexnet.invocation.pool` = `normal` or `separate`), and a session snapshot shows how long the oldest queued invocation has waited (`OldestQueuedWait`, and `SeparatePoolOldestQueuedWait` for the separate pool). `InvocationQueueWarningThreshold` applies to both pools. See [Metrics and Diagnostics](metrics.md).
 
 Invocations sent to several sessions (`All`, `Others`, `Groups`, `Clients`) are delivered in two passes:
 
@@ -111,6 +114,8 @@ MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64 KiB ≤ Sessio
 The Trusted defaults (1 MiB window, 64 MiB budget) already suit links up to about 40 ms at tens of MB/s per pipe. Lowering `MaxPipes` keeps the budget small when only a few pipes carry bulk data.
 
 ### Is a pipe window-bound?
+
+The `nexnet.pipe.credit_wait` histogram records how long pipe writers waited for window credit (see [Metrics and Diagnostics](metrics.md#flow-control)).
 
 The session snapshot (see [Metrics and Diagnostics](metrics.md#session-snapshot)) lists each pipe in `NexusSessionSnapshot.Pipes`. A pipe's `WaitingForCredit` is null while its writer is not waiting, and otherwise how long it has waited for send credit (with `WaitingBytes` still to send). A `WaitingForCredit` that is non-null and keeps growing on the sending side means the writer is window-bound: the receiver is reading slowly, or the round-trip time is the limit. If the receiver's `Buffered` stays near zero while the writer waits, the round-trip time is the limit and a larger window helps; if `Buffered` stays near the window, the receiving application is the limit.
 

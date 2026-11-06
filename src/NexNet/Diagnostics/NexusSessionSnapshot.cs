@@ -111,6 +111,29 @@ public sealed record NexusInvocationSnapshot
     /// <see cref="NexNet.Transports.ConfigBase.Time"/>; null when none is queued.
     /// </summary>
     public TimeSpan? OldestQueuedWait { get; init; }
+
+    /// <summary>
+    /// Invocations of <c>[NexusMethod(SeparatePool = true)]</c> methods received and waiting for a slot of the
+    /// separate pool. Not counted in <see cref="Queued"/>.
+    /// </summary>
+    public int SeparatePoolQueued { get; init; }
+
+    /// <summary>
+    /// Invocations of <c>[NexusMethod(SeparatePool = true)]</c> methods running. Not counted in <see cref="Executing"/>.
+    /// </summary>
+    public int SeparatePoolExecuting { get; init; }
+
+    /// <summary>
+    /// Most separate-pool invocations that run at once
+    /// (<see cref="NexNet.Transports.ConfigBase.MaxSeparatePoolInvocations"/>).
+    /// </summary>
+    public int SeparatePoolMaxExecuting { get; init; }
+
+    /// <summary>
+    /// How long the oldest queued separate-pool invocation has waited for a slot, measured on
+    /// <see cref="NexNet.Transports.ConfigBase.Time"/>; null when none is queued.
+    /// </summary>
+    public TimeSpan? SeparatePoolOldestQueuedWait { get; init; }
 }
 
 /// <summary>
