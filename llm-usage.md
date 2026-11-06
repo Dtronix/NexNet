@@ -193,11 +193,11 @@ message shapes are always enforced.
 ```csharp
 // Both
 protected override ValueTask OnConnected(bool isReconnected) => default;
-protected override ValueTask OnDisconnected(Exception? ex) => default;
+protected override ValueTask OnDisconnected(DisconnectReason reason) => default;
 // Client only
 protected override ValueTask OnReconnecting() => default;
 // Server only (null = reject auth)
-protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token) => ...;
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken) => ...;
 // Server only (after auth, before OnConnected)
 protected override ValueTask OnNexusInitialize() => default;
 ```
@@ -212,6 +212,19 @@ protected override ValueTask OnNexusInitialize() => default;
 | QUIC | `QuicServerConfig` | `QuicClientConfig` |
 | WebSocket | ASP.NET server | `WebSocketClientConfig` |
 | HttpSocket | ASP.NET server | `HttpSocketClientConfig` |
+
+### Namespaces
+
+The TCP and TLS configs are in `NexNet.Transports`; the others differ:
+
+- `QuicServerConfig`, `QuicClientConfig`: `NexNet.Quic`
+- `WebSocketClientConfig`: `NexNet.Transports.WebSocket`
+- `HttpSocketClientConfig`: `NexNet.Transports.HttpSocket`
+- `UdsClientConfig`: `NexNet.Transports` (not `.Uds`)
+- `UdsServerConfig`: `NexNet.Transports.Uds`
+- `IIdentity`, `DefaultIdentity`: `NexNet`
+- `WebSocketServerConfig`: `NexNet.Asp.WebSocket`
+- `HttpSocketServerConfig`: `NexNet.Asp.HttpSocket`
 
 ```csharp
 // TCP
@@ -263,6 +276,11 @@ server certificate. Set for TcpTls, QUIC, WebSocket/HttpSocket over HTTPS; null 
 `OnAuthenticate`. ASP servers: `HttpContext.Connection.ClientCertificate` at accept (Kestrel
 `ClientCertificateMode.AllowCertificate`/`RequireCertificate`; `DelayCertificate` is not seen; null when a proxy
 terminates TLS). Valid while connected; copy to keep.
+
+ASP principal: `Context.User` (ClaimsPrincipal?) — server nexus over WebSocket/HttpSocket: `HttpContext.User` captured
+at accept (with `AspEnableAuthentication`, the `AspAuthenticationScheme` principal; otherwise what the pipeline set).
+Null for TCP/TLS/UDS/QUIC and in client nexuses. Available in `OnAuthenticate`; never re-validated; `OnAuthenticate`
+still decides (null refuses). Not mapped to `Context.Identity` automatically.
 
 ## Configuration
 
@@ -323,7 +341,7 @@ Fire-and-forget (`void`) methods send nothing.
 ```csharp
 var client = ClientNexus.CreateClient(config, new ClientNexus());
 await client.ConnectAsync();                   // throws on failure
-var result = await client.TryConnectAsync();   // ConnectionResult with .Success, .State, .DisconnectReason
+var result = await client.TryConnectAsync();   // ConnectionResult: .Success (bool), .State (ConnectionResult.StateValue; StateValue.Success on success), .DisconnectReason, .Exception
 client.StateChanged += (s, state) => { };      // ConnectionState enum
 await client.DisconnectedTask;                 // wait for disconnect
 await client.DisconnectAsync();
@@ -398,6 +416,7 @@ var names = await Context.Groups.GetNamesAsync();
 // Session info
 long id = Context.Id;
 X509Certificate2? peerCert = Context.RemoteCertificate;  // TLS peer certificate, if any
+ClaimsPrincipal? aspUser = Context.User;                // ASP.NET HttpContext.User (WebSocket/HttpSocket server only)
 string? user = Context.Identity?.DisplayName;
 
 // Per-session key-value store (lifetime = connection)
@@ -444,8 +463,8 @@ Disabled by default. Enable with `ServerConfig.Authenticate = true`.
 // Server config
 var serverConfig = new TcpServerConfig { EndPoint = ep, Authenticate = true };
 // Server nexus: override OnAuthenticate (return null = reject)
-protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token) {
-    var str = Encoding.UTF8.GetString(token!.Value.Span);
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? authenticationToken) {
+    var str = Encoding.UTF8.GetString(authenticationToken!.Value.Span);
     return str == "valid" ? new(new DefaultIdentity { DisplayName = "User" }) : new((IIdentity?)null);
 }
 // Client config
@@ -660,12 +679,14 @@ builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
 app.UseAuthentication();
 app.UseAuthorization();
 // HttpSocket
-await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c => {
+// Use*NexusServerAsync is synchronous: it returns the NexusServer, which you then start.
+var server = app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c => {
     c.NexusConfig.Path = "/nexus";
     c.NexusConfig.AspEnableAuthentication = true;
     c.NexusConfig.AspAuthenticationScheme = "BearerToken";
     c.NexusConfig.TrustProxyHeaders = false; // X-Forwarded-For (default: false)
-}).StartAsync(app.Lifetime.ApplicationStopped);
+});
+await server.StartAsync(app.Lifetime.ApplicationStopped);
 // WebSocket: UseWebSocketNexusServerAsync instead
 ```
 

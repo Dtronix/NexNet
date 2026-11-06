@@ -45,6 +45,7 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     /// <param name="context">Http context for the current connection.</param>
     /// <param name="config">Configuration containing the authentication scheme.</param>
+    /// <remarks>On success the authenticated principal is assigned to <c>HttpContext.User</c>.</remarks>
     /// <returns>
     /// Returns true if the connection should continue based upon the configurations.
     /// The client may be authenticated or not if configured to disable authentication.
@@ -66,7 +67,12 @@ public static partial class NexNetMiddlewareExtensions
         }
 
         if (authResult.Succeeded)
+        {
+            // AuthenticateAsync does not set the request's principal; the session reads it from context.User.
+            if (authResult.Principal != null)
+                context.User = authResult.Principal;
             return true;
+        }
 
         // Log the failure.
         config.Logger?.LogInfo(authResult.Failure, "Authentication failed");

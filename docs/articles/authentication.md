@@ -34,6 +34,8 @@ public partial class ServerNexus
 
 Over TLS, `Context.RemoteCertificate` holds the client certificate inside `OnAuthenticate`, so the token and the certificate can be checked together. See [TLS and Certificates](transports.md#tls-and-certificates).
 
+On an ASP.NET server (WebSocket and HttpSocket), `Context.User` holds the request's `ClaimsPrincipal` inside `OnAuthenticate`, so the claims ASP.NET authentication produced can be mapped to an `IIdentity`. See [ASP.NET Integration](asp-net-integration.md#the-aspnet-principal).
+
 The `IIdentity` returned by `OnAuthenticate` is available throughout the session via `Context.Identity`, which is used by the [Authorization](authorization.md) system for method-level access control.
 
 ## Client-Side Token

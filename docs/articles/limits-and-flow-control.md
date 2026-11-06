@@ -74,7 +74,7 @@ Each channel item is sent with its length in front of it. The reader waits until
 
 An item may be at most `MaxMessageSize` bytes. Writing a larger one throws `NexusMessageTooLargeException` and sends nothing. Receiving one, or an item that does not decode to exactly its length, resets the channel's pipe without disconnecting the session, with a warning logged at most once every 10 seconds per session.
 
-## Throughput over High-Latency Links
+## Sizing PipeWindow and SessionBudget
 
 A pipe can have at most one window of data in flight, so its throughput is limited to `PipeWindow` divided by the round-trip time:
 
@@ -82,9 +82,37 @@ A pipe can have at most one window of data in flight, so its throughput is limit
 |-----------------|---------------:|-------------:|-------------:|
 | 1 ms (LAN) | 256 MB/s | 1 GB/s | 4 GB/s |
 | 20 ms | 13 MB/s | 52 MB/s | 210 MB/s |
+| 40 ms | 6.6 MB/s | 26 MB/s | 105 MB/s |
 | 100 ms | 2.6 MB/s | 10 MB/s | 42 MB/s |
 
-For bulk transfers over long distances, raise `PipeWindow` on the receiving side to at least the link's bandwidth multiplied by its round-trip time, and raise `SessionBudget` so that `MaxPipes` windows still fit. Lowering `MaxPipes` keeps the budget small when only a few pipes carry bulk data.
+For example, at 40 ms the default 256 KiB window gives about 6.6 MB/s (262,144 B ÷ 0.04 s) per pipe, and the Trusted 1 MiB window about 26 MB/s. At 100 ms they give about 2.6 MB/s and 10.5 MB/s. This bound applies however fast the link is; adding bandwidth does not help, a larger window does.
+
+For bulk transfers over long distances, raise `PipeWindow` on the receiving side to at least the link's bandwidth multiplied by its round-trip time. The window is set by the side that receives: a client uploading to a server needs the larger window in the server's config, a download in the client's.
+
+### Relays
+
+A relay (`ForwardToAsync` or `BridgeAsync`, see [Duplex Pipes](duplex-pipes.md#relaying)) is two pipes on two sessions, and each one has its own window and round-trip time. The bound applies per hop: each hop carries at most its window ÷ its RTT, and the slowest hop bounds the end-to-end throughput, since a slow destination stalls the source. Each hop's window is set by its receiving side: for client A → relay → client B, the relay's config sets the window of the first hop and client B's config the window of the second. Raise the window on the hop with the longest round-trip time.
+
+### Fitting the budget
+
+Every open pipe reserves its window from the session budget, so raising `PipeWindow` means raising `SessionBudget` too. Building a client or server checks:
+
+```
+MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64 KiB ≤ SessionBudget
+```
+
+| Configuration | Reservation | Budget |
+|---------------|-------------|--------|
+| Defaults | 32 × 256 KiB + 4 MiB + 32 × 64 KiB = 14 MiB | 16 MiB |
+| `NexusSerializerOptions.Trusted` defaults | 32 × 1 MiB + 16 MiB + 128 × 64 KiB = 56 MiB | 64 MiB |
+| `PipeWindow` = 4 MiB, other defaults | 32 × 4 MiB + 4 MiB + 32 × 64 KiB = 134 MiB | raise `SessionBudget` to at least 134 MiB |
+| `PipeWindow` = 4 MiB, `MaxPipes` = 4 | 4 × 4 MiB + 4 MiB + 32 × 64 KiB = 22 MiB | raise `SessionBudget` to at least 22 MiB |
+
+The Trusted defaults (1 MiB window, 64 MiB budget) already suit links up to about 40 ms at tens of MB/s per pipe. Lowering `MaxPipes` keeps the budget small when only a few pipes carry bulk data.
+
+### Is a pipe window-bound?
+
+The session snapshot (see [Metrics and Diagnostics](metrics.md#session-snapshot)) lists each pipe in `NexusSessionSnapshot.Pipes`. A pipe's `WaitingForCredit` is null while its writer is not waiting, and otherwise how long it has waited for send credit (with `WaitingBytes` still to send). A `WaitingForCredit` that is non-null and keeps growing on the sending side means the writer is window-bound: the receiver is reading slowly, or the round-trip time is the limit. If the receiver's `Buffered` stays near zero while the writer waits, the round-trip time is the limit and a larger window helps; if `Buffered` stays near the window, the receiving application is the limit.
 
 ## Timeouts and Disconnects
 

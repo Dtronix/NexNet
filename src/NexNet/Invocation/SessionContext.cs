@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
 using System;
+using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using NexNet.Diagnostics;
 using NexNet.Internals;
@@ -52,6 +53,9 @@ public abstract class SessionContext<TProxy> : ISessionContext
 
     /// <inheritdoc />
     public X509Certificate2? RemoteCertificate => Session.RemoteCertificate;
+
+    /// <inheritdoc />
+    public ClaimsPrincipal? User => Session.User;
 
     internal SessionContext(INexusSession<TProxy> session, IServerSessionManager? sessionManager)
     {

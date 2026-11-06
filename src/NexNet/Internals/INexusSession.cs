@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -88,6 +89,11 @@ internal interface INexusSession : ISessionMessenger
     /// The certificate the remote peer presented during the TLS handshake, if any.
     /// </summary>
     X509Certificate2? RemoteCertificate { get; }
+
+    /// <summary>
+    /// The ASP.NET principal of the request that opened the connection; null for other transports and on clients.
+    /// </summary>
+    ClaimsPrincipal? User { get; }
 
     /// <summary>
     /// Disconnects the session if the last received time is less than the timeout ticks.
