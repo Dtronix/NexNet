@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Time.Testing;
 using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -195,9 +196,11 @@ internal class SeparatePoolTests : BaseTests
     public async Task Snapshot_ReportsSeparatePoolQueuedExecutingAndMax()
     {
         var gates = new Gates();
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
         var (server, client) = await Start(
             config =>
             {
+                UseFakeTime(config, time);
                 config.MaxConcurrentConnectionInvocations = 1;
                 config.MaxSeparatePoolInvocations = 1;
             },
@@ -217,15 +220,87 @@ internal class SeparatePoolTests : BaseTests
 
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 1, SeparatePoolQueued: 1, Executing: 1, Queued: 1 },
             "one running and one queued in each pool");
+        time.Advance(TimeSpan.FromSeconds(3));
 
         var invocations = Invocations(server)!;
         Assert.That(invocations.SeparatePoolMaxExecuting, Is.EqualTo(1));
         Assert.That(invocations.MaxExecuting, Is.EqualTo(1));
+        Assert.That(invocations.SeparatePoolOldestQueuedWait, Is.EqualTo(TimeSpan.FromSeconds(3)));
 
         gates.ReleaseAll();
         await Task.WhenAll(calls).Timeout(2);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0, SeparatePoolQueued: 0, Executing: 0, Queued: 0 },
             "both pools idle");
+        Assert.That(Invocations(server)!.SeparatePoolOldestQueuedWait, Is.Null);
+    }
+
+    [Test]
+    public async Task QueueWarning_SeparatePool_NamesMaxSeparatePoolInvocations_SharesRateLimit()
+    {
+        var gates = new Gates();
+        var time = new FakeTimeProvider(DateTimeOffset.UtcNow);
+        var logger = new CapturingLogger();
+        var (server, client) = await Start(
+            config =>
+            {
+                UseFakeTime(config, time);
+                config.Logger = logger;
+                config.InvocationQueueWarningThreshold = 1000;
+                config.MaxConcurrentConnectionInvocations = 1;
+                config.MaxSeparatePoolInvocations = 1;
+            },
+            nexus =>
+            {
+                nexus.SlowHandler = id => gates.Run("slow", id);
+                nexus.PlainHandler = id => gates.Run("plain", id);
+            });
+        string[] Warnings() => logger.Warnings.Where(w => w.Contains("execution slot")).ToArray();
+
+        var calls = new List<Task> { client.Proxy.Slow(1).AsTask(), client.Proxy.Plain(3).AsTask() };
+        await gates.Started(1).Timeout(1);
+        await gates.Started(3).Timeout(1);
+        calls.Add(client.Proxy.Slow(2).AsTask());
+        calls.Add(client.Proxy.Plain(4).AsTask());
+        await WaitFor(() => Invocations(server) is { SeparatePoolQueued: 1, Queued: 1 }, "one queued in each pool");
+
+        // Both queued calls wait 2 s, over the 1 s threshold. The separate-pool one is reported first.
+        time.Advance(TimeSpan.FromSeconds(2));
+        gates.Release(1);
+        await gates.Started(2).Timeout(1);
+        await WaitFor(() => Warnings().Length >= 1, "the separate-pool warning");
+        Assert.That(Warnings(), Has.Length.EqualTo(1));
+        Assert.That(Warnings()[0], Does.Contain("(MaxSeparatePoolInvocations 1, threshold 1000 ms)."));
+        Assert.That(Warnings()[0], Does.Not.Contain("MaxConcurrentConnectionInvocations"));
+
+        // The normal-pool wait falls in the same 30 s window: suppressed.
+        gates.Release(3);
+        await gates.Started(4).Timeout(1);
+        await Task.Delay(100);
+        Assert.That(Warnings(), Has.Length.EqualTo(1), "The pools do not share the 30 s warning window.");
+
+        // 31 s later the next slow separate-pool call is reported, counting the suppressed normal-pool one.
+        calls.Add(client.Proxy.Slow(5).AsTask());
+        await WaitFor(() => Invocations(server)?.SeparatePoolQueued == 1, "the third separate-pool call queued");
+        time.Advance(TimeSpan.FromSeconds(31));
+        gates.Release(2);
+        await gates.Started(5).Timeout(1);
+        await WaitFor(() => Warnings().Length >= 2, "the second warning");
+        Assert.That(Warnings(), Has.Length.EqualTo(2));
+        Assert.That(Warnings()[1], Does.Contain("MaxSeparatePoolInvocations 1"));
+        Assert.That(Warnings()[1], Does.EndWith("(1 more since the last warning)."));
+
+        gates.ReleaseAll();
+        await Task.WhenAll(calls).Timeout(2);
+    }
+
+    /// <summary>
+    /// Runs the server on <paramref name="time"/>; the clock is advanced past the timeouts, so they are raised.
+    /// </summary>
+    private static void UseFakeTime(ServerConfig config, FakeTimeProvider time)
+    {
+        config.Time = time;
+        config.Timeout = 300_000;
+        config.ProgressTimeout = 600_000;
     }
 
     [Test]
