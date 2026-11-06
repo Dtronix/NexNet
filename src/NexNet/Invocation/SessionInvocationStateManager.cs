@@ -109,9 +109,9 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         }
     }
 
-    // Pooled: awaited or read exactly once, by the proxy.
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    public async ValueTask<bool> InvokeMethodWithResultCore(
+    // Pooled: read exactly once, by the proxy or by the state (ObserveSend), never by user code.
+    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
+    public async ValueTask InvokeMethodWithResultCore(
         RegisteredInvocationState state,
         ushort methodId,
         Memory<byte> serializedArguments,
@@ -122,8 +122,8 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (cancellationToken?.IsCancellationRequested == true)
         {
             argumentsOwner?.Return();
-            state.Return();
-            return false;
+            state.TrySetNoResult();
+            return;
         }
 
         using var message = _poolManager.Rent<InvocationMessage>();
@@ -135,8 +135,8 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         // Larger than one frame is streamed; larger than the peer accepts fails here, before taking an ID.
         if (serializedArguments.Length > session.SendMaxMessageSize)
         {
-            state.Return();
-            throw new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize);
+            state.TrySetException(new NexusMessageTooLargeException(serializedArguments.Length, session.SendMaxMessageSize));
+            return;
         }
 
         message.SetArguments(serializedArguments);
@@ -169,30 +169,30 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
                 // The session ended while waiting for invocation credit.
                 ForgetUnsent(state);
                 state.TrySetCanceled();
-                return true;
+                return;
             }
         }
         catch (OperationCanceledException)
         {
             // Canceled while waiting for invocation credit (or while streaming a large argument): never executed,
-            // so no reply comes. Like any call canceled before it is sent, it returns nothing. Nothing awaits the
-            // state: return it whether or not the cancellation callback completed it.
+            // so no reply comes. Like any call canceled before it is sent, it returns nothing.
             ForgetUnsent(state);
-            state.Return();
-            return false;
+            state.TrySetNoResult();
+            return;
         }
-        catch
+        catch (Exception e)
         {
             ForgetUnsent(state);
-            state.Return();
-            throw;
+            state.TrySetException(e);
+            return;
         }
 
         // Canceled while sending: the peer has the invocation now, so tell it. Its id stays reserved for the reply.
         if (!state.MarkSent())
+        {
             _nexusSession.ControlSender.RequestInvocationCancellation(message.InvocationId);
-
-        return true;
+            state.TrySetCanceled();
+        }
     }
 
     /// <summary>
@@ -210,11 +210,13 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (!_invocationStates.TryRemove(new KeyValuePair<int, RegisteredInvocationState>(invocationId, state)))
             return;
 
-        var sent = state.MarkCanceled();
-        state.TrySetCanceled();
+        // Still sending: the sender completes the state once the send ends, as canceled if the invocation went out
+        // and without a result if it did not.
+        if (!state.MarkCanceled())
+            return;
 
-        if (sent)
-            _nexusSession.ControlSender.RequestInvocationCancellation(invocationId);
+        state.TrySetCanceled();
+        _nexusSession.ControlSender.RequestInvocationCancellation(invocationId);
     }
 
     /// <summary>

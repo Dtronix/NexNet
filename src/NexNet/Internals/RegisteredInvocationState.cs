@@ -55,6 +55,17 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
     // Created the first time a caller blocks on an unfinished call; kept with the pooled state.
     private ManualResetEventSlim? _blocking;
 
+    // Holders of the state: the caller until it reads the result, and the send while it is still running. The
+    // state returns to its pool when both have let go.
+    private int _holds = 1;
+
+    // 1 once the caller has read the result.
+    private int _consumed;
+
+    // The send still running (ObserveSend), and its continuation, created once per pooled state.
+    private ValueTask _send;
+    private readonly Action _onSendCompleted;
+
     /// <summary>
     /// Sending: the invocation is being sent. Sent: the peer has the invocation. CanceledWhileSending: canceled
     /// before the send finished; the sender sends the cancellation frame once the invocation is out.
@@ -70,6 +81,11 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
 
     public bool IsCanceled { get; private set; }
 
+    /// <summary>
+    /// Completed without a result: canceled before it was sent. The call returns nothing (the default value).
+    /// </summary>
+    public bool IsNoResult { get; private set; }
+
     public Exception? Exception { get; set; }
 
     public InvocationResultMessage? Result { get; set; } = null;
@@ -84,6 +100,7 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
     {
         // Continuations never run on the session's read loop.
         _source.RunContinuationsAsynchronously = true;
+        _onSendCompleted = OnSendCompleted;
     }
 
 
@@ -98,7 +115,11 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         _blocking?.Reset();
         Volatile.Write(ref _complete, 0);
         Volatile.Write(ref _sendPhase, (int)SendPhase.Sending);
+        Volatile.Write(ref _holds, 1);
+        Volatile.Write(ref _consumed, 0);
+        _send = default;
         IsCanceled = false;
+        IsNoResult = false;
         Exception = null;
         Owner = null;
         Result?.Dispose();
@@ -146,6 +167,19 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         return true;
     }
 
+    /// <summary>
+    /// Completes the invocation without a result: it was canceled before it was sent.
+    /// </summary>
+    public bool TrySetNoResult()
+    {
+        if (!TryClaim())
+            return false;
+
+        IsNoResult = true;
+        _source.SetResult(false);
+        return true;
+    }
+
     public bool TrySetException(Exception exception)
     {
         if (!TryClaim())
@@ -154,6 +188,43 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         Exception = exception;
         _source.SetResult(false);
         return true;
+    }
+
+    /// <summary>
+    /// Holds the state until <paramref name="send"/>, the invocation's send, has finished, and consumes it then. The
+    /// send completes the state when it fails, so the caller reads the state alone and never the send.
+    /// </summary>
+    public void ObserveSend(ValueTask send)
+    {
+        Interlocked.Increment(ref _holds);
+        _send = send;
+        send.ConfigureAwait(false).GetAwaiter().UnsafeOnCompleted(_onSendCompleted);
+    }
+
+    private void OnSendCompleted()
+    {
+        var send = _send;
+        _send = default;
+        try
+        {
+            // Consumes it, which returns a pooled send to its pool. It completes the state itself on failure.
+            send.GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Not expected: the send reports its failures on the state.
+        }
+
+        Release();
+    }
+
+    /// <summary>
+    /// Lets go of one hold; the last returns the state to its pool.
+    /// </summary>
+    protected void Release()
+    {
+        if (Interlocked.Decrement(ref _holds) == 0)
+            Return();
     }
 
     private bool TryClaim()
@@ -185,7 +256,14 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
     /// Consumes the completed call: throws if <paramref name="token"/> is not the current call's. Called before
     /// anything that returns the state, so a second consumption never returns a state another call is using.
     /// </summary>
-    protected void Consume(short token) => _source.GetResult(token);
+    protected void Consume(short token)
+    {
+        _source.GetResult(token);
+
+        // The state may outlive the read while its send finishes: a second read is refused here, not by the version.
+        if (Interlocked.Exchange(ref _consumed, 1) != 0)
+            throw new InvalidOperationException("The result of this invocation has already been read.");
+    }
 
     /// <summary>
     /// Throws the call's failure, if any: a local failure, a cancellation, or the peer's refusal.
@@ -199,12 +277,17 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         if (IsCanceled)
             throw new TaskCanceledException();
 
+        if (IsNoResult)
+            return;
+
         switch (Result!.State)
         {
             case InvocationResultMessage.StateType.CompletedResult:
                 return;
 
             case InvocationResultMessage.StateType.Exception:
+                if (Result.TryGetRemoteError(out var code, out var type, out var message))
+                    throw new ProxyRemoteInvocationException(code, type, message);
                 throw new ProxyRemoteInvocationException();
 
             case InvocationResultMessage.StateType.Unauthorized:
@@ -232,7 +315,7 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         }
         finally
         {
-            Return();
+            Release();
         }
     }
 }
@@ -260,6 +343,9 @@ internal sealed class RegisteredInvocationState<T> : RegisteredInvocationState, 
         {
             ThrowIfFailed();
 
+            if (IsNoResult)
+                return default!;
+
             if (!Result!.TryGetResult<T>(out var result))
                 throw new InvalidOperationException($"Could not get result of type {typeof(T)} from invocation result.");
 
@@ -267,7 +353,7 @@ internal sealed class RegisteredInvocationState<T> : RegisteredInvocationState, 
         }
         finally
         {
-            Return();
+            Release();
         }
     }
 }

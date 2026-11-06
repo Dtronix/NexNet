@@ -10,7 +10,8 @@ namespace NexNet.Messages;
 /// Result of an invocation.
 /// Body: <c>[invocationId (uint16), state (uint8)]</c> when there is no result, or
 /// <c>[invocationId (uint16), state (uint8), result]</c> when a result is present (the result may itself be nil).
-/// The result is an embedded MessagePack value.
+/// The result is an embedded MessagePack value. For the Exception state it is the optional
+/// <see cref="RemoteErrorDetail"/>.
 /// </summary>
 internal partial class InvocationResultMessage : IMessageBase
 {
@@ -57,6 +58,22 @@ internal partial class InvocationResultMessage : IMessageBase
         result = default;
         NexusFormatterRegistry.Get<T>().Deserialize(ref reader, ref result);
         return true;
+    }
+
+    /// <summary>
+    /// Reads the remote error detail of an Exception result. False when there is none or it is not valid.
+    /// </summary>
+    public bool TryGetRemoteError(out int? code, out string? type, out string? message)
+    {
+        if (_result == null)
+        {
+            code = null;
+            type = null;
+            message = null;
+            return false;
+        }
+
+        return RemoteErrorDetail.TryRead(_result.Value, _options, out code, out type, out message);
     }
 
     public void Serialize(ref MsgPackWriter writer) => new InvocationResultBody(this).Write(ref writer);

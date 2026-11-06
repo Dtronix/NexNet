@@ -319,7 +319,8 @@ Each step is a PR on master that keeps the test suite green. `ProtocolVersion` s
 
 - Metrics meter and session snapshot API
 - Pipe methods with results and `CancellationToken`. Today the proxy returns once the call is sent and callers then use the pipe; awaiting a remote result would deadlock that pattern, so this needs its own API design (e.g. the result on `pipe.CompleteTask`).
-- Remote exception detail (Off / Message option plus an application mapping hook)
+- ~~Remote exception detail (Off / Message option plus an application mapping hook)~~ Done:
+  `ConfigBase.RemoteExceptionDetail` and `NexusBase.OnInvocationException` (protocol §4.4).
 - Broadcast collection queues bounded in bytes
 - Window auto-tuning (growth only, driven by refill timing) if the latency-injected benchmark shows a need
 - Writer-elected combining queue in place of `_writeMutex` if the concurrent-invocation benchmark shows contention

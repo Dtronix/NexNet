@@ -315,6 +315,19 @@ public abstract class ConfigBase
     }
 
     /// <summary>
+    /// What this side sends to the caller when a method it executes, and that returns a result, throws. Defaults to
+    /// <see cref="NexNet.Transports.RemoteExceptionDetail.None"/>: the caller gets a
+    /// <see cref="NexNet.Invocation.ProxyRemoteInvocationException"/> without detail. This side's own setting: a
+    /// server's controls what it sends to clients, a client's what it sends when the server calls it. An
+    /// application error returned by <c>OnInvocationException</c> on the nexus is sent whatever this says.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="NexNet.Transports.RemoteExceptionDetail.TypeAndMessage"/> can reveal internal details (paths,
+    /// connection strings, user data) to the peer. With untrusted peers, prefer application error codes from the hook.
+    /// </remarks>
+    public RemoteExceptionDetail RemoteExceptionDetail { get; set; } = RemoteExceptionDetail.None;
+
+    /// <summary>
     /// Throws if <see cref="SessionBudget"/> can't hold the fixed reservations:
     /// <c>MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB</c>.
     /// </summary>
