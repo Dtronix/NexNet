@@ -69,6 +69,24 @@ await foreach (var msg in await duplexPipe.GetChannelReader<ComplexMessage>())
 
 A pipe can carry different item types in each direction, as in this example.
 
+## Cost of Writes
+
+Every write call takes the writer's lock, serializes, and flushes the pipe once per call. The flush is where the writer waits for pipe credit, so the number of calls, not the number of items, sets the fixed per-call overhead.
+
+| Call | What it does |
+|------|--------------|
+| `WriteAsync(T item)` | Serializes the item into a pooled scratch buffer, appends its length prefix and the item to the pipe, then flushes once. |
+| `WriteAsync(IEnumerable<T> items)` | Serializes all items with one MessagePack writer into one scratch buffer, copies them to the pipe with their prefixes every 64 KiB serialized, then flushes once at the end. |
+| `WriteAndComplete(items, chunkSize)` | Calls `WriteAsync(IEnumerable<T>)` for every `chunkSize` items (10 by default), so one flush per chunk, then completes the channel. |
+
+- **Framing.** Each item is preceded by its length as an unsigned varint (LEB128: 1 byte up to 127 bytes, 2 bytes up to 16 KiB, 3 bytes up to 2 MiB). Prefix and item are appended together, so a flush never sends a prefix without its item.
+- **Pipe frames.** The pipe writer cuts what is buffered into pipe frames of at most 65,535 bytes, so many small items share one frame and a large item spans several.
+- **Too large.** An item larger than the peer's `MaxMessageSize` throws `NexusMessageTooLargeException` before any byte of it is written. In a batch, the items before it are still sent with the next flush.
+- **Credit.** Items that fit in the pipe window use normal pipe credit. An item whose length plus prefix exceeds the window gets an all-or-nothing extra grant of the difference from the receiver's session budget, released once the item is consumed; if the budget is short, the item waits for it in order. See [Limits and Flow Control](limits-and-flow-control.md#channels).
+- **Transport.** Every transport (TCP and UDS over `NetworkStream`, TLS, QUIC, HttpSocket and WebSocket) sends through the same send pipe: frames written while a transport write is in progress go out together in the next write, copied into one buffer of up to 1 MiB (one socket send, TLS record run, QUIC send or WebSocket message). Small flushes therefore do not mean small packets on the wire under load.
+
+Batching with `WriteAsync(IEnumerable<T>)` mainly saves the per-call cost (lock, flush and credit check) and the per-item serializer setup, not wire messages. For many small items, batch them; for large items, the per-call cost is negligible next to serialization and the window, and throughput over a slow link is set by `PipeWindow` (see [Sizing PipeWindow and SessionBudget](limits-and-flow-control.md#sizing-pipewindow-and-sessionbudget)). A batch is buffered in the pipe writer until its flush, so very large batches hold that much memory on the sending side.
+
 ## Extension Methods
 
 Several extension methods simplify reading and writing entire collections:
