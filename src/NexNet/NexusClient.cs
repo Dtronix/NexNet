@@ -215,10 +215,8 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         }
         var reason = task.Result;
         
-        // If we match a limited type of disconnects, attempt to reconnect if we are allowed
-        if (reason is not (DisconnectReason.SocketError or
-            DisconnectReason.Timeout or
-            DisconnectReason.ServerRestarting))
+        // The policy decides which disconnect reasons are reconnected for.
+        if (!_config.ReconnectionPolicy.ShouldReconnect(reason))
         {
             _config.Logger?.LogInfo($"Can't reconnect with {reason} disconnection reason.");
             return;

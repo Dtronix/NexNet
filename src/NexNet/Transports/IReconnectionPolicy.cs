@@ -1,5 +1,6 @@
 ﻿using System;
 using NexNet.Invocation;
+using NexNet.Messages;
 
 namespace NexNet.Transports;
 
@@ -15,6 +16,20 @@ public interface IReconnectionPolicy
     /// <param name="retryAttempt">Retry attempt number</param>
     /// <returns>Reconnection delay time.  Null if the retries should be canceled.</returns>
     TimeSpan? ReconnectDelay(int retryAttempt);
+
+    /// <summary>
+    /// Decides whether the client reconnects after disconnecting for the specified reason.
+    /// By default, reconnects for <see cref="DisconnectReason.SocketError"/>, <see cref="DisconnectReason.Timeout"/>
+    /// and <see cref="DisconnectReason.ServerRestarting"/>.
+    /// </summary>
+    /// <param name="reason">The reason the connection was closed.</param>
+    /// <returns>True to attempt a reconnection; false to stay disconnected.</returns>
+    bool ShouldReconnect(DisconnectReason reason)
+    {
+        return reason is DisconnectReason.SocketError
+            or DisconnectReason.Timeout
+            or DisconnectReason.ServerRestarting;
+    }
 
     /// <summary>
     /// Invoked upon each reconnection attempt. 

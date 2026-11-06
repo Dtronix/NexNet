@@ -66,7 +66,29 @@ Waiting for a slow reader is not a stall: a pipe writer waits for credit as long
 
 ## Automatic Reconnection
 
-Clients automatically reconnect when a connection is lost due to timeout or socket disconnection. This behavior is built into the client and requires no additional configuration for basic usage.
+Clients reconnect automatically when `ClientConfig.ReconnectionPolicy` is set. It is null by default, which disables reconnection.
+
+```csharp
+// Retries at 0 s, 2 s, 10 s and 30 s, then every 30 s.
+clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy();
+```
+
+The policy decides which disconnect reasons are reconnected for. By default these are `DisconnectReason.SocketError`, `DisconnectReason.Timeout` and `DisconnectReason.ServerRestarting`; any other reason leaves the client disconnected. A server that restarts by stopping (for example, a daemon restarted by its service manager) disconnects its clients with `DisconnectReason.ServerShutdown`. To reconnect to it, add that reason:
+
+```csharp
+clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy
+{
+    ReconnectReasons = new HashSet<DisconnectReason>
+    {
+        DisconnectReason.SocketError,
+        DisconnectReason.Timeout,
+        DisconnectReason.ServerRestarting,
+        DisconnectReason.ServerShutdown
+    }
+};
+```
+
+`DisconnectReason.Graceful` (which includes the client's own `DisconnectAsync`) and `DisconnectReason.Authentication` are best left out. A custom `IReconnectionPolicy` can override `ShouldReconnect(DisconnectReason)` to decide; if it does not, it reconnects for the default reasons.
 
 During reconnection:
 - The client detects the connection loss
