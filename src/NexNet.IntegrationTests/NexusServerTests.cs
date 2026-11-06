@@ -221,10 +221,68 @@ internal partial class NexusServerTests : BaseTests
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
-        await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(1);
 
-        // give the server a moment to send its disconnect
+        // Signalled by the send itself, not by timing.
         await disconnectSent.Task.Timeout(1);
+        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
+            "The client should observe the authentication rejection, not a bare socket close.");
+    }
+
+    /// <summary>
+    /// The server's read loop exits as soon as its session is disconnecting. When it exits while the disconnect is
+    /// still being sent (authentication runs off the read loop), the server must not complete the output first:
+    /// the disconnect frame has to reach the client. The hook holds the disconnect after its state change and before
+    /// its send while the client wakes the server's read loop with a ping.
+    /// </summary>
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task ServerRejectsAuth_DisconnectIsSentWhenReadLoopExitsFirst(Type type)
+    {
+        var disconnectHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseDisconnect = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnectSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        serverConfig.InternalOnSend = (_, bytes) =>
+        {
+            if (bytes is [(byte)MessageType.DisconnectAuthentication])
+                disconnectSent.TrySetResult();
+        };
+        serverConfig.InternalOnDisconnectBeforeSend = async _ =>
+        {
+            disconnectHeld.TrySetResult();
+            await releaseDisconnect.Task.ConfigureAwait(false);
+        };
+
+        var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
+
+        await server.StartAsync().Timeout(1);
+        var connectTask = client.TryConnectAsync();
+
+        // The server is disconnecting (state changed) and has not sent the disconnect frame yet.
+        await disconnectHeld.Task.Timeout(1);
+
+        // Wake the server's read loop: it sees the session is disconnecting and exits.
+        await client.Session!.SendHeader(MessageType.Ping).Timeout(1);
+
+        // If the server completes its output when the read loop exits, the client sees the stream end here.
+        await Task.WhenAny(client.DisconnectedTask, Task.Delay(1000));
+
+        releaseDisconnect.TrySetResult();
+
+        var result = await connectTask.Timeout(2);
+        await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(disconnectSent.Task.IsCompleted, Is.True,
+                "The server should send DisconnectAuthentication even though its read loop exited first.");
+            Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
+                "The client should observe the authentication rejection, not a bare socket close.");
+        });
     }
     
     /// <summary>
