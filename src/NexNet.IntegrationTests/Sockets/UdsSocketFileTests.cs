@@ -116,6 +116,29 @@ internal class UdsSocketFileTests : BaseTests
     }
 
     [Test]
+    public async Task SymlinkAtPath_IsNotDeleted()
+    {
+        var target = Path.Combine(_dir.FullName, "target.txt");
+        await File.WriteAllTextAsync(target, "target");
+        try
+        {
+            File.CreateSymbolicLink(_path, target);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Assert.Ignore($"Symbolic links cannot be created here: {e.Message}");
+        }
+
+        var config = CreateUdsServerConfig();
+        config.RemoveStaleSocketFile = true;
+        var server = CreateServer(config, null);
+
+        Assert.That(async () => await server.StartAsync().Timeout(2), Throws.Exception);
+        Assert.That(new FileInfo(_path).LinkTarget, Is.Not.Null, "a symbolic link at the path was deleted");
+        Assert.That(await File.ReadAllTextAsync(target), Is.EqualTo("target"));
+    }
+
+    [Test]
     public async Task DirectoryAtPath_IsNotDeleted()
     {
         Directory.CreateDirectory(_path);
