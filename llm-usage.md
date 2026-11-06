@@ -338,7 +338,15 @@ config.ReconnectionPolicy = new DefaultReconnectionPolicy();
 // Custom intervals
 config.ReconnectionPolicy = new DefaultReconnectionPolicy(
     [TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5)], continuousRetry: true);
+// Reasons reconnected for (default: SocketError, Timeout, ServerRestarting); add ServerShutdown for restarting daemons
+config.ReconnectionPolicy = new DefaultReconnectionPolicy {
+    ReconnectReasons = new HashSet<DisconnectReason> {
+        DisconnectReason.SocketError, DisconnectReason.Timeout,
+        DisconnectReason.ServerRestarting, DisconnectReason.ServerShutdown }
+};
 ```
+
+Null `ReconnectionPolicy` (the default) disables reconnection. A custom `IReconnectionPolicy` may override `bool ShouldReconnect(DisconnectReason reason)`.
 
 ### Connection Pooling
 
