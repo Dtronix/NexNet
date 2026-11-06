@@ -263,31 +263,26 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             return InvokeAfterLookup(lookup, methodId, serializedArguments, cancellationToken, argumentsOwner);
 
         var state = RegisteredInvocationState.Rent();
-        var start = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
+        var version = state.Version;
+        var send = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
             state, methodId, serializedArguments, session, cancellationToken, argumentsOwner);
 
-        if (!start.IsCompletedSuccessfully)
-            return AwaitStart(start, state);
+        // The caller only ever gets the state: the send's own ValueTask is pooled, and a caller blocking on a pooled
+        // box before it completes returns the box to its pool while it still runs. The send completes the state when
+        // it fails or is canceled before it goes out.
+        if (!send.IsCompletedSuccessfully)
+            state.ObserveSend(send);
 
-        // Not started: canceled before it was sent, which completes the call without a result.
-        return start.Result ? new ValueTask(state, state.Version) : default;
-    }
-
-    // Pooled like the state: the call's ValueTask may be consumed once.
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder))]
-    private static async ValueTask AwaitStart(ValueTask<bool> start, RegisteredInvocationState state)
-    {
-        if (await start.ConfigureAwait(false))
-            await new ValueTask(state, state.Version).ConfigureAwait(false);
+        return new ValueTask(state, version);
     }
 
     private async ValueTask InvokeAfterLookup(ValueTask<INexusSession?> lookup, ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
     {
         var session = await lookup.ConfigureAwait(false) ?? throw ClientNotFound(argumentsOwner);
         var state = RegisteredInvocationState.Rent();
-        if (await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
-                state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false))
-            await new ValueTask(state, state.Version).ConfigureAwait(false);
+        await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false);
+        await new ValueTask(state, state.Version).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -319,34 +314,23 @@ public abstract class ProxyInvocationBase : IProxyInvoker
             return InvokeAfterLookup<TReturn>(lookup, methodId, serializedArguments, cancellationToken, argumentsOwner);
 
         var state = RegisteredInvocationState<TReturn>.Rent();
-        var start = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
+        var version = state.Version;
+        var send = session!.SessionInvocationStateManager.InvokeMethodWithResultCore(
             state, methodId, serializedArguments, session, cancellationToken, argumentsOwner);
 
-        if (!start.IsCompletedSuccessfully)
-            return AwaitStart(start, state);
+        // As above: the caller only ever gets the state, never the pooled send.
+        if (!send.IsCompletedSuccessfully)
+            state.ObserveSend(send);
 
-        // Not started: canceled before it was sent, which returns the default value.
-        return start.Result ? new ValueTask<TReturn>(state, state.Version) : default;
-    }
-
-    // Pooled like the state: the call's ValueTask may be consumed once.
-    [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
-    private static async ValueTask<TReturn> AwaitStart<TReturn>(ValueTask<bool> start, RegisteredInvocationState<TReturn> state)
-    {
-        if (!await start.ConfigureAwait(false))
-            return default!;
-
-        return await new ValueTask<TReturn>(state, state.Version).ConfigureAwait(false);
+        return new ValueTask<TReturn>(state, version);
     }
 
     private async ValueTask<TReturn> InvokeAfterLookup<TReturn>(ValueTask<INexusSession?> lookup, ushort methodId, Memory<byte> serializedArguments, CancellationToken? cancellationToken, PooledArrayBufferWriter? argumentsOwner)
     {
         var session = await lookup.ConfigureAwait(false) ?? throw ClientNotFound(argumentsOwner);
         var state = RegisteredInvocationState<TReturn>.Rent();
-        if (!await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
-                state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false))
-            return default!;
-
+        await session.SessionInvocationStateManager.InvokeMethodWithResultCore(
+            state, methodId, serializedArguments, session, cancellationToken, argumentsOwner).ConfigureAwait(false);
         return await new ValueTask<TReturn>(state, state.Version).ConfigureAwait(false);
     }
 

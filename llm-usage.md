@@ -280,6 +280,13 @@ terminates TLS). Valid while connected; copy to keep.
 | `InvocationCredits` | 32 (128 trusted) | Invocations the peer may queue on this side |
 | `ProgressTimeout` | 30000ms | Disconnect (`Stalled`) when a transport flush, a pipe close, an inbound large value or an oversized channel item makes no progress; waiting for credit never counts |
 | `MeterFactory` | null | `IMeterFactory` for the `NexNet` meter; null = one meter for the process. NexNet.Asp sets the app's factory |
+| `RemoteExceptionDetail` | `None` | What this side sends when a method it executes (returning a result) throws: `None` or `TypeAndMessage` (exception type and message; can leak internals to the peer) |
+
+Remote errors: a failed call throws `ProxyRemoteInvocationException` with `RemoteErrorCode`, `RemoteExceptionType`
+and `RemoteMessage` (null unless the executing side sent them). Override
+`protected override NexusRemoteError? OnInvocationException(Exception exception, int methodId)` in a nexus to send
+`new NexusRemoteError(code, message)` instead, whatever the setting; return null to fall back to it.
+Fire-and-forget (`void`) methods send nothing.
 
 "Trusted" means `SerializerOptions = NexusSerializerOptions.Trusted`. Building a client or server throws if
 `MaxPipes × PipeWindow + MaxMessageSize + InvocationCredits × 64KB` exceeds `SessionBudget`.

@@ -56,6 +56,40 @@ Cancelling the token on the caller side propagates the cancellation to the remot
 
 When a method is invoked without waiting for its result (a broadcast, or a `ValueTask` method invoked on several clients), the caller can't cancel it. Its token is canceled when the session ends.
 
+## Errors
+
+When a `ValueTask` or `ValueTask<T>` method throws on the side that runs it, the caller's call fails with `ProxyRemoteInvocationException`. The executing side logs the exception; by default nothing about it is sent, and the exception's message is `Exception occurred while executing method on proxy.`
+
+What is sent is decided by the side that runs the method: a server's configuration controls what its clients see, a client's what the server sees when it calls the client.
+
+- `ConfigBase.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage` sends the exception's full type name and its message.
+- Overriding `OnInvocationException` on the nexus sends an application error instead, whatever the setting says. Return null to fall back to the setting. An exception thrown by the hook is logged and treated as null.
+
+```csharp
+partial class ServerNexus
+{
+    protected override NexusRemoteError? OnInvocationException(Exception exception, int methodId)
+        => exception switch
+        {
+            KeyNotFoundException => new NexusRemoteError(404, "Not found."),
+            _ => null
+        };
+}
+```
+
+On the caller, the exception exposes what was sent:
+
+| Property | Value |
+|----------|-------|
+| `RemoteErrorCode` | The hook's code, or null |
+| `RemoteExceptionType` | The exception's full type name with `TypeAndMessage`, else null |
+| `RemoteMessage` | The exception's message with `TypeAndMessage`, the hook's message, or null |
+
+The type is truncated to 256 characters and the message to 2048. A detail that is malformed or longer than that is ignored, and the caller gets the plain exception. Fire-and-forget (`void`) methods, broadcasts, and pipe and channel methods send nothing. Canceled and unauthorized calls are unchanged (`TaskCanceledException`, `ProxyUnauthorizedException`). A peer without this feature ignores the detail.
+
+> [!WARNING]
+> `TypeAndMessage` can reveal internal details (file paths, connection strings, user data) to the peer. With untrusted peers, leave it at `None` and return application error codes from `OnInvocationException`.
+
 ## Execution Context
 
 Invoked methods run on the thread pool, in the execution context of the code that started the session: on a client the code that called `ConnectAsync`, on a server the code that called `StartAsync` or, with the ASP.NET Core transports, the upgrade request. Methods therefore see its `AsyncLocal` values, such as `IHttpContextAccessor.HttpContext` (when registered with `AddHttpContextAccessor`), `Activity.Current`, logging scopes and `CultureInfo.CurrentCulture`. Each invocation runs in its own copy, so values one method sets are not seen by other invocations.
