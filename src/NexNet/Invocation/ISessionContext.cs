@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography.X509Certificates;
+﻿using System.Security.Claims;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 using NexNet.Logging;
 using NexNet.Messages;
@@ -38,6 +39,19 @@ public interface ISessionContext
     /// the connection and is valid while the session is connected; copy it to keep it longer.
     /// </remarks>
     X509Certificate2? RemoteCertificate { get; }
+
+    /// <summary>
+    /// On an ASP.NET server (WebSocket and HttpSocket), the principal of the HTTP request that opened the
+    /// connection (<c>HttpContext.User</c>). Null for TCP, TLS, UDS and QUIC, and in a client nexus.
+    /// </summary>
+    /// <remarks>
+    /// Captured once when the connection is accepted and never re-validated during the session. With
+    /// <c>AspEnableAuthentication</c> it is the principal of <c>AspAuthenticationScheme</c>; otherwise whatever the
+    /// pipeline set (for example <c>UseAuthentication</c> with a default scheme), which may be unauthenticated.
+    /// Readable in <c>OnAuthenticate</c>: it is extra input there, not the session's identity, and
+    /// <c>OnAuthenticate</c> still decides whether the connection is accepted.
+    /// </remarks>
+    ClaimsPrincipal? User { get; }
 
     /// <summary>
     /// Creates a pipe for use with the current session.
