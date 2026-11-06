@@ -12,14 +12,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write  # create GitHub release on tags
       id-token: write  # GitHub OIDC token for NuGet trusted publishing
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
         submodules: 'recursive'
@@ -28,7 +28,7 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y libmsquic
 
     - name: Install .NET
-      uses: actions/setup-dotnet@v4
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: '10.*'
         source-url: https://api.nuget.org/v3/index.json
@@ -72,7 +72,7 @@ jobs:
       run: dotnet pack src/NexNet.Generator -c Release -o ./artifacts --maxcpucount:1
       
     - name: Export artifacts
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         path: artifacts/*
         
@@ -83,7 +83,7 @@ jobs:
       run: python3 .github/scripts/release-notes.py "${{ github.ref_name }}" release-body.md
 
     - name: Create release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         name: "NexNet ${{ github.ref_name }} Released"
