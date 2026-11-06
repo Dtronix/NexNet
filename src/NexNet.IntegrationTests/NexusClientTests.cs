@@ -834,12 +834,12 @@ internal partial class NexusClientTests : BaseTests
     {
         var serverConfig = CreateServerConfig(type);
         serverConfig.Authenticate = true;
-        // Capture what the server sends
-        byte? sentMessageType = null;
+        // Signalled when any frame the server sends is the authentication disconnect.
+        var disconnectSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         serverConfig.InternalOnSend = (_, bytes) =>
         {
-            // First byte is the message type
-            sentMessageType = bytes.Length > 0 ? (byte?)bytes[0] : null;
+            if (bytes is [(byte)MessageType.DisconnectAuthentication])
+                disconnectSent.TrySetResult();
         };
 
         var clientConfig = CreateClientConfig(type);
@@ -849,13 +849,17 @@ internal partial class NexusClientTests : BaseTests
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
         await server.StartAsync().Timeout(1);
-        await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(1);
 
-        // Give it a moment to send the disconnect
-        await Task.Delay(50);
+        await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
 
-        Assert.That(sentMessageType, Is.EqualTo((byte)MessageType.DisconnectAuthentication),
-            "Server should send a Disconnect message when auth is rejected");
+        Assert.Multiple(() =>
+        {
+            Assert.That(disconnectSent.Task.IsCompleted, Is.True,
+                "Server should send a Disconnect message when auth is rejected");
+            Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
+                "The client should observe the authentication rejection, not a bare socket close.");
+        });
     }
     
     [TestCase(Type.Quic)]

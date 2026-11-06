@@ -29,7 +29,9 @@ internal class TcpTlsTransport : ITransport
         _networkStream = networkStream;
         _sslStream = sslStream;
         _socket = socket;
-        Input = PipeReader.Create(sslStream);
+        // leaveOpen: the session's read loop completes its input when it exits, possibly while the disconnect frame
+        // is still being written to this stream. CloseAsync disposes the stream.
+        Input = PipeReader.Create(sslStream, new StreamPipeReaderOptions(leaveOpen: true));
         _sendPipe = new StreamSendPipe(sslStream, sendPipeOptions);
         RemoteAddress = remoteAddress;
         RemotePort = remotePort;
