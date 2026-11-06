@@ -111,7 +111,7 @@ internal class WebSocketPipe : IWebSocketPipe
 
     async Task ReadInputAsync(CancellationToken cancellation)
     {
-        bool enableTransportLog = (_config.Logger?.Behaviors & NexusLogBehaviors.LogTransportData) != 0;
+        bool enableTransportLog = _config.Logger is { } logger && (logger.Behaviors & NexusLogBehaviors.LogTransportData) != 0;
         while (_webSocket.State == WebSocketState.Open && !cancellation.IsCancellationRequested)
         {
             try
@@ -197,7 +197,7 @@ internal class WebSocketPipe : IWebSocketPipe
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            if((_config.Logger?.Behaviors & NexusLogBehaviors.LogTransportData) != 0)
+            if(_config.Logger is { } logger && (logger.Behaviors & NexusLogBehaviors.LogTransportData) != 0)
                 _config.Logger!.LogTraceArray($"Sent {buffer.Length}:", buffer);
             
             return _webSocket.SendAsync(buffer, WebSocketMessageType.Binary, true, cancellationToken);

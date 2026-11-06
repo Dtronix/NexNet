@@ -214,6 +214,63 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Invoked when a method that returns a result throws, before the failure is sent to the caller. Return an
+    /// application error to send it to the caller in place of the exception's detail, whatever
+    /// <see cref="ConfigBase.RemoteExceptionDetail"/> says; return null to send what that setting selects. Not
+    /// invoked for canceled, unauthorized or fire-and-forget invocations.
+    /// </summary>
+    /// <param name="exception">The exception the method threw.</param>
+    /// <param name="methodId">Id of the method that threw.</param>
+    /// <returns>The error for the caller, or null.</returns>
+    protected virtual NexusRemoteError? OnInvocationException(Exception exception, int methodId)
+    {
+        return null;
+    }
+
+    /// <summary>
+    /// The detail to send with a failed invocation's result (<see cref="RemoteErrorDetail"/>), or null for none.
+    /// </summary>
+    private ReadOnlySequence<byte>? GetRemoteErrorDetail(SessionContext<TProxy> context, Exception exception, int methodId)
+    {
+        NexusRemoteError? error = null;
+        try
+        {
+            error = OnInvocationException(exception, methodId);
+        }
+        catch (Exception e)
+        {
+            context.Session.Logger?.LogError(e, "Exception occurred while running OnInvocationException.");
+        }
+
+        int? code;
+        string? type;
+        string? text;
+        if (error != null)
+        {
+            code = error.Code;
+            type = null;
+            text = error.Message;
+        }
+        else if (context.Session.Config.RemoteExceptionDetail == RemoteExceptionDetail.TypeAndMessage)
+        {
+            code = null;
+            type = exception.GetType().FullName;
+            text = exception.Message;
+        }
+        else
+        {
+            return null;
+        }
+
+        // Only on failures: a fresh buffer, as the result writer may hold the failed method's partial output.
+        var buffer = new ArrayBufferWriter<byte>(64);
+        var writer = new MsgPackWriter(buffer);
+        RemoteErrorDetail.Write(ref writer, code, type, text);
+        writer.Flush();
+        return new ReadOnlySequence<byte>(buffer.WrittenMemory);
+    }
+
     internal ValueTask Connected(bool isReconnected)
     {
         return OnConnected(isReconnected);
@@ -330,14 +387,14 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
             // the method, so not logged as an error.
             context.Session.Logger?.LogWarning($"Method {requestArgs.Message.MethodId} failed: {e.Message}");
             bufferWriterCache.Add(bufferWriter);
-            message.Result = null;
+            message.Result = requestArgs.Nexus.GetRemoteErrorDetail(context, e, requestArgs.Message.MethodId);
             message.State = InvocationResultMessage.StateType.Exception;
             await context.Session.SendMessage(message).ConfigureAwait(false);
         }
         catch (Exception e)
         {
             context.Session.Logger?.LogError(e, "Exception occurred while running the method.");
-            message.Result = null;
+            message.Result = requestArgs.Nexus.GetRemoteErrorDetail(context, e, requestArgs.Message.MethodId);
             message.State = InvocationResultMessage.StateType.Exception;
             await context.Session.SendMessage(message).ConfigureAwait(false);
         }

@@ -50,15 +50,16 @@ internal interface ISessionInvocationStateManager
     /// <summary>
     /// Sends an invocation that expects a result, which completes <paramref name="state"/>.
     /// </summary>
-    /// <param name="state">State the result completes. Owned by the caller once this returns true; returned to its
-    /// pool here otherwise, and when this throws.</param>
+    /// <param name="state">State the result completes; it stays owned by the caller. A call canceled before it is
+    /// sent completes it without a result, and a failed send completes it with the failure.</param>
     /// <param name="methodId">The method ID to invoke.</param>
     /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="session">The session to invoke on.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <param name="argumentsOwner">Optional pooled buffer backing the arguments; returned once the message is sent.</param>
-    /// <returns>True if the invocation was started; false if it was canceled before it was sent.</returns>
-    ValueTask<bool> InvokeMethodWithResultCore(
+    /// <returns>Completes when the send has finished. Never fails: failures are set on <paramref name="state"/>.
+    /// Pooled: read it exactly once.</returns>
+    ValueTask InvokeMethodWithResultCore(
         RegisteredInvocationState state,
         ushort methodId,
         Memory<byte> serializedArguments,

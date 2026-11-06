@@ -131,6 +131,13 @@ exactly one result, unless the session ends first; that includes a method that w
 InvocationCancellation or on its own), which gets Canceled. A result for an invocation ID the receiver is not waiting on is a protocol
 error. A result whose body exceeds one frame is streamed (§6).
 
+An Exception result may carry a detail as its third element: an array of exactly 3,
+`[code: int32|nil, type: str|nil, message: str|nil]`, the application error code, the exception's type name and its
+message. Without a detail it is `[invocationId, state]`. Senders truncate `type` to 256 and `message` to 2048 UTF-16
+chars, never splitting a surrogate pair. A receiver ignores a detail that has another shape, a code outside int32 or
+longer strings, and treats the result as an Exception without detail; this is never a protocol error. Peers that do
+not read the detail accept it as an embedded value.
+
 ### 4.5 InvocationCancellation
 `[invocationId: uint16]`
 
