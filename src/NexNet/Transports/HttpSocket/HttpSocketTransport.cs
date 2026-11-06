@@ -3,6 +3,7 @@ using System.IO.Pipelines;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,14 +26,20 @@ internal class HttpSocketTransport : ITransport
     public X509Certificate2? RemoteCertificate { get; }
 
     /// <summary>
+    /// Server side: the ASP.NET principal of the accepted request; null on clients.
+    /// </summary>
+    public ClaimsPrincipal? User { get; }
+
+    /// <summary>
     /// Server side transport over an accepted HttpSocket.
     /// </summary>
     /// <param name="pipe">Accepted pipe.</param>
     /// <param name="remoteAddress">Client address.</param>
     /// <param name="remotePort">Client port.</param>
     /// <param name="remoteCertificate">Client certificate from the TLS handshake; owned by the connection.</param>
+    /// <param name="user">ASP.NET principal of the request that opened the connection.</param>
     public HttpSocketTransport(HttpSocketDuplexPipe pipe, string? remoteAddress = null, int? remotePort = null,
-        X509Certificate2? remoteCertificate = null)
+        X509Certificate2? remoteCertificate = null, ClaimsPrincipal? user = null)
     {
         _pipe = pipe;
         Input = pipe.Input;
@@ -40,6 +47,7 @@ internal class HttpSocketTransport : ITransport
         RemoteAddress = remoteAddress;
         RemotePort = remotePort;
         RemoteCertificate = remoteCertificate;
+        User = user;
     }
 
     private HttpSocketTransport(HttpSocketDuplexPipe pipe, HttpResponseMessage response, HttpConnector connector)

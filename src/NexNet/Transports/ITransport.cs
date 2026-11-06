@@ -1,4 +1,5 @@
 ﻿using System.IO.Pipelines;
+using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
@@ -32,6 +33,16 @@ public interface ITransport : IDuplexPipe
     /// Belongs to the connection and is valid until the transport is closed. Copy it to keep it longer.
     /// </remarks>
     X509Certificate2? RemoteCertificate { get; }
+
+    /// <summary>
+    /// On a server, the ASP.NET principal (<c>HttpContext.User</c>) of the request that opened the connection,
+    /// captured when the connection was accepted. Null for transports that are not accepted through ASP.NET
+    /// (TCP, TLS, UDS, QUIC) and on clients.
+    /// </summary>
+    /// <remarks>
+    /// Only the principal is kept, never the <c>HttpContext</c>. It is not re-validated during the connection.
+    /// </remarks>
+    ClaimsPrincipal? User => null;
 
     /// <summary>
     /// Closes the connection.

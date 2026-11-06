@@ -277,6 +277,11 @@ server certificate. Set for TcpTls, QUIC, WebSocket/HttpSocket over HTTPS; null 
 `ClientCertificateMode.AllowCertificate`/`RequireCertificate`; `DelayCertificate` is not seen; null when a proxy
 terminates TLS). Valid while connected; copy to keep.
 
+ASP principal: `Context.User` (ClaimsPrincipal?) — server nexus over WebSocket/HttpSocket: `HttpContext.User` captured
+at accept (with `AspEnableAuthentication`, the `AspAuthenticationScheme` principal; otherwise what the pipeline set).
+Null for TCP/TLS/UDS/QUIC and in client nexuses. Available in `OnAuthenticate`; never re-validated; `OnAuthenticate`
+still decides (null refuses). Not mapped to `Context.Identity` automatically.
+
 ## Configuration
 
 ### Base (all transports)
@@ -410,6 +415,7 @@ var names = await Context.Groups.GetNamesAsync();
 // Session info
 long id = Context.Id;
 X509Certificate2? peerCert = Context.RemoteCertificate;  // TLS peer certificate, if any
+ClaimsPrincipal? aspUser = Context.User;                // ASP.NET HttpContext.User (WebSocket/HttpSocket server only)
 string? user = Context.Identity?.DisplayName;
 
 // Per-session key-value store (lifetime = connection)
