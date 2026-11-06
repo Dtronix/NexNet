@@ -16,6 +16,24 @@ var config = new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp
 var config = new UdsClientConfig { EndPoint = new UnixDomainSocketEndPoint("/tmp/nexnet.sock") };
 ```
 
+#### Socket file permissions and stale files
+
+```csharp
+var config = new UdsServerConfig
+{
+    EndPoint = new UnixDomainSocketEndPoint("/run/myapp/nexnet.sock"),
+    SocketFileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite, // 0600
+    RemoveStaleSocketFile = true,
+};
+```
+
+- `SocketFileMode` sets the socket file's permissions right after it is created, before the server listens, so no client can connect while the file has the umask's mode. Null (the default) keeps the umask's mode. It is Unix only: on Windows a non-null value makes `StartAsync` throw `PlatformNotSupportedException`; protect the socket's folder with ACLs there.
+- `RemoveStaleSocketFile` (default false) deletes a socket file left behind by a server that is no longer running, for example after a crash. Without it, such a file makes `StartAsync` fail with `TransportException` and `TransportError.AddressInUse`. The file is deleted only when a connection to it is refused and the path is confirmed to be a socket file:
+  - If a server is listening on the path, `StartAsync` fails with `TransportError.AddressInUse` and the file is left alone.
+  - A regular file, directory, link, or any file whose type cannot be determined is never deleted; `StartAsync` fails as it does without the option.
+  - Another process binding the same path between the check and the delete is not detected. Use one path per server.
+- A graceful `StopAsync` deletes the socket file only if it is still the file the server created. If the file was replaced while the server ran, the replacement is left alone.
+
 ### TCP
 
 TCP supports reliable network and internet communication. It is the fastest transport following UDS, offering reliable, ordered packet delivery over IP networks.
