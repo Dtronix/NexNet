@@ -65,6 +65,45 @@ await client.ConnectAsync();
 
 For `https://`/`wss://` URLs, `SslClientAuthenticationOptions` on the client config sets the client certificate and server certificate validation. See [TLS and Certificates](transports.md#tls-and-certificates).
 
+## Browser Clients
+
+Browsers cannot set an `Authorization` header on a WebSocket and send cookies with every request, so a server that browsers reach needs two extra settings.
+
+### Restrict origins
+
+With cookie authentication, any web page the user visits can open a WebSocket to your server with the user's cookies (Cross-Site WebSocket Hijacking). Set `AllowedOrigins` whenever cookies are used:
+
+```csharp
+app.UseWebSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c =>
+{
+    c.NexusConfig.Path = "/nexus";
+    c.NexusConfig.AllowedOrigins.Add("https://app.example.com");
+});
+```
+
+- A request whose `Origin` header is not in the list is answered 403 and never reaches the nexus. Origins compare case-insensitively.
+- An empty list (the default) or a `*` entry allows every origin.
+- A request without an `Origin` header is allowed. Non-browser clients (the NexNet .NET client, for example) do not send one.
+- `UseWebSocketNexusServerAsync` also passes the list to ASP.NET's `WebSocketOptions.AllowedOrigins`. `MapWebSocketNexus` checks it on every request, so the check holds when you call `UseWebSockets` yourself.
+- For HttpSocket, set the same list on `HttpSocketOptions.AllowedOrigins` (`c.SocketOptions` in `UseHttpSocketNexusServerAsync`).
+
+### Authenticate the connection
+
+The NexNet greeting token (`ClientConfig.Authenticate`, checked in `OnAuthenticate`) is the canonical way to authenticate any client, browsers included: it travels inside the connection, not in the URL. See [Authentication](authentication.md).
+
+Use a query-string token only when ASP.NET authentication must run before the upgrade (`AspEnableAuthentication = true`) and the client cannot send an `Authorization` header. It is off by default. Set `AccessTokenQueryParameter` on `WebSocketServerConfig` or `HttpSocketServerConfig`:
+
+```csharp
+c.NexusConfig.AspEnableAuthentication = true;
+c.NexusConfig.AspAuthenticationScheme = "BearerTokenScheme";
+c.NexusConfig.AccessTokenQueryParameter = "access_token";
+// The client connects to wss://example.com/nexus?access_token=<token>
+```
+
+- When the request has no `Authorization` header, the parameter's value becomes `Authorization: Bearer <token>` before `AspAuthenticationScheme` runs. A request that has an `Authorization` header keeps it and the query value is ignored.
+- The scheme is evaluated again with the promoted header, even if `UseAuthentication` already ran for the request.
+- The parameter is removed from the request's query string, and NexNet never logs its value. Proxies and ASP.NET request logging can still record full URLs, so keep such tokens short-lived.
+
 ## Client Certificates
 
 When Kestrel terminates TLS and accepts client certificates, the certificate reaches the nexus as `Context.RemoteCertificate` for both WebSocket and HttpSocket sessions:
