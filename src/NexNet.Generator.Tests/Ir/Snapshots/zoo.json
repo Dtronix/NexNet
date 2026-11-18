@@ -1,0 +1,1644 @@
+{
+  "exports": [
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": 2004438260,
+          "id": 0
+        },
+        {
+          "hash": 2004438260,
+          "id": 1
+        }
+      ],
+      "clientApi": {
+        "clrName": "Zoo.IZooClient",
+        "clrNamespace": "Zoo",
+        "collections": [],
+        "hash": 2004438260,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -58473963,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Ping",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1718727628,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Notify",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "color",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Color",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IZooClient",
+        "versions": []
+      },
+      "clrNamespace": "Zoo",
+      "handshake": {
+        "clientNexusHash": 2004438260,
+        "serverNexusHash": 495069324
+      },
+      "name": "ZooClientNexus",
+      "serverApi": {
+        "clrName": "Zoo.IZooServer",
+        "clrNamespace": "Zoo",
+        "collections": [
+          {
+            "docs": "Every shape on the server.",
+            "hash": -718292448,
+            "id": 51,
+            "isAuthorized": false,
+            "item": {
+              "id": "Zoo.Shape",
+              "kind": "Decl"
+            },
+            "kind": "List",
+            "mode": "ServerToClient",
+            "name": "Shapes"
+          }
+        ],
+        "hash": 495069324,
+        "methods": [
+          {
+            "docs": "Echoes value back.",
+            "hasCancellation": true,
+            "hash": 1746933120,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Echo",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Everything",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "Zoo.Everything",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1624227280,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Fire",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "shape",
+                "nullable": true,
+                "type": {
+                  "id": "Zoo.Shape",
+                  "kind": "Decl",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "Value",
+                "name": "count",
+                "nullable": true,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "kind": "Nullable"
+                },
+                "wireIndex": 2
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 2
+          },
+          {
+            "hasCancellation": false,
+            "hash": 349243319,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "Wrap",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                }
+              ],
+              "id": "Zoo.Envelope`1",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1604788163,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "Upload",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -569447118,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "Stream",
+            "params": [
+              {
+                "kind": "DuplexChannel",
+                "name": "channel",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Node",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "Channel",
+            "pipeType": {
+              "id": "Zoo.Node",
+              "kind": "Decl"
+            },
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -2108480106,
+            "id": 5,
+            "isAuthorized": false,
+            "name": "Slow",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": true,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 794179312,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "Lookup",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "access",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Access",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "id": "Zoo.Color",
+                  "kind": "Decl"
+                },
+                {
+                  "args": [
+                    {
+                      "id": "Zoo.Shape",
+                      "kind": "Decl"
+                    }
+                  ],
+                  "clr": "List",
+                  "kind": "Seq"
+                }
+              ],
+              "clr": "Dictionary",
+              "kind": "Map"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1776127311,
+            "id": 50,
+            "isAuthorized": false,
+            "name": "Fixed",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "text",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "String",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IZooServer",
+        "versions": []
+      },
+      "targets": 0
+    },
+    {
+      "clientAcceptedIds": [
+        {
+          "hash": 2004438260,
+          "id": 0
+        },
+        {
+          "hash": 2004438260,
+          "id": 1
+        }
+      ],
+      "clientApi": {
+        "clrName": "Zoo.IZooClient",
+        "clrNamespace": "Zoo",
+        "collections": [],
+        "hash": 2004438260,
+        "methods": [
+          {
+            "hasCancellation": false,
+            "hash": -58473963,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Ping",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "Int32"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1718727628,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Notify",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "color",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Color",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IZooClient",
+        "versions": []
+      },
+      "clrNamespace": "Zoo",
+      "docs": "Serves the zoo.",
+      "handshake": {
+        "clientNexusHash": 2004438260,
+        "serverNexusHash": 495069324
+      },
+      "name": "ZooServerNexus",
+      "serverApi": {
+        "clrName": "Zoo.IZooServer",
+        "clrNamespace": "Zoo",
+        "collections": [
+          {
+            "docs": "Every shape on the server.",
+            "hash": -718292448,
+            "id": 51,
+            "isAuthorized": false,
+            "item": {
+              "id": "Zoo.Shape",
+              "kind": "Decl"
+            },
+            "kind": "List",
+            "mode": "ServerToClient",
+            "name": "Shapes"
+          }
+        ],
+        "hash": 495069324,
+        "methods": [
+          {
+            "docs": "Echoes value back.",
+            "hasCancellation": true,
+            "hash": 1746933120,
+            "id": 0,
+            "isAuthorized": false,
+            "name": "Echo",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Everything",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "CancellationToken",
+                "name": "cancellationToken",
+                "nullable": false,
+                "wireIndex": 0
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "id": "Zoo.Everything",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": 1624227280,
+            "id": 1,
+            "isAuthorized": false,
+            "name": "Fire",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "shape",
+                "nullable": true,
+                "type": {
+                  "id": "Zoo.Shape",
+                  "kind": "Decl",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              },
+              {
+                "kind": "Value",
+                "name": "count",
+                "nullable": true,
+                "type": {
+                  "args": [
+                    {
+                      "kind": "Prim",
+                      "prim": "Int32"
+                    }
+                  ],
+                  "kind": "Nullable"
+                },
+                "wireIndex": 2
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "Void",
+            "separatePool": false,
+            "serializedCount": 2
+          },
+          {
+            "hasCancellation": false,
+            "hash": 349243319,
+            "id": 2,
+            "isAuthorized": false,
+            "name": "Wrap",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "value",
+                "nullable": false,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "kind": "Prim",
+                  "prim": "Int32"
+                }
+              ],
+              "id": "Zoo.Envelope`1",
+              "kind": "Decl"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1604788163,
+            "id": 3,
+            "isAuthorized": false,
+            "name": "Upload",
+            "params": [
+              {
+                "kind": "DuplexPipe",
+                "name": "pipe",
+                "nullable": false,
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "DuplexPipe",
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -569447118,
+            "id": 4,
+            "isAuthorized": false,
+            "name": "Stream",
+            "params": [
+              {
+                "kind": "DuplexChannel",
+                "name": "channel",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Node",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "Channel",
+            "pipeType": {
+              "id": "Zoo.Node",
+              "kind": "Decl"
+            },
+            "returnKind": "Task",
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -2108480106,
+            "id": 5,
+            "isAuthorized": true,
+            "name": "Slow",
+            "params": [],
+            "pipeKind": "None",
+            "returnKind": "Task",
+            "separatePool": true,
+            "serializedCount": 0
+          },
+          {
+            "hasCancellation": false,
+            "hash": 794179312,
+            "id": 6,
+            "isAuthorized": false,
+            "name": "Lookup",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "access",
+                "nullable": false,
+                "type": {
+                  "id": "Zoo.Access",
+                  "kind": "Decl"
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "args": [
+                {
+                  "id": "Zoo.Color",
+                  "kind": "Decl"
+                },
+                {
+                  "args": [
+                    {
+                      "id": "Zoo.Shape",
+                      "kind": "Decl"
+                    }
+                  ],
+                  "clr": "List",
+                  "kind": "Seq"
+                }
+              ],
+              "clr": "Dictionary",
+              "kind": "Map"
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          },
+          {
+            "hasCancellation": false,
+            "hash": -1776127311,
+            "id": 50,
+            "isAuthorized": false,
+            "name": "Fixed",
+            "params": [
+              {
+                "kind": "Value",
+                "name": "text",
+                "nullable": true,
+                "type": {
+                  "kind": "Prim",
+                  "prim": "String",
+                  "refNullable": true
+                },
+                "wireIndex": 1
+              }
+            ],
+            "pipeKind": "None",
+            "returnKind": "TaskOf",
+            "returnType": {
+              "kind": "Prim",
+              "prim": "String",
+              "refNullable": true
+            },
+            "separatePool": false,
+            "serializedCount": 1
+          }
+        ],
+        "name": "IZooServer",
+        "versions": []
+      },
+      "targets": 0
+    }
+  ],
+  "irVersion": 1,
+  "types": [
+    {
+      "clrMetadataName": "Zoo.Access",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Access",
+      "isFlags": true,
+      "kind": "Enum",
+      "members": [
+        {
+          "name": "None",
+          "value": 0
+        },
+        {
+          "name": "Read",
+          "value": 1
+        },
+        {
+          "name": "Write",
+          "value": 2
+        },
+        {
+          "name": "All",
+          "value": -1
+        }
+      ],
+      "name": "Access",
+      "underlying": "UInt64"
+    },
+    {
+      "arrayLength": 2,
+      "baseDeclId": "Zoo.Shape",
+      "clrMetadataName": "Zoo.Circle",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Circle",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "String",
+            "value": "shape"
+          },
+          "docs": "The display name.",
+          "key": 0,
+          "name": "Name",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "String"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Real",
+            "value": "1.5"
+          },
+          "key": 1,
+          "name": "Radius",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Double"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Circle",
+      "typeParams": []
+    },
+    {
+      "clrMetadataName": "Zoo.Color",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "docs": "Primary colors. See Shape.",
+      "id": "Zoo.Color",
+      "isFlags": false,
+      "kind": "Enum",
+      "members": [
+        {
+          "name": "Red",
+          "value": 1
+        },
+        {
+          "name": "Green",
+          "value": 2
+        },
+        {
+          "name": "Blue",
+          "value": 4
+        }
+      ],
+      "name": "Color",
+      "underlying": "Byte"
+    },
+    {
+      "arrayLength": 4,
+      "clrMetadataName": "Zoo.Envelope`1",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Envelope`1",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "key": 0,
+          "name": "Value",
+          "refNullable": false,
+          "type": {
+            "kind": "TypeParam",
+            "ordinal": 0
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 1,
+          "name": "Maybe",
+          "refNullable": true,
+          "type": {
+            "kind": "TypeParam",
+            "ordinal": 0,
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 3,
+          "name": "History",
+          "refNullable": true,
+          "type": {
+            "args": [
+              {
+                "kind": "TypeParam",
+                "ordinal": 0
+              }
+            ],
+            "clr": "List",
+            "kind": "Seq",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Envelope",
+      "typeParams": ["T"]
+    },
+    {
+      "arrayLength": 36,
+      "clrMetadataName": "Zoo.Everything",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Everything",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "Bool",
+            "value": "true"
+          },
+          "key": 0,
+          "name": "Flag",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Bool"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 1,
+          "name": "Bytes",
+          "refNullable": false,
+          "type": {
+            "clr": "Array",
+            "kind": "Bin"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 2,
+          "name": "Ints",
+          "refNullable": false,
+          "type": {
+            "clr": "Array",
+            "kind": "PrimArray",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 3,
+          "name": "Longs",
+          "refNullable": false,
+          "type": {
+            "clr": "List",
+            "kind": "PrimArray",
+            "prim": "Int64"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 4,
+          "name": "Floats",
+          "refNullable": false,
+          "type": {
+            "clr": "ReadOnlyMemory",
+            "kind": "PrimArray",
+            "prim": "Single"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 5,
+          "name": "Memory",
+          "refNullable": false,
+          "type": {
+            "clr": "Memory",
+            "kind": "Bin"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 6,
+          "name": "ByteList",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Byte"
+              }
+            ],
+            "clr": "List",
+            "kind": "Seq"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 7,
+          "name": "Names",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "String",
+                "refNullable": true
+              }
+            ],
+            "clr": "IReadOnlyList",
+            "kind": "Seq"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 8,
+          "name": "Ids",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Guid"
+              }
+            ],
+            "clr": "HashSet",
+            "kind": "Set"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 9,
+          "name": "Colors",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "String"
+              },
+              {
+                "id": "Zoo.Color",
+                "kind": "Decl"
+              }
+            ],
+            "clr": "Dictionary",
+            "kind": "Map"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 10,
+          "name": "Queue",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Int32"
+              }
+            ],
+            "clr": "Queue",
+            "kind": "Queue"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 11,
+          "name": "Stack",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "String"
+              }
+            ],
+            "clr": "Stack",
+            "kind": "Stack"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 12,
+          "name": "Tuple",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Int32"
+              },
+              {
+                "kind": "Prim",
+                "prim": "String"
+              }
+            ],
+            "clr": "ValueTuple",
+            "kind": "Tuple"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 13,
+          "name": "RefTuple",
+          "refNullable": true,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Int32"
+              },
+              {
+                "id": "Zoo.Node",
+                "kind": "Decl"
+              }
+            ],
+            "clr": "Tuple",
+            "kind": "Tuple",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 14,
+          "name": "Kvp",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "String"
+              },
+              {
+                "kind": "Prim",
+                "prim": "Int32"
+              }
+            ],
+            "clr": "KeyValuePair",
+            "kind": "Tuple"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 15,
+          "name": "MaybeInt",
+          "refNullable": false,
+          "type": {
+            "args": [
+              {
+                "kind": "Prim",
+                "prim": "Int32"
+              }
+            ],
+            "kind": "Nullable"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Enum",
+            "value": "Green"
+          },
+          "key": 16,
+          "name": "Color",
+          "refNullable": false,
+          "type": {
+            "id": "Zoo.Color",
+            "kind": "Decl"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 17,
+          "name": "Access",
+          "refNullable": false,
+          "type": {
+            "id": "Zoo.Access",
+            "kind": "Decl"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Decimal",
+            "value": "1.25"
+          },
+          "key": 18,
+          "name": "Price",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Decimal"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Char",
+            "value": "x"
+          },
+          "key": 19,
+          "name": "Letter",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Char"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 20,
+          "name": "When",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "DateTimeOffset"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 21,
+          "name": "Span",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "TimeSpan"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 22,
+          "name": "Day",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "DateOnly"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 23,
+          "name": "Time",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "TimeOnly"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 24,
+          "name": "Small",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Half"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 25,
+          "name": "Huge",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "BigInteger"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 26,
+          "name": "Link",
+          "refNullable": true,
+          "type": {
+            "kind": "Prim",
+            "prim": "Uri",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 27,
+          "name": "Release",
+          "refNullable": true,
+          "type": {
+            "kind": "Prim",
+            "prim": "Version",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 28,
+          "name": "Wrapped",
+          "refNullable": true,
+          "type": {
+            "args": [
+              {
+                "id": "Zoo.Shape",
+                "kind": "Decl",
+                "refNullable": true
+              }
+            ],
+            "id": "Zoo.Envelope`1",
+            "kind": "Decl",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 29,
+          "name": "Point",
+          "refNullable": false,
+          "type": {
+            "clr": "Zoo.Point",
+            "kind": "External"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "String",
+            "value": ""
+          },
+          "key": 30,
+          "name": "Secret",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "String"
+          },
+          "wasNonPublic": true
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Null"
+          },
+          "key": 31,
+          "name": "Note",
+          "refNullable": true,
+          "type": {
+            "kind": "Prim",
+            "prim": "String",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Integer",
+            "value": "-9000000000"
+          },
+          "key": 32,
+          "name": "Big",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int64"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 33,
+          "name": "Pair",
+          "refNullable": false,
+          "type": {
+            "id": "Zoo.Pair",
+            "kind": "Decl"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 34,
+          "name": "Halves",
+          "refNullable": true,
+          "type": {
+            "clr": "Array",
+            "kind": "PrimArray",
+            "prim": "Half",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 35,
+          "name": "Stamp",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "DateTime"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Everything",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 3,
+      "clrMetadataName": "Zoo.Node",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "docs": "A linked list node.",
+      "id": "Zoo.Node",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": true,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "key": 0,
+          "name": "Value",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 1,
+          "name": "Next",
+          "refNullable": true,
+          "type": {
+            "id": "Zoo.Node",
+            "kind": "Decl",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 2,
+          "name": "Children",
+          "refNullable": true,
+          "type": {
+            "args": [
+              {
+                "id": "Zoo.Tree",
+                "kind": "Decl"
+              }
+            ],
+            "clr": "List",
+            "kind": "Seq",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Node",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 1,
+      "clrMetadataName": "Zoo.Orphan",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Orphan",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "Null"
+          },
+          "key": 0,
+          "name": "Text",
+          "refNullable": true,
+          "type": {
+            "kind": "Prim",
+            "prim": "String",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Orphan",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 2,
+      "clrMetadataName": "Zoo.Pair",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Pair",
+      "isAbstract": false,
+      "isRecord": true,
+      "isRecursive": false,
+      "isStruct": true,
+      "kind": "Object",
+      "members": [
+        {
+          "key": 0,
+          "name": "Left",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 1,
+          "name": "Right",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Pair",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 3,
+      "baseDeclId": "Zoo.Square",
+      "clrMetadataName": "Zoo.RoundedSquare",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.RoundedSquare",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "String",
+            "value": "shape"
+          },
+          "docs": "The display name.",
+          "key": 0,
+          "name": "Name",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "String"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Integer",
+            "value": "-3"
+          },
+          "key": 1,
+          "name": "Side",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "key": 2,
+          "name": "Corner",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Single"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "RoundedSquare",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 1,
+      "clrMetadataName": "Zoo.RuntimeOnly",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.RuntimeOnly",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "Enum",
+            "value": "Blue"
+          },
+          "key": 0,
+          "name": "Tint",
+          "refNullable": false,
+          "type": {
+            "id": "Zoo.Color",
+            "kind": "Decl"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "RuntimeOnly",
+      "typeParams": []
+    },
+    {
+      "cases": [
+        {
+          "caseDeclId": "Zoo.Circle",
+          "inheritanceDepth": 2,
+          "tag": 1
+        },
+        {
+          "caseDeclId": "Zoo.Square",
+          "inheritanceDepth": 2,
+          "tag": 2
+        },
+        {
+          "caseDeclId": "Zoo.RoundedSquare",
+          "inheritanceDepth": 3,
+          "tag": 3
+        }
+      ],
+      "clrMetadataName": "Zoo.Shape",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "docs": "A drawable shape with a ignored reference.",
+      "id": "Zoo.Shape",
+      "isInterface": false,
+      "isRecursive": false,
+      "kind": "Union",
+      "name": "Shape",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 2,
+      "baseDeclId": "Zoo.Shape",
+      "clrMetadataName": "Zoo.Square",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Square",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": false,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "defaultLiteral": {
+            "kind": "String",
+            "value": "shape"
+          },
+          "docs": "The display name.",
+          "key": 0,
+          "name": "Name",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "String"
+          },
+          "wasNonPublic": false
+        },
+        {
+          "defaultLiteral": {
+            "kind": "Integer",
+            "value": "-3"
+          },
+          "key": 1,
+          "name": "Side",
+          "refNullable": false,
+          "type": {
+            "kind": "Prim",
+            "prim": "Int32"
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Square",
+      "typeParams": []
+    },
+    {
+      "arrayLength": 1,
+      "clrMetadataName": "Zoo.Tree",
+      "clrNamespace": "Zoo",
+      "containingTypes": [],
+      "id": "Zoo.Tree",
+      "isAbstract": false,
+      "isRecord": false,
+      "isRecursive": true,
+      "isStruct": false,
+      "kind": "Object",
+      "members": [
+        {
+          "key": 0,
+          "name": "Parent",
+          "refNullable": true,
+          "type": {
+            "id": "Zoo.Node",
+            "kind": "Decl",
+            "refNullable": true
+          },
+          "wasNonPublic": false
+        }
+      ],
+      "name": "Tree",
+      "typeParams": []
+    }
+  ]
+}
