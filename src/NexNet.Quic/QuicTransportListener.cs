@@ -11,7 +11,7 @@ using NexNet.Transports;
 
 namespace NexNet.Quic;
 
-internal class QuicTransportListener : ITransportListener
+internal class QuicTransportListener : IPendingTransportListener
 {
     private readonly QuicServerConfig _config;
     private readonly QuicListener _listener;
@@ -28,13 +28,32 @@ internal class QuicTransportListener : ITransportListener
     }
 
     /// <summary>
-    /// Accepts the next connection. QUIC performs the TLS handshake inside <see cref="QuicListener.AcceptConnectionAsync"/>,
-    /// so a single client's failed handshake (rejected certificate, ALPN mismatch, handshake timeout) surfaces there.
-    /// Such per-connection failures are transient: they are logged and null is returned so the listener keeps
-    /// accepting. Returns null as well when the accept was canceled or an accepted connection could not be set up.
-    /// Only a disposed listener (<see cref="ObjectDisposedException"/>) is rethrown so the server faults the endpoint.
+    /// Accepts the next connection and its NexNet stream inline. Returns null when the accept was canceled, when a
+    /// client's handshake failed, or when an accepted connection could not be set up. Only a disposed listener
+    /// (<see cref="ObjectDisposedException"/>) is rethrown so the server faults the endpoint.
     /// </summary>
+    /// <remarks>
+    /// The server does not use this: it calls <see cref="AcceptPendingAsync"/> and accepts each connection's stream
+    /// on its own task, so a peer that never opens a stream does not block other accepts.
+    /// </remarks>
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
+    {
+        var pending = await AcceptPendingAsync(cancellationToken).ConfigureAwait(false);
+        return pending == null
+            ? null
+            : await pending.CompleteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Accepts the next connection; its NexNet stream is accepted later in
+    /// <see cref="IPendingTransport.CompleteAsync"/>. QUIC performs the TLS handshake inside
+    /// <see cref="QuicListener.AcceptConnectionAsync"/> (handshakes run concurrently in the listener), so a single
+    /// client's failed handshake (rejected certificate, ALPN mismatch, handshake timeout) surfaces there. Such
+    /// per-connection failures are transient: they are logged and null is returned so the listener keeps accepting.
+    /// Returns null as well when the accept was canceled. Only a disposed listener
+    /// (<see cref="ObjectDisposedException"/>) is rethrown so the server faults the endpoint.
+    /// </summary>
+    public async ValueTask<IPendingTransport?> AcceptPendingAsync(CancellationToken cancellationToken)
     {
         QuicConnection connection;
         try
@@ -51,36 +70,62 @@ internal class QuicTransportListener : ITransportListener
             return null;
         }
 
-        try
-        {
-            return await QuicTransport.CreateFromConnection(connection, _config).ConfigureAwait(false);
-        }
-        catch (Exception e)
-        {
-            _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
+        return new PendingQuicTransport(connection, _config);
+    }
 
+    /// <summary>
+    /// A QUIC connection whose NexNet stream has not been accepted yet.
+    /// </summary>
+    private sealed class PendingQuicTransport : IPendingTransport
+    {
+        private readonly QuicConnection _connection;
+        private readonly QuicServerConfig _config;
+
+        public string? RemoteAddress { get; }
+
+        public PendingQuicTransport(QuicConnection connection, QuicServerConfig config)
+        {
+            _connection = connection;
+            _config = config;
+            RemoteAddress = QuicTransport.GetRemoteEndPointInfo(connection).Address;
+        }
+
+        public async ValueTask<ITransport?> CompleteAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await QuicTransport.CreateFromConnection(_connection, _config, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
+                await DisposeQuietlyAsync().ConfigureAwait(false);
+                return null;
+            }
+        }
+
+        public void Abort()
+        {
+            _ = DisposeQuietlyAsync();
+        }
+
+        private async Task DisposeQuietlyAsync()
+        {
             // Immediate disconnect.
             try
             {
-                await connection.DisposeAsync().ConfigureAwait(false);
+                await _connection.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception disposeException)
             {
                 _config.Logger?.LogDebug(disposeException, "Failed to dispose the rejected client connection.");
             }
         }
-
-        return null;
     }
 
     public static async ValueTask<ITransportListener> Create(QuicServerConfig config, CancellationToken cancellationToken)
     {
-
-        config.SslServerAuthenticationOptions.ApplicationProtocols = new List<SslApplicationProtocol>
-        {
-            new SslApplicationProtocol("nn1"),
-        };
-
         // Share configuration for each incoming connection.
         // This represents the minimal configuration necessary.
         var serverConnectionOptions = new QuicServerConnectionOptions
@@ -93,8 +138,9 @@ internal class QuicTransportListener : ITransportListener
             // See https://www.rfc-editor.org/rfc/rfc9000#section-20.2
             DefaultCloseErrorCode = 0x0B, // Protocol-dependent error code.
 
-            // Same options as for server side SslStream.
-            ServerAuthenticationOptions = config.SslServerAuthenticationOptions
+            // Same options as for server side SslStream, on a copy so the ALPN does not leak into the caller's
+            // object (which may be shared with a TLS listener).
+            ServerAuthenticationOptions = QuicHelpers.WithNexNetAlpn(config.SslServerAuthenticationOptions)
         };
 
         try
@@ -104,10 +150,7 @@ internal class QuicTransportListener : ITransportListener
                 // Listening endpoint, port 0 means any port.
                 ListenEndPoint = config.EndPoint,
                 // List of all supported application protocols by this listener.
-                ApplicationProtocols = new List<SslApplicationProtocol>
-                {
-                    new SslApplicationProtocol("nn1"),
-                },
+                ApplicationProtocols = new List<SslApplicationProtocol> { QuicHelpers.Alpn },
 
                 // Callback to provide options for the incoming connections, it gets called once per each connection.
                 ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(serverConnectionOptions),
