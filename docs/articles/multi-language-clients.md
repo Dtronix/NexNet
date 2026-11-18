@@ -138,5 +138,5 @@ The unpack target reports these build messages:
 | NEXNETB001 | Warning | A `NexNetTarget` is configured but the generator produced no bundle (it is not referenced as an analyzer) |
 | NEXNETB002 | Error | The bundle is corrupt, from another version of the build files, or has an invalid path |
 | NEXNETB003 | Error | The bundle has files for a target with no `OutputDir` |
-| NEXNETB004 | Error | A generated file cannot be read, written or deleted |
+| NEXNETB004 | Error | A generated file cannot be read or written (a warning when a stale file cannot be deleted) |
 | NEXNETB005 | Warning | A `NexNetTarget` is declared twice; the first declaration is used |
