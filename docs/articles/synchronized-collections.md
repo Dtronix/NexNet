@@ -198,3 +198,4 @@ relay.DisconnectedTask.ContinueWith(_ =>
 
 - [Authorization](authorization.md) — Collection-level authorization with `[NexusAuthorize]`
 - [Duplex Pipes](duplex-pipes.md) — Low-level byte streaming (collections use pipes internally)
+- [Collection protocol](../internals/protocol-specification.md#12-collection-protocol) — Wire-level synchronization protocol and client state machine
