@@ -16,17 +16,19 @@ namespace NexNet.Pipes.Broadcast;
 internal class NexusBroadcastConnectionManager<TUnion>
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private readonly SnapshotList<INexusBroadcastSession<TUnion>> _connectedClients;
     private readonly INexusLogger? _logger;
     private readonly Channel<INexusCollectionBroadcasterMessageWrapper<TUnion>> _messageBroadcastChannel;
     
-    private bool _isRunning;
+    private readonly object _runLock = new();
+
+    // State of the latest Run. Each run has its own client list, so a stopped run that is still unwinding
+    // cannot complete or clear clients that joined after a restart.
+    private RunState? _run;
     
     internal bool DoNotSendAck = false; 
     public NexusBroadcastConnectionManager(INexusLogger? logger)
     {
         _logger = logger?.CreateLogger("Broadcast");
-        _connectedClients = new SnapshotList<INexusBroadcastSession<TUnion>>(64);
         _messageBroadcastChannel = Channel.CreateBounded<INexusCollectionBroadcasterMessageWrapper<TUnion>>(new BoundedChannelOptions(50)
         {
             AllowSynchronousContinuations = false,
@@ -36,11 +38,17 @@ internal class NexusBroadcastConnectionManager<TUnion>
         });
     }
 
-    public bool IsRunning => _isRunning;
+    public bool IsRunning => _run is { } run && !run.Token.IsCancellationRequested;
+
+    /// <summary>
+    /// Completes when the loop of the latest run has fully exited and its clients have been completed.
+    /// </summary>
+    internal Task LoopTask => _run?.Loop ?? Task.CompletedTask;
 
     public void AddClientAsync(INexusBroadcastSession<TUnion> client)
     {
-        if(!_isRunning)
+        var run = _run;
+        if(run == null || run.Stopped)
             throw new InvalidOperationException("Broadcaster is not running.");
         
         // Add in the completion removal for execution later.
@@ -96,7 +104,7 @@ internal class NexusBroadcastConnectionManager<TUnion>
 
         }, client, TaskCreationOptions.DenyChildAttach);
         
-        _connectedClients.Add(client);
+        run.Clients.Add(client);
     }
 
     public async ValueTask BroadcastAsync(TUnion message, INexusBroadcastSession<TUnion>? sourceClient, CancellationToken ct = default)
@@ -106,98 +114,131 @@ internal class NexusBroadcastConnectionManager<TUnion>
         await _messageBroadcastChannel.Writer.WriteAsync(message.Wrap(DoNotSendAck ? null : sourceClient), ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Starts the broadcast loop. A previous run that was cancelled but is still unwinding does not block this
+    /// call: the new loop waits for it to exit before it reads the channel.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">A previous run has not been cancelled.</exception>
     public void Run(CancellationToken token)
     {
-        if(_isRunning)
-            throw new InvalidOperationException("Broadcaster is already running.");
-        
-        _isRunning = true;
-        
-        Task.Factory.StartNew(async static args =>
+        lock (_runLock)
         {
-            var (broadcaster, ct) = ((NexusBroadcastConnectionManager<TUnion>, CancellationToken))args!;
-            
-            broadcaster._logger?.LogTrace("Started broadcast loop.");
-            
-            while (!ct.IsCancellationRequested)
-            {
-                try
-                {
-                    await foreach (var broadcastMessage in broadcaster._messageBroadcastChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
-                    {
-                        // Update the count.
-                        broadcastMessage.ClientCount = broadcaster._connectedClients.Count;
-                        
-                        // Ensure we actually have any clients.
-                        if (broadcastMessage.ClientCount == 0)
-                        {
-                            // Force the client count to 1 and signal a return. 
-                            broadcastMessage.ClientCount = 1;
-                            broadcastMessage.SignalSent();
-                            broadcaster._logger?.LogTrace($"Broadcasting skipping {broadcastMessage.Message?.GetType()} due to no client connections.");
-                            continue;
-                        }
-                        
-                        broadcaster._logger?.LogTrace($"Broadcasting {broadcastMessage.Message?.GetType()}");
+            var previous = _run;
+            if (previous != null && !previous.Token.IsCancellationRequested)
+                throw new InvalidOperationException("Broadcaster is already running.");
 
-                        foreach (var client in broadcaster._connectedClients)
+            var run = new RunState(token);
+            _run = run;
+            run.Loop = Task.Run(() => RunLoop(this, run, previous?.Loop));
+        }
+    }
+
+    private static async Task RunLoop(
+        NexusBroadcastConnectionManager<TUnion> broadcaster,
+        RunState run,
+        Task? previousLoop)
+    {
+        var ct = run.Token;
+        var connectedClients = run.Clients;
+
+        // The channel has a single reader; wait for the stopped run to let go of it.
+        if (previousLoop != null)
+            await previousLoop.ConfigureAwait(false);
+
+        broadcaster._logger?.LogTrace("Started broadcast loop.");
+
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await foreach (var broadcastMessage in broadcaster._messageBroadcastChannel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                {
+                    // Update the count.
+                    broadcastMessage.ClientCount = connectedClients.Count;
+                    
+                    // Ensure we actually have any clients.
+                    if (broadcastMessage.ClientCount == 0)
+                    {
+                        // Force the client count to 1 and signal a return. 
+                        broadcastMessage.ClientCount = 1;
+                        broadcastMessage.SignalSent();
+                        broadcaster._logger?.LogTrace($"Broadcasting skipping {broadcastMessage.Message?.GetType()} due to no client connections.");
+                        continue;
+                    }
+                    
+                    broadcaster._logger?.LogTrace($"Broadcasting {broadcastMessage.Message?.GetType()}");
+
+                    foreach (var client in connectedClients)
+                    {
+                        try
                         {
-                            try
+                            if (!client.BufferTryWrite(broadcastMessage))
                             {
-                                if (!client.BufferTryWrite(broadcastMessage))
-                                {
-                                    broadcaster._logger?.LogTrace(
-                                        $"S{client.Id} Could not send to client collection");
-                                    // Complete the pipe as it is full and not writing to the client at a decent
-                                    // rate.
-                                    await client.CompletePipe().ConfigureAwait(false);
-                                    // Signal completion for this client since message won't be processed
-                                    broadcastMessage.SignalSent();
-                                }
-                                else
-                                {
-                                    broadcaster._logger?.LogTrace(
-                                        $"S{client.Id} Sent {broadcastMessage.Message?.GetType()} to client collection");
-                                }
-                            }
-                            catch (Exception e)
-                            {
-                                broadcaster._logger?.LogInfo(e,
-                                    $"S{client.Id} Exception while sending to collection. Removing from broadcast.");
-                                
-                                // If we threw, the client is disconnected. Remove the client and signal completion.
-                                broadcaster._connectedClients.Remove(client);
+                                broadcaster._logger?.LogTrace(
+                                    $"S{client.Id} Could not send to client collection");
+                                // Complete the pipe as it is full and not writing to the client at a decent
+                                // rate.
+                                await client.CompletePipe().ConfigureAwait(false);
+                                // Signal completion for this client since message won't be processed
                                 broadcastMessage.SignalSent();
                             }
-
+                            else
+                            {
+                                broadcaster._logger?.LogTrace(
+                                    $"S{client.Id} Sent {broadcastMessage.Message?.GetType()} to client collection");
+                            }
                         }
-                    }
-                    broadcaster._logger?.LogDebug("Exited broadcast reading loop.");
-                }
-                catch (Exception e)
-                {
-                    broadcaster._logger?.LogError(e, "Exception in broadcast loop");
-                }
-            }
-            
-            broadcaster._isRunning = false;
+                        catch (Exception e)
+                        {
+                            broadcaster._logger?.LogInfo(e,
+                                $"S{client.Id} Exception while sending to collection. Removing from broadcast.");
+                            
+                            // If we threw, the client is disconnected. Remove the client and signal completion.
+                            connectedClients.Remove(client);
+                            broadcastMessage.SignalSent();
+                        }
 
-            // Close the client connections.
-            foreach (var client in broadcaster._connectedClients)
-            {
-                try
-                {
-                    await client.CompletePipe().ConfigureAwait(false);
+                    }
                 }
-                catch (Exception e)
-                {
-                    broadcaster._logger?.LogWarning(e, $"S{client.Id} Could not complete pipe.");
-                }
+                broadcaster._logger?.LogDebug("Exited broadcast reading loop.");
             }
-            
-            broadcaster._connectedClients.Clear();
-            
-        }, (this, token), TaskCreationOptions.DenyChildAttach);
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // Expected on stop.
+                broadcaster._logger?.LogDebug("Broadcast loop cancelled.");
+            }
+            catch (Exception e)
+            {
+                broadcaster._logger?.LogError(e, "Exception in broadcast loop");
+            }
+        }
+        
+        run.Stopped = true;
+
+        // Close the client connections.
+        foreach (var client in connectedClients)
+        {
+            try
+            {
+                await client.CompletePipe().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                broadcaster._logger?.LogWarning(e, $"S{client.Id} Could not complete pipe.");
+            }
+        }
+        
+        connectedClients.Clear();
+    }
+
+    private sealed class RunState
+    {
+        public readonly CancellationToken Token;
+        public readonly SnapshotList<INexusBroadcastSession<TUnion>> Clients = new(64);
+        public Task Loop = Task.CompletedTask;
+        public volatile bool Stopped;
+
+        public RunState(CancellationToken token) => Token = token;
     }
 }
 
