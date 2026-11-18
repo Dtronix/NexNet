@@ -57,6 +57,9 @@ public abstract class SessionContext<TProxy> : ISessionContext
     /// <inheritdoc />
     public ClaimsPrincipal? User => Session.User;
 
+    /// <inheritdoc />
+    public NexusEndpointInfo? Endpoint { get; internal init; }
+
     internal SessionContext(INexusSession<TProxy> session, IServerSessionManager? sessionManager)
     {
         Session = session;

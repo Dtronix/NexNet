@@ -47,6 +47,34 @@ await app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(c 
 }).StartAsync(app.Lifetime.ApplicationStopped);
 ```
 
+## Multiple Endpoints
+
+A server can serve WebSocket and HttpSocket next to TCP, TLS or UDS listeners (see [Transports: Multiple Endpoints](transports.md#multiple-endpoints)). `AddNexusServer` with options configures the server and registers a hosted service that starts it once the application has started (after Kestrel binds) and stops it when the application stops:
+
+```csharp
+builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>(o =>
+{
+    o.Configure(new TcpTlsServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 9002), ... }); // primary
+    o.AddListener(new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/run/app.sock") }, "uds");
+});
+
+var app = builder.Build();
+var server = app.Services.GetRequiredService<NexusServer<ServerNexus, ServerNexus.ClientProxy>>();
+
+app.UseWebSockets();
+app.MapNexusWebSocket(server, new WebSocketServerConfig { Path = "/nexus/ws", MaxMessageSize = 1024 * 1024 });
+app.UseHttpSockets();
+app.MapNexusHttpSocket(server, new HttpSocketServerConfig { Path = "/nexus/http", AspEnableAuthentication = true });
+
+await app.RunAsync(); // the hosted service starts and stops the server
+```
+
+- `MapNexusWebSocket(server, config, name)` and `MapNexusHttpSocket(server, config, name)` add the configuration with `AddExternalEndpoint` (named `websocket` / `httpsocket` by default) unless it is the server's primary configuration. Its session settings, ASP.NET authentication and proxy-header settings apply to the sessions of that path only. The server must be configured and stopped.
+- `MapWebSocketNexus(config, server)` and `MapHttpSocketNexus(config, server)` route the same way: the primary configuration keeps today's behavior, another configuration of an already configured server becomes its own endpoint.
+- `UseWebSocketNexusServerAsync` and `UseHttpSocketNexusServerAsync` configure the server when it is not configured yet, and otherwise attach their configuration as another endpoint instead of throwing.
+- When the options leave the primary configuration's `Logger` or `MeterFactory` unset, the application's `ILogger` and `IMeterFactory` are used. If the server fails to start (for example a listener can not bind), the hosted service logs it and stops the application.
+- `Context.Endpoint.IsSecure` is `HttpRequest.IsHttps` for WebSocket and HttpSocket sessions; behind a reverse proxy that terminates TLS it is false.
+
 ## Client Connection
 
 ```csharp
