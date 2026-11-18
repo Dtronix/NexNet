@@ -551,6 +551,147 @@ internal abstract class BaseTests
         return server;
     }
 
+    /// <summary>
+    /// A server with one endpoint per transport in <see cref="Transports"/>, built by
+    /// <see cref="CreateMultiEndpointServer(Type[])"/>.
+    /// </summary>
+    /// <param name="Server">The server; not started.</param>
+    /// <param name="Configs">Server configuration of each transport's endpoint.</param>
+    /// <param name="Transports">The transports, the primary one first.</param>
+    /// <param name="CreateClientConfig">Creates a client configuration that connects to the endpoint of a transport.</param>
+    protected sealed record MultiEndpointServer(
+        NexusServer<ServerNexus, ServerNexus.ClientProxy> Server,
+        IReadOnlyDictionary<Type, ServerConfig> Configs,
+        IReadOnlyList<Type> Transports,
+        Func<Type, ClientConfig> CreateClientConfig);
+
+    /// <summary>
+    /// Creates a stopped server with one endpoint per transport in <paramref name="types"/>: the first is the primary
+    /// configuration, the others are added with <c>AddListener</c> or, for WebSocket and HttpSocket, mapped on one
+    /// ASP.NET app with <c>MapNexusWebSocket</c> / <c>MapNexusHttpSocket</c>. Each TCP-based endpoint gets its own
+    /// port, and each endpoint is named after its transport.
+    /// </summary>
+    protected MultiEndpointServer CreateMultiEndpointServer(params Type[] types)
+        => CreateMultiEndpointServer(null, null, types);
+
+    /// <inheritdoc cref="CreateMultiEndpointServer(Type[])"/>
+    /// <param name="nexusCreated">Called with every nexus the server creates.</param>
+    /// <param name="configure">Called with each endpoint's configuration before it is added to the server.</param>
+    /// <param name="types">The transports, the primary one first.</param>
+    protected MultiEndpointServer CreateMultiEndpointServer(
+        Action<ServerNexus>? nexusCreated,
+        Action<Type, ServerConfig>? configure,
+        params Type[] types)
+    {
+        if (types.Length == 0 || types.Distinct().Count() != types.Length)
+            throw new ArgumentException("Give each transport once.", nameof(types));
+
+        LoggerMode = BasePipeTests.LogMode.OnTestFail;
+        var savedTcpPort = _currentTcpPort;
+        var savedUdsPath = CurrentUdsPath;
+        var savedUdpPort = _currentUdpPort;
+
+        // Where each transport's endpoint listens: its own TCP or UDP port or UDS path; the ASP.NET ones share one port.
+        int? aspPort = null;
+        var tcpPorts = new Dictionary<Type, int?>();
+        var udsPaths = new Dictionary<Type, UnixDomainSocketEndPoint?>();
+        var udpPorts = new Dictionary<Type, int?>();
+
+        void Select(Type type)
+        {
+            _currentTcpPort = tcpPorts.GetValueOrDefault(type);
+            CurrentUdsPath = udsPaths.GetValueOrDefault(type);
+            _currentUdpPort = udpPorts.GetValueOrDefault(type);
+            if (type is Type.WebSocket or Type.HttpSocket)
+                _currentTcpPort = aspPort ??= FreeTcpPort();
+        }
+
+        void Remember(Type type)
+        {
+            tcpPorts[type] = _currentTcpPort;
+            udsPaths[type] = CurrentUdsPath;
+            udpPorts[type] = _currentUdpPort;
+        }
+
+        var configs = new Dictionary<Type, ServerConfig>();
+        foreach (var type in types)
+        {
+            Select(type);
+            var config = CreateServerConfigWithLog(type, _logger);
+            Remember(type);
+            configure?.Invoke(type, config);
+            configs[type] = config;
+        }
+
+        _currentTcpPort = savedTcpPort;
+        CurrentUdsPath = savedUdsPath;
+        _currentUdpPort = savedUdpPort;
+
+        var primary = configs[types[0]];
+        var server = new NexusServer<ServerNexus, ServerNexus.ClientProxy>(primary, () =>
+        {
+            var nexus = new ServerNexus();
+            nexusCreated?.Invoke(nexus);
+            return nexus;
+        });
+        Servers.Add(server);
+
+        foreach (var type in types.Skip(1))
+        {
+            if (type is not (Type.WebSocket or Type.HttpSocket))
+                server.AddListener(configs[type], configs[type].TransportName);
+        }
+
+        if (aspPort != null)
+        {
+            var builder = WebApplication.CreateBuilder();
+            builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel((_, serverOptions) =>
+                serverOptions.Listen(IPAddress.Loopback, aspPort.Value, listen => AspListenOptions?.Invoke(listen)));
+            builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
+            builder.Logging.AddProvider(new AspLoggerProviderBridge(_logger));
+
+            var app = builder.Build();
+            app.UseWebSockets();
+            app.UseHttpSockets();
+
+            foreach (var type in types)
+            {
+                // The primary configuration maps to the primary endpoint; the others are added as endpoints.
+                if (configs[type] is WebSocketServerConfig webSocketConfig)
+                    app.MapNexusWebSocket(server, webSocketConfig);
+                else if (configs[type] is HttpSocketServerConfig httpSocketConfig)
+                    app.MapNexusHttpSocket(server, httpSocketConfig);
+            }
+
+            _ = app.RunAsync();
+            AspServers.Add(app);
+        }
+
+        ClientConfig CreateEndpointClientConfig(Type type)
+        {
+            if (!configs.ContainsKey(type))
+                throw new ArgumentException($"The server has no {type} endpoint.", nameof(type));
+
+            var tcpPort = _currentTcpPort;
+            var udsPath = CurrentUdsPath;
+            var udpPort = _currentUdpPort;
+            try
+            {
+                Select(type);
+                return CreateClientConfigWithLog(type, _logger);
+            }
+            finally
+            {
+                _currentTcpPort = tcpPort;
+                CurrentUdsPath = udsPath;
+                _currentUdpPort = udpPort;
+            }
+        }
+
+        return new MultiEndpointServer(server, configs, types, CreateEndpointClientConfig);
+    }
+
     protected (NexusClient<ClientNexus, ClientNexus.ServerProxy> client, ClientNexus clientNexus)
         CreateClient(ClientConfig cConfig)
     {
