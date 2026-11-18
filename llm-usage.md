@@ -673,6 +673,25 @@ public partial class ServerV2 { ... }
 
 Attribute options: `[NexusMethod(Ignore = true)]`, `[NexusCollection(Id = 1)]`, `[NexusCollection(Ignore = true)]`.
 
+## Multi-language Clients (opt-in)
+
+Java and JavaScript client generation is being added. Today the attributes below only select what is exported; no
+Java or JavaScript files are written yet. Without them, the generator's output is unchanged.
+
+| Attribute | Target | Meaning |
+|---|---|---|
+| `[Nexus<TServer, TClient>(NexusType = NexusType.Server, Targets = NexusTargets.Java \| NexusTargets.JavaScript)]` | server nexus class | Export a client of this nexus for those languages. Export name = class name |
+| `[assembly: NexusClientExport<TServer, TClient>(Targets = ..., Name = "...")]` | assembly (multiple) | Export a client from two interfaces with no class, e.g. an older version `IServerNexusV1`. `Targets` is required; `Name` defaults to the server interface name without its leading `I`. Same ids, hashes and handshake as a C# client nexus of those interfaces |
+| `[assembly: NexusTargetFormatter<T>(NexusTargets target, "fq.native.Formatter")]` (`NexNet.Serialization`) | assembly (multiple) | Native formatter for a `[NexusFormatter]` type `T` in one language (combined flags apply to each). One per (T, language) |
+
+`NexusTargets` (`NexNet`, flags): `None = 0`, `Java = 1`, `JavaScript = 2`.
+
+| ID | Severity | Meaning |
+|---|---|---|
+| NEXNET043 | Error | `Targets` set on a client nexus; set it on the server nexus or use `NexusClientExport` |
+| NEXNET048 | Error | Invalid `NexusTargetFormatter`: `None` or undefined target, empty formatter name, or a second one for the same (T, language) |
+| NEXNET042 | Error | Also reported for a `NexusClientExport` interface with duplicate method names (the export is skipped) |
+
 ## ASP.NET Integration
 
 Requires `NexNet.Asp`.

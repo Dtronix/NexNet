@@ -20,14 +20,26 @@ So the wire shape, the hashes and every target's code cannot drift apart. Buildi
 | API | Use |
 |---|---|
 | `IrBuilder.Build(compilation or shapes, nexusClass, data, ct)` | Fragment of one `[Nexus]` class: its export and the types both APIs reach. `data` is the extractor's `NexusGenerationData` for that class. |
+| `IrBuilder.BuildExport(shapes, name, ns, targets, server…, client…, docs, location, ct)` | Fragment of an export given by its two interfaces and their extractor data (used for `[assembly: NexusClientExport<TServer, TClient>]`, which has no class). |
 | `IrBuilder.BuildTypes(shapes, roots, ct)` | Fragment of standalone types (a `[NexusObject]` type, a type used only at runtime). |
 | `IrBuilder.BuildAssemblyDeclared(compilation, ct)` | Fragment of the `[assembly: NexusSerializable<T>]` roots. |
 | `IrBuilder.Merge(fragments)` | The compilation's `NexusIr`. Independent of fragment order. |
+| `IrNativeFormatters.Apply(ir, mappings)` | Attaches `[assembly: NexusTargetFormatter<T>]` mappings to the External references of a merged IR. |
 | `IrJson.Write(ir)` / `IrJson.Read(json)` | JSON form (this document). |
 
 Fragments are built in the transform phase (symbol access); every IR record is symbol-free and has value equality, so
-fragments and the merged IR are cacheable incremental pipeline values. Wiring into `NexusGenerator` and the opt-in
-(`Targets`) are added by G02.
+fragments and the merged IR are cacheable incremental pipeline values.
+
+**Pipeline (G02).** `NexusGenerator` produces the IR as an `IncrementalValueProvider<NexusIr?>` (tracking name
+`NexusIr`), built by `Extraction/TargetExtractor`:
+
+- a server `[Nexus]` class with `Targets` set contributes its export fragment (built in its transform, `targets` set
+  from the flags); `Targets` on a client nexus is NEXNET043 and exports nothing;
+- each `[assembly: NexusClientExport<TServer, TClient>(Targets = …)]` with non-zero targets contributes an export built
+  from the two interfaces exactly as a C# client nexus of them would extract them (no authorization data);
+- when at least one export exists, the `[NexusObject]` types and the `[assembly: NexusSerializable<T>]` roots are added,
+  the fragments are merged and the native formatter mappings are applied. With no export the value is null and no IR
+  work is done.
 
 **Merge rules.** Exports are keyed by (`clrNamespace`, `name`) and ordered ordinally by namespace, then name. Types are keyed
 by `id` and ordered ordinally by id. A key produced by several producers appears once (producers build identical items
@@ -54,14 +66,14 @@ independent).
 
 ### 2.2 Export
 
-One nexus pair seen from the **client**: the API it calls and the API it implements. G01 builds one for every
-`[Nexus]` class (server or client); G02 restricts this to the opted-in ones.
+One nexus pair seen from the **client**: the API it calls and the API it implements. `IrBuilder.Build` can build one for
+any `[Nexus]` class; the generator pipeline exports only opted-in server nexuses and `NexusClientExport` declarations.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `name` | string | Simple name of the nexus class. |
-| `clrNamespace` | string | Namespace of the class ("" for the global namespace). |
-| `targets` | int | Target-language flags (bit values of `NexNet.NexusTargets`, defined by G02); 0 = none requested. |
+| `name` | string | Simple name of the nexus class, or the `NexusClientExport` name (default: the server interface name without its leading `I`). |
+| `clrNamespace` | string | Namespace of the class, or of the server interface for a `NexusClientExport` ("" for the global namespace). |
+| `targets` | int | Target-language flags (bit values of `NexNet.NexusTargets`: Java = 1, JavaScript = 2; 4 and 8 reserved for Rust and C++). Non-zero in the generator's IR. |
 | `serverApi` | Interface | The server nexus interface: what the client invokes. |
 | `clientApi` | Interface | The client nexus interface: what the server invokes on the client. |
 | `handshake` | Handshake | Client greeting values. |
@@ -145,7 +157,12 @@ A reference to a serialized type. `kind` selects which other fields are present.
 | `Nullable` | `args[0]` inner | Nil or the inner value. |
 | `Decl` | `id`, `args` (type arguments of a generic declaration) | See TypeDecl. |
 | `TypeParam` | `ordinal` | Type parameter of the enclosing generic declaration. |
-| `External` | `clr` (full .NET name), `args` | No language-neutral form: a `[NexusFormatter]` user type (needs a `NexusTargetFormatter` mapping, D12), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). G03 turns these into NEXNET040 per target. |
+| `External` | `clr` (full .NET name), `args`, `nativeFormatters` | No language-neutral form: a `[NexusFormatter]` user type (needs a `NexusTargetFormatter` mapping, D12), `object`, multi-dimensional arrays or another type C# rejects (NEXNET028). G03 turns these into NEXNET040 per target that has no native formatter. |
+
+**nativeFormatters** (External only; absent when empty): `{target, formatter}[]` ordered by `target`, one entry per target
+bit declared with `[assembly: NexusTargetFormatter<T>(target, formatter)]` for the type whose definition's full metadata
+name equals `clr` (a generic user type's mapping applies to every construction). `formatter` is the native class's
+fully qualified name, as written in the attribute (trimmed).
 
 Any occurrence may also carry `refNullable: true` (absent = false): a reference-type occurrence that may be null because it is
 annotated (`string?`) or declared in a nullable-oblivious context. `Nullable<T>` is expressed by `kind: Nullable` instead.
