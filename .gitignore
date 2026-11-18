@@ -11,3 +11,6 @@ clients/js/node_modules/
 clients/js/**/dist/
 clients/java/**/build/
 clients/java/.gradle/
+
+# Microsoft.Testing.Platform results (dotnet test --results-directory TestResults)
+TestResults/
