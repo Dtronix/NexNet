@@ -6,7 +6,6 @@ namespace NexNet.Serialization.Tests;
 /// <summary>
 /// Property-based round trips and cross-checks against MessagePack-CSharp.
 /// </summary>
-[TestFixture]
 public class PropertyTests
 {
     [Test]
