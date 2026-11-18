@@ -314,7 +314,7 @@ internal class NexusDuplexPipe : INexusDuplexPipe, IPipeStateManager, IDisposabl
     internal void OnRefused()
     {
         _session?.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: false);
-        _readyTcs.TrySetException(new NexusBusyException("The peer refused the pipe: a session limit is reached."));
+        _readyTcs.TrySetException(new NexusBusyException("The peer refused the pipe: a session limit is reached or the invocation is not authorized."));
         _completeTcs.TrySetResult();
         MarkClosedWithoutExchange();
     }
