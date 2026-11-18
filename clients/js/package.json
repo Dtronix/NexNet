@@ -1,0 +1,31 @@
+{
+  "name": "@dtronix/nexnet-workspace",
+  "private": true,
+  "type": "module",
+  "description": "npm workspace for the NexNet JavaScript client (@dtronix/nexnet) and its interop hosts.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:types": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
+    "lint": "eslint .",
+    "test": "vitest run --project node",
+    "test:browser": "vitest run --project browser"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "@vitest/browser": "5.1.0",
+    "@vitest/browser-playwright": "5.1.0",
+    "eslint": "10.14.0",
+    "globals": "17.13.0",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.1.0"
+  }
+}

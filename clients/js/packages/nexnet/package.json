@@ -1,0 +1,33 @@
+{
+  "name": "@dtronix/nexnet",
+  "version": "0.20.0",
+  "description": "NexNet client for JavaScript: browser (WebSocket) and Node (WebSocket, HttpSocket, TCP, TLS, UDS).",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dtronix/NexNet.git",
+    "directory": "clients/js/packages/nexnet"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./src/browser.js",
+      "node": "./src/node.js",
+      "default": "./src/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "node": "./src/node.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "dist"
+  ]
+}
