@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Diagnostics.Metrics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -30,8 +29,11 @@ public static partial class NexNetMiddlewareExtensions
     /// <remarks>
     /// This <see cref="MapHttpSocketNexus{TServerNexus,TClientProxy}"/> method is used for setting up mapping of the
     /// passed or nexus server service.  Using this method is discouraged over the complete <see cref="UseHttpSocketNexusServerAsync{TServerNexus,TClientProxy}"/>
-    /// method as additional configurations will be required if only this method is used. 
-    /// method.
+    /// method as additional configurations will be required if only this method is used.
+    /// When <paramref name="config"/> is the server's primary configuration, its sessions are the primary endpoint's.
+    /// Otherwise, when the server is already configured, <paramref name="config"/> is added as an external endpoint
+    /// (named after its transport) and its session settings apply to its sessions; see
+    /// <see cref="MapNexusHttpSocket{TServerNexus,TClientProxy}"/>.
     /// </remarks>
     /// <returns>Web app builder.</returns>
     public static IApplicationBuilder MapHttpSocketNexus<TServerNexus, TClientProxy>(
@@ -43,6 +45,47 @@ public static partial class NexNetMiddlewareExtensions
     {
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(config);
+
+        return MapHttpSocketCore(app, config, server, name: null, requireConfigured: false);
+    }
+
+    /// <summary>
+    /// Maps an endpoint of <paramref name="server"/> on a HttpSocket at <see cref="AspServerConfig.Path"/>. The server
+    /// must be configured and stopped. Unless <paramref name="config"/> is the server's primary configuration, it is
+    /// added with <see cref="NexusServer{TServerNexus,TClientProxy}.AddExternalEndpoint"/>, so its session settings
+    /// (timeouts, message size, flow control, <c>Authenticate</c>, ASP.NET authentication, proxy headers) apply to the
+    /// sessions it accepts while the server's other endpoints keep theirs.
+    /// </summary>
+    /// <param name="app">Web app to bind the endpoint to. Requires <c>app.UseHttpSockets()</c>.</param>
+    /// <param name="server">The server.</param>
+    /// <param name="config">The endpoint's configuration.</param>
+    /// <param name="name">Endpoint name, unique within the server; defaults to <c>httpsocket</c>.</param>
+    /// <returns>Web app builder.</returns>
+    public static IApplicationBuilder MapNexusHttpSocket<TServerNexus, TClientProxy>(
+        this WebApplication app,
+        NexusServer<TServerNexus, TClientProxy> server,
+        HttpSocketServerConfig config,
+        string? name = null)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(config);
+
+        return MapHttpSocketCore(app, config, server, name, requireConfigured: true);
+    }
+
+    private static IApplicationBuilder MapHttpSocketCore<TServerNexus, TClientProxy>(
+        WebApplication app,
+        HttpSocketServerConfig config,
+        NexusServer<TServerNexus, TClientProxy>? server,
+        string? name,
+        bool requireConfigured)
+        where TServerNexus : ServerNexusBase<TClientProxy>, IInvocationMethodHash, ICollectionConfigurer
+        where TClientProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+    {
+        var endpoint = ResolveEndpoint(app, config, ref server, name, requireConfigured);
 
         return app.Use(async (context, next) =>
         {
@@ -75,7 +118,8 @@ public static partial class NexNetMiddlewareExtensions
 
                 var transport = new HttpSocketTransport(pipe, remoteAddress, remotePort,
                     context.Connection.ClientCertificate, context.User);
-                await Unsafe.As<IAcceptsExternalTransport>(server).AcceptTransport(transport, cts.Token).ConfigureAwait(false);
+                await (endpoint ?? server.PrimaryEndpoint)
+                    .AcceptTransport(transport, context.Request.IsHttps, cts.Token).ConfigureAwait(false);
                 return;
             }
             
@@ -89,8 +133,14 @@ public static partial class NexNetMiddlewareExtensions
     /// </summary>
     /// <param name="app">Web app to bind the NexNet server to.</param>
     /// <param name="configure">Confirmation action for the nexus server config.</param>
-    /// <param name="configureCollections">Configures any collections upon starting.</param>
+    /// <param name="configureCollections">Configures any collections upon starting. Ignored when the server is
+    /// already configured.</param>
     /// <returns>Nexus server</returns>
+    /// <remarks>
+    /// When the server is not configured yet, the HttpSocket configuration becomes its primary configuration. When it
+    /// is (for example by <c>AddNexusServer(o =&gt; o.Configure(...))</c> or another <c>Use*NexusServerAsync</c> call),
+    /// the HttpSocket is attached as an additional endpoint named <c>httpsocket</c>.
+    /// </remarks>
     /// <typeparam name="TServerNexus">Server to map</typeparam>
     /// <typeparam name="TClientProxy">Client proxy to map.</typeparam>
     public static NexusServer<TServerNexus, TClientProxy> UseHttpSocketNexusServerAsync<TServerNexus, TClientProxy>(
@@ -104,12 +154,8 @@ public static partial class NexNetMiddlewareExtensions
 
         var server = app.Services.GetRequiredService<NexusServer<TServerNexus, TClientProxy>>();
 
-        if (server.IsConfigured)
-            throw new InvalidOperationException("Server has already been configured and can not be reused.");
-
-        // If the server is already started, then we can't start it again, and we can't map the same
-        // nexus to multiple path endpoints.
-        if (server.State == NexusServerState.Running)
+        // Endpoints can only be added to a stopped server.
+        if (server.State != NexusServerState.Stopped)
             throw new InvalidOperationException("Server is already running.");
         
         // Setup logging
@@ -128,11 +174,13 @@ public static partial class NexNetMiddlewareExtensions
         if(string.IsNullOrWhiteSpace(config.Path))
             throw new InvalidOperationException("Configured path is empty.  Must provide a endpoint for mapping to.");
         
-        server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>(), configureCollections);
+        // Configure the server, or attach to the one already configured.
+        if (!server.IsConfigured)
+            server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>(), configureCollections);
         
         // Enable usage of sockets and register this nexus 
         app.UseHttpSockets(options);
-        app.MapHttpSocketNexus<TServerNexus, TClientProxy>(config);
+        app.MapHttpSocketNexus(config, server);
 
         return server;
     }
