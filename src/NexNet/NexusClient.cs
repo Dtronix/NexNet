@@ -332,7 +332,13 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
         if (_config.IsSecureTransport || Interlocked.Exchange(ref _plaintextWarningLogged, 1) != 0)
             return;
 
-        var transport = _config is HttpClientConfig { Url: { } url } ? $"{url.Scheme}://" : _config.TransportName;
+        // A configuration type that does not set TransportName (a custom transport) is named by its type.
+        var transport = _config switch
+        {
+            HttpClientConfig { Url: { } url } => $"{url.Scheme}://",
+            { TransportName: "custom" } => _config.GetType().Name,
+            _ => _config.TransportName,
+        };
         _logger?.LogWarning(
             $"NexNet: unencrypted transport ({transport}); credentials and data are visible on the network.");
     }

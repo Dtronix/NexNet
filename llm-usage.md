@@ -481,7 +481,8 @@ clientConfig.AuthenticateAsync = async ct => Encoding.UTF8.GetBytes(await GetTok
 Plaintext: `INexusClient.IsSecure` is true for TLS, `wss://`, `https://`, QUIC and UDS; false for TCP, `ws://`, `http://`
 (also `NexusSessionSnapshot.IsSecure` on client snapshots; null on server). When false, each client logs one Warning on
 its first connect: `NexNet: unencrypted transport (<tcp|ws://|http://>); credentials and data are visible on the network.`
-Custom `ClientConfig` subclasses report secure unless they override `protected internal virtual bool IsSecureTransport`.
+`protected internal virtual bool IsSecureTransport` defaults to false: a custom `ClientConfig` subclass that does not
+override it is plaintext and warns, named by its `TransportName` or, if unset, its type name.
 
 ## Authorization
 

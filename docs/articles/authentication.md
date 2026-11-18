@@ -97,7 +97,17 @@ When `IsSecure` is false, the client logs one warning per client instance on its
 NexNet: unencrypted transport (tcp); credentials and data are visible on the network.
 ```
 
-The transport is named `tcp`, `ws://` or `http://`. Plaintext connections still work; the warning is informational. A custom `ClientConfig` subclass reports secure unless it overrides `IsSecureTransport`.
+The transport is named `tcp`, `ws://` or `http://`. Plaintext connections still work; the warning is informational.
+
+A custom `ClientConfig` subclass is treated as plaintext unless it overrides `IsSecureTransport` to return true, so it gets `IsSecure` false and the warning. The warning names it by its `TransportName`, or by its type name when it does not set one:
+
+```csharp
+public sealed class MyTransportClientConfig : ClientConfig
+{
+    protected internal override bool IsSecureTransport => true; // only if the transport encrypts or is local
+    // ...
+}
+```
 
 ## Connection Flow
 

@@ -13,6 +13,9 @@ public sealed class UdsClientConfig : ClientConfig
     /// <inheritdoc />
     protected internal override string TransportName => "uds";
 
+    /// <inheritdoc />
+    protected internal override bool IsSecureTransport => true; // UDS is local to the machine.
+
     private UnixDomainSocketEndPoint _endPoint = null!;
 
     /// <summary>

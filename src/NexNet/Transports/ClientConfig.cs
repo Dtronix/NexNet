@@ -50,9 +50,10 @@ public abstract class ClientConfig : ConfigBase
     /// <summary>
     /// True when the transport this configuration connects with encrypts the connection or is local to the
     /// machine (TLS, WSS, HTTPS, QUIC and Unix domain sockets). False for plain TCP, <c>ws://</c> and
-    /// <c>http://</c>. Custom transports report true unless they override this.
+    /// <c>http://</c>. Defaults to false, so a transport that does not override this is treated as plaintext and
+    /// the client logs the plaintext warning for it.
     /// </summary>
-    protected internal virtual bool IsSecureTransport => true;
+    protected internal virtual bool IsSecureTransport => false;
 
     /// <summary>
     /// Throws when both <see cref="Authenticate"/> and <see cref="AuthenticateAsync"/> are set.

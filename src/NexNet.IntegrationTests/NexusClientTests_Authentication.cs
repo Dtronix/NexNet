@@ -271,6 +271,49 @@ internal partial class NexusClientTests
         Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport")), Is.EqualTo(2));
     }
 
+    [Test]
+    public async Task CustomTransport_DefaultsToPlaintext_WarnsWithTypeName()
+    {
+        var logger = new CapturingLogger();
+        var client = ClientNexus.CreateClient(new CustomPlaintextClientConfig { Logger = logger }, new ClientNexus());
+
+        Assert.That(client.IsSecure, Is.False);
+
+        var result = await client.TryConnectAsync().Timeout(1);
+        Assert.That(result.Success, Is.False);
+
+        var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
+        Assert.That(warnings, Is.EqualTo(new[]
+        {
+            $"NexNet: unencrypted transport ({nameof(CustomPlaintextClientConfig)}); credentials and data are visible on the network."
+        }));
+    }
+
+    [Test]
+    public async Task CustomTransport_OverridingIsSecureTransport_DoesNotWarn()
+    {
+        var logger = new CapturingLogger();
+        var client = ClientNexus.CreateClient(new CustomSecureClientConfig { Logger = logger }, new ClientNexus());
+
+        Assert.That(client.IsSecure, Is.True);
+
+        await client.TryConnectAsync().Timeout(1);
+
+        Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport")), Is.False);
+    }
+
+    /// <summary>A custom transport that does not say whether it is secure. Its connect always fails.</summary>
+    private class CustomPlaintextClientConfig : ClientConfig
+    {
+        protected override ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken)
+            => throw new TransportException(TransportError.ConnectionRefused, "No custom transport.", null);
+    }
+
+    private sealed class CustomSecureClientConfig : CustomPlaintextClientConfig
+    {
+        protected internal override bool IsSecureTransport => true;
+    }
+
     [TestCase(Type.Uds)]
     [TestCase(Type.TcpTls)]
     [TestCase(Type.Quic)]
