@@ -114,4 +114,39 @@ internal class InvocationCancellationTests : BaseTests
         await client.DisconnectAsync().Timeout(1);
         await firstCanceled.Task.Timeout(1);
     }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task FireAndForgetCalls_UnaffectedByPreSendCancellation(Type type)
+    {
+        // Broadcasts and void methods do not wait for a result: an already canceled token neither throws nor stops
+        // the call.
+        var voidCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer(CreateServerConfig(type), nexus => nexus.ServerVoidEvent = _ => voidCalled.TrySetResult());
+        await server.StartAsync().Timeout(1);
+
+        var clientCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (client, clientNexus) = CreateClient(CreateClientConfig(type));
+        clientNexus.ClientTaskWithCancellationEvent = (_, _) =>
+        {
+            clientCalled.TrySetResult();
+            return ValueTask.CompletedTask;
+        };
+        await client.ConnectAsync().Timeout(1);
+
+        using var canceled = new CancellationTokenSource();
+        canceled.Cancel();
+
+        // A canceled call that waits for its result throws, and leaves the session usable.
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+            await client.Proxy.ServerTaskWithCancellation(canceled.Token).AsTask().Timeout(1));
+
+        client.Proxy.ServerVoid();
+        await voidCalled.Task.Timeout(1);
+
+        using var context = server.ContextProvider.Rent();
+        await context.Proxy.All.ClientTaskWithCancellation(canceled.Token).Timeout(1);
+        await clientCalled.Task.Timeout(1);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
 }
