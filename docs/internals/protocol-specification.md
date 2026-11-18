@@ -3,7 +3,7 @@
 This document specifies the bytes NexNet sends over a transport (TCP, TLS, UDS, QUIC, WebSocket, HttpSocket).
 It covers the connection preamble, message framing, every protocol message body, flow control, the payload encoding
 rules for user types, and limits. The design behind the flow control, large values and hostile-peer limits is described in
-[flow-control.md](flow-control.md).
+[flow-control.md](flow-control.md). How each transport carries the byte stream is in §13.
 
 Two encodings are used:
 
@@ -1072,3 +1072,291 @@ sequenceDiagram
     S->>C: ResetComplete [0]
     Note over C: list = 50 values, version 7<br/>replay buffer: version 7 is stale → dropped<br/>version 8 applied → raise Add<br/>raise Reset, then Ready; enable completes true
 ```
+
+## 13. Transport bindings
+
+Every transport carries the same thing: one reliable, ordered, full-duplex **byte stream** per connection. The
+preamble (§1) is the first byte each side writes once the binding below has finished its own setup, and from then on
+the stream is exactly what §2–§12 describe. This section defines that setup and how each transport ends.
+
+| Transport | Binding | Encrypted | Client languages |
+|---|---|---|---|
+| TCP | §13.2 | no | C#, Java, Node |
+| TLS over TCP | §13.3 | yes | C#, Java, Node |
+| UDS | §13.4 | no (local only) | C#, Node |
+| QUIC | §13.5 | yes | C# |
+| HttpSocket | §13.6 | over `https` | C#, Java, Node |
+| WebSocket | §13.7 | over `wss` | C#, Java, Node, browsers |
+
+### 13.1 Rules for every binding
+
+- **No message boundaries.** NexNet frames are delimited only by §2. A binding never aligns frames with its own
+  units (TCP segments, TLS records, WebSocket messages, HTTP/2 DATA frames), and a receiver must accept a frame split
+  across any number of reads and several frames in one read.
+- **Binding keepalives are not NexNet pings.** TCP keepalive and WebSocket Ping/Pong control frames produce no bytes
+  on the NexNet stream, so they do not count as received frames for the idle timeout (§5.5). A client must send NexNet
+  `Ping` on every transport.
+- **Ending.** A side ends a session by writing the disconnect byte if §5.6 says so, then closing the binding as
+  described below. A binding that ends without a disconnect byte having been read is reported as `SocketError`
+  (§5.6), whatever the binding's own close code or error.
+- **Connect errors.** A failure before the preamble is a connect failure, not a disconnect. The C# client throws
+  `TransportException` with a `TransportError`; the mapping is given per binding. Every TLS handshake failure (the
+  server certificate is rejected, or the server refuses the client certificate) is `AuthenticationError`, and a
+  connect that exceeds `ConnectionTimeout` is `ConnectionTimeout`.
+
+### 13.2 TCP
+
+The NexNet stream is the TCP byte stream. There is no further setup: each side writes the preamble as soon as the
+connection is established.
+
+- The C# client and server set `TCP_NODELAY` (`TcpNoDelay`, default true). Other clients should do the same,
+  because pings and small invocations otherwise wait for Nagle's algorithm.
+- Closing is a normal TCP close. A side that closes without lingering (`linger: false`) may reset the connection.
+- Connect errors map from the socket error (refused, unreachable, timeout).
+
+Source: `src/NexNet/Transports/SocketTransport.cs`, `src/NexNet/Transports/SocketTransportListener.cs`.
+
+### 13.3 TLS over TCP
+
+The NexNet stream is the TLS application data of a TLS connection over TCP. The client starts the TLS handshake
+right after the TCP connect, and both sides write the preamble once the handshake completes.
+
+- **Versions and ciphers** are the platform defaults (TLS 1.2 and 1.3 in practice) unless the application sets
+  `EnabledSslProtocols`.
+- **ALPN: none.** NexNet configures no application protocol on either side, and a client should offer none. An
+  application may configure ALPN on its server options; a client of such a server must then offer a protocol from
+  that list.
+- **SNI.** The C# client sends `SslClientAuthenticationOptions.TargetHost` as the SNI name and validates the server
+  certificate against it. Other clients should send the DNS name they connect to as SNI (never an IP literal, per
+  RFC 6066) and **must verify the host name** unless the application supplies its own certificate validation. Java's
+  `SSLSocket` does not verify it by default: set `setEndpointIdentificationAlgorithm("HTTPS")`.
+- **Client certificates** are optional, and requested only when the server's options ask for one.
+- **Timeout.** Each side gives the TLS handshake `SslConnectionTimeout` (5 s by default), separate from the
+  NexNet handshake timeout (§5.1), which starts after it.
+- Closing: the C# side disposes the TLS stream and then closes the socket. A peer must accept a TCP close or reset
+  with or without a TLS `close_notify`.
+
+Source: `src/NexNet/Transports/Tcp/Tls/TcpTlsTransport.cs`, `TcpTlsClientConfig.cs`, `TcpTlsServerConfig.cs`.
+
+### 13.4 Unix domain sockets
+
+The NexNet stream is a `SOCK_STREAM` Unix domain socket connection, with no further setup, as in §13.2.
+
+- **Filesystem paths only.** The binding is defined for a socket file at a filesystem path. Abstract-namespace
+  addresses (Linux, leading NUL byte) are not part of it: cross-language clients must not use them. The C# server can
+  bind one on Linux, but no other binding guarantee (permissions, cleanup) applies to it.
+- The path must fit the platform's `sun_path` (108 bytes on Linux, 104 on macOS). Windows 10 1803 and later
+  support `AF_UNIX`.
+- Access is controlled by the socket file's permissions (`UdsServerConfig.SocketFileMode`) or, on Windows, by the
+  folder's ACLs. There is no encryption and no peer certificate.
+- The server removes the socket file on a graceful stop.
+
+Source: `src/NexNet/Transports/Uds/UdsServerConfig.cs`, `src/NexNet/Transports/Uds/UdsSocketFile.cs`.
+
+### 13.5 QUIC
+
+QUIC is a C# transport only; no other client language implements it. It is described for completeness.
+
+- **ALPN `nn1`.** Both sides set it, and a connection that does not negotiate it fails.
+- The client sets `TargetHost` to a DNS name. libmsquic 2.5.11 / 2.6.1 and later fail the handshake when it is
+  unset or an IP address.
+- The client opens **one bidirectional stream**, and the server accepts the first inbound stream. That stream is
+  the NexNet stream; no other stream is used.
+- Closing: the connection is closed with application error code 0. Aborted streams and connections use error codes
+  `0x0A` (stream) and `0x0B` (connection).
+
+Source: `src/NexNet.Quic/QuicTransport.cs`, `src/NexNet.Quic/QuicTransportListener.cs`.
+
+### 13.6 HttpSocket
+
+An HttpSocket is an HTTP/1.1 connection upgraded to a raw byte stream with the upgrade token
+`nexnet-httpsockets`. After the upgrade there is no framing at all: the NexNet stream is the connection's bytes in
+each direction, as in §13.2 (or §13.3 for `https`). The server is an ASP.NET Core application using `NexNet.Asp`.
+
+#### Request
+
+The client opens a TCP connection (TLS for `https`, as in §13.3 but with ALPN as below) and sends exactly one
+request:
+
+```http
+GET /nexus HTTP/1.1
+Host: example.com:9001
+Connection: Upgrade
+Upgrade: nexnet-httpsockets
+Authorization: Bearer eyJhbGciOi...
+```
+
+| Element | Rule |
+|---|---|
+| Method and target | `GET` and the configured path (`AspServerConfig.Path`), plus an optional query string. Any other method is not an HttpSocket request |
+| Version | `HTTP/1.1`. The C# client requests this version exactly |
+| `Host` | Required. It includes `:port` when the port is not the scheme's default (80 for `http`, 443 for `https`) |
+| `Connection` | Must contain the token `Upgrade` (case-insensitive; other tokens may be present) |
+| `Upgrade` | Must contain the token `nexnet-httpsockets` (case-insensitive; other tokens may be present) |
+| `Authorization` | Optional. Sent when the application uses ASP.NET authentication (`AspEnableAuthentication`). The C# client sends `HttpClientConfig.AuthenticationHeader` |
+| `Origin` | Optional. Checked against `HttpSocketOptions.AllowedOrigins` when present (below) |
+| Body | None. The request has no `Content-Length` or `Transfer-Encoding` |
+| Query token | Optional, `?<parameter>=<token>` (below) |
+
+**ALPN over `https`.** Offer `http/1.1` only, or no ALPN. A client that offers `h2` is likely to get HTTP/2, where
+an `Upgrade` header is not allowed.
+
+The client writes nothing else until it has read the response. In particular it must not send the preamble early.
+
+#### Success response
+
+```http
+HTTP/1.1 101 Switching Protocols
+Connection: Upgrade
+Upgrade: nexnet-httpsockets
+```
+
+The server may add other headers (for example `Date` and `Server`); a client must ignore them. A client should
+check that the status is `101`, and may check that `Upgrade` is `nexnet-httpsockets`.
+
+**Bytes after the response headers belong to the NexNet session.** The response headers end with the first
+`\r\n\r\n`. The server writes its preamble right after the `101`, so the same read that delivers the headers often
+delivers NexNet bytes too. A client must feed every byte after the `\r\n\r\n` to the session, never discard it.
+There is no response body and no chunked encoding.
+
+#### Failure responses
+
+Any status other than `101` means the upgrade failed. The server checks, in order:
+
+| Status | Cause | C# `TransportError` |
+|---|---|---|
+| `403` | `Origin` present and not in `AllowedOrigins` | `AuthenticationError` |
+| `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
+| `500` | Server error | `InternalError` |
+| other, typically `404` | Path not mapped, the request is not an HttpSocket request, or the NexNet server is not running; the request falls through to the rest of the ASP.NET pipeline | a connect failure (`InternalError` in the C# client) |
+
+Clients in other languages must map `401` and `403` to their authentication error, and `500` to their internal
+error. The C# client does not reject a `2xx` status other than `101`; other clients must.
+
+#### Origin check
+
+`HttpSocketOptions.AllowedOrigins` (`UseHttpSocketNexusServerAsync(c => c.SocketOptions.AllowedOrigins…)`) lists
+the allowed `Origin` values, for example `https://app.example.com`.
+
+- Empty (the default) or a `*` entry allows every origin.
+- A request without `Origin` is always allowed.
+- The comparison is ordinal against the entries lower-cased, so the request's `Origin` must be lower case to match.
+- A rejected request is answered `403` before authentication runs.
+
+#### Query-string token
+
+For clients that cannot send `Authorization`, the server can read a bearer token from the query string. It is
+off by default and is enabled with `HttpSocketServerConfig.AccessTokenQueryParameter` (for example `access_token`).
+The client then connects to `/nexus?access_token=<token>`, with the token percent-encoded. The server applies it
+only when `AspEnableAuthentication` is on:
+
+1. It removes the parameter from the request's query string, so later middleware never sees it.
+2. If the request has an `Authorization` header, the header wins and the query value is ignored.
+3. Otherwise, if the parameter has exactly one non-empty value, the server sets `Authorization: Bearer <token>`
+   before the authentication scheme runs. Any other form is ignored.
+
+NexNet never logs the value, but proxies and request logs may record URLs. The NexNet greeting token (§5.4) is the
+preferred credential for every client; HTTP-level authentication is an addition to it.
+
+#### HTTP/2
+
+The server also accepts an HttpSocket over HTTP/2 extended CONNECT (RFC 8441 style): `:method` `CONNECT` and
+`:protocol` `nexnet-httpsockets`, answered with `:status 200`. The NexNet stream is then the HTTP/2 stream's DATA.
+Clients need not use it; the C# client always uses HTTP/1.1.
+
+#### Closing
+
+Either side closes the underlying connection (or, over HTTP/2, the stream). There is no closing handshake.
+
+Source: `src/NexNet/Transports/HttpSocket/HttpSocketTransport.cs` (`ConnectAsync`, `MapException`),
+`src/NexNet/Transports/HttpSocket/HttpHeaderConstants.cs`, `src/NexNet.Asp/HttpSocket/HttpSocketMiddleware.cs`,
+`src/NexNet.Asp/NexNetMiddlewareExtensions.HttpSocket.cs` (`MapHttpSocketNexus`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`ApplyAuthentication`, `PromoteQueryAccessToken`).
+
+### 13.7 WebSocket
+
+The NexNet stream is carried in the binary messages of an RFC 6455 WebSocket. The server is an ASP.NET Core
+application using `NexNet.Asp`.
+
+#### Opening handshake
+
+A standard RFC 6455 handshake over HTTP/1.1 (TLS for `wss`, with ALPN as in §13.6):
+
+```http
+GET /nexus HTTP/1.1
+Host: example.com:9001
+Connection: Upgrade
+Upgrade: websocket
+Sec-WebSocket-Version: 13
+Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==
+Authorization: Bearer eyJhbGciOi...
+```
+
+- **Path.** The configured path (`AspServerConfig.Path`), compared ordinally and case-sensitively. A query string may
+  follow.
+- **No subprotocol.** The client must not send `Sec-WebSocket-Protocol`. The server never selects one, and an RFC 6455
+  client that requested one fails the connection.
+- **No extensions.** The server negotiates none. A client may offer `permessage-deflate` (browsers do), and the
+  server's response then has no `Sec-WebSocket-Extensions`.
+- `Authorization` is optional, as in §13.6. Browsers cannot send it; they use the query token or the greeting token.
+- `Origin` is sent by browsers and optional for other clients. The C# client does not send it.
+- Success is `101` with `Sec-WebSocket-Accept`. Bytes after the response headers are WebSocket frames.
+
+The server checks, in order:
+
+| Status | Cause | C# `TransportError` |
+|---|---|---|
+| `403` | `Origin` present and not in `WebSocketServerConfig.AllowedOrigins` | `AuthenticationError` |
+| `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
+| `500` | Server error | `InternalError` |
+| other, typically `404` | Path not mapped, not a WebSocket request, or the NexNet server is not running | `ProtocolError` or another error from the WebSocket stack |
+
+A browser cannot read the status of a failed handshake: it reports a generic error and close code 1006, so it cannot
+tell an authentication failure from any other.
+
+#### Data
+
+- **Binary messages only.** Each side sends NexNet bytes in binary messages (opcode `0x2`, with continuation frames
+  as RFC 6455 allows). A side must not send text messages. The C# receiver does not check the opcode, so a text
+  message would be read as stream bytes.
+- **Message boundaries carry no meaning.** The receiver appends the payload of every data message, in order, to the
+  NexNet stream. A NexNet frame may span several messages, and a message may hold several frames or parts of them.
+  The C# sender writes each batch of flushed bytes as one message, of whatever size the batch has.
+- Client-to-server frames are masked and server-to-client frames are not, as RFC 6455 requires.
+- Ping and Pong control frames are handled by the WebSocket layer and are not NexNet pings (§13.1).
+
+#### Closing
+
+- A side that ends the session writes the disconnect byte (§5.6) in a binary message, then starts the close
+  handshake. Both C# sides send close code **1000** (Normal Closure) with an empty reason, and wait at most 250 ms
+  for the peer's Close.
+- A side that receives a Close first answers with the same code.
+- Close codes carry no NexNet meaning: the reason is the disconnect byte, if one arrived. A receiver must accept any
+  code, including 1001 (going away) and 1006 (connection lost without a Close).
+
+#### Origin check
+
+`WebSocketServerConfig.AllowedOrigins` lists the allowed `Origin` values, for example `https://app.example.com`.
+
+- Empty (the default) or a `*` entry allows every origin.
+- A request without `Origin` is always allowed.
+- The comparison is case-insensitive against the whole value.
+- A rejected request is answered `403` before authentication runs.
+
+Set it whenever the server uses cookie authentication, to prevent cross-site WebSocket hijacking.
+
+#### Query-string token
+
+`WebSocketServerConfig.AccessTokenQueryParameter` works exactly as in §13.6. A browser connects to
+`wss://example.com/nexus?access_token=<token>`.
+
+#### HTTP/2
+
+ASP.NET Core can also accept WebSockets over HTTP/2 (RFC 8441). Clients need not use it; the C# client uses
+HTTP/1.1.
+
+Source: `src/NexNet/Transports/WebSocket/WebSocketTransport.cs` (`ConnectAsync`, `CloseAsync`, `MapException`),
+`src/NexNet/Transports/WebSocket/WebSocketPipe.cs` (`ReadInputAsync`, `CloseAsync`, `WebSocketStream`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.WebSocket.cs` (`MapWebSocketNexus`),
+`src/NexNet.Asp/NexNetMiddlewareExtensions.cs` (`IsOriginAllowed`, `PromoteQueryAccessToken`),
+`src/NexNet.Asp/WebSocket/WebSocketServerConfig.cs`.
