@@ -54,7 +54,12 @@ internal static class CollectionEmitter
             sb.Append("                            ").Append(collection.Id)
                 .Append(", \"").Append(collection.Name).Append("\", __authPerms_").Append(collection.Id).AppendLine(",");
             sb.Append("                            message, ").Append(collection.AuthorizeData!.CacheDurationSeconds).AppendLine(").ConfigureAwait(false))");
+            // The client waits for the collection's pipe to become ready: refuse it so the connect fails instead of
+            // hanging. The only argument is the pipe ID.
+            sb.AppendLine("                        {");
+            sb.AppendLine("                            await this.RefuseUnauthorizedPipe(message, message.DeserializeArguments<global::System.ValueTuple<global::System.Byte>>().Item1).ConfigureAwait(false);");
             sb.AppendLine("                            return;");
+            sb.AppendLine("                        }");
         }
 
         sb.Append(@"
