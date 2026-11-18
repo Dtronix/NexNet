@@ -70,14 +70,46 @@ internal class InvocationCreditTests : BaseTests
         var first = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         await Task.Delay(100);
-        // Canceled before it is sent: like any call canceled before sending, it returns the default value.
+        // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
         using var cts = new CancellationTokenSource(100);
-        Assert.That(await client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask().Timeout(1), Is.Zero);
+        var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
         Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
         Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1), Is.EqualTo(1));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(Type type)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.InvocationCredits = 1;
+        serverConfig.MaxConcurrentConnectionInvocations = 1;
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var received = 0;
+        var server = CreateServer(serverConfig, nexus => nexus.ServerTaskWithCancellationEvent = async (_, _) =>
+        {
+            Interlocked.Increment(ref received);
+            await release.Task;
+        });
+        await server.StartAsync().Timeout(1);
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+
+        var first = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
+        var second = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
+        await Task.Delay(100);
+        using var cts = new CancellationTokenSource(100);
+        var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+
+        release.SetResult();
+        await Task.WhenAll(first, second).Timeout(1);
+        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
     [TestCase(Type.Uds)]

@@ -1,6 +1,6 @@
 - name: Overview
   href: index.md
-- name: v0.21.0 (Unreleased)
+- name: v0.21.0
   href: release-notes-v0.21.0.md
 - name: v0.20.0
   href: release-notes-v0.20.0.md
