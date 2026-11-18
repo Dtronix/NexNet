@@ -415,12 +415,25 @@ MessageStart[invocationId, kind, innerType, totalLength]
 MessageChunk[invocationId, kind] + payload   (repeated; payload lengths add up to totalLength)
 ```
 
+Thresholds:
+- The decision is made on the whole serialized body: a body of at most 65,535 bytes goes in one frame, and a larger
+  one is streamed. Only `Invocation` and `InvocationResult` bodies can be larger than a frame.
+- An `Invocation` body adds at most 9 bytes to its arguments (array header 1, `invocationId` 3, `methodId` 3,
+  `flags` 2). So arguments of at most 65,526 bytes are never streamed, and larger arguments may be. A sender gives
+  every invocation whose arguments exceed 65,526 bytes a unique invocation ID, including an IgnoreReturn one, and
+  keeps it reserved until the stream has been sent.
+- Each `MessageChunk` payload is at most 65,535 bytes, the frame body limit. The C# sender sends full 65,535-byte
+  chunks and a shorter last one; receivers accept any chunk sizes that add up to `totalLength`.
+
 The sender serializes the message fully first. If `totalLength` exceeds its send limit the value is not sent and
 the call fails locally. Other messages are never larger than a frame. A stream is keyed by (invocation ID, kind):
 an Argument flows from caller to callee, a Result from callee to caller. A large argument's `MessageStart` uses the
 invocation's credit (§8).
 
 ### 6.2 Receiving
+
+Any `totalLength` from 1 to the receiver's advertised `maxMessageSize` is valid, including one that would have fit
+in a single frame.
 
 On `MessageStart` the receiver reserves `totalLength` from its session budget (§9). If it can't, it replies
 `MessageAbort(Busy)` and discards the stream's chunks up to `totalLength`. Otherwise it buffers the chunks (memory is
@@ -446,6 +459,10 @@ The receiver disconnects with `ProtocolError` on:
 - a Result stream (or an `InvocationResult`) for an invocation ID it is not waiting on;
 - a chunk that would exceed the remaining `totalLength`;
 - a chunk for a stream that was never started and is not being discarded.
+
+Source: `src/NexNet/Internals/NexusSession.Sending.cs` (`WriteFrame`, `SendLargeMessage`),
+`src/NexNet/Messages/IInvocationMessage.cs` (`MaxArgumentSize`), `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Internals/LargeMessageReceiver.cs` (`OnStart`, `OnChunk`).
 
 ## 7. Pipes
 
@@ -498,6 +515,53 @@ A typed channel (`INexusDuplexChannel<T>`) sends each item as its length followe
   consumed.
 
 Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe must fit in the window.
+
+### 7.5 Pipe ID allocation
+
+- Each side allocates its own local IDs, 1 to 255. 0 means "not assigned yet" and is never allocated. Each side can
+  therefore have at most 255 pipes in use at once, and `MaxPipes` (§9) usually limits it further. When no ID is
+  free, opening a pipe fails locally.
+- The opener sends only its local ID, as the pipe argument of the invocation (one byte, a `uint8`).
+- The registering side allocates its own local ID and composes the full ID (`clientId | (serverId << 8)`, §2). It
+  sends `Ready` with the full ID.
+- Until `Ready` arrives, the opener knows the pipe by its **partial ID**: its own byte set and the peer's byte 0. On
+  `Ready` it finds the pipe from its own byte of the full ID and from then on uses the full ID. A `Ready` that
+  matches no pending partial ID is a `ProtocolError`.
+- A refusal (`Refused`) carries the opener's partial ID, because the registering side allocated nothing.
+- A `DuplexPipeUpdateState` other than `Ready` for an ID that is neither open, closing nor pending is ignored.
+- A local ID is free for reuse once both sides have sent and received Complete (§7.3) and the application has
+  released the pipe. The C# implementation allocates round-robin, starting after the last ID it allocated. Any
+  free ID is valid.
+
+Source: `src/NexNet/Pipes/NexusPipeManager.cs` (`GetNewLocalId`, `RegisterPipe`, `UpdateState`, `ComposeId`).
+
+### 7.6 Pipe, channel and collection methods
+
+- A method with an `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter is invoked with `flags` IgnoreReturn |
+  DuplexPipe (`0x03`) and `invocationId` 0. The pipe parameter is sent as the opener's local ID (§7.5).
+- A collection connection is the same: `methodId` is the collection's ID, and `arguments` is `[pipeId: uint8]`.
+- No `InvocationResult` is ever sent for these invocations. `Ready` or `Refused` tells the opener whether the pipe
+  opened. When the method returns or throws, the registering side closes the pipe (§7.3).
+- Other IgnoreReturn methods (those returning `void`) are sent with `flags` IgnoreReturn (`0x01`).
+
+**Authorization.** A server method or collection marked `[NexusAuthorize]` is checked on the server before its
+arguments are read and before its pipe is registered. The outcomes are:
+
+| Authorization result | Method expecting a result | IgnoreReturn method | Pipe, channel or collection method |
+|---|---|---|---|
+| Allowed | runs | runs | the pipe is registered and the method runs |
+| Unauthorized | `InvocationResult` with state 3 Unauthorized | nothing is sent | nothing is sent (see below) |
+| Disconnect | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) |
+
+**Current behavior for an unauthorized pipe method:** the server sends neither `Ready` nor `Refused`. The opener's
+pipe waits for `Ready` until the session ends, and the opener's local ID stays in use until then. Unit F04 changes
+the server to send `DuplexPipeUpdateState[Refused]` with the opener's partial ID, the same as a limit refusal
+(§7.1), so the opener fails the pipe. Clients should treat `Refused` as the failure in both cases.
+
+Source: `src/NexNet.Generator/Emission/MethodEmitter.cs` (`EmitNexusInvocation`, `EmitProxyMethodInvocation`),
+`src/NexNet.Generator/Emission/CollectionEmitter.cs`, `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Invocation/NexusBase.cs` (`InvokeMethodCoreTask`), `src/NexNet/Invocation/ServerNexusBase.cs`
+(`HandleAuthResult`).
 
 ## 8. Invocation credits
 
