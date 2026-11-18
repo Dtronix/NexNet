@@ -8,7 +8,12 @@
 
 ## New features
 
+- **WebSocket `AllowedOrigins`.** `WebSocketServerConfig.AllowedOrigins` restricts the `Origin` header of WebSocket requests to prevent Cross-Site WebSocket Hijacking when cookies are used. A request from another origin is answered 403. Empty (the default) allows every origin, as before. `UseWebSocketNexusServerAsync` passes the list to `WebSocketOptions.AllowedOrigins`, and `MapWebSocketNexus` checks it on every request. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients).
+- **Opt-in query-string access token.** `AccessTokenQueryParameter` on `WebSocketServerConfig` and `HttpSocketServerConfig` (null by default) promotes a query-string token to `Authorization: Bearer <token>` before `AspAuthenticationScheme` runs, for clients such as browsers that cannot send the header. The parameter is removed from the request's query string and its value is never logged by NexNet. The NexNet greeting token remains the canonical mechanism. See [ASP.NET Integration: Browser Clients](../asp-net-integration.md#browser-clients).
+
 ## Fixes
+
+- **NexNet.Quic no longer requires preview features.** The package was marked `[RequiresPreviewFeatures]`, a holdover from when `System.Net.Quic` was a preview API (it has been stable since .NET 9). Projects using NexNet.Quic no longer need `EnablePreviewFeatures`. Before, a `net10.0` project built with a newer SDK (such as SDK 11) failed with CA2252 even with `EnablePreviewFeatures` set, because the SDK only marks a project as preview when it targets the newest framework.
 
 - **Duplicate nexus method names are reported as NEXNET042 instead of crashing the generator.** A nexus interface that overloads a method name, or declares a name that an inherited interface also declares, made the source generator throw, so the build reported only a generator failure (CS8785). It is now the error NEXNET042, reported at the duplicate method, and that nexus is not generated. Method names must be unique across a nexus interface and its inherited interfaces. A nexus class that overloads the name of an authorized method no longer crashes the generator either; the authorization of the overload that implements the interface method is used.
 - **Generator diagnostics are reported at their source location.** Nexus validation and serialization diagnostics (NEXNET001 – NEXNET042) had no location, so the build and the IDE showed them without a file or line. They now point at the method, member, interface or class they are about.

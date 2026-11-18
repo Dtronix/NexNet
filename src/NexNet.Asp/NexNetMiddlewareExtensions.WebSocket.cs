@@ -4,12 +4,14 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NexNet.Asp.WebSocket;
 using NexNet.Collections;
 using NexNet.Invocation;
+using NexNet.Logging;
 using NexNet.Transports;
 using NexNet.Transports.WebSocket;
 
@@ -52,7 +54,14 @@ public static partial class NexNetMiddlewareExtensions
                     return;
                 }
                 
-                if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
+                if (!IsOriginAllowed(context, config.AllowedOrigins))
+                {
+                    config.Logger?.LogDebug($"WebSocket request origin {context.Request.Headers.Origin} is not in the list of allowed origins.");
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return;
+                }
+
+                if (!await ApplyAuthentication(context, config, config.AccessTokenQueryParameter).ConfigureAwait(false))
                     return;
                 
                 var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
@@ -131,7 +140,10 @@ public static partial class NexNetMiddlewareExtensions
         server.Configure(config, () => app.Services.GetRequiredService<TServerNexus>(), configureCollections);
 
         // Enable usage of sockets and register this nexus 
-        app.UseWebSockets();
+        var webSocketOptions = new WebSocketOptions();
+        foreach (var origin in config.AllowedOrigins)
+            webSocketOptions.AllowedOrigins.Add(origin);
+        app.UseWebSockets(webSocketOptions);
         app.MapWebSocketNexus<TServerNexus, TClientProxy>(config);
 
         return server;

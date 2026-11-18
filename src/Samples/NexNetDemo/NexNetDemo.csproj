@@ -6,8 +6,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <EventSourceSupport>false</EventSourceSupport>
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
-    <GenerateRequiresPreviewFeaturesAttribute>true</GenerateRequiresPreviewFeaturesAttribute>
   </PropertyGroup>
   <ItemGroup>
     <None Include="..\..\NexNet.IntegrationTests\certs\server.pfx" Link="server.pfx">
