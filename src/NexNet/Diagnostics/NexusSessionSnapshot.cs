@@ -22,6 +22,12 @@ public sealed record NexusSessionSnapshot
     /// <summary>Transport name, as in the <c>nexnet.transport</c> metric tag.</summary>
     public string Transport { get; init; } = "";
 
+    /// <summary>
+    /// Server only: name of the endpoint the session was accepted on (<see cref="NexusEndpointInfo.Name"/>); null for a
+    /// client session.
+    /// </summary>
+    public string? Endpoint { get; init; }
+
     /// <summary>Connection state.</summary>
     public ConnectionState State { get; init; }
 
@@ -269,4 +275,50 @@ public sealed record NexusServerSnapshot
 
     /// <summary>Authenticated sessions.</summary>
     public IReadOnlyList<NexusSessionSnapshot> Sessions { get; init; } = [];
+
+    /// <summary>Endpoints the server accepts sessions on, the primary one first.</summary>
+    public IReadOnlyList<NexusEndpointSnapshot> Endpoints { get; init; } = [];
+}
+
+/// <summary>
+/// One endpoint of a server.
+/// </summary>
+public sealed record NexusEndpointSnapshot
+{
+    /// <summary>Endpoint name (<see cref="NexusEndpointInfo.Name"/>).</summary>
+    public string Name { get; init; } = "";
+
+    /// <summary>Transport name, as in the <c>nexnet.transport</c> metric tag.</summary>
+    public string Transport { get; init; } = "";
+
+    /// <summary>State of the endpoint.</summary>
+    public NexusEndpointState State { get; init; }
+
+    /// <summary>
+    /// What the endpoint binds or serves: the socket end point of a TCP, TLS, QUIC or UDS listener, the request path of
+    /// an ASP.NET endpoint; null when unknown.
+    /// </summary>
+    public string? Address { get; init; }
+
+    /// <summary>True when the endpoint owns a listener; false for an external endpoint fed by ASP.NET or the application.</summary>
+    public bool IsListener { get; init; }
+
+    /// <summary>Authenticated sessions accepted on this endpoint.</summary>
+    public int Sessions { get; init; }
+}
+
+/// <summary>
+/// State of one server endpoint.
+/// </summary>
+public enum NexusEndpointState
+{
+    /// <summary>The server is not running.</summary>
+    Stopped,
+
+    /// <summary>The endpoint accepts sessions.</summary>
+    Running,
+
+    /// <summary>The endpoint's listener failed; it no longer accepts sessions, while the server may keep running on the
+    /// other endpoints.</summary>
+    Faulted,
 }

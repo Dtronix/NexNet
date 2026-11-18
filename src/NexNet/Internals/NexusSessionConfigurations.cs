@@ -60,4 +60,9 @@ internal readonly struct NexusSessionConfigurations<TNexus, TProxy>
     /// Tags the session is counted under in metrics. Resolved from <see cref="Configs"/> when null.
     /// </summary>
     public MetricsTagSet? MetricsTags { get; init; }
+
+    /// <summary>
+    /// Server only: the endpoint the session was accepted on, exposed as <c>Context.Endpoint</c>.
+    /// </summary>
+    public NexusEndpointInfo? Endpoint { get; init; }
 }
