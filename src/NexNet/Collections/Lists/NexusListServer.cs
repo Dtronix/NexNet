@@ -18,6 +18,12 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
     public bool IsReadOnly { get; } = false;
     
     public NexusCollectionState State { get; }
+
+    /// <summary>
+    /// Testing only. When set, ResetStart announces this value count instead of the real one, so tests can check
+    /// how a client handles a malformed reset.
+    /// </summary>
+    internal int? TestResetTotalValuesOverride { get; set; }
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
     
     public NexusListServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
@@ -56,7 +62,22 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         if (opResult is NoopOperation<T>)
         {
             op.Return();
-            sourceClient?.BufferTryWrite(NexusCollectionListNoopMessage.Rent().Wrap());
+
+            // The request was made obsolete by a concurrent change: answer the originator only, with Ack set, so
+            // its pending request completes with false. Nothing changed, so nothing is broadcast.
+            if (sourceClient != null)
+            {
+                var noop = NexusCollectionListNoopMessage.Rent();
+                noop.Flags = NexusCollectionMessageFlags.Ack;
+                var wrapper = noop.Wrap();
+                if (!sourceClient.BufferTryWrite(wrapper))
+                {
+                    // The client's queue is full: it is not keeping up, so close its pipe as a broadcast would.
+                    wrapper.SignalSent();
+                    return new ProcessResult(null, true);
+                }
+            }
+
             return new ProcessResult(null, false);
         }
 
@@ -215,7 +236,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
-        reset.TotalValues = state.List.Count;
+        reset.TotalValues = TestResetTotalValuesOverride ?? state.List.Count;
         client.BufferTryWrite(reset.Wrap());
         
         foreach (var values in ResetValuesEnumerator(state))

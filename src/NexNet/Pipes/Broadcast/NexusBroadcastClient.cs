@@ -28,6 +28,12 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
     protected NexusBroadcastSession<TUnion>? Client => _client;
 
+    /// <summary>
+    /// Connection state of the collection: Connected once the initial reset has been processed, Disconnected
+    /// before that and after the pipe closes.
+    /// </summary>
+    public NexusCollectionState State { get; private set; } = NexusCollectionState.Disconnected;
+
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
     /// <summary>
@@ -101,8 +107,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         _pipeId = pipe.Id;
 
+        // Not tied to the enable token: the cleanup must run whenever the pipe closes, even after that token is
+        // canceled.
         _ = pipe.CompleteTask.ContinueWith((s, state) =>
-            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, cancellationToken);
+            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, CancellationToken.None);
 
         var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) : null;
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
@@ -189,10 +197,13 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         OperationSemaphore?.Dispose();
         OperationSemaphore = null;
+        State = NexusCollectionState.Disconnected;
     }
 
     private void Disconnected()
     {
+        State = NexusCollectionState.Disconnected;
+
         try
         {
             OnDisconnected();
@@ -222,11 +233,37 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     }
     protected abstract void OnDisconnected();
 
-    protected override ValueTask<BroadcastMessageProcessResult> OnProcessCore(TUnion message,
+    protected override async ValueTask<BroadcastMessageProcessResult> OnProcessCore(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
-        return new ValueTask<BroadcastMessageProcessResult>(OnProcess(message, sourceClient, ct));
+        BroadcastMessageProcessResult result;
+        try
+        {
+            result = OnProcess(message, sourceClient, ct);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogWarning(e, $"Exception while processing {message.GetType().Name} message.");
+            result = new BroadcastMessageProcessResult(false, true);
+        }
+
+        // Items read from the pipe are enqueued without a source session, so the processor does not act on the
+        // disconnect result for them. A protocol error closes the pipe here instead.
+        if (result.Disconnect && _client is { } client)
+        {
+            Logger?.LogInfo($"Protocol error while processing {message.GetType().Name} message. Closing the pipe.");
+            try
+            {
+                await client.CompletePipe().ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                Logger?.LogDebug(e, "Error while closing the collection pipe after a protocol error.");
+            }
+        }
+
+        return result;
     }
 
     protected abstract BroadcastMessageProcessResult OnProcess(TUnion message,
@@ -235,6 +272,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     
     protected void InitializationCompleted()
     {
+        State = NexusCollectionState.Connected;
         using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Ready))
         {
             CoreChangedEvent.Raise(eventArgsOwner.Value);
