@@ -90,8 +90,8 @@ internal class ReconnectionPolicyTests : BaseTests
         });
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ReconnectsAfterServerShutdown_WhenPolicyAllowsIt(Type type)
     {
         var reconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -134,8 +134,8 @@ internal class ReconnectionPolicyTests : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task DoesNotReconnectAfterServerShutdown_WithDefaultPolicy(Type type)
     {
         var reconnecting = false;

@@ -7,8 +7,8 @@ namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionAckTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task UpdateAndWaitAsync_CompletesOnAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -23,8 +23,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi.Contains(42), Is.True);
     }
     
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task UpdateAndWaitAsync_TimesOutOnNoAcknowledgment(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -46,8 +46,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         Assert.That(stopwatch.ElapsedMilliseconds, Is.GreaterThan(90));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task MultipleOperations_ReceiveCorrectAcknowledgments(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -66,8 +66,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(10));
     }
     
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task DisconnectDuringOperation_CompletesWithFalse(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);

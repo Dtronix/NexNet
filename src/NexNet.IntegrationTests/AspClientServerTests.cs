@@ -8,8 +8,8 @@ namespace NexNet.IntegrationTests;
 
 internal partial class AspClientServerTests : BaseAspTests
 {
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationSucceeds(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -40,8 +40,8 @@ internal partial class AspClientServerTests : BaseAspTests
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationFailsWithBadAuth(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -71,8 +71,8 @@ internal partial class AspClientServerTests : BaseAspTests
         Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientAuthenticationFailsWithNoAuth(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -97,8 +97,8 @@ internal partial class AspClientServerTests : BaseAspTests
         Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ServerIgnoresAuthenticationWhenNotEnabled(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -126,8 +126,8 @@ internal partial class AspClientServerTests : BaseAspTests
         await client.ConnectAsync().Timeout(1);
     }
     
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ClientDoesNotConnectWhenServerSelectsBadAuthScheme(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -191,8 +191,8 @@ internal partial class AspClientServerTests : BaseAspTests
         }
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task QueryStringTokenIsDisabledByDefault(Type type)
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(type);
@@ -217,8 +217,8 @@ internal partial class AspClientServerTests : BaseAspTests
         Assert.That(actual.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AuthorizationHeaderWinsOverQueryStringToken(Type type)
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(type);

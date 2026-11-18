@@ -37,8 +37,8 @@ internal class LargeValueTests : BaseTests
         Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1), Has.Length.EqualTo(10));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetLargeArgument_IsDelivered(Type type)
     {
         var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -55,8 +55,8 @@ internal class LargeValueTests : BaseTests
         Assert.That(await received.Task.Timeout(5), Is.EqualTo(1024 * 1024));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BroadcastLargeArgument_ReachesEveryClient(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -85,8 +85,8 @@ internal class LargeValueTests : BaseTests
             Assert.That(await tcs.Task.Timeout(5), Is.EqualTo(300 * 1024));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task LargeArgumentWithoutBudget_ThrowsBusyAndTheSessionStaysUp(Type type)
     {
         // 1.5 MiB budget; 4 credits reserve 256 KiB of it. A held 900 KiB argument leaves no room for a second.

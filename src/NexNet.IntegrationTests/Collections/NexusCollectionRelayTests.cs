@@ -14,7 +14,8 @@ namespace NexNet.IntegrationTests.Collections;
 [TestFixture]
 internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task AccessesCollectionListFromContextProviderSuccessfully(Type type)
     {
         var clSv = await CreateRelayCollectionClientServers(true);

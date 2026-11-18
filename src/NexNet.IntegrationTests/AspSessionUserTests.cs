@@ -89,8 +89,8 @@ internal class AspSessionUserTests : BaseAspTests
         return (serverConfig, clientConfig);
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task OnAuthenticate_SeesAspPrincipalClaims(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
@@ -117,8 +117,8 @@ internal class AspSessionUserTests : BaseAspTests
     /// When the default scheme run by <c>UseAuthentication</c> is not <c>AspAuthenticationScheme</c>, the session
     /// still sees the <c>AspAuthenticationScheme</c> principal.
     /// </summary>
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task OtherDefaultScheme_SessionSeesAspAuthenticationSchemePrincipal(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
@@ -137,8 +137,8 @@ internal class AspSessionUserTests : BaseAspTests
         Assert.That(await seen.Task.Timeout(1), Is.EqualTo(UserName));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task OnConnectedAndInvocation_SeeAspPrincipal(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
@@ -173,8 +173,8 @@ internal class AspSessionUserTests : BaseAspTests
     /// With <c>AspEnableAuthentication</c> off the session gets whatever the pipeline set: here
     /// <c>UseAuthentication</c> with a default scheme.
     /// </summary>
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspAuthenticationDisabled_SessionSeesPipelinePrincipal(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: false);
@@ -196,8 +196,8 @@ internal class AspSessionUserTests : BaseAspTests
     /// <summary>
     /// The principal is extra input: OnAuthenticate still decides, and refusing it refuses the connection.
     /// </summary>
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task NexusAuthenticationStillDecides_WithAspPrincipal(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
@@ -217,9 +217,8 @@ internal class AspSessionUserTests : BaseAspTests
         Assert.That(result.Success, Is.False);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.TcpTls)]
     public async Task NonAspTransport_SessionUserIsNull(Type type)
     {
         var serverConfig = CreateServerConfig(type);

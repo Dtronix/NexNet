@@ -13,11 +13,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class RemoteEndpointTests : BaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds })]
     public async Task Server_SeesClientRemoteAddress(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -41,11 +38,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Does.Match(@"^(127\.0\.0\.1|::1|localhost)$"));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds })]
     public async Task Server_SeesClientRemotePort(Type type)
     {
         var tcs = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -68,7 +62,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remotePort, Is.LessThanOrEqualTo(65535));
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task Server_SeesUdsClientRemoteAddress_AsSocketPath(Type type)
     {
         var tcs = new TaskCompletionSource<(string?, int?)>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -91,11 +86,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remotePort, Is.Null);
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds })]
     public async Task Server_MultipleClients_HaveDifferentRemotePorts(Type type)
     {
         var ports = new List<int?>();
@@ -129,9 +121,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(ports[0], Is.Not.EqualTo(ports[1]), "Each client should have a different ephemeral port");
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Type.Tcp, Type.TcpTls, Type.Quic)]
     public async Task Client_SeesServerRemoteAddress(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -155,9 +146,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Does.Match(@"^(127\.0\.0\.1|::1|localhost)$"));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Type.Tcp, Type.TcpTls, Type.Quic)]
     public async Task Client_SeesServerRemotePort(Type type)
     {
         var tcs = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -192,8 +182,8 @@ internal class RemoteEndpointTests : BaseTests
     // WebSocket and HttpSocket client-side tests
     // Note: WebSocket/HttpSocket clients may not have RemoteAddress/RemotePort set
     // because the underlying transport doesn't expose this easily
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Client_WebSocketHttpSocket_RemoteEndpointMayBeNull(Type type)
     {
         var tcs = new TaskCompletionSource<(string?, int?)>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -216,8 +206,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remotePort, Is.Null);
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_SeesXForwardedForAddress(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -256,8 +246,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(expectedClientIp));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_SeesXRealIPAddress(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -295,8 +285,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(expectedClientIp));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_XForwardedForTakesPriorityOverXRealIP(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -336,8 +326,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(xForwardedForIp), "X-Forwarded-For should take priority over X-Real-IP");
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_ParsesFirstIpFromXForwardedForChain(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -376,8 +366,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(originalClientIp), "Should extract first IP from X-Forwarded-For chain");
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_ParsesXForwardedPort(Type type)
     {
         var tcs = new TaskCompletionSource<int?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -415,8 +405,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remotePort, Is.EqualTo(expectedPort));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeadersFalse_IgnoresProxyHeaders(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -458,8 +448,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Does.Match(@"^(127\.0\.0\.1|::1|localhost)$"));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_ParsesIPv6Address(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -496,8 +486,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(expectedClientIp));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task Server_WithTrustProxyHeaders_ParsesCFConnectingIP(Type type)
     {
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -535,11 +525,8 @@ internal class RemoteEndpointTests : BaseTests
         Assert.That(remoteAddress, Is.EqualTo(expectedClientIp));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds })]
     public async Task Server_RemoteEndpointRemainsConsistentDuringSession(Type type)
     {
         var tcs = new TaskCompletionSource<(string?, int?)>(TaskCreationOptions.RunContinuationsAsynchronously);

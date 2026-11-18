@@ -7,7 +7,6 @@
     <IsPackable>false</IsPackable>
     <LanguageVersion>latest</LanguageVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <EnableNUnitRunner>true</EnableNUnitRunner>
     <OutputType>Exe</OutputType>
   </PropertyGroup>
 
@@ -25,8 +24,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
-    <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="2.3.3" />
+    <PackageReference Include="TUnit" Version="$(TUnitVersion)" />
     <PackageReference Include="StreamStruct" Version="0.3.3" />
   </ItemGroup>
 

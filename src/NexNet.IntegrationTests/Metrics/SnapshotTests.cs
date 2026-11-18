@@ -11,8 +11,8 @@ namespace NexNet.IntegrationTests.Metrics;
 /// </summary>
 internal class SnapshotTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Snapshot_DescribesTheSession(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), nexus =>

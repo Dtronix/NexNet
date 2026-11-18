@@ -67,10 +67,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(File.ReadAllText(Path.Combine("certs", "README.md")), Does.Contain($"`{pin}`"));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task TrustedTestCa_AcceptsServerCertificate(Type type)
     {
         // Full validation: chain to the explicitly trusted test CA plus host name checks against the SAN
@@ -88,8 +86,8 @@ internal class TlsCertificateTests : BaseTests
     }
 
     // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Type.TcpTls, Type.Quic)]
     public async Task TrustedTestCa_RejectsWrongHostName(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), "nexnet.invalid");
@@ -103,10 +101,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(exception!.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task ClientCertificate_ReachesServerSession(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, AcceptAny);
@@ -125,10 +121,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(await serverSaw.Task.Timeout(1), Is.EqualTo(ClientCertificate.Thumbprint));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task NoClientCertificate_ServerSessionHasNone(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, AcceptAny);
@@ -147,10 +141,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(await serverSaw.Task.Timeout(1), Is.Null);
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task ClientSession_SeesServerCertificate(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, AcceptAny);
@@ -164,10 +156,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(clientNexus.Context.RemoteCertificate?.Thumbprint, Is.EqualTo(ServerCertificate.Thumbprint));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task PinnedFingerprint_AcceptsServerCertificate(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, Pin(ServerFingerprint));
@@ -181,10 +171,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task PinnedFingerprint_RejectsWrongCertificate(Type type)
     {
         var wrongPin = Convert.ToHexString(SHA256.HashData("not the server"u8));
@@ -205,10 +193,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(sessionCreated, Is.False);
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Except = new[] { Type.Uds, Type.Tcp })]
     public async Task UntrustedServerCertificate_RejectedWithoutCallback(Type type)
     {
         // server.pfx is issued by the test CA, which the system trust store does not hold, so the default chain
@@ -224,8 +210,8 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(exception!.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task HostHeader_IncludesNonDefaultPort(Type type)
     {
         var serverConfig = CreateServerConfig(type);

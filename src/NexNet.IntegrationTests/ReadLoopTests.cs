@@ -13,12 +13,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class ReadLoopTests : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ThreePipeMethodsAndACall_WithDefaultSlots(Type type)
     {
         // Two invocation slots by default. Pipe methods used to hold theirs for the pipe's lifetime, and the read loop

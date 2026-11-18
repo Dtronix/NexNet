@@ -22,9 +22,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
     /// A bind failure must leave the server Stopped (not Running without a listener), and a later start, once the
     /// address is free, must work.
     /// </summary>
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.TcpTls)]
     public async Task BindFailure_LeavesServerStopped_AndLaterStartWorks(Type type)
     {
         var config = CreateServerConfig(type);
@@ -61,8 +60,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
     /// <summary>
     /// The rate limiter is disposed on stop; a restarted server must create a new one and keep enforcing it.
     /// </summary>
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task RateLimiting_AppliesAfterRestart(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -128,7 +127,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
         await Task.WhenAll(clients.Select(c => c.DisconnectedTask)).Timeout(5);
     }
 
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     public async Task DisposeAsync_WhileRunning_StopsAndDisposes(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -281,8 +281,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
     /// Clients that fail the handshake (a non-TLS client, or a client that rejects the server certificate) must not
     /// stop the server, and a good client must still connect afterwards.
     /// </summary>
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.Quic)]
+    [Test]
+    [Transports(Type.TcpTls, Type.Quic)]
     public async Task FailedClientHandshake_DoesNotStopServer(Type type)
     {
         var logger = new ExceptionCapturingLogger();

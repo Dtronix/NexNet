@@ -37,8 +37,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_RejectsConnectionsOverGlobalLimit(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -79,8 +78,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_ReleasesSlotOnDisconnect(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -110,8 +108,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_PerIpLimit_BlocksSameIp(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -146,7 +143,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Uds)]
+    [Transports(Type.Uds)]
     public async Task Server_UdsSkipsPerIpLimits(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -184,7 +181,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
+    [Transports(Type.Tcp)]
     public async Task Server_NoRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -224,7 +221,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
+    [Transports(Type.Tcp)]
     public async Task Server_DisabledRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -264,7 +261,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
+    [Transports(Type.Tcp)]
     public void Server_RateLimiter_TracksStatistics(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -289,8 +286,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Transports(Type.Tcp, Type.TcpTls)]
     public async Task Server_MultipleDisconnects_ReleasesAllSlots(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -345,7 +341,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.Uds)]
+    [Transports(Type.Uds)]
     public async Task Server_UdsGlobalLimit_StillApplies(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -388,8 +384,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     #region ASP.NET WebSocket and HttpSocket Tests
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_RejectsConnectionsOverGlobalLimit(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -430,8 +425,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_ReleasesSlotOnDisconnect(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -461,8 +455,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_PerIpLimit_BlocksSameIp(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -497,8 +490,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_NoRateLimiting_AllowsUnlimitedConnections(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -538,8 +530,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     }
 
     [Test]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task AspServer_MultipleDisconnects_ReleasesAllSlots(Type type)
     {
         var serverConfig = CreateServerConfig(type);

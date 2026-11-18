@@ -182,8 +182,8 @@ internal class RemoteExceptionDetailTests : BaseTests
 
     // ----- End to end -----
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task NoneByDefault_ExceptionResultBytesAreUnchanged(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -226,8 +226,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(body[2], Is.EqualTo((byte)InvocationResultMessage.StateType.Exception));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_ClientCallingServer_CarriesTypeAndMessage(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -251,8 +251,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(5));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_TruncatesLongMessage(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -270,8 +270,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.RemoteMessage, Is.EqualTo(new string('x', 2048)));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_LimitFailureCarriesItsType(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -288,8 +288,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.RemoteMessage, Is.Not.Null.And.Not.Empty);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ResultIsSentWhateverTheSetting(Type type)
     {
         Exception? seen = null;
@@ -318,8 +318,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.Message, Does.Not.Contain("secret"));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ReturningNull_FallsBackToTheSetting(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -341,8 +341,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.RemoteMessage, Is.EqualTo("bad"));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_Throwing_FallsBackToTheSettingAndSessionSurvives(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -369,8 +369,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(Type type)
     {
         var clientConfig = CreateClientConfig(type);
@@ -388,8 +388,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         Assert.That(exception.RemoteMessage, Is.EqualTo("client boom"));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Hook_ServerCallingClient_CarriesApplicationError(Type type)
     {
         var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));

@@ -48,11 +48,8 @@ internal class MetricsSessionTests : BaseTests
         _ => throw new ArgumentOutOfRangeException(nameof(type))
     };
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Except = new[] { Type.Quic })]
     public async Task ActiveSessions_CountedWhileConnected(Type type)
     {
         var (serverConfig, clientConfig) = CreateConfigs(type);

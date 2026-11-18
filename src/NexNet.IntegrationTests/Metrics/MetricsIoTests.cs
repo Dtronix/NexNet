@@ -9,9 +9,8 @@ namespace NexNet.IntegrationTests.Metrics;
 /// </summary>
 internal class MetricsIoTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task FramesAndBytes_MatchBetweenPeers_AndSurviveDisconnect(Type type)
     {
         using var recorder = new MetricsRecorder();

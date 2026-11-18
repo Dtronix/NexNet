@@ -14,9 +14,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationCreditTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task CallerWaitsLocallyForCredit(Type type)
     {
         // Two credits and one slot: one call runs, two wait in the server's queue, the fourth waits on the client.
@@ -47,8 +46,8 @@ internal class InvocationCreditTests : BaseTests
         Assert.That(received, Is.EqualTo(4));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CallCanceledWhileWaitingForCredit_IsNeverSent(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -81,8 +80,8 @@ internal class InvocationCreditTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1), Is.EqualTo(1));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ValueTaskCallCanceledWhileWaitingForCredit_Throws(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -112,8 +111,8 @@ internal class InvocationCreditTests : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CancellationAfterCreditIsTaken_StillSendsTheInvocation(Type type)
     {
         // One credit: if the canceled send kept it without writing the invocation, the next call would wait forever.
@@ -144,8 +143,8 @@ internal class InvocationCreditTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(1));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetBurst_StaysWithinCredit(Type type)
     {
         // Fire-and-forget calls use credit too: a burst much larger than the credits is paced, not a violation.
@@ -282,8 +281,8 @@ internal class InvocationCreditTests : BaseTests
         Assert.That(stalled.IsConnected, Is.True);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Broadcasts_ArriveInOrderAtEachClient(Type type)
     {
         // Few credits and one execution slot: broadcasts often find a client busy, and the client runs them in the
@@ -327,8 +326,8 @@ internal class InvocationCreditTests : BaseTests
             Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task Broadcast_WritesOneEncodedFrameToEveryClient(Type type)
     {
         var serverConfig = CreateServerConfig(type);

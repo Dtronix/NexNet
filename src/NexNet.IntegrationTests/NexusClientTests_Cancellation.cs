@@ -9,12 +9,8 @@ namespace NexNet.IntegrationTests;
 
 internal partial class NexusClientTests_Cancellation : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithParam(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -40,12 +36,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -71,12 +63,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -100,12 +88,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientSendsCancellationTokenOnClientSideTimeout_ServerTaskValueWithValueAndCancellation(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -128,12 +112,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await tcs.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientDoesNotSendCancellationAfterCompletion(Type type)
     {
         var tcs = await ClientSendsMessage<Messages.InvocationCancellationMessage>(
@@ -149,9 +129,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await AssertThrows<TimeoutException>(() => tcs.WaitAsync(TimeSpan.FromMilliseconds(300)));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task LateResultOfCanceledInvocationDoesNotCompleteLaterInvocation(Type type)
     {
         // The server method ignores the token, so the canceled call still sends its result, after the next call starts.
@@ -194,8 +173,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Assert.That(await second.Timeout(1), Is.EqualTo(20));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CanceledInvocationReleasesItsIdOnTheCanceledReply(Type type)
     {
         // The server honors the token and replies Canceled; the id is reserved until then.
@@ -223,8 +202,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task CancellationOfAQueuedInvocation_CancelsItWhenItStarts(Type type)
     {
         // One execution slot: the second call is still queued on the server when its cancellation arrives.
@@ -271,9 +250,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Assert.That(stateManager.IsOutstanding(2), Is.False);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task AlreadyCanceledToken_ValueTaskOfT_ThrowsAndSendsNothing(Type type)
     {
         var received = 0;
@@ -300,9 +278,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task AlreadyCanceledToken_ValueTask_ThrowsAndSendsNothing(Type type)
     {
         var received = 0;
@@ -327,8 +304,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task RemoteMethodCanceledOnItsOwn_CancelsTheCaller(Type type)
     {
         // Without a reply the caller, which has no token, would wait forever.

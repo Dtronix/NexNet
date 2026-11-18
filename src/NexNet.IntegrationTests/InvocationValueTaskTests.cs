@@ -11,8 +11,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationValueTaskTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnAnUnfinishedCall_WaitsForTheResult(Type type)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -40,7 +40,8 @@ internal class InvocationValueTaskTests : BaseTests
         await withoutResult.Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ConsumingACallTwice_Throws(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -57,7 +58,8 @@ internal class InvocationValueTaskTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(5));
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task AwaitWithoutConfigureAwait_ResumesOnTheCallersContext(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -88,7 +90,8 @@ internal class InvocationValueTaskTests : BaseTests
         }).Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ManySequentialCalls_ReuseStatesWithoutCrossTalk(Type type)
     {
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
@@ -150,8 +153,8 @@ internal class InvocationValueTaskTests : BaseTests
         return wait;
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallWaitingToBeSent_WaitsForTheResult(Type type)
     {
         await using var wait = await StartCreditWait(type);
@@ -168,8 +171,8 @@ internal class InvocationValueTaskTests : BaseTests
             Is.EqualTo(1));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallCanceledBeforeItIsSent_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
@@ -187,8 +190,8 @@ internal class InvocationValueTaskTests : BaseTests
         Assert.That(wait.Received, Is.EqualTo(2));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BlockingOnACallWhoseSessionEndsBeforeItIsSent_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
@@ -205,7 +208,8 @@ internal class InvocationValueTaskTests : BaseTests
         wait.First = wait.Second = Task.FromResult(0);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task ConsumingACallThatWaitedToBeSentTwice_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);

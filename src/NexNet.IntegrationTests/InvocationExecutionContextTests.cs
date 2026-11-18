@@ -14,12 +14,8 @@ internal class InvocationExecutionContextTests : BaseTests
 {
     private static readonly AsyncLocal<string?> Local = new();
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientInvocation_SeesAsyncLocalOfConnectCaller(Type type)
     {
         var observed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -38,8 +34,8 @@ internal class InvocationExecutionContextTests : BaseTests
         Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientInvocation_KeepsAsyncLocalAcrossAwait(Type type)
     {
         var observed = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -63,8 +59,8 @@ internal class InvocationExecutionContextTests : BaseTests
         Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientInvocation_AsyncLocalChangeDoesNotReachNextInvocation(Type type)
     {
         var first = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -97,10 +93,8 @@ internal class InvocationExecutionContextTests : BaseTests
         Assert.That(await second.Task.Timeout(1), Is.EqualTo("connect"));
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     public async Task ServerInvocation_SeesAsyncLocalOfStartCaller(Type type)
     {
         string? observed = null;
@@ -120,8 +114,8 @@ internal class InvocationExecutionContextTests : BaseTests
         Assert.That(observed, Is.EqualTo("start"));
     }
 
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports(Type.WebSocket, Type.HttpSocket)]
     public async Task ServerInvocation_SeesHttpContextOfUpgradeRequest(Type type)
     {
         var path = "";

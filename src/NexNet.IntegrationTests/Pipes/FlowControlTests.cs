@@ -11,12 +11,8 @@ namespace NexNet.IntegrationTests.Pipes;
 /// </summary>
 internal class FlowControlTests : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task BurstOfItemsWithASlowReader_ThenACall(Type type)
     {
         // The application's reproduction: 40 items of 40 KiB, read slowly, then a call on the same session. The
@@ -58,12 +54,8 @@ internal class FlowControlTests : BaseTests
         await allReceived.Task.Timeout(10);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OneItemLargerThanTheWindow_IsDelivered(Type type)
     {
         // The application's reproduction: a single 300 KiB item against a 256 KiB window. The reader gets an extra
@@ -92,8 +84,8 @@ internal class FlowControlTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ItemLargerThanThePeerAccepts_ThrowsAndTheChannelStaysUsable(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -120,9 +112,8 @@ internal class FlowControlTests : BaseTests
         Assert.That(await received.Task.Timeout(1), Is.EqualTo(10));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task PipeCompletedWhileThePeersBufferIsFull_SessionStaysUsable(Type type)
     {
         // The application's reproduction: the reader never reads, the writer fills the window and completes.
@@ -150,8 +141,8 @@ internal class FlowControlTests : BaseTests
         Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClosedPipes_FreeTheirIdsAndBudget(Type type)
     {
         // More pipes than there are pipe IDs, one after another: each ID returns once both sides closed it.
@@ -186,8 +177,8 @@ internal class FlowControlTests : BaseTests
         Assert.That(budget.Reserved, Is.EqualTo(baseline));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task OpeningMoreThanMaxPipes_IsRefusedAndTheSessionStaysUp(Type type)
     {
         var serverConfig = CreateServerConfig(type);

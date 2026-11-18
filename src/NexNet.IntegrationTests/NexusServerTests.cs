@@ -12,12 +12,8 @@ namespace NexNet.IntegrationTests;
 internal partial class NexusServerTests : BaseTests
 {
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task AcceptsClientConnection(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -35,12 +31,8 @@ internal partial class NexusServerTests : BaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusFiresOnConnected(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -63,10 +55,8 @@ internal partial class NexusServerTests : BaseTests
 
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StartsAndStopsMultipleTimes(Type type)
@@ -93,10 +83,8 @@ internal partial class NexusServerTests : BaseTests
         }
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task StopsAndReleasesStoppedTcs(Type type)
@@ -115,10 +103,8 @@ internal partial class NexusServerTests : BaseTests
         await server.StoppedTask!.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     //[TestCase(Type.WebSocket)] Can't start and stop Asp.
     //[TestCase(Type.HttpSocket)] Can't start and stop Asp.
     public async Task ThrowsWhenServerIsAlreadyOpenOnSameTransport(Type type)
@@ -170,12 +156,8 @@ internal partial class NexusServerTests : BaseTests
     /// <summary>
     /// The server should fire its OnDisconnectedEvent when a connected client cleanly disconnects.
     /// </summary>
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerFiresOnDisconnectedEvent(Type type)
     {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -199,10 +181,8 @@ internal partial class NexusServerTests : BaseTests
     /// <summary>
     /// If authentication fails (OnAuthenticateEvent returns null), the server should immediately send a Disconnect frame.
     /// </summary>
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Except = new[] { Type.WebSocket, Type.HttpSocket })]
     public async Task ServerRejectsAuthAndSendsDisconnect(Type type)
     {
         var disconnectSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -235,9 +215,8 @@ internal partial class NexusServerTests : BaseTests
     /// the disconnect frame has to reach the client. The hook holds the disconnect after its state change and before
     /// its send while the client wakes the server's read loop with a ping.
     /// </summary>
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.TcpTls)]
     public async Task ServerRejectsAuth_DisconnectIsSentWhenReadLoopExitsFirst(Type type)
     {
         var disconnectHeld = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -289,12 +268,8 @@ internal partial class NexusServerTests : BaseTests
     /// <summary>
     /// Calling StopAsync on a server that was never started should throw.
     /// </summary>
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task StopWithoutStartThrows(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
@@ -305,12 +280,8 @@ internal partial class NexusServerTests : BaseTests
     /// When authentication is enabled and OnAuthenticateEvent returns a non‐null identity,
     /// the server’s OnConnectedEvent should fire only after auth succeeds.
     /// </summary>
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OnConnectedEventFiresAfterAuthentication(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -388,12 +359,8 @@ internal partial class NexusServerTests : BaseTests
     /// If your OnDisconnectedEvent handler throws, the server should swallow that
     /// and remain able to accept new clients afterwards.
     /// </summary>
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task OnDisconnectedEventExceptionDoesNotBreakServer(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -428,7 +395,8 @@ internal partial class NexusServerTests : BaseTests
     // Skip the UDS & UDP protocols
     //[TestCase(Type.Quic)]
     //[TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     //[TestCase(Type.TcpTls)]
     //[TestCase(Type.WebSocket)]
     //[TestCase(Type.HttpSocket)]
@@ -454,7 +422,8 @@ internal partial class NexusServerTests : BaseTests
     // Skip the UDS & UDP protocols
     //[TestCase(Type.Quic)]
     //[TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Tcp)]
     //[TestCase(Type.TcpTls)]
     //[TestCase(Type.WebSocket)]
     //[TestCase(Type.HttpSocket)]
@@ -478,7 +447,8 @@ internal partial class NexusServerTests : BaseTests
         }
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task Server_ConnectionWatchdog_DisconnectsTimedOutSessions_DrivenByFakeTime(Type type)
     {
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);

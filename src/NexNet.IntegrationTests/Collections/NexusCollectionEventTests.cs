@@ -5,8 +5,8 @@ namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionEventTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task EventRacing_DoesNotCauseTimeout(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -29,8 +29,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task MultipleEventSubscribers_HandleConcurrency(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -63,8 +63,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         Assert.That(subscriber3Events, Is.EqualTo(10));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task EventException_DoesNotBreakSystem(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -87,8 +87,8 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerToClientCollection_ServerCanModify(Type type)
     {
         var (server, client, _) = CreateServerClient(

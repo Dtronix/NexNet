@@ -7,8 +7,8 @@ namespace NexNet.IntegrationTests.Collections;
 
 internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ServerProcessChannel_HandlesCapacityLimit(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -33,8 +33,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(60));
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientMessageChannel_HandlesSaturation(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -60,8 +60,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         //Assert.Fail();
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentOperations_DoNotBlockChannel(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -88,7 +88,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
     }
 
     /*[TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task SlowClient_GetsDisconnectedOnChannelFull(Type type)
     {
         var (server, serverNexus, client, _) = await ConnectServerAndClient(type);

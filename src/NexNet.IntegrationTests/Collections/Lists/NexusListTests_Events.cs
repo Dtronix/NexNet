@@ -7,12 +7,8 @@ namespace NexNet.IntegrationTests.Collections.Lists;
 
 internal class NexusListTests_Events : NexusCollectionBaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerAddAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -25,12 +21,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerAddAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -45,12 +37,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerInsertAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -63,12 +51,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerInsertAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -83,12 +67,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerRemoveAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -101,12 +81,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerRemoveAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -121,12 +97,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerRemoveAtAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -140,12 +112,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerRemoveAtAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -160,12 +128,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerMoveAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -180,12 +144,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([2, 1]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerMoveAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -201,12 +161,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerReplaceAsync_NotifiesServer(Type type)
     {
         var (server, _, _) = await ConnectServerAndClient(type);
@@ -221,12 +177,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ServerReplaceAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -242,12 +194,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientAddAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -261,12 +209,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientAddAsync_NotifiesClient(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
@@ -280,12 +224,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientInsertAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -299,12 +239,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientInsertAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -317,12 +253,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientRemoveAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -337,12 +269,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientRemoveAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -357,12 +285,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientRemoveAtAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -377,12 +301,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientRemoveAtAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -397,12 +317,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientMoveAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -418,12 +334,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([2, 1]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientMoveAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -439,12 +351,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientReplaceAsync_NotifiesServer(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -460,12 +368,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientReplaceAsync_NotifiesClient(Type type)
     {
         var (server, client, _) = await ConnectServerAndClient(type);
@@ -482,12 +386,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     }
 
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientReceivesResetNoticeOnConnection(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
@@ -499,12 +399,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientReceivesResetNoticeOnDisconnection(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
@@ -517,12 +413,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientReceivesResetNoticeOnReConnection(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);
@@ -537,12 +429,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task ClientDisconnectionTaskCompletesOnDisconnect(Type type)
     {
         var (_, client, _) = await ConnectServerAndClient(type);

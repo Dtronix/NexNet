@@ -19,12 +19,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class NexusServerTests_InvocationLifetime : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task InvocationHasNoExecutionTimeout(Type type)
     {
         var startedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -78,12 +74,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         Assert.That(await invocationTask.Timeout(1), Is.EqualTo(42));
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task HungInvocationStarvesSessionInvocationSlots(Type type)
     {
         var startedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,23 +112,15 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await firstInvocationTask.Timeout(1);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task SaturatedSessionStillProcessesCancellation(Type type)
     {
         await RunCancellationScenario(type, saturateSession: true);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CancellationIsProcessedWhenSessionIsNotSaturated(Type type)
     {
         // Control test for SaturatedSessionStillProcessesCancellation: the same cancellation
@@ -144,12 +128,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await RunCancellationScenario(type, saturateSession: false);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DisconnectDoesNotCancelRunningInvocation(Type type)
     {
         // Session teardown disposes the invocation's CancellationTokenSource without
@@ -158,12 +138,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         await RunDisconnectScenario(type, withCancellationToken: true);
     }
 
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DisconnectDoesNotStopInvocationWithoutCancellationToken(Type type)
     {
         // Without a CancellationToken parameter there is no cancellation mechanism at

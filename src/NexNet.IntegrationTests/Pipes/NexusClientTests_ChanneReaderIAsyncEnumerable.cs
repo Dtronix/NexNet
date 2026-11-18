@@ -5,12 +5,8 @@ namespace NexNet.IntegrationTests.Pipes;
 
 internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task IAsyncEnumerable(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -52,12 +48,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         await tcs.Task.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task StopsOnCompletion(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -83,12 +75,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         Assert.That(messageReceivedCount, Is.EqualTo(1));
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CancelsRead(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);
@@ -114,12 +102,8 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         await pipe.CompleteTask.Timeout(1);
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task CancelsAndResumesRead(Type type)
     {
         var (server, _, cNexus, _) = await Setup(type);

@@ -28,8 +28,8 @@ internal class PipeForwardingTests : BaseTests
         _relay = null;
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ForwardToAsync_Relays64MiBIntactAndHalfClosesTheDestination(Type type)
     {
         const int total = 64 * 1024 * 1024;
@@ -54,8 +54,8 @@ internal class PipeForwardingTests : BaseTests
         r.ServerDestination.Input.AdvanceTo(back.Buffer.End);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ForwardToAsync_SlowDestination_StallsTheSourceInsteadOfBufferingOnTheServer(Type type)
     {
         const int total = 8 * 1024 * 1024;
@@ -90,8 +90,8 @@ internal class PipeForwardingTests : BaseTests
         await forward.Timeout(5);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ForwardToAsync_Canceled_StopsPromptlyWithoutCompletingEitherPipe(Type type)
     {
         var r = await SetupRelay(type);
@@ -120,8 +120,8 @@ internal class PipeForwardingTests : BaseTests
         r.BPipe.Input.AdvanceTo(atB.Buffer.End);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ForwardToAsync_DestinationClosesFirst_ReturnsWhileTheSourceIsStillOpen(Type type)
     {
         var r = await SetupRelay(type);
@@ -141,8 +141,8 @@ internal class PipeForwardingTests : BaseTests
         await forward.Timeout(2);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BridgeAsync_Canceled_ThrowsAndLeavesBothPipesOpen(Type type)
     {
         var r = await SetupRelay(type);
@@ -213,8 +213,8 @@ internal class PipeForwardingTests : BaseTests
         await bridge.Timeout(5);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task BridgeAsync_SessionOfOnePipeDisconnects_CompletesTheOtherPipe(Type type)
     {
         var r = await SetupRelay(type);
@@ -230,8 +230,8 @@ internal class PipeForwardingTests : BaseTests
         await bridge.Timeout(5);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ChannelForwardToAsync_Relays100kItemsInOrder(Type type)
     {
         const int count = 100_000;
@@ -288,8 +288,8 @@ internal class PipeForwardingTests : BaseTests
         Assert.That(CountingFormatter.Deserialized, Is.EqualTo(count));
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ChannelForwardToAsync_ItemTooLargeForTheDestination_ThrowsBeforeWritingItAndLeavesBothOpen(Type type)
     {
         // B accepts 64 KiB, so the server's session to B sends at most that; A's session to the server accepts more.

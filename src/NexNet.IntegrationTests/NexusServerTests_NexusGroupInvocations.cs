@@ -8,12 +8,8 @@ namespace NexNet.IntegrationTests;
 
 internal class NexusServerTests_NexusGroupInvocations : BaseTests
 {
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnGroup(Type type)
     {
         await RunGroupTest(type, ["group"], 3, 3, nexus =>
@@ -21,12 +17,8 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         );
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnGroupExceptCaller(Type type)
     {
         await RunGroupTest(type, ["group"], 3, 2, nexus =>
@@ -34,12 +26,8 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         );
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnGroups(Type type)
     {
         await RunGroupTest(type, ["group1", "group2"], 3, 6, nexus =>
@@ -47,12 +35,8 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         );
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task NexusInvokesOnGroupsExceptCaller(Type type)
     {
         await RunGroupTest(type, ["group1", "group2"], 3, 4, nexus =>
@@ -60,48 +44,32 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         );
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DirectNexusProxyInvokesOnGroupIncludingCurrent(Type type)
     {
         await RunServerContextGroupTest(type, ["group"], 3, 3, proxy => 
             proxy.Group("group").ClientTask());
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DirectNexusProxyInvokesOnGroupsIncludingCurrent(Type type)
     {
         await RunServerContextGroupTest(type, ["group1","group2"], 3, 6, proxy => 
             proxy.Groups(["group1","group2"]).ClientTask());
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DirectNexusProxyInvokesOnGroupIgnoresExcludingCurrent(Type type)
     {
         await RunServerContextGroupTest(type, ["group"], 3, 3, proxy => 
             proxy.GroupExceptCaller("group").ClientTask());
     }
     
-    [TestCase(Type.Quic)]
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.TcpTls)]
-    [TestCase(Type.WebSocket)]
-    [TestCase(Type.HttpSocket)]
+    [Test]
+    [Transports]
     public async Task DirectNexusProxyInvokesOnGroupsIgnoresIncludingCurrent(Type type)
     {
         await RunServerContextGroupTest(type, ["group1","group2"], 3, 6, proxy => 

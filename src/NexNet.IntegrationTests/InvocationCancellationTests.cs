@@ -10,8 +10,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class InvocationCancellationTests : BaseTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentCallsToOneMethod_AreCanceledIndividually(Type type)
     {
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -60,8 +60,8 @@ internal class InvocationCancellationTests : BaseTests
         Assert.That(first.IsCanceled || first.IsCompleted, Is.True);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task OverlappingFireAndForgetCalls_ShareTheSessionToken_CanceledOnDisconnect(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -115,8 +115,8 @@ internal class InvocationCancellationTests : BaseTests
         await firstCanceled.Task.Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task FireAndForgetCalls_UnaffectedByPreSendCancellation(Type type)
     {
         // Broadcasts and void methods do not wait for a result: an already canceled token neither throws nor stops
