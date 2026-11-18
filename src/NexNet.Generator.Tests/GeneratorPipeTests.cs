@@ -1,11 +1,10 @@
-﻿using NUnit.Framework;
-
+﻿
 namespace NexNet.Generator.Tests;
 
 class GeneratorPipeTests
 {
     [Test]
-    public void MethodCanNotHaveMoreThanOneDuplexPipe()
+    public async Task MethodCanNotHaveMoreThanOneDuplexPipe()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -18,11 +17,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeNotAllowedOnVoid()
+    public async Task NexusDuplexPipeNotAllowedOnVoid()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -35,11 +34,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeNotAllowedOnReturnTask()
+    public async Task NexusDuplexPipeNotAllowedOnReturnTask()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -52,11 +51,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeNotAllowedOnMethodWithCancellationToken()
+    public async Task NexusDuplexPipeNotAllowedOnMethodWithCancellationToken()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -69,11 +68,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeGenerates()
+    public async Task NexusDuplexPipeGenerates()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -89,8 +88,7 @@ partial class ServerNexus : IServerNexus {
     public ValueTask Update(INexusDuplexPipe pipe) => ValueTask.CompletedTask;
 }
 """);
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
 }
-
