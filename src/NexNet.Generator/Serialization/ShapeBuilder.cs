@@ -1,4 +1,8 @@
+using System.Globalization;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
 
 namespace NexNet.Generator.Serialization;
@@ -150,14 +154,21 @@ internal sealed class ShapeBuilder
     private static EnumShape CreateEnum(INamedTypeSymbol type)
     {
         var values = new SortedSet<long>();
+        var members = new List<(string, long)>();
         foreach (var member in type.GetMembers())
         {
             if (member is IFieldSymbol { HasConstantValue: true, ConstantValue: { } value })
-                values.Add(value is ulong u ? unchecked((long)u) : Convert.ToInt64(value));
+            {
+                var raw = value is ulong u ? unchecked((long)u) : Convert.ToInt64(value);
+                values.Add(raw);
+                members.Add((member.Name, raw));
+            }
         }
 
         var underlying = type.EnumUnderlyingType?.SpecialType ?? SpecialType.System_Int32;
-        return new EnumShape(type, underlying, values.ToArray());
+        var isFlags = type.GetAttributes().Any(a => a.AttributeClass is { Name: "FlagsAttribute" } cls
+                                                    && cls.ContainingNamespace?.ToDisplayString() == "System");
+        return new EnumShape(type, underlying, values.ToArray(), members.ToArray(), isFlags);
     }
 
     private static bool IsSystemNamespace(ITypeSymbol type)
@@ -251,6 +262,8 @@ internal sealed class ShapeBuilder
                     DeclaredType = memberType,
                     Key = keyAttr.ConstructorArguments.Length > 0 && keyAttr.ConstructorArguments[0].Value is int k ? k : 0,
                     IsField = isField,
+                    RefNullable = IsRefNullable(memberType),
+                    DefaultLiteral = ReadDefaultLiteral(member, memberType),
                 };
 
                 if (member is IPropertySymbol p)
@@ -282,6 +295,110 @@ internal sealed class ShapeBuilder
         // Member shapes last: this object is already in the cache, so a member that points back here terminates.
         foreach (var m in result)
             m.Type = Get(m.DeclaredType);
+    }
+
+    /// <summary>
+    /// True when a reference-type occurrence may be null: annotated, or declared in a nullable-oblivious context. Value
+    /// types (including <c>Nullable&lt;T&gt;</c>) and type parameters without a <c>?</c> are false.
+    /// </summary>
+    internal static bool IsRefNullable(ITypeSymbol type)
+    {
+        if (type.IsValueType)
+            return false;
+
+        if (type is ITypeParameterSymbol)
+            return type.NullableAnnotation == NullableAnnotation.Annotated;
+
+        return type.NullableAnnotation != NullableAnnotation.NotAnnotated;
+    }
+
+    /// <summary>
+    /// The member's initializer when it is a simple constant: a literal, a negated numeric literal, an enum member of the
+    /// member's enum type or <c>string.Empty</c>. Read from syntax only; members declared in metadata have none.
+    /// </summary>
+    internal static LiteralIr? ReadDefaultLiteral(ISymbol member, ITypeSymbol memberType)
+    {
+        foreach (var reference in member.DeclaringSyntaxReferences)
+        {
+            var initializer = reference.GetSyntax() switch
+            {
+                PropertyDeclarationSyntax property => property.Initializer,
+                VariableDeclaratorSyntax variable => variable.Initializer,
+                _ => null,
+            };
+
+            if (initializer != null)
+                return ReadLiteral(initializer.Value, memberType);
+        }
+
+        return null;
+    }
+
+    private static LiteralIr? ReadLiteral(ExpressionSyntax expression, ITypeSymbol memberType)
+    {
+        switch (expression)
+        {
+            case LiteralExpressionSyntax literal:
+                return ReadLiteralToken(literal);
+
+            case PrefixUnaryExpressionSyntax { RawKind: (int)SyntaxKind.UnaryMinusExpression, Operand: LiteralExpressionSyntax operand }
+                when operand.IsKind(SyntaxKind.NumericLiteralExpression):
+            {
+                var positive = ReadLiteralToken(operand);
+                if (positive?.Value is not { } text)
+                    return null;
+                return positive with { Value = text == "0" ? text : "-" + text };
+            }
+
+            case MemberAccessExpressionSyntax access:
+            {
+                var name = access.Name.Identifier.ValueText;
+                var type = memberType is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable
+                    ? nullable.TypeArguments[0]
+                    : memberType;
+
+                if (type.TypeKind == TypeKind.Enum
+                    && type.GetMembers(name).Any(m => m is IFieldSymbol { HasConstantValue: true }))
+                    return new LiteralIr(LiteralKind.Enum, name);
+
+                if (type.SpecialType == SpecialType.System_String && name == "Empty"
+                    && access.Expression.ToString() is "string" or "String" or "System.String" or "global::System.String")
+                    return new LiteralIr(LiteralKind.String, "");
+
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static LiteralIr? ReadLiteralToken(LiteralExpressionSyntax literal)
+    {
+        var value = literal.Token.Value;
+        switch (literal.Kind())
+        {
+            case SyntaxKind.NullLiteralExpression:
+                return new LiteralIr(LiteralKind.Null, null);
+            case SyntaxKind.TrueLiteralExpression:
+                return new LiteralIr(LiteralKind.Bool, "true");
+            case SyntaxKind.FalseLiteralExpression:
+                return new LiteralIr(LiteralKind.Bool, "false");
+            case SyntaxKind.StringLiteralExpression:
+                return new LiteralIr(LiteralKind.String, literal.Token.ValueText);
+            case SyntaxKind.CharacterLiteralExpression:
+                return value is char c ? new LiteralIr(LiteralKind.Char, c.ToString()) : null;
+            case SyntaxKind.NumericLiteralExpression:
+                return value switch
+                {
+                    int or uint or long or ulong => new LiteralIr(LiteralKind.Integer, Convert.ToString(value, CultureInfo.InvariantCulture)),
+                    float f => new LiteralIr(LiteralKind.Real, f.ToString("R", CultureInfo.InvariantCulture)),
+                    double d => new LiteralIr(LiteralKind.Real, d.ToString("R", CultureInfo.InvariantCulture)),
+                    decimal m => new LiteralIr(LiteralKind.Decimal, m.ToString(CultureInfo.InvariantCulture)),
+                    _ => null,
+                };
+        }
+
+        return null;
     }
 
     private static bool IsSerializableShape(ISymbol member)
