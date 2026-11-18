@@ -112,25 +112,36 @@ public abstract class ServerConfig : ConfigBase
 
     /// <summary>
     /// What an endpoint built from this configuration binds or serves, for snapshots and logs: the socket end point of
-    /// a TCP, TLS or UDS listener, the request path of an ASP.NET endpoint; null when unknown.
+    /// a TCP, TLS or UDS listener, the UDP end point of a QUIC listener, the request path of an ASP.NET endpoint; null
+    /// when unknown.
     /// </summary>
     internal string? EndpointAddress => this switch
     {
         TcpServerConfig tcp => tcp.EndPoint?.ToString(),
         UdsServerConfig uds => uds.EndPoint?.ToString(),
         AspServerConfig asp => asp.Path,
-        _ => null,
+        _ => UdpEndPoint?.ToString(),
     };
 
     /// <summary>
+    /// The UDP end point a listener built from this configuration binds (QUIC), or null when it binds none. Lets
+    /// configurations defined outside this assembly report their address for snapshots and take part in the
+    /// port-overlap check when endpoints are added.
+    /// </summary>
+    internal virtual IPEndPoint? UdpEndPoint => null;
+
+    /// <summary>
     /// Describes why this configuration and <paramref name="other"/> can not both be endpoints of one server (the
-    /// same TCP port, UDS path or ASP.NET path); null when they can.
+    /// same TCP port, UDP port, UDS path or ASP.NET path); null when they can.
     /// </summary>
     internal string? GetEndpointConflict(ServerConfig other)
     {
+        if (UdpEndPoint is { } udpA && other.UdpEndPoint is { } udpB && EndPointsOverlap(udpA, udpB))
+            return $"UDP end point {udpA} overlaps {udpB}";
+
         switch (this, other)
         {
-            case (TcpServerConfig a, TcpServerConfig b) when TcpEndPointsOverlap(a.EndPoint, b.EndPoint):
+            case (TcpServerConfig a, TcpServerConfig b) when EndPointsOverlap(a.EndPoint, b.EndPoint):
                 return $"TCP end point {a.EndPoint} overlaps {b.EndPoint}";
             case (UdsServerConfig a, UdsServerConfig b)
                 when a.EndPoint != null && string.Equals(a.EndPoint.ToString(), b.EndPoint?.ToString(), StringComparison.Ordinal):
@@ -143,7 +154,7 @@ public abstract class ServerConfig : ConfigBase
         }
     }
 
-    private static bool TcpEndPointsOverlap(EndPoint? a, EndPoint? b)
+    private static bool EndPointsOverlap(EndPoint? a, EndPoint? b)
     {
         if (a == null || b == null)
             return false;

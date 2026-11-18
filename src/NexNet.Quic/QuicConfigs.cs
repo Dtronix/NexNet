@@ -70,7 +70,10 @@ public class QuicServerConfig : ServerConfig
     /// Endpoint to bind to.
     /// </summary>
     public required IPEndPoint EndPoint { get; set; }
-    
+
+    /// <inheritdoc />
+    internal override IPEndPoint? UdpEndPoint => EndPoint;
+
     /// <summary>
     /// Sets the server mode.
     /// </summary>
