@@ -119,10 +119,11 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         CancellationToken? cancellationToken = null,
         NexNet.Serialization.PooledArrayBufferWriter? argumentsOwner = null)
     {
+        // Canceled before it is sent: nothing is sent, no id is taken, and the call throws TaskCanceledException.
         if (cancellationToken?.IsCancellationRequested == true)
         {
             argumentsOwner?.Return();
-            state.TrySetNoResult();
+            state.TrySetCanceled();
             return;
         }
 
@@ -175,9 +176,9 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         catch (OperationCanceledException)
         {
             // Canceled while waiting for invocation credit (or while streaming a large argument): never executed,
-            // so no reply comes. Like any call canceled before it is sent, it returns nothing.
+            // so no reply comes. Like any call canceled before it is sent, it throws TaskCanceledException.
             ForgetUnsent(state);
-            state.TrySetNoResult();
+            state.TrySetCanceled();
             return;
         }
         catch (Exception e)
@@ -210,8 +211,8 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         if (!_invocationStates.TryRemove(new KeyValuePair<int, RegisteredInvocationState>(invocationId, state)))
             return;
 
-        // Still sending: the sender completes the state once the send ends, as canceled if the invocation went out
-        // and without a result if it did not.
+        // Still sending: the sender completes the state as canceled once the send ends, and sends the cancellation
+        // frame if the invocation went out.
         if (!state.MarkCanceled())
             return;
 
