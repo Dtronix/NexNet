@@ -169,7 +169,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             .ToArray();
 
         await Buffer(pipeReader, data);
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
     }
 
     [Test]
@@ -182,7 +182,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             .ToArray();
 
         await Buffer(pipeReader, data);
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
     }
 
     [Test]
@@ -195,7 +195,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // The prefix alone is enough: the reader does not wait for the item.
         await Buffer(pipeReader, TestSerialization.FrameChannelItem(new byte[101])[..2]);
 
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await reader.ReadAsync().Timeout(1));
         await Assert.That(stateManager.Resets).IsEqualTo(1);
     }
 
@@ -209,7 +209,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // The prefix says 2 bytes; the value (fixint 5) is 1.
         await Buffer(pipeReader, [0x02, 0x05, 0x05]);
 
-        await Assert.ThatAsync(async () => await reader.ReadAsync().Timeout(1), Throws.InstanceOf<NexNet.Serialization.NexusSerializationException>());
+        await Assert.ThrowsAsync<NexNet.Serialization.NexusSerializationException>(async () => await reader.ReadAsync().Timeout(1));
         await Assert.That(stateManager.Resets).IsEqualTo(1);
     }
 
@@ -229,8 +229,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         // The difference was granted as extra credit, so the rest fits.
         await Assert.That(stateManager.Grants).IsEqualTo(new[] { item.Length - 64 });
         await Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 64, item.Length - 64))).IsEqualTo(NexusPipeBufferResult.Success);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That((await read.Timeout(1)).Single(), Has.Length.EqualTo(100));
+        await Assert.That((await read.Timeout(1)).Single()).Count().IsEqualTo(100);
 
         // The extra is paid off by consuming the item, not granted back.
         await Assert.That(stateManager.ExtraReleased).IsEqualTo(item.Length - 64);

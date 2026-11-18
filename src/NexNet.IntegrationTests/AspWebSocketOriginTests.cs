@@ -45,7 +45,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.CollectHttpResponseDetails = true;
         socket.Options.SetRequestHeader("Origin", "https://evil.example");
 
-        await Assert.ThrowsAsync<WebSocketException>(() => socket.ConnectAsync(url, CancellationToken.None).Timeout(1));
+        await Assert.ThrowsExactlyAsync<WebSocketException>(() => socket.ConnectAsync(url, CancellationToken.None).Timeout(1));
         await Assert.That(socket.HttpStatusCode).IsEqualTo(HttpStatusCode.Forbidden);
     }
 

@@ -85,8 +85,7 @@ public class PipeForwardingCancellationTests
                 await System.Threading.Tasks.Task.Delay(25);
                 waiting = System.Linq.Enumerable.Any(System.Linq.Enumerable.SelectMany(server.GetSnapshot().Sessions, s => s.Pipes), p => p.WaitingForCredit != null);
             }
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            NUnit.Framework.Assert.That(waiting, NUnit.Framework.Is.True, "The forwarder never waited for the destination's credit.");
+            await Assert.That(waiting).IsTrue().Because("The forwarder never waited for the destination's credit.");
 
             cts.Cancel();
             try { await forward.WaitAsync(System.TimeSpan.FromSeconds(5)); } catch (System.OperationCanceledException) { }
@@ -110,9 +109,8 @@ public class PipeForwardingCancellationTests
                 bPipe.Input.AdvanceTo(r.Buffer.End);
                 if (r.IsCompleted) break;
             }
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
     
-            NUnit.Framework.Assert.That(atB + atServer, NUnit.Framework.Is.EqualTo(total), $"Delivered to B: {atB}, left on the source: {atServer}.");
+            await Assert.That(atB + atServer).IsEqualTo(total).Because($"Delivered to B: {atB}, left on the source: {atServer}.");
         }
         finally
         {

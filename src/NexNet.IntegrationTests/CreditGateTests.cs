@@ -41,9 +41,8 @@ internal class CreditGateTests
             .ToArray();
 
         gate.Release(7);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(await Task.WhenAll(waits).Timeout(1), Has.All.EqualTo(CreditWaitResult.Acquired));
+        await Assert.That(await Task.WhenAll(waits).Timeout(1)).All(x => Equals(x, CreditWaitResult.Acquired));
         await Assert.That(gate.CurrentCount).IsEqualTo(2);
     }
 
@@ -93,8 +92,7 @@ internal class CreditGateTests
         var next = gate.WaitAsync(Infinite, CancellationToken.None).AsTask();
 
         await cts.CancelAsync();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await canceled.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await canceled.Timeout(1));
 
         // The credit goes to the next waiter, not the canceled one.
         gate.Release();

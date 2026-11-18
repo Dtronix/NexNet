@@ -16,16 +16,16 @@ internal class MetricsSessionTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;
 
-    public override void SetUp()
+    protected override void SetUp()
     {
         base.SetUp();
         _recorder = new MetricsRecorder();
     }
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
         _recorder.Dispose();
-        base.TearDown();
+        await base.TearDown();
     }
 
     private (ServerConfig, ClientConfig) CreateConfigs(Type type)

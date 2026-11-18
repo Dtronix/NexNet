@@ -619,7 +619,7 @@ internal class NexusClientPoolTests : BaseTests
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = 0 };
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => 
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => 
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig));
     }
 
@@ -629,14 +629,14 @@ internal class NexusClientPoolTests : BaseTests
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MaxConnections = -1 };
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => 
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => 
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig));
     }
 
     [Test]
     public async Task Pool_ThrowsOnNullConfig()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => 
+        Assert.ThrowsExactly<ArgumentNullException>(() => 
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(null!));
     }
 
@@ -646,7 +646,7 @@ internal class NexusClientPoolTests : BaseTests
         var clientConfig = CreateClientConfig(Type.Uds);
         var poolConfig = new NexusClientPoolConfig(clientConfig) { MinIdleConnections = -1 };
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => 
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => 
             new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(poolConfig));
     }
 
@@ -881,7 +881,7 @@ internal class NexusClientPoolTests : BaseTests
             rentedClient.Dispose();
 
             // Should throw ObjectDisposedException
-            await Assert.ThrowsAsync<ObjectDisposedException>(() => _ = rentedClient.Proxy);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = rentedClient.Proxy);
             await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Disconnected);
             await Assert.That(rentedClient.DisconnectedTask.IsCompleted).IsTrue();
 
@@ -1287,7 +1287,7 @@ internal class NexusClientPoolTests : BaseTests
             }
 
             // After disposal, accessing proxy should throw
-            await Assert.ThrowsAsync<ObjectDisposedException>(() => _ = rentedClient.Proxy);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => _ = rentedClient.Proxy);
         }
         finally
         {
@@ -1687,8 +1687,8 @@ internal class NexusClientPoolTests : BaseTests
 
         try
         {
-            var exception = await await Assert.ThrowsAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
-            await Assert.That(exception.ConnectionResult.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
+            var exception = await Assert.ThrowsExactlyAsync<ClientPoolConnectionException>(async () => await pool.RentClientAsync().Timeout(1));
+            await Assert.That(exception!.ConnectionResult.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
         }
         finally
         {

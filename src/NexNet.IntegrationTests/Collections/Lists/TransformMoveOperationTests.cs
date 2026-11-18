@@ -93,14 +93,14 @@ public class TransformMoveOperationTests
     public async Task Instancing_Throws_OnFromIndexUnderflow()
     {
         // ReSharper disable once ObjectCreationAsStatement
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new MoveOperation<int>(-1, 1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new MoveOperation<int>(-1, 1));
     }
     
     [Test]
     public async Task Instancing_Throws_OnToIndexUnderflow()
     {
         // ReSharper disable once ObjectCreationAsStatement
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new MoveOperation<int>(0, -1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new MoveOperation<int>(0, -1));
     }
     
     [Test]

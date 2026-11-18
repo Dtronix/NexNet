@@ -50,9 +50,8 @@ internal class ReconnectionPolicyTests : BaseTests
     public async Task DefaultPolicy_ReconnectReasons_DefaultsToTodaysList()
     {
         var policy = new DefaultReconnectionPolicy();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(policy.ReconnectReasons, Is.EquivalentTo(DefaultReasons));
+        await Assert.That(policy.ReconnectReasons).IsEquivalentTo(DefaultReasons);
 
         IReconnectionPolicy asInterface = policy;
         foreach (var reason in AllReasons)
@@ -83,7 +82,7 @@ internal class ReconnectionPolicyTests : BaseTests
     [Test]
     public async Task DefaultPolicy_ReconnectReasons_NullThrows()
     {
-        await Assert.ThrowsAsync<ArgumentNullException>(() => _ = new DefaultReconnectionPolicy
+        Assert.ThrowsExactly<ArgumentNullException>(() => _ = new DefaultReconnectionPolicy
         {
             ReconnectReasons = null!
         });

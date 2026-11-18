@@ -54,7 +54,7 @@ internal class InvocationValueTaskTests : BaseTests
         await Assert.That(await call).IsEqualTo(5);
 
         // The state behind it has been returned to its pool; reading it again must not observe another call.
-        await Assert.ThrowsAsync<InvalidOperationException>(() => call.GetAwaiter().GetResult());
+        Assert.ThrowsExactly<InvalidOperationException>(() => call.GetAwaiter().GetResult());
         await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1)).IsEqualTo(5);
     }
 
@@ -183,7 +183,7 @@ internal class InvocationValueTaskTests : BaseTests
         cts.Cancel();
 
         // Like any call canceled before it is sent, it throws TaskCanceledException; it was never sent.
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await blocked.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await blocked.Timeout(1));
         wait.Release.SetResult();
         await Task.WhenAll(wait.First, wait.Second).Timeout(1);
         await Assert.That(wait.Received).IsEqualTo(2);
@@ -201,12 +201,9 @@ internal class InvocationValueTaskTests : BaseTests
         await Assert.That(blocked.IsCompleted).IsFalse();
 
         await wait.Client.DisconnectAsync().Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await blocked.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await wait.First.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await wait.Second.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await blocked.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await wait.First.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await wait.Second.Timeout(1));
         wait.First = wait.Second = Task.FromResult(0);
     }
 
@@ -220,7 +217,7 @@ internal class InvocationValueTaskTests : BaseTests
         wait.Release.SetResult();
         await Assert.That(await call).IsEqualTo(1);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => call.GetAwaiter().GetResult());
+        Assert.ThrowsExactly<InvalidOperationException>(() => call.GetAwaiter().GetResult());
         await Assert.That(await wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1)).IsEqualTo(1);
     }
 

@@ -90,10 +90,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             Console.WriteLine(addWait.Counter);
             throw;
         }
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -120,9 +119,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await addWait.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -139,9 +137,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Server2.StartAsync().Timeout(1);
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
     
     [Test]
@@ -208,13 +205,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
     }
     
     [Test]
@@ -230,9 +227,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Server2.StartAsync().Timeout(1);
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         await clSv.Server1.StopAsync();
 
@@ -255,7 +251,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var anotherConnector = anotherClientPool.GetCollectionConnector(n => n.IntListBi);
 
         // Try to configure relay again - should throw since it's already configured
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
         {
             relayCollection.ConfigureRelay(anotherConnector);
         });
@@ -296,11 +292,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             //Console.WriteLine(e);
             throw;
         }
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child1Relay));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child1Relay);
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child2Relay);
     }
     
     
@@ -358,10 +352,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await addTask;
         await relayList.ReadyTask.Timeout(2);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Verify final state consistency
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -400,8 +393,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await Assert.That(sourceList.Count).IsEqualTo(10);
         await Assert.That(relayList.Count).IsEqualTo(10);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -437,13 +429,13 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(1);
 
         // Test all modification operations are blocked
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ClearAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.InsertAsync(0, 99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAtAsync(0));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.RemoveAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.AddAsync(99));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.MoveAsync(0, 1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await relayList.ReplaceAsync(0, 1));
 
         // Verify read operations still work
         await Assert.That(() => { var count = relayList.Count; }).ThrowsNothing();
@@ -503,8 +495,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Verify relay received all initial data
         await Assert.That(relayList.Count).IsEqualTo(15);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         // Test clear operation propagation - relay may fire Reset or Remove events
         var waitReset = relayList.WaitForEvent(NexusCollectionChangedAction.Reset);
@@ -521,8 +512,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await Assert.That(relayList.Count).IsEqualTo(0);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -546,10 +536,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.RemoveAtAsync(1);
 
         await waitEvent.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Verify final state consistency
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -579,9 +568,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Relay should reconnect and sync
         await relayList.ReadyTask.Timeout(2);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -607,11 +595,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await waitA.Wait();
         await waitB.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(relayListA, Is.EquivalentTo(sourceList));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(relayListB, Is.EquivalentTo(sourceList));
+        await Assert.That(relayListA).IsEquivalentTo(sourceList);
+        await Assert.That(relayListB).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -648,9 +634,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Wait for client to receive all updates
         await waitAdd.Wait(5);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -672,9 +657,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Client2.ConnectAsync().Timeout(1);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.ConnectAsync().Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
 
         // Disconnect client
         await relayList.DisableAsync();
@@ -690,10 +674,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Client2.ConnectAsync().Timeout(1);
         relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.ConnectAsync().Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Should have all data
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
         await Assert.That(relayList.Count).IsEqualTo(10);
     }
 
@@ -719,9 +702,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(3);
 
         await wait.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -776,8 +758,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await Assert.That(relayList.Count).IsEqualTo(0);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -804,9 +785,8 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         await waitAdd.Wait();
         await waitRemove.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -837,10 +817,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await clSv.Client2.ConnectAsync().Timeout(1);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.ConnectAsync().Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Client should now have all items since it connected to a relay that has them
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -872,8 +851,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitFinal.Wait(5);
 
         await Assert.That(relayList.Count).IsEqualTo(3);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -903,8 +881,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await relayList.ReadyTask.Timeout(2);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -944,10 +921,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(10);
         await sourceList.AddAsync(20);
         await waitNew.Wait(5);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Relay should sync with new parent state
-        Assert.That(relayList, Is.EquivalentTo(sourceList));
+        await Assert.That(relayList).IsEquivalentTo(sourceList);
     }
 
     [Test]
@@ -1022,7 +998,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         var relayList = server.ContextProvider.Rent().Collections.IntListRelay;
 
-        await Assert.ThrowsAsync<ArgumentNullException>(() =>
+        Assert.ThrowsExactly<ArgumentNullException>(() =>
         {
             relayList.ConfigureRelay(null!);
         });
@@ -1088,8 +1064,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await relayList.ReadyTask.Timeout(5);
 
         await Assert.That(relayList.Count).IsEqualTo(itemCount);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     [Test]
@@ -1114,8 +1089,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await wait.Wait(10);
 
         await Assert.That(relayList.Count).IsEqualTo(operationCount);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     /// <summary>
@@ -1162,8 +1136,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Verify all items were delivered without any drops
         await Assert.That(relayList.Count).IsEqualTo(itemCount).Because($"Expected {itemCount} items but got {relayList.Count}. This indicates message drops.");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
 
         // Verify ordering is preserved
         for (int i = 0; i < itemCount; i++)
@@ -1224,8 +1197,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         await Assert.That(relayList.Count).IsEqualTo(totalItems).Because($"Expected {totalItems} items but got {relayList.Count}. Concurrent additions caused message drops.");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(sourceList, Is.EquivalentTo(relayList));
+        await Assert.That(sourceList).IsEquivalentTo(relayList);
     }
 
     /// <summary>
@@ -1533,7 +1505,6 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         // Child2 should have all 10 items
         await Assert.That(clSvs.Child2Relay.Count).IsEqualTo(10);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(clSvs.SourceList, Is.EquivalentTo(clSvs.Child2Relay));
+        await Assert.That(clSvs.SourceList).IsEquivalentTo(clSvs.Child2Relay);
     }
 }

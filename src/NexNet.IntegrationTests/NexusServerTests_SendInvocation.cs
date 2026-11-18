@@ -170,15 +170,15 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
                     return;
 
                 var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                await Assert.That(message).IsNotNull();
+                CallbackAssert.NotNull(message);
 
                 if (message == null)
                     return;
 
-                await Assert.That(message.Arguments.ToArray()).IsEqualTo(expectedMessage.Arguments.ToArray());
-                await Assert.That(message.Flags).IsEqualTo(expectedMessage.Flags);
-                await Assert.That(message.InvocationId).IsEqualTo(expectedMessage.InvocationId);
-                await Assert.That(message.MethodId).IsEqualTo(expectedMessage.MethodId);
+                CallbackAssert.Equal(message.Arguments.ToArray(), expectedMessage.Arguments.ToArray());
+                CallbackAssert.Equal(message.Flags, expectedMessage.Flags);
+                CallbackAssert.Equal(message.InvocationId, expectedMessage.InvocationId);
+                CallbackAssert.Equal(message.MethodId, expectedMessage.MethodId);
                 tcs.SetResult();
             }
             catch

@@ -25,7 +25,7 @@ public class NexusPipeReaderTests
         byte[] payload = [1, 2, 3, 4];
 
         var bufferResult = reader.BufferData(new ReadOnlySequence<byte>(payload));
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
             await Assert.That(bufferResult).IsEqualTo(NexusPipeBufferResult.Success);
             await Assert.That(reader.TryRead(out var readResult)).IsTrue().Because("TryRead should return true after buffering");

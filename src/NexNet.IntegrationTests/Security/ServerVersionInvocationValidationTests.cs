@@ -494,7 +494,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         
         // Send malformed invocation message with corrupted data
         var malformedData = new byte[] { 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00 };
-        client.Write(malformedData);
+        await client.Write(malformedData);
         
         // Server should disconnect gracefully due to protocol error
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(2);

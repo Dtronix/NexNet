@@ -36,7 +36,7 @@ internal class RemoteExceptionDetailTests : BaseTests
     }
 
     private static async Task<ProxyRemoteInvocationException> Throws(Func<Task> call)
-        => (await await Assert.ThrowsAsync<ProxyRemoteInvocationException>(call))!;
+        => (await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(call))!;
 
     private static async Task<ProxyRemoteInvocationException> ThrowFromBody(byte[] body)
     {
@@ -49,7 +49,7 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(state.TrySetResult()).IsTrue();
 
         var valueTask = new ValueTask<int>(state, state.Version);
-        return Throws(async () => await valueTask);
+        return await Throws(async () => await valueTask);
     }
 
     [Test]
@@ -209,18 +209,17 @@ internal class RemoteExceptionDetailTests : BaseTests
         await Assert.That(exception.RemoteExceptionType).IsNull();
         await Assert.That(exception.RemoteMessage).IsNull();
 
-        byte[] frame;
+        byte[][] sent;
         lock (results)
-        {
-            await Assert.That(results).Count().IsEqualTo(1);
-            frame = results[0];
-        }
+            sent = results.ToArray();
+
+        await Assert.That(sent).Count().IsEqualTo(1);
+        var frame = sent[0];
 
         // Header: type (1), body length (u16 LE); body: fixarray(2), invocation id (positive fixint), state 2.
         var body = frame.AsSpan(3).ToArray();
         await Assert.That(BitConverter.ToUInt16(frame, 1)).IsEqualTo(body.Length);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(body, Has.Length.EqualTo(3));
+        await Assert.That(body).Count().IsEqualTo(3);
         await Assert.That(body[0]).IsEqualTo(0x92);
         await Assert.That(body[2]).IsEqualTo((byte)InvocationResultMessage.StateType.Exception);
     }
@@ -284,8 +283,7 @@ internal class RemoteExceptionDetailTests : BaseTests
         var exception = await Throws(
             async () => await clientNexus.Context.Proxy.ServerDataResult(5 * 1024 * 1024).Timeout(5));
         await Assert.That(exception.RemoteExceptionType).IsEqualTo(typeof(NexusMessageTooLargeException).FullName);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(exception.RemoteMessage, Is.Not.Null.And.Not.Empty);
+        await Assert.That(string.IsNullOrEmpty(exception.RemoteMessage)).IsFalse();
     }
 
     [Test]
@@ -402,7 +400,7 @@ internal class RemoteExceptionDetailTests : BaseTests
             try
             {
                 await n.Context.Clients.Caller.ClientTaskValue();
-                tcs.TrySetException(new AssertionException("The call did not fail."));
+                tcs.TrySetException(new InvalidOperationException("The call did not fail."));
             }
             catch (ProxyRemoteInvocationException e)
             {

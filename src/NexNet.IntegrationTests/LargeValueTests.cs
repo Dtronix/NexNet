@@ -10,12 +10,12 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class LargeValueTests : BaseTests
 {
-    private static IEnumerable<TestCaseData> TransportsAndSizes()
+    public static IEnumerable<Func<(Type, int)>> TransportsAndSizes()
     {
         foreach (var type in new[] { Type.Quic, Type.Uds, Type.Tcp, Type.TcpTls, Type.WebSocket, Type.HttpSocket })
         {
             foreach (var size in new[] { 128 * 1024, 1024 * 1024, 4 * 1024 * 1024 - 1024 })
-                yield return new TestCaseData(type, size);
+                yield return () => (type, size);
         }
     }
 
@@ -33,10 +33,9 @@ internal class LargeValueTests : BaseTests
 
         var echoed = await client.Proxy.ServerEcho(data).Timeout(10);
         await Assert.That(echoed).IsEqualTo(data);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // The session is still usable, and nothing stays reserved for the streams.
-        Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1), Has.Length.EqualTo(10));
+        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1)).Count().IsEqualTo(10);
     }
 
     [Test]
@@ -117,17 +116,13 @@ internal class LargeValueTests : BaseTests
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(5);
 
-        await Assert.ThatAsync(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5),
-            Throws.InstanceOf<NexusBusyException>());
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
+        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5));
 
         // The session is fine; once the first call ends its reservation is released.
-        Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1), Has.Length.EqualTo(10));
+        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1)).Count().IsEqualTo(10);
         hold.SetResult();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(await first.Timeout(5), Has.Length.EqualTo(900 * 1024));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5), Has.Length.EqualTo(900 * 1024));
+        await Assert.That(await first.Timeout(5)).Count().IsEqualTo(900 * 1024);
+        await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5)).Count().IsEqualTo(900 * 1024);
     }
 
     [Test]

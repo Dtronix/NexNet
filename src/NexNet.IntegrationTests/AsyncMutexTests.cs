@@ -62,8 +62,7 @@ internal class AsyncMutexTests
         var next = mutex.EnterAsync().AsTask();
 
         await cts.CancelAsync();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await canceled.Timeout(1), Throws.InstanceOf<TaskCanceledException>());
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await canceled.Timeout(1));
 
         held.Dispose();
         using var nextToken = await next.Timeout(1);
@@ -74,9 +73,7 @@ internal class AsyncMutexTests
     public async Task EnterAsync_AlreadyCanceledToken_ThrowsTaskCanceled()
     {
         var mutex = new AsyncMutex();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(async () => await mutex.EnterAsync(new CancellationToken(true)),
-            Throws.InstanceOf<TaskCanceledException>());
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await mutex.EnterAsync(new CancellationToken(true)));
         await Assert.That(mutex.IsAvailable).IsTrue();
     }
 
@@ -86,7 +83,7 @@ internal class AsyncMutexTests
         var mutex = new AsyncMutex();
         var token = mutex.TryEnter();
         token.Dispose();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => token.Dispose());
+        Assert.ThrowsExactly<InvalidOperationException>(() => token.Dispose());
     }
 
     [Test]
@@ -97,7 +94,7 @@ internal class AsyncMutexTests
         stale.Dispose();
         using var current = mutex.TryEnter();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => stale.Dispose());
+        Assert.ThrowsExactly<InvalidOperationException>(() => stale.Dispose());
         await Assert.That(mutex.IsAvailable).IsFalse();
     }
 

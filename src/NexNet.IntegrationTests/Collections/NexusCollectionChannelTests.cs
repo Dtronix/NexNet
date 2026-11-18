@@ -110,6 +110,6 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         // Client should be disconnected due to slow processing
         await Task.Delay(100);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }*/
 }

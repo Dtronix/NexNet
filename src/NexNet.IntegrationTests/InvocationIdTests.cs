@@ -229,7 +229,7 @@ internal class InvocationIdTests
         var state = NexNet.Internals.RegisteredInvocationState.Rent();
         var version = state.Version;
         await manager.InvokeMethodWithResultCore(state, 0, arguments, _mockSession);
-        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await new ValueTask(state, version));
+        await Assert.ThrowsExactlyAsync<NexusMessageTooLargeException>(async () => await new ValueTask(state, version));
 
         // The rejected call took no ID, so the next ID is the first one.
         await Assert.That(manager.GetNextId(true)).IsEqualTo(1);

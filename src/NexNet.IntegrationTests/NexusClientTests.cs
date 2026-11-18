@@ -649,7 +649,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await Assert.ThrowsAsync<ProxyRemoteInvocationException>(() => client.Proxy.ServerTaskValue().Timeout(1));
+        await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(() => client.Proxy.ServerTaskValue().Timeout(1));
     }
     
     [Test]
@@ -721,8 +721,7 @@ internal partial class NexusClientTests : BaseTests
             .ToArray();
 
         var results = await Task.WhenAll(calls).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(results, Has.Exactly(20).EqualTo(42));
+        await Assert.That(results.Count(r => r == 42)).IsEqualTo(20);
     }
     
     [Test]
@@ -824,7 +823,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         // Second concurrent start should throw InvalidOperationException
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync().Timeout(1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync().Timeout(1));
     }
     
     

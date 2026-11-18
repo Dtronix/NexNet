@@ -36,9 +36,9 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.Timeout = 49);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.Timeout = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.Timeout = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = -1);
     }
 
     [Test]
@@ -46,8 +46,8 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.Timeout = 300_001);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.Timeout = int.MaxValue);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = 300_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.Timeout = int.MaxValue);
     }
 
     [Test]
@@ -69,8 +69,8 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 49);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 60_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.HandshakeTimeout = 60_001);
     }
 
     [Test]
@@ -92,9 +92,9 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 1001);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = 1001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnectionInvocations = -1);
     }
 
     [Test]
@@ -116,7 +116,7 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.DisconnectDelay = 10_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.DisconnectDelay = 10_001);
     }
 
     [Test]
@@ -134,8 +134,8 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.ReceiveSessionPipeOptions = System.IO.Pipelines.PipeOptions.Default);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new NexNet.Transports.WebSocket.WebSocketPipeOptions { InputPipeOptions = System.IO.Pipelines.PipeOptions.Default });
 
         // 0 never pauses.
         config.ReceiveSessionPipeOptions = new System.IO.Pipelines.PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0);
@@ -191,8 +191,8 @@ internal class SecurityTests
         await Assert.That(explicitTrusted.MaxConcurrentConnectionInvocations).IsEqualTo(3);
 
         // Validation unchanged: 1 to 1000.
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 1001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxConcurrentConnectionInvocations = 1001);
         trusted.MaxConcurrentConnectionInvocations = 1000;
         await Assert.That(trusted.MaxConcurrentConnectionInvocations).IsEqualTo(1000);
     }
@@ -208,8 +208,8 @@ internal class SecurityTests
         config.InvocationQueueWarningThreshold = 600_000;
         await Assert.That(config.InvocationQueueWarningThreshold).IsEqualTo(600_000);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = -1);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = 600_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationQueueWarningThreshold = 600_001);
     }
 
     [Test]
@@ -217,13 +217,13 @@ internal class SecurityTests
     {
         var config = CreateTestConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.SessionBudget = 64 * 1024 - 1);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxPipes = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxPipes = 256);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.PipeWindow = 4 * 1024 - 1);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxMessageSize = 64 * 1024 - 1);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.InvocationCredits = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.ProgressTimeout = 49);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.SessionBudget = 64 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxPipes = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxPipes = 256);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.PipeWindow = 4 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxMessageSize = 64 * 1024 - 1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.InvocationCredits = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.ProgressTimeout = 49);
     }
 
     [Test]
@@ -234,8 +234,8 @@ internal class SecurityTests
         // 32 x 256KB + 4MB + 32 x 64KB = 14MB does not fit in 8MB.
         config.SessionBudget = 8 * 1024 * 1024;
 
-        await Assert.ThrowsAsync<InvalidOperationException>(config.ValidateFlowControl);
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        Assert.ThrowsExactly<InvalidOperationException>(config.ValidateFlowControl);
+        Assert.ThrowsExactly<InvalidOperationException>(() =>
             NexNet.IntegrationTests.TestInterfaces.ServerNexus.CreateServer(config, static () => new NexNet.IntegrationTests.TestInterfaces.ServerNexus()));
     }
 

@@ -65,7 +65,7 @@ public class TransformRemoveOperationTests
     public async Task Instancing_Throws_OnIndexUnderflow()
     {
         // ReSharper disable once ObjectCreationAsStatement
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new RemoveOperation<int>(-1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new RemoveOperation<int>(-1));
     }
     
     [Test]

@@ -25,13 +25,13 @@ internal class IndexedCircularListTests
     [Test]
     public async Task Constructor_WithZeroCapacity_ThrowsArgumentException()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => new IndexedCircularList<string>(0));
+        Assert.ThrowsExactly<ArgumentException>(() => new IndexedCircularList<string>(0));
     }
 
     [Test]
     public async Task Constructor_WithNegativeCapacity_ThrowsArgumentException()
     {
-        await Assert.ThrowsAsync<ArgumentException>(() => new IndexedCircularList<string>(-1));
+        Assert.ThrowsExactly<ArgumentException>(() => new IndexedCircularList<string>(-1));
     }
 
     [Test]
@@ -195,7 +195,7 @@ internal class IndexedCircularListTests
         list.Add("B");
         list.Add("C");
         list.Add("D");
-        await Assert.ThrowsAsync<IndexOutOfRangeException>(() =>
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[0];
         });
@@ -207,7 +207,7 @@ internal class IndexedCircularListTests
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Add("B");
-        await Assert.ThrowsAsync<IndexOutOfRangeException>(() =>
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[2];
         });
@@ -335,7 +335,7 @@ internal class IndexedCircularListTests
         var list = new IndexedCircularList<string>(3);
         list.Add("A");
         list.Reset();
-        await Assert.ThrowsAsync<IndexOutOfRangeException>(() =>
+        Assert.ThrowsExactly<IndexOutOfRangeException>(() =>
         {
             var _ = list[0];
         });
@@ -464,7 +464,7 @@ internal class IndexedCircularListTests
         var nonGen = ((IEnumerable)list).GetEnumerator();
         nonGen.MoveNext();
         var firstNonGen = ((ValueTuple<long, string>)nonGen.Current);
-        Assert.That(firstNonGen, Is.EqualTo(firstGen));
+        await Assert.That(firstNonGen).IsEqualTo(firstGen);
     }*/
 
     [Test]

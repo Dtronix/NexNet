@@ -62,10 +62,10 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         var result = await reader.ReadAsync().Timeout(1);
         //foreach (var complexMessage in result)
         //{
-        //    Assert.That(complexMessage, Is.EqualTo(value));
+        //    await Assert.That(complexMessage).IsEqualTo(value);
         //}
 //
-        //Assert.That(result.Count(), Is.EqualTo(iterations));
+        //await Assert.That(result.Count()).IsEqualTo(iterations);
     }*/
     
     [Repeat(20)]

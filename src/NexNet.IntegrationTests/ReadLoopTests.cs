@@ -74,7 +74,7 @@ internal class ReadLoopTests : BaseTests
             await client.Stream!.WriteAsync(pings).AsTask().Timeout(5);
 
         // The read loop still reaches this.
-        client.Write((byte)MessageType.DisconnectGraceful);
+        await client.Write((byte)MessageType.DisconnectGraceful);
         await disconnected.Task.Timeout(5);
     }
 
@@ -98,7 +98,7 @@ internal class ReadLoopTests : BaseTests
         await client.AssertReceiveMessageAsync<ServerGreetingMessage>().Timeout(1);
 
         // One frame header, then its body a byte every 100 ms. Any received byte used to count as activity.
-        client.Write([(byte)MessageType.InvocationCancellation, 0xFF, 0x00]);
+        await client.Write([(byte)MessageType.InvocationCancellation, 0xFF, 0x00]);
         var disconnect = client.AssertDisconnectReason(DisconnectReason.Timeout);
         for (var i = 0; i < 40 && !disconnect.IsCompleted; i++)
         {

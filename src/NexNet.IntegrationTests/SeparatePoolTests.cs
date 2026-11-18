@@ -18,16 +18,16 @@ internal class SeparatePoolTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;
 
-    public override void SetUp()
+    protected override void SetUp()
     {
         base.SetUp();
         _recorder = new MetricsRecorder();
     }
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
         _recorder.Dispose();
-        base.TearDown();
+        await base.TearDown();
     }
 
     /// <summary>
@@ -110,8 +110,8 @@ internal class SeparatePoolTests : BaseTests
         await Assert.That(explicitTrusted.MaxSeparatePoolInvocations).IsEqualTo(3);
 
         // 1 to 1000.
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 1001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 1001);
         trusted.MaxSeparatePoolInvocations = 1;
         await Assert.That(trusted.MaxSeparatePoolInvocations).IsEqualTo(1);
         trusted.MaxSeparatePoolInvocations = 1000;
@@ -268,8 +268,7 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(1);
         await gates.Started(2).Timeout(1);
         await WaitFor(() => Warnings().Length >= 1, "the separate-pool warning");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(Warnings(), Has.Length.EqualTo(1));
+        await Assert.That(Warnings()).Count().IsEqualTo(1);
         await Assert.That(Warnings()[0]).Contains("(MaxSeparatePoolInvocations 1, threshold 1000 ms).");
         await Assert.That(Warnings()[0]).DoesNotContain("MaxConcurrentConnectionInvocations");
 
@@ -277,8 +276,7 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(3);
         await gates.Started(4).Timeout(1);
         await Task.Delay(100);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(Warnings(), Has.Length.EqualTo(1), "The pools do not share the 30 s warning window.");
+        await Assert.That(Warnings()).Count().IsEqualTo(1).Because("The pools do not share the 30 s warning window.");
 
         // 31 s later the next slow separate-pool call is reported, counting the suppressed normal-pool one.
         calls.Add(client.Proxy.Slow(5).AsTask());
@@ -287,8 +285,7 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(2);
         await gates.Started(5).Timeout(1);
         await WaitFor(() => Warnings().Length >= 2, "the second warning");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(Warnings(), Has.Length.EqualTo(2));
+        await Assert.That(Warnings()).Count().IsEqualTo(2);
         await Assert.That(Warnings()[1]).Contains("MaxSeparatePoolInvocations 1");
         await Assert.That(Warnings()[1]).EndsWith("(1 more since the last warning).");
 
@@ -421,7 +418,7 @@ internal class SeparatePoolTests : BaseTests
         await started.Task.Timeout(1);
         cts.Cancel();
 
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await call.Timeout(1));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await call.Timeout(1));
         await observed.Task.Timeout(1);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0 }, "the separate pool idle");
     }
@@ -451,7 +448,7 @@ internal class SeparatePoolTests : BaseTests
         await WaitFor(() => Invocations(server)?.SeparatePoolQueued == 1, "the cancelable call queued");
 
         cts.Cancel();
-        await Assert.ThrowsAsync<OperationCanceledException>(async () => await queued.Timeout(1));
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await queued.Timeout(1));
 
         // Once a slot frees, the canceled call either does not run or runs with its token already canceled, and ends.
         gates.Release(1);

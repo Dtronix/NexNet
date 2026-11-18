@@ -21,9 +21,8 @@ internal class WebSocketPipeTests
         // The transport is closed while a receive is in flight, then the receive returns data.
         await pipe.CompleteAsync().AsTask().Timeout(1);
         socket.ReleaseReceive.SetResult();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(async () => await run.Timeout(1), Throws.Nothing);
+        await Assert.That(async () => await run.Timeout(1)).ThrowsNothing();
     }
 
     /// <summary>

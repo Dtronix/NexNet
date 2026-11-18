@@ -42,8 +42,7 @@ internal class InvocationCreditTests : BaseTests
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
         release.SetResult();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(await Task.WhenAll(calls).Timeout(1), Is.All.EqualTo(1));
+        await Assert.That(await Task.WhenAll(calls).Timeout(1)).All(x => Equals(x, 1));
         await Assert.That(received).IsEqualTo(4);
     }
 
@@ -73,7 +72,7 @@ internal class InvocationCreditTests : BaseTests
         // Canceled before it is sent: like any call canceled before sending, it throws TaskCanceledException.
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
@@ -104,7 +103,7 @@ internal class InvocationCreditTests : BaseTests
         await Task.Delay(100);
         using var cts = new CancellationTokenSource(100);
         var waiting = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await waiting.Timeout(1));
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
@@ -240,8 +239,7 @@ internal class InvocationCreditTests : BaseTests
 
         // Both stalled clients are waited for at the same time: one timeout, not two.
         await broadcast.Timeout(3);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(elapsed.ElapsedMilliseconds, Is.InRange(900, 1800));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsBetween(900, 1800);
         await Assert.That(stalled1.IsConnected && stalled2.IsConnected).IsTrue();
     }
 
@@ -276,8 +274,7 @@ internal class InvocationCreditTests : BaseTests
         // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(300 * 1024));
+        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 300 * 1024));
         await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
 
         await broadcast.Timeout(3);
@@ -360,15 +357,15 @@ internal class InvocationCreditTests : BaseTests
 
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(12345));
+        await Assert.That(await Task.WhenAll(received).Timeout(1)).All(x => Equals(x, 12345));
+        byte[][] sent;
         lock (frames)
-        {
-            await Assert.That(frames).Count().IsEqualTo(3);
-            await Assert.That(frames[1]).IsEqualTo(frames[0]);
-            await Assert.That(frames[2]).IsEqualTo(frames[0]);
-        }
+            sent = frames.ToArray();
+
+        await Assert.That(sent).Count().IsEqualTo(3);
+        await Assert.That(sent[1]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
+        await Assert.That(sent[2]).IsEquivalentTo(sent[0], CollectionOrdering.Matching);
     }
 
     /// <summary>

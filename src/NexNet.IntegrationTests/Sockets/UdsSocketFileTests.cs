@@ -16,7 +16,7 @@ internal class UdsSocketFileTests : BaseTests
     private DirectoryInfo _dir = null!;
     private string _path = null!;
 
-    public override void SetUp()
+    protected override void SetUp()
     {
         base.SetUp();
         _dir = Directory.CreateTempSubdirectory("udsf");
@@ -24,9 +24,9 @@ internal class UdsSocketFileTests : BaseTests
         CurrentUdsPath = new UnixDomainSocketEndPoint(_path);
     }
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
-        base.TearDown();
+        await base.TearDown();
         try { _dir.Delete(true); }
         catch { /* best effort */ }
     }
@@ -61,11 +61,11 @@ internal class UdsSocketFileTests : BaseTests
     [Test]
     public async Task StaleSocketFile_WithoutOption_FailsAsToday()
     {
-        CreateStaleSocketFile(_path);
+        await CreateStaleSocketFile(_path);
         var config = CreateUdsServerConfig();
         var server = CreateServer(config, null);
 
-        var ex = await await Assert.ThrowsAsync<TransportException>(() => server.StartAsync().Timeout(1));
+        var ex = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(1));
         await Assert.That(ex!.Error).IsEqualTo(TransportError.AddressInUse);
         await Assert.That(File.Exists(_path)).IsTrue();
     }
@@ -73,7 +73,7 @@ internal class UdsSocketFileTests : BaseTests
     [Test]
     public async Task StaleSocketFile_IsRemoved_AndServerStarts()
     {
-        CreateStaleSocketFile(_path);
+        await CreateStaleSocketFile(_path);
         var config = CreateUdsServerConfig();
         config.RemoveStaleSocketFile = true;
         var (server, client, _) = CreateServerClient(config, CreateClientConfig(Type.Uds), startServer: false);
@@ -94,7 +94,7 @@ internal class UdsSocketFileTests : BaseTests
         config.RemoveStaleSocketFile = true;
         var second = CreateServer(config, null);
 
-        var ex = await await Assert.ThrowsAsync<TransportException>(() => second.StartAsync().Timeout(2));
+        var ex = await Assert.ThrowsExactlyAsync<TransportException>(() => second.StartAsync().Timeout(2));
         await Assert.That(ex!.Error).IsEqualTo(TransportError.AddressInUse);
         await Assert.That(File.Exists(_path)).IsTrue().Because("the live server's socket file was deleted");
 
@@ -111,7 +111,7 @@ internal class UdsSocketFileTests : BaseTests
         config.RemoveStaleSocketFile = true;
         var server = CreateServer(config, null);
 
-        await Assert.ThrowsAsync<TransportException>(() => server.StartAsync().Timeout(2));
+        await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(2));
         await Assert.That(File.Exists(_path)).IsTrue().Because("a regular file was deleted");
         await Assert.That(await File.ReadAllTextAsync(_path)).IsEqualTo("not a socket");
     }
@@ -133,9 +133,8 @@ internal class UdsSocketFileTests : BaseTests
         var config = CreateUdsServerConfig();
         config.RemoveStaleSocketFile = true;
         var server = CreateServer(config, null);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(async () => await server.StartAsync().Timeout(2), Throws.Exception);
+        await Assert.ThrowsAsync<Exception>(async () => await server.StartAsync().Timeout(2));
         await Assert.That(new FileInfo(_path).LinkTarget).IsNotNull().Because("a symbolic link at the path was deleted");
         await Assert.That(await File.ReadAllTextAsync(target)).IsEqualTo("target");
     }
@@ -148,9 +147,8 @@ internal class UdsSocketFileTests : BaseTests
         var config = CreateUdsServerConfig();
         config.RemoveStaleSocketFile = true;
         var server = CreateServer(config, null);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(async () => await server.StartAsync().Timeout(2), Throws.Exception);
+        await Assert.ThrowsAsync<Exception>(async () => await server.StartAsync().Timeout(2));
         await Assert.That(File.Exists(Path.Combine(_path, "keep.txt"))).IsTrue().Because("a directory was deleted");
     }
 
@@ -164,7 +162,7 @@ internal class UdsSocketFileTests : BaseTests
         if (OperatingSystem.IsWindows())
         {
             var server = CreateServer(config, null);
-            var ex = await await Assert.ThrowsAsync<PlatformNotSupportedException>(() => server.StartAsync().Timeout(1));
+            var ex = await Assert.ThrowsExactlyAsync<PlatformNotSupportedException>(() => server.StartAsync().Timeout(1));
             await Assert.That(ex!.Message).Contains(nameof(UdsServerConfig.SocketFileMode));
             return;
         }

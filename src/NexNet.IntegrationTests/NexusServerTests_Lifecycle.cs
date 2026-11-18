@@ -32,7 +32,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await occupier.StartAsync().Timeout(1);
 
-        var exception = await await Assert.ThrowsAsync<TransportException>(() => server.StartAsync().Timeout(1));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(1));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AddressInUse);
         await Assert.That(exception.Message).Contains($"'{config.TransportName}'").Because("The exception should name the endpoint that failed to bind.");
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
@@ -51,7 +51,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
     public async Task NullListener_LeavesServerStopped()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Listener), () => null!);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync());
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
         await server.DisposeAsync();
     }
@@ -152,7 +152,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         using var socket = CreateBoundNotListeningSocket();
         var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await listener.CloseAsync(false);
     }
 
@@ -163,7 +163,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
         await listener.CloseAsync(false);
 
-        var exception = await await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsExactlyAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 
@@ -226,7 +226,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         using var socket = CreateBoundNotListeningSocket();
         var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await listener.CloseAsync(false);
     }
 
@@ -237,7 +237,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
         await listener.CloseAsync(false);
 
-        var exception = await await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsExactlyAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 

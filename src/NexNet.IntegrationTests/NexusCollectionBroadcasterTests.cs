@@ -9,8 +9,7 @@ namespace NexNet.IntegrationTests;
 internal class NexusBroadcastConnectionManagerTests : BaseTests
 {
 
-    [Before(HookType.Test)]
-    public override void SetUp()
+    protected override void SetUp()
     {
         LoggerMode = BasePipeTests.LogMode.OnTestFail;
         base.SetUp();
@@ -38,7 +37,7 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         var cts = new CancellationTokenSource();
         using var bl = new BroadcasterLifetime(Logger, false);
         await Assert.That(bl.ConnectionManager.IsRunning).IsFalse();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => bl.ConnectionManager.AddClientAsync(CreateTestClient()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => bl.ConnectionManager.AddClientAsync(CreateTestClient()));
     }
 
     [Test]
@@ -55,10 +54,9 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await message.ReturnedToCacheTask.Timeout(1);
 
         await Assert.That(message.ReturnedToCacheCount).IsEqualTo(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(message.SourceClientClone, hasSource ? Is.Not.Null : Is.Null);
+        await Assert.That(message.SourceClientClone is not null).IsEqualTo(hasSource);
         if (hasSource)
-            await Assert.That(message.SourceClientClone.ReturnedToCacheCount).IsEqualTo(1);
+            await Assert.That(message.SourceClientClone!.ReturnedToCacheCount).IsEqualTo(1);
     }
 
     [Test]
@@ -81,10 +79,9 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await message.ReturnedToCacheTask.Timeout(1);
 
         await Assert.That(message.ReturnedToCacheCount).IsEqualTo(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(message.SourceClientClone, hasSource ? Is.Not.Null : Is.Null);
+        await Assert.That(message.SourceClientClone is not null).IsEqualTo(hasSource);
         if (hasSource)
-            await Assert.That(message.SourceClientClone.ReturnedToCacheCount).IsEqualTo(1);
+            await Assert.That(message.SourceClientClone!.ReturnedToCacheCount).IsEqualTo(1);
     }
 
     [Test]
@@ -104,9 +101,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await Task.WhenAll(clientComplete).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.BufferWrites.Count == 1));
+        await Assert.That(clients).All(c => c!.BufferWrites.Count == 1);
     }
 
     [Test]
@@ -130,15 +126,11 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         if (hasSource)
         {
             await Assert.That(clients[0].Sends[0].Flags).IsEqualTo(NexusCollectionMessageFlags.Ack);
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(clients[1..], Has.All.Matches<TestBroadcastSession>(
-                c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
+            await Assert.That(clients[1..]).All(c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack);
         }
         else
         {
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(clients, Has.All.Matches<TestBroadcastSession>(
-                c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack));
+            await Assert.That(clients).All(c => c!.Sends[0].Flags != NexusCollectionMessageFlags.Ack);
         }
     }
 
@@ -164,9 +156,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await Task.WhenAll(clientComplete).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
+        await Assert.That(clients).All(c => c!.CompletePipeFired);
     }
 
     [Test]
@@ -191,9 +182,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await Task.WhenAll(clientComplete).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
+        await Assert.That(clients).All(c => c!.CompletePipeFired);
     }
 
     [Test]
@@ -218,9 +208,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await bl.ConnectionManager.BroadcastAsync(message, hasSource ? clients[0] : null);
 
         await Task.WhenAll(clientComplete).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
+        await Assert.That(clients).All(c => c!.CompletePipeFired);
     }
 
     [Test]
@@ -239,9 +228,8 @@ internal class NexusBroadcastConnectionManagerTests : BaseTests
         await cts.CancelAsync().Timeout(1);
         
         await Task.WhenAll(clientComplete).Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(clients, Has.All.Matches<TestBroadcastSession>(c => c!.CompletePipeFired));
+        await Assert.That(clients).All(c => c!.CompletePipeFired);
     }
 
 

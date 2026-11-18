@@ -94,7 +94,7 @@ internal partial class NexusServerTests : BaseTests
             CreateClientConfig(type));
 
 
-        await Assert.That(server.StoppedTask).IsNull();
+        await Assert.That(server.StoppedTask is null).IsTrue();
         await server.StartAsync().Timeout(1);
         await Assert.That(server.StoppedTask!.IsCompleted).IsFalse();
 
@@ -135,7 +135,7 @@ internal partial class NexusServerTests : BaseTests
     public async Task ServerThrowsWhenTransportConfigReturnsNullListenerOnWrongMode()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Listener), () => null!);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync());
     }
     
     [Test]
@@ -150,7 +150,7 @@ internal partial class NexusServerTests : BaseTests
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
         await Assert.That(() => server.StartAsync()).ThrowsNothing();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync());
     }
     
     /// <summary>
@@ -271,7 +271,7 @@ internal partial class NexusServerTests : BaseTests
     public async Task StopWithoutStartThrows(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StopAsync());
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StopAsync());
     }
     
     /// <summary>

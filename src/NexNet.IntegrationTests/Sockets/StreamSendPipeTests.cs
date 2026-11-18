@@ -69,9 +69,8 @@ internal class StreamSendPipeTests
 
         stream.Release();
         await CompleteAndDrain(sendPipe);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(stream.Writes.Select(w => w.Length), Has.All.LessThanOrEqualTo(StreamSendPipe.CoalesceSize));
+        await Assert.That(stream.Writes.Select(w => w.Length)).All(length => length <= StreamSendPipe.CoalesceSize);
         await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEqualTo(expected.ToArray());
     }
 

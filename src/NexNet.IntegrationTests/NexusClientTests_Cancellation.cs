@@ -21,12 +21,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                await Assert.That(message.InvocationId).IsEqualTo(1);
+                CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
             async client =>
             {
-                await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
                 {
                     await client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(100).Token);
                 });
@@ -48,12 +48,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                await Assert.That(message.InvocationId).IsEqualTo(1);
+                CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
             async client =>
             {
-                await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
                 {
                     await client.Proxy.ServerTaskWithValueAndCancellation(1234, new CancellationTokenSource(100).Token);
                 });
@@ -76,12 +76,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                await Assert.That(message.InvocationId).IsEqualTo(1);
+                CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
             async client =>
             {
-                await Assert.ThrowsAsync<TaskCanceledException>(async() => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token));
+                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async() => await client.Proxy.ServerTaskValueWithCancellation(new CancellationTokenSource(100).Token));
             }).Timeout(1);
 
         await tcs.Timeout(1);
@@ -101,12 +101,12 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                await Assert.That(message.InvocationId).IsEqualTo(1);
+                CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
             async client =>
             {
-                await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
+                await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValueWithValueAndCancellation(1234, new CancellationTokenSource(100).Token));
             }).Timeout(1);
 
         await tcs.Timeout(1);
@@ -121,7 +121,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             sNexus => sNexus.ServerTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
             {
-                await Assert.That(message.InvocationId).IsEqualTo(1);
+                CallbackAssert.Equal(message.InvocationId, 1);
                 source.TrySetResult();
             },
             client => client.Proxy.ServerTaskWithCancellation(new CancellationTokenSource(200).Token));
@@ -160,7 +160,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         using var cts = new CancellationTokenSource();
         var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await first.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await first.Timeout(1));
 
         var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, CancellationToken.None).AsTask();
         firstGate.SetResult();
@@ -191,7 +191,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         using var cts = new CancellationTokenSource();
         var call = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await call.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await call.Timeout(1));
 
         var stateManager = client.Session!.SessionInvocationStateManager;
         var deadline = DateTime.UtcNow.AddSeconds(1);
@@ -235,7 +235,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         var second = client.Proxy.ServerTaskValueWithValueAndCancellation(2, cts.Token).AsTask();
         await Task.Delay(100);
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await second.Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await second.Timeout(1));
         await Task.Delay(100);
 
         release.SetResult();
@@ -267,7 +267,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
             await client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask().Timeout(1));
 
         // Never sent and no id taken: the next call gets id 1 and is the only one the server sees.
@@ -295,7 +295,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
             await client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask().Timeout(1));
 
         await Assert.That(client.Session!.SessionInvocationStateManager.IsOutstanding(1)).IsFalse();
@@ -315,7 +315,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValue().AsTask().Timeout(1));
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValue().AsTask().Timeout(1));
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 

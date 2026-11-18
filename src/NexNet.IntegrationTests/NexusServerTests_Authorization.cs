@@ -20,7 +20,7 @@ internal class NexusServerTests_Authorization : BaseTests
     private readonly List<INexusServerFactory> _authServerFactories = new();
     private readonly List<INexusClient> _authClients = new();
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
         foreach (var client in _authClients)
         {
@@ -42,7 +42,7 @@ internal class NexusServerTests_Authorization : BaseTests
         }
         _aspApps.Clear();
 
-        base.TearDown();
+        await base.TearDown();
     }
 
     private (NexusServerFactory<AuthServerNexus, AuthServerNexus.ClientProxy> server,
@@ -127,7 +127,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedMethod("test").Timeout(1));
     }
 
@@ -335,7 +335,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+        await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedWithReturn(21).Timeout(1));
     }
 
@@ -374,9 +374,9 @@ internal class NexusServerTests_Authorization : BaseTests
         // Twice each, so that with the cache enabled the second refusal comes from the cache.
         for (var i = 0; i < 2; i++)
         {
-            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+            await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
                 await client.Proxy.ProtectedMethod("test").Timeout(1));
-            await Assert.ThrowsAsync<ProxyUnauthorizedException>(async () =>
+            await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
                 await client.Proxy.ProtectedWithReturn(21).Timeout(1));
 
             // Results arrive in order, so any extra result for a refused call has been read by the time this

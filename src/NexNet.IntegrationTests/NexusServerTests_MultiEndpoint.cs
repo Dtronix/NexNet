@@ -90,8 +90,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await Assert.That(snapshot.Endpoints[0].IsListener).IsTrue();
         await Assert.That(snapshot.Endpoints[3].IsListener).IsFalse();
         await Assert.That(snapshot.Endpoints[3].Address).IsEqualTo("/httpsocket-test");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(snapshot.Sessions.Select(s => s.Endpoint), Is.EquivalentTo(new[] { "tcp", "uds", "websocket", "httpsocket" }));
+        await Assert.That(snapshot.Sessions.Select(s => s.Endpoint!)).IsEquivalentTo(new[] { "tcp", "uds", "websocket", "httpsocket" });
 
         await multi.Server.StopAsync().Timeout(2);
         await Assert.That(multi.Server.GetSnapshot().Endpoints.All(e => e.State == NexusEndpointState.Stopped)).IsTrue();
@@ -292,8 +291,10 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         var result = await udsClient.TryConnectAsync().Timeout(2);
         await Assert.That(result.Success).IsFalse().Because("The UDS endpoint requires authentication.");
 
+        string[] seen;
         lock (authenticated)
-            await Assert.That(authenticated).IsEqualTo(new[] { "uds" });
+            seen = authenticated.ToArray();
+        await Assert.That(seen).IsEquivalentTo(new[] { "uds" }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -303,7 +304,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             (type, config) => config.Authenticate = type != Type.Uds,
             Type.Tcp, Type.Uds);
 
-        var exception = await await Assert.ThrowsAsync<InvalidOperationException>(() => multi.Server.StartAsync());
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => multi.Server.StartAsync());
         await Assert.That(exception!.Message).Contains("'uds'");
         await Assert.That(multi.Server.State).IsEqualTo(NexusServerState.Stopped);
 
@@ -373,7 +374,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         occupier.Start();
         try
         {
-            var exception = await await Assert.ThrowsAsync<TransportException>(() => multi.Server.StartAsync().Timeout(2));
+            var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => multi.Server.StartAsync().Timeout(2));
             await Assert.That(exception!.Message).Contains("'tcp'");
             await Assert.That(multi.Server.State).IsEqualTo(NexusServerState.Stopped);
 
@@ -430,27 +431,27 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         using (Assert.Multiple())
         {
             // Duplicate name.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "uds"));
             // Same port.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, ((IPEndPoint)tcp.EndPoint).Port) }, "tcp2"));
             // Same UDS path.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new UdsServerConfig { EndPoint = ((UdsServerConfig)multi.Configs[Type.Uds]).EndPoint }, "uds2"));
             // Same configuration instance.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(tcp, "tcp3"));
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(tcp, "tcp3"));
             // Not a listener configuration.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new NexNet.Asp.WebSocket.WebSocketServerConfig { Path = "/ws" }, "ws"));
             // Server-wide settings.
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new TcpServerConfig
                 {
                     EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()),
                     RateLimiting = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 }
                 }, "tcp4"));
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
                 new TcpServerConfig
                 {
                     EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()),
@@ -458,7 +459,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                 }, "tcp5"));
             // Same ASP.NET path.
             server.AddExternalEndpoint(new NexNet.Asp.WebSocket.WebSocketServerConfig { Path = "/ws" }, "ws");
-            await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddExternalEndpoint(
+            Assert.ThrowsExactly<InvalidOperationException>(() => server.AddExternalEndpoint(
                 new NexNet.Asp.HttpSocket.HttpSocketServerConfig { Path = "/WS" }, "hs"));
 
         }
@@ -466,11 +467,11 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await Assert.That(server.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "uds", "ws" });
 
         await server.StartAsync().Timeout(1);
-        await Assert.ThrowsAsync<InvalidOperationException>(() => server.AddListener(
+        Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
             new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "late"));
 
         var unconfigured = new NexusServer<ServerNexus, ServerNexus.ClientProxy>();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => unconfigured.AddListener(
+        Assert.ThrowsExactly<InvalidOperationException>(() => unconfigured.AddListener(
             new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "tcp"));
     }
 
@@ -592,7 +593,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         {
             blocked.Options.CollectHttpResponseDetails = true;
             blocked.Options.SetRequestHeader("Origin", "https://evil.example");
-            await Assert.ThrowsAsync<WebSocketException>(() => blocked.ConnectAsync(url, CancellationToken.None).Timeout(1));
+            await Assert.ThrowsExactlyAsync<WebSocketException>(() => blocked.ConnectAsync(url, CancellationToken.None).Timeout(1));
             await Assert.That(blocked.HttpStatusCode).IsEqualTo(HttpStatusCode.Forbidden);
         }
 
@@ -644,7 +645,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         }
         else
         {
-            var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+            var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
             await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
         }
     }

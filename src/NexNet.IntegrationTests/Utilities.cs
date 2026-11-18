@@ -246,7 +246,7 @@ internal static class Utilities
 }
 
 /// <summary>
-/// Buffers test log output and only writes to TestContext.Out if the test fails.
+/// Buffers test log output and only writes to the test output if the test fails.
 /// Use in tests to reduce noise from passing tests while preserving diagnostic info for failures.
 /// </summary>
 internal sealed class BufferedTestLogger
@@ -277,20 +277,19 @@ internal sealed class BufferedTestLogger
     }
 
     /// <summary>
-    /// Writes buffered logs to TestContext.Out only if the current test failed.
+    /// Writes buffered logs to the test output only if the current test failed.
     /// Call in TearDown.
     /// </summary>
     public void FlushOnFailure()
     {
-        var status = TestContext.CurrentContext.Result.Outcome.Status;
-        if (status == TestStatus.Failed)
+        if (TestContext.Current?.Execution.Result?.State is TestState.Failed or TestState.Timeout)
         {
             Flush();
         }
     }
 
     /// <summary>
-    /// Writes all buffered logs to TestContext.Out unconditionally.
+    /// Writes all buffered logs to the test output unconditionally.
     /// </summary>
     public void Flush()
     {
@@ -298,7 +297,7 @@ internal sealed class BufferedTestLogger
         {
             if (_buffer.Length > 0)
             {
-                TestContext.Out.Write(_buffer.ToString());
+                TestContext.Current?.Output.StandardOutput.Write(_buffer.ToString());
             }
         }
     }

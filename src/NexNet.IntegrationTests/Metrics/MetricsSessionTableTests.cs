@@ -62,8 +62,7 @@ internal class MetricsSessionTableTests
             await Assert.That(table.Remove(session)).IsTrue();
 
         var remaining = sessions.Where(s => s.MetricsSlot >= 0).ToArray();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(remaining, Has.Length.EqualTo(10));
+        await Assert.That(remaining).Count().IsEqualTo(10);
         await Assert.That(table.Capacity).IsLessThanOrEqualTo(64);
         foreach (var session in remaining)
             await Assert.That(table.Slots[session.MetricsSlot]).IsSameReferenceAs(session);

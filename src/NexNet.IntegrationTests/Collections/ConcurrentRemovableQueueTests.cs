@@ -133,7 +133,7 @@ internal class ConcurrentRemovableQueueTests
             start.Set();
             foreach (var x in q)
             {
-                await Assert.That(enumerated.TryAdd(x, 0)).IsTrue().Because("Duplicate observed during enumeration.");
+                CallbackAssert.That(enumerated.TryAdd(x, 0)); // A duplicate observed during enumeration fails the WaitAll below.
             }
         });
 
@@ -168,7 +168,7 @@ internal class ConcurrentRemovableQueueTests
             start.Set();
             foreach (var x in q)
             {
-                await Assert.That(enumerated.TryAdd(x, 0)).IsTrue();
+                CallbackAssert.That(enumerated.TryAdd(x, 0));
             }
         });
 
@@ -577,9 +577,11 @@ internal class ConcurrentRemovableQueueTests
             var seen = new HashSet<int>();
             foreach (var x in q)
             {
-                await Assert.That(seen.Add(x)).IsTrue();
-                // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-                Assert.That(x, Is.InRange(0, n - 1));
+                // Asserts cannot be awaited here; a failure faults the task, which fails the WaitAll below.
+                if (!seen.Add(x))
+                    throw new InvalidOperationException($"Item {x} enumerated twice.");
+                if (x < 0 || x > n - 1)
+                    throw new InvalidOperationException($"Item {x} is out of range.");
             }
             return seen.Count;
         })).ToArray();
@@ -635,7 +637,7 @@ internal class ConcurrentRemovableQueueTests
     public async Task NullValues_NotSupported_ForReferenceTypes()
     {
         var q = new ConcurrentRemovableQueue<string>();
-        await Assert.ThrowsAsync<ArgumentNullException>(() => q.Enqueue(null!));
+        Assert.ThrowsExactly<ArgumentNullException>(() => q.Enqueue(null!));
     }
 
     [Test]
@@ -891,7 +893,7 @@ internal class ConcurrentRemovableQueueTests
                 // Sanity: Count should never be negative
                 if ((i & 0x3FF) == 0)
                 {
-                    await Assert.That(q.Count).IsGreaterThanOrEqualTo(0);
+                    CallbackAssert.That(q.Count >= 0);
                 }
             }
         })).ToArray();

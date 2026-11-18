@@ -18,13 +18,14 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal class TlsCertificateTests : BaseTests
 {
-    private X509Certificate2 ServerCertificate = null!;
-    private X509Certificate2 ClientCertificate = null!;
-    private X509Certificate2 TestCa = null!;
-    private string ServerFingerprint = null!;
+    // Loaded once for the class; TUnit creates an instance per test.
+    private static X509Certificate2 ServerCertificate = null!;
+    private static X509Certificate2 ClientCertificate = null!;
+    private static X509Certificate2 TestCa = null!;
+    private static string ServerFingerprint = null!;
 
     [Before(HookType.Class)]
-    public void LoadCertificates()
+    public static void LoadCertificates()
     {
         ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass");
         ServerFingerprint = ServerCertificate.GetCertHashString(HashAlgorithmName.SHA256);
@@ -32,27 +33,24 @@ internal class TlsCertificateTests : BaseTests
         TestCa = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine("certs", "test-ca.pem")));
     }
 
-    public override void OneTimeTearDown()
+    [After(HookType.Class)]
+    public static void DisposeCertificates()
     {
         ServerCertificate.Dispose();
         ClientCertificate.Dispose();
         TestCa.Dispose();
-        base.OneTimeTearDown();
     }
 
     [Test]
-    public void ServerCertificate_HasLoopbackSubjectAltNames()
+    public async Task ServerCertificate_HasLoopbackSubjectAltNames()
     {
         var san = ServerCertificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(san.EnumerateDnsNames(), Is.EquivalentTo(new[] { "localhost" }));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(san.EnumerateIPAddresses(), Is.EquivalentTo(new[] { IPAddress.Loopback, IPAddress.IPv6Loopback }));
+        CallbackAssert.Equal(san.EnumerateDnsNames(), new[] { "localhost" });
+        CallbackAssert.Equal(san.EnumerateIPAddresses(), new[] { IPAddress.Loopback, IPAddress.IPv6Loopback });
 
         var eku = ServerCertificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().Single();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(eku.EnhancedKeyUsages.Cast<Oid>().Select(o => o.Value), Is.EquivalentTo(new[] { "1.3.6.1.5.5.7.3.1" }));
+        CallbackAssert.Equal(eku.EnhancedKeyUsages.Cast<Oid>().Select(o => o.Value), new[] { "1.3.6.1.5.5.7.3.1" });
     }
 
     [Test]
@@ -101,7 +99,7 @@ internal class TlsCertificateTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        var exception = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
@@ -192,7 +190,7 @@ internal class TlsCertificateTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        var exception = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
         await Assert.That(sessionCreated).IsFalse();
     }
@@ -210,7 +208,7 @@ internal class TlsCertificateTests : BaseTests
 
         await server.StartAsync().Timeout(1);
 
-        var exception = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 

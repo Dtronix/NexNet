@@ -44,7 +44,7 @@ internal class NexusPipeManagerTests
         manager.RentPipe();
         manager.RentPipe();
 
-        await Assert.ThrowsAsync<NexusBusyException>(() => manager.RentPipe());
+        Assert.ThrowsExactly<NexusBusyException>(() => manager.RentPipe());
     }
 
     [Test]
@@ -58,7 +58,7 @@ internal class NexusPipeManagerTests
         manager.RentPipe();
         await Assert.That(session.Budget.Reserved).IsEqualTo(session.Config.PipeWindow);
 
-        await Assert.ThrowsAsync<NexusBusyException>(() => manager.RentPipe());
+        Assert.ThrowsExactly<NexusBusyException>(() => manager.RentPipe());
         await Assert.That(session.Budget.Reserved).IsEqualTo(session.Config.PipeWindow);
     }
 }

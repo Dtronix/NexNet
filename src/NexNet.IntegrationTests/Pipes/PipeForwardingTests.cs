@@ -103,7 +103,7 @@ internal class PipeForwardingTests : BaseTests
 
         // The forwarder is now waiting on the source's input.
         cts.Cancel();
-        await Assert.ThatAsync(async () => await forward.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await forward.Timeout(1));
 
         // The source is still open: the server reads what A sends next.
         await r.APipe.Output.WriteAsync(new byte[] { 9, 9 }).Timeout(1);
@@ -155,7 +155,7 @@ internal class PipeForwardingTests : BaseTests
         await Assert.That(await ReadExactly(r.APipe.Input, 1).Timeout(2)).IsEqualTo(1);
 
         cts.Cancel();
-        await Assert.ThatAsync(async () => await bridge.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await bridge.Timeout(1));
 
         // Both pipes still carry data in both directions.
         await AssertCarries(r.APipe.Output, r.ServerSource.Input, 3);
@@ -313,7 +313,7 @@ internal class PipeForwardingTests : BaseTests
         await Assert.That(await bItems.MoveNextAsync().AsTask().Timeout(2)).IsTrue();
         await Assert.That(bItems.Current.Length).IsEqualTo(10);
 
-        await Assert.ThatAsync(async () => await forward.Timeout(5), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await forward.Timeout(5));
 
         // None of the oversized item reached B: the next item B reads is the one the server writes now.
         var serverWriter = await destination.GetWriterAsync();

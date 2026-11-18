@@ -34,7 +34,7 @@ public class NexusPipeWriterTests
         var messenger = new SpySessionMessenger();
         var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 128).WithCredit();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.Complete());
+        Assert.ThrowsExactly<InvalidOperationException>(() => writer.Complete());
     }
 
 
@@ -49,7 +49,7 @@ public class NexusPipeWriterTests
 
         await writer.CompleteAsync();
 
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
             await Assert.That(state.LastUpdatedState).IsEqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete);
             await Assert.That(state.NotifyStateCalled).IsEqualTo(updateStateReturns);
@@ -65,7 +65,7 @@ public class NexusPipeWriterTests
         var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64).WithCredit();
 
         var result = await writer.FlushAsync();
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
             await Assert.That(result.IsCanceled).IsFalse();
             await Assert.That(result.IsCompleted).IsFalse();
@@ -87,7 +87,7 @@ public class NexusPipeWriterTests
         writer.Advance(30);
 
         var result = await writer.FlushAsync();
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
             await Assert.That(result.IsCanceled).IsFalse();
             await Assert.That(result.IsCompleted).IsFalse();
@@ -112,14 +112,13 @@ public class NexusPipeWriterTests
         writer.Advance(12);
 
         var result = await writer.FlushAsync();
-        using (Assert.EnterMultipleScope())
+        using (Assert.Multiple())
         {
             await Assert.That(result.IsCanceled).IsFalse();
             await Assert.That(result.IsCompleted).IsFalse();
 
             await Assert.That(messenger.SendHeaderWithBodyCount).IsEqualTo(3);
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(messenger.BodyLengths, Is.EqualTo(new[] { 5, 5, 2 }).AsCollection);
+            await Assert.That(messenger.BodyLengths).IsEquivalentTo(new[] { 5, 5, 2 }, CollectionOrdering.Matching);
         }
     }
 

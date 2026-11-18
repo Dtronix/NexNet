@@ -55,10 +55,8 @@ internal class CollectionManagerRestartTests : NexusCollectionBaseTests
 
         using (Assert.Multiple())
         {
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([1, 2]));
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 2]));
+            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([1, 2]);
+            await Assert.That(serverNexus.IntListBi).IsEquivalentTo([1, 2]);
 
         }
     }

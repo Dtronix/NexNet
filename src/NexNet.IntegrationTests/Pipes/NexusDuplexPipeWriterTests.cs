@@ -74,7 +74,7 @@ internal class NexusDuplexPipeWriterTests
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            await Assert.That(body.ToArray()).IsEqualTo(simpleData);
+            CallbackAssert.Equal(body.ToArray(), simpleData);
             tcs.SetResult();
             return default;
         };
@@ -142,8 +142,10 @@ internal class NexusDuplexPipeWriterTests
 
         var write = writer.WriteAsync(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, CancellationToken.None).AsTask();
         await Task.Delay(100);
+        byte[] sentSoFar;
         lock (sent)
-            await Assert.That(sent).IsEqualTo(new byte[] { 0, 1, 2, 3 });
+            sentSoFar = sent.ToArray();
+        await Assert.That(sentSoFar).IsEquivalentTo(new byte[] { 0, 1, 2, 3 }, CollectionOrdering.Matching);
         await Assert.That(write.IsCompleted).IsFalse();
 
         writer.AddCredit(6);

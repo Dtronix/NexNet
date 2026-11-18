@@ -138,7 +138,7 @@ internal class InvocationCancellationTests : BaseTests
         canceled.Cancel();
 
         // A canceled call that waits for its result throws, and leaves the session usable.
-        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () =>
             await client.Proxy.ServerTaskWithCancellation(canceled.Token).AsTask().Timeout(1));
 
         client.Proxy.ServerVoid();

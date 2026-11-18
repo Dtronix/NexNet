@@ -107,7 +107,7 @@ internal class FlowControlTests : BaseTests
         var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
 
         // The server accepts 64 KiB; the client checks before sending.
-        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[100 * 1024]), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[100 * 1024]));
         await writer.WriteAsync(new byte[10]).Timeout(1);
         await Assert.That(await received.Task.Timeout(1)).IsEqualTo(10);
     }
@@ -204,7 +204,7 @@ internal class FlowControlTests : BaseTests
         // The server's limit is reached: the third open is refused.
         var refused = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(refused).Timeout(1);
-        await Assert.ThrowsAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
+        await Assert.ThrowsExactlyAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
         await refused.DisposeAsync();
 
         await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);

@@ -67,8 +67,8 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        await Assert.That(actual.Error).IsEqualTo(TransportError.AuthenticationError);
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
     [Test]
@@ -93,8 +93,8 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        await Assert.That(actual.Error).IsEqualTo(TransportError.AuthenticationError);
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
     [Test]
@@ -153,8 +153,8 @@ internal partial class AspClientServerTests : BaseAspTests
         
         await server.StartAsync().Timeout(1);
         
-        var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        await Assert.That(actual.Error).IsEqualTo(TransportError.InternalError);
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.InternalError);
     }
 
     [Test]
@@ -187,8 +187,8 @@ internal partial class AspClientServerTests : BaseAspTests
         }
         else
         {
-            var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-            await Assert.That(actual.Error).IsEqualTo(TransportError.AuthenticationError);
+            var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+            await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
         }
     }
 
@@ -214,8 +214,8 @@ internal partial class AspClientServerTests : BaseAspTests
 
         await server.StartAsync().Timeout(1);
 
-        var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        await Assert.That(actual.Error).IsEqualTo(TransportError.AuthenticationError);
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
     [Test]
@@ -240,8 +240,8 @@ internal partial class AspClientServerTests : BaseAspTests
 
         await server.StartAsync().Timeout(1);
 
-        var actual = await await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
-        await Assert.That(actual.Error).IsEqualTo(TransportError.AuthenticationError);
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
     private static void SetAccessTokenQueryParameter(AspServerConfig config, string? name)

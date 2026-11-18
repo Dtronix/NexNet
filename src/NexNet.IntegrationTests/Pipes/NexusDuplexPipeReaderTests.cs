@@ -154,8 +154,8 @@ internal class NexusDuplexPipeReaderTests
 
         _ = Task.Run(() =>
         {
-            await Assert.That(reader.TryRead(out var data)).IsTrue();
-            await Assert.That(data.IsCanceled).IsTrue();
+            CallbackAssert.That(reader.TryRead(out var data));
+            CallbackAssert.That(data.IsCanceled);
             tcs.SetResult();
         });
 

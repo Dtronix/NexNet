@@ -9,8 +9,8 @@ internal class SnapshotListTests
     public async Task Constructor_NegativeOrZeroCapacity_Throws()
     {
         // ReSharper disable twice ObjectCreationAsStatement
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SnapshotList<int>(0));
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SnapshotList<int>(-5));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new SnapshotList<int>(0));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new SnapshotList<int>(-5));
     }
 
     [Test]
@@ -67,14 +67,14 @@ internal class SnapshotListTests
     public async Task Insert_NegativeIndex_Throws()
     {
         var list = new SnapshotList<int>();
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => list.Insert(-1, 5));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => list.Insert(-1, 5));
     }
 
     [Test]
     public async Task Insert_IndexGreaterThanCount_Throws()
     {
         var list = new SnapshotList<int> { 1 };
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => list.Insert(2, 2));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => list.Insert(2, 2));
     }
 
     [Test]

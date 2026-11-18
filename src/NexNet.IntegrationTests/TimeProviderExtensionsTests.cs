@@ -23,12 +23,11 @@ internal class TimeProviderExtensionsTests
     }
 
     [Test]
-    public void GetTickCount64_SystemClock_MatchesStopwatchMilliseconds()
+    public async Task GetTickCount64_SystemClock_MatchesStopwatchMilliseconds()
     {
         var timestamp = TimeProvider.System.GetTimestamp();
         var ticks = TimeProvider.System.GetTickCount64();
         var expected = timestamp * 1000 / TimeProvider.System.TimestampFrequency;
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(ticks - expected, Is.InRange(0, 1000));
+        await Assert.That(ticks - expected).IsBetween(0, 1000);
     }
 }

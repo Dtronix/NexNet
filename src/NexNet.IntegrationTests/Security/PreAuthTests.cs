@@ -24,7 +24,7 @@ internal class PreAuthTests : BaseTests
         }
     }
 
-    private static IEnumerable<MessageType> TypesOtherThanClientGreetings() => Enum.GetValues<MessageType>()
+    public static IEnumerable<MessageType> TypesOtherThanClientGreetings() => Enum.GetValues<MessageType>()
         .Where(t => t is not MessageType.ClientGreeting and not MessageType.ClientGreetingReconnection);
 
     [Test]
@@ -41,14 +41,13 @@ internal class PreAuthTests : BaseTests
         await client.ReadProtocolHeaderAsync();
 
         // Type byte plus an empty body length; a type without a body ignores the rest.
-        client.Write([(byte)type, 0, 0]);
+        await client.Write([(byte)type, 0, 0]);
 
         // The server closes the connection. A disconnect type is the peer leaving, so it is closed without a reason;
         // anything else is a protocol error.
         var received = await ReadUntilClosed(client).Timeout(2);
         if (type.ToString().StartsWith("Disconnect", StringComparison.Ordinal))
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(received, Is.Empty.Or.EqualTo(new[] { (byte)DisconnectReason.ProtocolError }));
+            await Assert.That(received.Length == 0 || received.SequenceEqual(new[] { (byte)DisconnectReason.ProtocolError })).IsTrue();
         else
             await Assert.That(received).IsEqualTo(new[] { (byte)DisconnectReason.ProtocolError });
     }
@@ -66,7 +65,7 @@ internal class PreAuthTests : BaseTests
         await client.ReadProtocolHeaderAsync();
 
         // Declares a 64 KiB greeting and sends no body: refused at the header.
-        client.Write([(byte)MessageType.ClientGreeting, 0xFF, 0xFF]);
+        await client.Write([(byte)MessageType.ClientGreeting, 0xFF, 0xFF]);
 
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
@@ -97,7 +96,7 @@ internal class PreAuthTests : BaseTests
         await authenticating.Task.Timeout(1);
 
         // OnAuthenticate runs off the read loop, so this frame is handled while it is still running.
-        client.Write((byte)MessageType.Ping);
+        await client.Write((byte)MessageType.Ping);
 
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
@@ -155,8 +154,9 @@ internal class PreAuthTests : BaseTests
         log.Record(DisconnectReason.Timeout);
 
         await Assert.That(logger.Warnings).Count().IsEqualTo(2);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(logger.Warnings[1], Does.Contain("ProtocolError=100").And.Contain("MaxPendingHandshakes=1").And.Contain("Timeout=1"));
+        await Assert.That(logger.Warnings[1]).Contains("ProtocolError=100");
+        await Assert.That(logger.Warnings[1]).Contains("MaxPendingHandshakes=1");
+        await Assert.That(logger.Warnings[1]).Contains("Timeout=1");
     }
 
     /// <summary>

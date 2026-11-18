@@ -12,16 +12,16 @@ internal class MetricsFlowControlTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;
 
-    public override void SetUp()
+    protected override void SetUp()
     {
         base.SetUp();
         _recorder = new MetricsRecorder();
     }
 
-    public override void TearDown()
+    protected override async Task TearDown()
     {
         _recorder.Dispose();
-        base.TearDown();
+        await base.TearDown();
     }
 
     private double Sum(string instrument, string role) => _recorder.ObserveSum(instrument, ("nexnet.role", role));
@@ -138,7 +138,7 @@ internal class MetricsFlowControlTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await using var first = client.CreatePipe();
-        await Assert.ThrowsAsync<NexusBusyException>(() => client.CreatePipe());
+        Assert.ThrowsExactly<NexusBusyException>(() => client.CreatePipe());
 
         var refusal = _recorder.Events("nexnet.pipe.refusals").Single();
         await Assert.That(refusal.Has("nexnet.refusal.side", "local")).IsTrue();
@@ -171,8 +171,7 @@ internal class MetricsFlowControlTests : BaseTests
 
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(5);
-        await Assert.ThatAsync(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5),
-            Throws.InstanceOf<NexusBusyException>());
+        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5));
 
         var aborts = _recorder.Events("nexnet.large_message.aborts");
         await Assert.That(aborts.Count(a => a.Has("nexnet.role", "server") && a.Has("nexnet.direction", "inbound")

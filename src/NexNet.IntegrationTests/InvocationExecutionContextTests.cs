@@ -132,8 +132,8 @@ internal class InvocationExecutionContextTests : BaseTests
         var (client, _) = CreateClient(CreateClientConfig(type));
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValue().Timeout(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(path, Is.Not.EqualTo("none").And.Not.Empty);
+        await Assert.That(path).IsNotEqualTo("none");
+        await Assert.That(path).IsNotEmpty();
     }
 }

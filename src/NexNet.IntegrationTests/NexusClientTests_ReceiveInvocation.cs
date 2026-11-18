@@ -92,7 +92,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [Transports]
     public async Task ClientReceivesInvocation_ClientTaskValue_ReturnedValue(Type type)
     {
-        return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
+        await ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
@@ -126,7 +126,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [Transports]
     public async Task ClientReceivesInvocation_ClientTaskValueWithParam_ReturnedValue(Type type)
     {
-        return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
+        await ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
@@ -191,7 +191,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [Transports]
     public async Task ClientReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
-        return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
+        await ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
@@ -224,7 +224,7 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
     [Transports]
     public async Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
-        return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
+        await ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {

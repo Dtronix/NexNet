@@ -88,18 +88,15 @@ public class VersionedListFuzzTests
                     var resultOp = versionedList.ProcessOperation(op, baseVersion, out var result);
                     
                     // result should always be a defined enum value
-                    Assert.That(Enum.IsDefined(typeof(ListProcessResult), result), Is.True,
-                        $"Iteration {i}: unexpected ListProcessResult '{result}'");
+                    CallbackAssert.That(Enum.IsDefined(typeof(ListProcessResult), result));
                     
                     // if null was returned, only BadOperation / InvalidVersion / OutOfOperationalRange are valid
                     if (resultOp is null)
                     {
                         badOpCounter++;
-                        Assert.That(result == ListProcessResult.BadOperation
+                        CallbackAssert.That(result == ListProcessResult.BadOperation
                                     || result == ListProcessResult.InvalidVersion
-                                    || result == ListProcessResult.OutOfOperationalRange,
-                            Is.True,
-                            $"Iteration {i}: returned null but result was {result}");
+                                    || result == ListProcessResult.OutOfOperationalRange);
                     }
                 }).ThrowsNothing();
         }

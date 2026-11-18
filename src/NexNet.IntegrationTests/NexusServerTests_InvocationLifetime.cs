@@ -196,7 +196,7 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
         }
 
         cts.Cancel();
-        await Assert.ThrowsAsync<TaskCanceledException>(async () => await invocationTask);
+        await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await invocationTask);
 
         // The read loop does not wait for a slot, so the cancellation reaches the running method
         // even while the session is saturated.

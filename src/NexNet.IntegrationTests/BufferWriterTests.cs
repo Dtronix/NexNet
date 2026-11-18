@@ -142,11 +142,11 @@ internal class BufferWriterTests
     public async Task Advance_Negative_ThrowsArgumentOutOfRangeException()
     {
         var writer = BufferWriter.Create(128);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => writer.Advance(-1));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => writer.Advance(-1));
     }
 
     [Test]
-    public void Deallocate_KeepsDataWrittenAfterGetBuffer()
+    public async Task Deallocate_KeepsDataWrittenAfterGetBuffer()
     {
         var writer = BufferWriter.Create(4);
         var data = Enumerable.Range(0, 10).Select(i => (byte)i).ToArray();
@@ -154,13 +154,11 @@ internal class BufferWriterTests
 
         var first = writer.GetBuffer();
         Write(writer, data.AsSpan(6));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(first.ToArray(), Is.EqualTo(data.Take(6).ToArray()).AsCollection);
+        CallbackAssert.Equal(first.ToArray(), data.Take(6).ToArray());
         writer.Deallocate(first);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(data.Skip(6).ToArray()).AsCollection);
+        CallbackAssert.Equal(writer.GetBuffer().ToArray(), data.Skip(6).ToArray());
     }
 
     [Test]
@@ -174,9 +172,8 @@ internal class BufferWriterTests
         Write(writer, new byte[] { 1, 2, 3 });
 
         writer.Deallocate(buffer);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }).AsCollection);
+        await Assert.That(writer.GetBuffer().ToArray()).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
         await Assert.That(writer.Length).IsEqualTo(3);
     }
 
@@ -195,8 +192,7 @@ internal class BufferWriterTests
 
         // The writer keeps working on the remaining (or new) segments.
         Write(writer, new byte[] { 7 });
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(writer.GetBuffer().ToArray(), Is.EqualTo(new byte[] { 7 }).AsCollection);
+        await Assert.That(writer.GetBuffer().ToArray()).IsEquivalentTo(new byte[] { 7 }, CollectionOrdering.Matching);
     }
 
     // Pool return: each test writes 16-byte blocks into 16-byte segments, so segment i holds block i and the
@@ -212,14 +208,12 @@ internal class BufferWriterTests
         await Assert.That(pool.Rented).Count().IsEqualTo(3);
 
         writer.Deallocate(writer.GetBuffer());
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // The last segment stays as the head (the writer continues in it); the others go back to the pool.
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(2), CollectionOrdering.Matching);
 
         writer.Dispose();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented);
     }
 
     [Test]
@@ -232,12 +226,10 @@ internal class BufferWriterTests
 
         // All of the first segment and part of the second.
         writer.ReleaseTo(20);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(1)).AsCollection);
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(1), CollectionOrdering.Matching);
 
         writer.ReleaseTo(writer.GetBuffer().GetPosition(12));
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(pool.Returned, Is.EqualTo(pool.Rented.Take(2)).AsCollection);
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented.Take(2), CollectionOrdering.Matching);
         await Assert.That(writer.Length).IsEqualTo(16);
     }
 
@@ -251,9 +243,8 @@ internal class BufferWriterTests
         writer.ReleaseTo(24);
 
         writer.Dispose();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(pool.Returned, Is.EquivalentTo(pool.Rented));
+        await Assert.That(pool.Returned).IsEquivalentTo(pool.Rented);
         await Assert.That(pool.Returned.Distinct().Count()).IsEqualTo(pool.Returned.Count).Because("an array was returned twice");
     }
 
@@ -303,7 +294,7 @@ internal class BufferWriterTests
         data.CopyTo(span);
         writer.Advance(data.Length);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => writer.ReleaseTo(data.Length + 10));
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => writer.ReleaseTo(data.Length + 10));
     }
 
     [Test]

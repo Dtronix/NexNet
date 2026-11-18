@@ -135,10 +135,10 @@ internal class ConnectionRateLimiterUnitTests
     {
         var config = new ConnectionRateLimitConfig();
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = -1);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = 100_001);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.PerIpWindowSeconds = 0);
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => config.BanThreshold = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = -1);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.MaxConcurrentConnections = 100_001);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.PerIpWindowSeconds = 0);
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => config.BanThreshold = 0);
     }
 
     [Test]

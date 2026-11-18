@@ -18,8 +18,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -35,8 +34,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.AddAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -50,8 +48,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -67,8 +64,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -82,8 +78,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -99,8 +94,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -115,8 +109,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -132,8 +125,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -149,8 +141,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([2, 1]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([2, 1]);
     }
     
     [Test]
@@ -167,8 +158,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([2, 1]);
     }
     
     [Test]
@@ -184,8 +174,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([3, 2]);
     }
     
     [Test]
@@ -202,8 +191,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([3, 2]);
     }
 
     [Test]
@@ -218,8 +206,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.AddAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -234,8 +221,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.AddAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -250,8 +236,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -265,8 +250,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.InsertAsync(0, 77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([77]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([77]);
     }
     
     [Test]
@@ -282,8 +266,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -299,8 +282,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.RemoveAsync(77).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -316,8 +298,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -333,8 +314,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await serverNexus.IntListBi.RemoveAtAsync(0).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -351,8 +331,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([2, 1]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([2, 1]);
     }
     
     [Test]
@@ -369,8 +348,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.MoveAsync(0,1).Timeout(1000);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([2, 1]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([2, 1]);
     }
     
     [Test]
@@ -387,8 +365,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(serverNexus.IntListBi, Is.EquivalentTo([3, 2]));
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo([3, 2]);
     }
     
     [Test]
@@ -405,8 +382,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.ReplaceAsync(0,3).Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([3, 2]));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo([3, 2]);
     }
 
 
@@ -420,8 +396,7 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -434,9 +409,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
         await client.Proxy.IntListBi.DisableAsync().Timeout(1);
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -451,9 +425,8 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         await client.Proxy.IntListBi.EnableAsync().Timeout(1);
 
         await eventReg.Wait();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(client.Proxy.IntListBi, Is.EquivalentTo(Array.Empty<int>()));
+        await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(Array.Empty<int>());
     }
     
     [Test]
@@ -472,6 +445,6 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
     {
         var (server, _, _) = await ConnectServerAndClient(Type.Uds);
         var serverNexus = server.NexusCreatedQueue.First();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => serverNexus.IntListBi.DisabledTask);
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => serverNexus.IntListBi.DisabledTask);
     }
 }

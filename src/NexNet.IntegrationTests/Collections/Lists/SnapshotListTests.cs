@@ -88,23 +88,19 @@ public class SnapshotListTests
     }
 
     [Test]
-    public void Insert_NegativeIndex_ThrowsArgumentOutOfRange()
+    public async Task Insert_NegativeIndex_ThrowsArgumentOutOfRange()
     {
         var list = new SnapshotList<int>();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => list.Insert(-1, 5),
-            Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => list.Insert(-1, 5));
     }
 
     [Test]
-    public void Insert_IndexGreaterThanCount_ThrowsArgumentOutOfRange()
+    public async Task Insert_IndexGreaterThanCount_ThrowsArgumentOutOfRange()
     {
         var list = new SnapshotList<int>();
         list.Add(1);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         // Count==1 so index>1 invalid
-        Assert.That(() => list.Insert(2, 7),
-            Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => list.Insert(2, 7));
     }
 
     [Test]
@@ -336,26 +332,21 @@ public class SnapshotListTests
     // ---- Constructor argument tests ----
 
     [Test]
-    public void Constructor_NegativeCapacity_Throws()
+    public async Task Constructor_NegativeCapacity_Throws()
     {
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => new SnapshotList<int>(-5),
-            Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new SnapshotList<int>(-5));
     }
 
     [Test]
     public void Constructor_ZeroCapacity_ThrowsIndexOutOfRange()
     {
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => new SnapshotList<int>(0),
-            Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => new SnapshotList<int>(0));
     }
 
     [Test]
-    public void Constructor_PositiveCapacity_NoThrow()
+    public async Task Constructor_PositiveCapacity_NoThrow()
     {
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => new SnapshotList<int>(5), Throws.Nothing);
+        await Assert.That(() => new SnapshotList<int>(5)).ThrowsNothing();
     }
 
     [Test]
@@ -448,8 +439,7 @@ public class SnapshotListTests
         threads.ForEach(t => t.Join());
         var result = list.ToArray();
         await Assert.That(result.Length).IsEqualTo(10);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(result, Is.EquivalentTo(Enumerable.Range(0, 10)));
+        await Assert.That(result).IsEquivalentTo(Enumerable.Range(0, 10));
     }
 
     [Test]
@@ -467,8 +457,7 @@ public class SnapshotListTests
         threads.ForEach(t => t.Join());
         var result = list.ToArray();
         await Assert.That(result.Length).IsEqualTo(100);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(result, Is.EquivalentTo(Enumerable.Range(0, 100)));
+        await Assert.That(result).IsEquivalentTo(Enumerable.Range(0, 100));
     }
 
     [Test]
@@ -582,8 +571,7 @@ public class SnapshotListTests
         for (int cycle = 0; cycle < 10; cycle++)
         {
             list.Add(cycle);
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(() => list.Remove(cycle), Throws.Nothing);
+            await Assert.That(() => list.Remove(cycle)).ThrowsNothing();
         }
 
         await Assert.That(list.Any()).IsFalse();
@@ -622,13 +610,12 @@ public class SnapshotListTests
     }
 
     [Test]
-    public void GenericEnumerator_Dispose_DoesNotThrow()
+    public async Task GenericEnumerator_Dispose_DoesNotThrow()
     {
         var list = new SnapshotList<int>();
         list.Add(1);
         var en = list.GetEnumerator();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => en.Dispose(), Throws.Nothing);
+        await Assert.That(() => en.Dispose()).ThrowsNothing();
     }
 
 
@@ -791,11 +778,10 @@ public class SnapshotListTests
     }
 
     [Test]
-    public void Linq_ElementAt_IndexInvalid_Throws()
+    public async Task Linq_ElementAt_IndexInvalid_Throws()
     {
         var list = new SnapshotList<int>();
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-        Assert.That(() => list.ElementAt(0), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.ThrowsExactly<ArgumentOutOfRangeException>(() => list.ElementAt(0));
     }
 
     [Test]
@@ -1002,7 +988,7 @@ public class SnapshotListTests
     /// If Remove() races with GrowArray incorrectly, some removed items may still appear in enumeration.
     /// </summary>
     [Test]
-    public void ConcurrentAdd_Remove_DuringResize_ShouldNotLeaveRemovedElementsBehind()
+    public async Task ConcurrentAdd_Remove_DuringResize_ShouldNotLeaveRemovedElementsBehind()
     {
         var list = new SnapshotList<int>(initialCapacity: 2);
 
@@ -1053,12 +1039,10 @@ public class SnapshotListTests
         var snapshot = list.ToArray(); // should capture whatever is left
         foreach (var m in markersToRemove)
         {
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
             // If the bug described in the analysis is present,
             // you can sometimes still see “m” in snapshot,
             // because Remove() applauded “true” but never unlinked under a concurrent Grow.
-            Assert.That(snapshot, Has.No.Member(m),
-                $"Value {m} was supposed to be removed permanently, but we found it in the final snapshot.");
+            await Assert.That(snapshot).DoesNotContain(m).Because($"Value {m} was supposed to be removed permanently, but we found it in the final snapshot.");
         }
     }
 
@@ -1068,7 +1052,7 @@ public class SnapshotListTests
     /// you may see (a) missing insertions or (b) removals that didn’t happen.
     /// </summary>
     [Test]
-    public void ConcurrentInsertAndRemove_DuringResize_MiddlePositions()
+    public async Task ConcurrentInsertAndRemove_DuringResize_MiddlePositions()
     {
         // Start with initial capacity=4 to force frequent GrowArray calls.
         var list = new SnapshotList<int>(initialCapacity: 4);
@@ -1142,9 +1126,7 @@ public class SnapshotListTests
         // because every time we insert them, Remove is racing to take them out.
         for (int i = 200; i < 300; i++)
         {
-            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
-            Assert.That(list, Has.No.Member(i),
-                $"Insert→Remove race should never allow an element {i} to survive after both tasks finish.");
+            await Assert.That(list).DoesNotContain(i).Because($"Insert→Remove race should never allow an element {i} to survive after both tasks finish.");
         }
     }
 
@@ -1251,11 +1233,9 @@ public class SnapshotListTests
 
         // Assert #1: the list reports the correct Count
         await Assert.That(actualItems.Count).IsEqualTo(expectedItems.Count).Because($"Expected {expectedItems.Count} items, but found {actualItems.Count} in enumeration.");
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // Assert #2: every single expected integer appears exactly once
-        Assert.That(actualItems, Is.EquivalentTo(expectedItems),
-            "The enumeration of items did not match the exact set of values inserted.");
+        await Assert.That(actualItems).IsEquivalentTo(expectedItems).Because("The enumeration of items did not match the exact set of values inserted.");
     }
 
     [Test]
@@ -1466,7 +1446,7 @@ public class SnapshotListTests
         
             // Re-enumerate after modifications
             var snapshot2 = list.ToArray();
-            await Assert.That(snapshot.Length).IsEqualTo(50);
+            CallbackAssert.Equal(snapshot.Length, 50);
         });
     
         var modTask = Task.Run(() =>

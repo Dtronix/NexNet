@@ -42,7 +42,7 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var completedTask = await Task.WhenAny(addTask, Task.Delay(100));
         stopwatch.Stop();
 
-        await Assert.That(completedTask).IsNotEqualTo(addTask);
+        await Assert.That(ReferenceEquals(completedTask, addTask)).IsFalse();
         await Assert.That(stopwatch.ElapsedMilliseconds).IsGreaterThan(90);
     }
 
@@ -61,9 +61,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         }
 
         var results = await Task.WhenAll(tasks);
-        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
-        Assert.That(results, Is.All.True);
+        await Assert.That(results).All(x => x);
         await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(10);
     }
     

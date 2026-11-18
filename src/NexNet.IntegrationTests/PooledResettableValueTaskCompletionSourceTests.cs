@@ -32,7 +32,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => source.Return());
+        Assert.ThrowsExactly<InvalidOperationException>(() => source.Return());
     }
 
     [Test]
@@ -41,7 +41,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => source.TrySetResult(42));
+        Assert.ThrowsExactly<InvalidOperationException>(() => source.TrySetResult(42));
     }
 
     [Test]
@@ -50,7 +50,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => source.TrySetException(new Exception()));
+        Assert.ThrowsExactly<InvalidOperationException>(() => source.TrySetException(new Exception()));
     }
 
     [Test]
@@ -86,8 +86,8 @@ internal class PooledResettableValueTaskCompletionSourceTests
 
         source.TrySetException(expectedException);
 
-        var ex = await await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
-        await Assert.That(ex.Message).IsEqualTo("Test exception");
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await task);
+        await Assert.That(ex!.Message).IsEqualTo("Test exception");
     }
 
     [Test]
@@ -220,7 +220,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         // First use with exception
         var task1 = source.Task;
         source.TrySetException(new InvalidOperationException("First"));
-        var ex1 = await await Assert.ThrowsAsync<InvalidOperationException>(async () => await task1);
+        var ex1 = await Assert.ThrowsExactlyAsync<InvalidOperationException>(async () => await task1);
         await Assert.That(ex1?.Message).IsEqualTo("First");
 
         // Reset and second use with success
@@ -234,7 +234,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.Reset();
         var task3 = source.Task;
         source.TrySetException(new ArgumentException("Third"));
-        var ex3 = await await Assert.ThrowsAsync<ArgumentException>(async () => await task3);
+        var ex3 = await Assert.ThrowsExactlyAsync<ArgumentException>(async () => await task3);
         await Assert.That(ex3?.Message).IsEqualTo("Third");
     }
 

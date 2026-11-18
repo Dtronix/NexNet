@@ -58,8 +58,8 @@ internal class RemoteEndpointTests : BaseTests
         var remotePort = await tcs.Task.Timeout(1);
 
         await Assert.That(remotePort).IsNotNull();
-        await Assert.That(remotePort).IsGreaterThan(0);
-        await Assert.That(remotePort).IsLessThanOrEqualTo(65535);
+        await Assert.That(remotePort!.Value).IsGreaterThan(0);
+        await Assert.That(remotePort!.Value).IsLessThanOrEqualTo(65535);
     }
 
     [Test]

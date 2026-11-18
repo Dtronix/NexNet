@@ -65,7 +65,7 @@ internal class NexusChannelWriterTests
         var nexusPipeWriter = new NexusPipeWriter(new DummyPipeStateManager(), null, messenger, true, ushort.MaxValue).WithCredit();
         var writer = new NexusChannelWriter<byte[]>(nexusPipeWriter, maxItemSize: 100);
 
-        await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[200]), Throws.InstanceOf<NexusMessageTooLargeException>());
+        await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[200]));
         await Assert.That(sent).IsZero();
 
         await Assert.That(await writer.WriteAsync(new byte[10]).Timeout(1)).IsTrue();

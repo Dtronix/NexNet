@@ -256,7 +256,7 @@ internal class ProtocolSecurityTests : BaseTests
                 break;
         }
         
-        client.Write(messageType);
+        await client.Write(messageType);
         
         // Should disconnect with ServerMismatch
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
@@ -289,7 +289,7 @@ internal class ProtocolSecurityTests : BaseTests
                 break;
         }
         
-        client.Write(messageType);
+        await client.Write(messageType);
         
         // Should disconnect with ServerMismatch
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
