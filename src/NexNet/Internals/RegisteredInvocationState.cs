@@ -82,7 +82,8 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
     public bool IsCanceled { get; private set; }
 
     /// <summary>
-    /// Completed without a result: canceled before it was sent. The call returns nothing (the default value).
+    /// Completed without a result: the invocation was never started (test doubles of the state manager). The call
+    /// returns nothing (the default value). A call canceled before it is sent is canceled, not this.
     /// </summary>
     public bool IsNoResult { get; private set; }
 
@@ -168,7 +169,8 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
     }
 
     /// <summary>
-    /// Completes the invocation without a result: it was canceled before it was sent.
+    /// Completes the invocation without a result: it was never started. Not used for cancellation, which always
+    /// completes the invocation as canceled (<see cref="TrySetCanceled"/>).
     /// </summary>
     public bool TrySetNoResult()
     {
