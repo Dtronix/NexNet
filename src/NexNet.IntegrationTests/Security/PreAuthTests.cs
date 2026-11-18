@@ -1,3 +1,4 @@
+using System.Net.Sockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Invocation;
@@ -120,10 +121,7 @@ internal class PreAuthTests : BaseTests
 
         // A third is closed straight away, long before the handshake timeout.
         using (var rejected = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger))
-        {
-            await rejected.ConnectAsync();
-            Assert.That(await ReadUntilClosed(rejected).Timeout(1), Is.Empty);
-        }
+            await AssertRejectedAsync(rejected);
 
         // Ending one pending connection frees its slot.
         pending1.ForceDisconnect();
@@ -154,6 +152,25 @@ internal class PreAuthTests : BaseTests
 
         Assert.That(logger.Warnings, Has.Count.EqualTo(2));
         Assert.That(logger.Warnings[1], Does.Contain("ProtocolError=100").And.Contain("MaxPendingHandshakes=1").And.Contain("Timeout=1"));
+    }
+
+    /// <summary>
+    /// Asserts that the server rejects a new connection without sending anything. The server closes it right after
+    /// accepting it, so the reset can reach the client before its connect completes (seen on Linux): a connect that
+    /// fails with a reset or refusal and a connect that is then closed or reset are the same outcome.
+    /// </summary>
+    private static async Task AssertRejectedAsync(RawTcpClient client)
+    {
+        try
+        {
+            await client.ConnectAsync().Timeout(1);
+        }
+        catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionRefused)
+        {
+            return;
+        }
+
+        Assert.That(await ReadUntilClosed(client).Timeout(1), Is.Empty);
     }
 
     /// <summary>
