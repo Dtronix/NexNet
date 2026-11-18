@@ -51,7 +51,7 @@ internal interface ISessionInvocationStateManager
     /// Sends an invocation that expects a result, which completes <paramref name="state"/>.
     /// </summary>
     /// <param name="state">State the result completes; it stays owned by the caller. A call canceled before it is
-    /// sent completes it without a result, and a failed send completes it with the failure.</param>
+    /// sent completes it as canceled, and a failed send completes it with the failure.</param>
     /// <param name="methodId">The method ID to invoke.</param>
     /// <param name="serializedArguments">Pre-serialized argument bytes.</param>
     /// <param name="session">The session to invoke on.</param>
