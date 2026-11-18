@@ -4,3 +4,10 @@
 /tools/certgen/*.pfx
 artifacts
 /src/NexNetDemo/Properties/launchSettings.json
+
+# Multi-language clients (Java / JavaScript)
+artifacts/interop/
+clients/js/node_modules/
+clients/js/**/dist/
+clients/java/**/build/
+clients/java/.gradle/
