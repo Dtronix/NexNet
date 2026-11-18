@@ -125,7 +125,18 @@ internal class QuicTransport : ITransport
             throw new TransportException(TransportError.ConnectionRefused, e.Message, e);
         }
 
-        var mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token).ConfigureAwait(false);
+        QuicStream mainStream;
+        try
+        {
+            mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The connection is established but unusable without its stream: close it so it does not linger
+            // until the peer's idle timeout.
+            await quicConnection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
 
         return new QuicTransport(quicConnection, mainStream, clientConfig.SendSessionPipeOptions);
     }
