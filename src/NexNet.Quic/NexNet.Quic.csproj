@@ -2,8 +2,6 @@
   <Import Project="..\NexNet.props" />
   <PropertyGroup>
     <Description>Quic transport protocol for NexNet.</Description>
-    <EnablePreviewFeatures>True</EnablePreviewFeatures>
-    <GenerateRequiresPreviewFeaturesAttribute>true</GenerateRequiresPreviewFeaturesAttribute>
     <Version>0.20.0</Version>
     <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>

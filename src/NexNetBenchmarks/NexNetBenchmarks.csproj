@@ -12,8 +12,6 @@
     <Configuration>Release</Configuration>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
-    <!-- NexNet.Quic's configs are marked as preview features. -->
-    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>    
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />

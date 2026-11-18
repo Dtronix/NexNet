@@ -30,8 +30,22 @@ internal static class MethodEmitter
                             __authPerms_{{method.Id}},
                             message,
                             {{method.AuthorizeData!.CacheDurationSeconds}}).ConfigureAwait(false))
-                            return;
 """);
+            if (method.UtilizesPipes)
+            {
+                // The opener waits for the pipe to become ready: refuse it so its ReadyTask fails instead of hanging.
+                // Only the pipe ID is read; the other arguments are skipped, not deserialized.
+                sb.AppendLine($$"""
+                        {
+                            await this.RefuseUnauthorizedPipe(message, __ReadPipeId_{{method.Id}}(message.Arguments, methodInvoker.SerializerOptions)).ConfigureAwait(false);
+                            return;
+                        }
+""");
+            }
+            else
+            {
+                sb.AppendLine("                            return;");
+            }
         }
 
         // Create the cancellation token parameter.
@@ -130,6 +144,36 @@ internal static class MethodEmitter
 
         sb.AppendLine("        }");
         sb.AppendLine("#pragma warning restore CS8601");
+        sb.AppendLine();
+
+        if (method.UtilizesPipes && method.AuthorizeData != null)
+            EmitPipeIdReader(sb, method);
+    }
+
+    /// <summary>
+    /// Emits the static helper that reads only the pipe ID from the argument array of an authorized pipe or channel
+    /// method, skipping the other arguments. Used to refuse the pipe when the invocation is not authorized.
+    /// </summary>
+    private static void EmitPipeIdReader(StringBuilder sb, MethodData method)
+    {
+        var pipeParameter = method.DuplexPipeParameter!;
+        sb.Append("        private static ").Append(pipeParameter.SerializedType).Append(" __ReadPipeId_").Append(method.Id)
+            .AppendLine("(global::System.Memory<byte> __arguments, global::NexNet.Serialization.NexusSerializerOptions __options)");
+        sb.AppendLine("        {");
+        sb.AppendLine("            var __reader = new global::NexNet.Serialization.MsgPackReader(__arguments, __options);");
+        sb.Append("            if (__reader.ReadArrayHeader() != ").Append(method.SerializedParameterCount)
+            .Append(") throw global::NexNet.Serialization.NexusSerializationException.ArgumentCountMismatch(")
+            .Append(method.Id).Append(", ").Append(method.SerializedParameterCount).AppendLine(");");
+        for (var i = 0; i < method.DuplexPipeParameterIndex; i++)
+        {
+            if (method.Parameters[i].SerializedType != null)
+                sb.AppendLine("            __reader.Skip();");
+        }
+
+        sb.Append("            ").Append(pipeParameter.SerializedType).AppendLine(" __pipeId = default;");
+        sb.Append("            ").AppendLine(PrimitiveCodec.ReadStatement(pipeParameter.SerializedType!, "__pipeId", "__reader"));
+        sb.AppendLine("            return __pipeId;");
+        sb.AppendLine("        }");
         sb.AppendLine();
     }
 

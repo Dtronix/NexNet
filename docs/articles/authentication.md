@@ -52,6 +52,8 @@ var clientConfig = new TcpClientConfig
 
 The delegate is called each time the client connects (including reconnections), allowing you to refresh tokens as needed.
 
+The greeting token is the canonical mechanism for every client, including browsers, which cannot send an `Authorization` header on a WebSocket. On an ASP.NET server, an opt-in query-string token (`AccessTokenQueryParameter`) exists only for ASP.NET authentication that must run before the upgrade. When browsers connect with cookies, set `AllowedOrigins`. See [ASP.NET Integration: Browser Clients](asp-net-integration.md#browser-clients).
+
 ### Asynchronous token
 
 When the token comes from an asynchronous source, such as an identity provider or a refresh call, set `AuthenticateAsync` instead:
