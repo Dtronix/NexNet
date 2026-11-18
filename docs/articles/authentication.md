@@ -52,6 +52,53 @@ var clientConfig = new TcpClientConfig
 
 The delegate is called each time the client connects (including reconnections), allowing you to refresh tokens as needed.
 
+### Asynchronous token
+
+When the token comes from an asynchronous source, such as an identity provider or a refresh call, set `AuthenticateAsync` instead:
+
+```csharp
+var clientConfig = new TcpTlsClientConfig
+{
+    EndPoint = new IPEndPoint(IPAddress.Loopback, 5000),
+    SslClientAuthenticationOptions = new() { TargetHost = "server.example.com" },
+    AuthenticateAsync = async cancellationToken =>
+    {
+        var token = await tokenProvider.GetTokenAsync(cancellationToken);
+        return Encoding.UTF8.GetBytes(token);
+    }
+};
+```
+
+- It is called on every connect and reconnect, before the transport connects. No connection is opened until the token is ready, so a slow provider does not use up the server's handshake timeout.
+- It must complete within the client's `HandshakeTimeout`. Its `CancellationToken` is canceled at that point, or when the `CancellationToken` passed to `ConnectAsync`/`TryConnectAsync` is canceled.
+- If it throws, the connect fails: `TryConnectAsync` returns `StateValue.Exception` with `DisconnectReason.Authentication` and the exception, and `ConnectAsync` rethrows it. A timeout fails the same way with a `TransportException` whose `Error` is `TransportError.AuthenticationError`. A canceled connect returns `StateValue.Canceled`.
+- `Authenticate` and `AuthenticateAsync` are mutually exclusive. Setting both throws `InvalidOperationException` when the client is created, or fails the connect if both are set later.
+
+## Plaintext Transports
+
+The token travels in the connection greeting, so on an unencrypted transport anyone on the network path can read it. Use TLS, `wss://` or `https://` whenever the token or the data matters.
+
+`INexusClient.IsSecure` reports whether the client's transport protects the connection:
+
+| Transport | `IsSecure` |
+|---|---|
+| TCP + TLS (`TcpTlsClientConfig`) | true |
+| QUIC | true |
+| Unix domain sockets (local to the machine) | true |
+| WebSocket / HttpSocket with a `wss://` / `https://` URL | true |
+| Plain TCP (`TcpClientConfig`) | false |
+| WebSocket / HttpSocket with a `ws://` / `http://` URL | false |
+
+`NexusClient.GetSnapshot()` carries the same value in `NexusSessionSnapshot.IsSecure` (null on server sessions).
+
+When `IsSecure` is false, the client logs one warning per client instance on its first connect:
+
+```
+NexNet: unencrypted transport (tcp); credentials and data are visible on the network.
+```
+
+The transport is named `tcp`, `ws://` or `http://`. Plaintext connections still work; the warning is informational. A custom `ClientConfig` subclass reports secure unless it overrides `IsSecureTransport`.
+
 ## Connection Flow
 
 ```mermaid
