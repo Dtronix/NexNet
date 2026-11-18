@@ -177,6 +177,48 @@ internal class HandshakeOffLoopTests : BaseTests
     }
 
     [Test]
+    public async Task Quic_ClientStreamOpenFails_ClosesTheConnection()
+    {
+        if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
+            Assert.Ignore("QUIC (msquic) is not available on this platform.");
+
+        var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
+
+        // A raw QUIC server that accepts the connection but grants no bidirectional streams, so the client's
+        // stream open waits until its connection timeout.
+        await using var listener = await QuicListener.ListenAsync(new QuicListenerOptions
+        {
+            ListenEndPoint = serverConfig.EndPoint,
+            ApplicationProtocols = [QuicHelpers.Alpn],
+            ConnectionOptionsCallback = (_, _, _) => ValueTask.FromResult(new QuicServerConnectionOptions
+            {
+                DefaultStreamErrorCode = 0x0A,
+                DefaultCloseErrorCode = 0x0B,
+                MaxInboundBidirectionalStreams = 0,
+                ServerAuthenticationOptions = QuicHelpers.WithNexNetAlpn(serverConfig.SslServerAuthenticationOptions),
+            }),
+        }).Timeout(1);
+
+        var clientConfig = (QuicClientConfig)CreateClientConfig(Type.Quic);
+        clientConfig.ConnectionTimeout = 300;
+
+        var connectTask = QuicTransport.ConnectAsync(clientConfig, CancellationToken.None).AsTask();
+        await using var serverConnection = await listener.AcceptConnectionAsync().AsTask().Timeout(5);
+
+        Assert.That(async () => await connectTask.Timeout(5), Throws.InstanceOf<Exception>(),
+            "Opening the stream should fail when the server grants no streams.");
+
+        // The client must close its connection once the stream open fails; otherwise the server only notices
+        // at its idle timeout (30 s by default).
+        var sw = Stopwatch.StartNew();
+        var closed = await serverConnection.AcceptInboundStreamAsync().AsTask()
+            .ContinueWith(t => t.Exception?.InnerException, TaskScheduler.Default).Timeout(5);
+        Assert.That(closed, Is.InstanceOf<QuicException>(), "The server should see the connection closed.");
+        Assert.That(((QuicException)closed!).QuicError, Is.EqualTo(QuicError.ConnectionAborted));
+        Assert.That(sw.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
+    }
+
+    [Test]
     public async Task Quic_SharedSslOptions_AlpnStaysUnchanged()
     {
         if (!QuicListener.IsSupported || !QuicConnection.IsSupported)
