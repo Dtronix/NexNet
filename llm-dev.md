@@ -31,7 +31,14 @@ dotnet test src/NexNet.Serialization.Tests -c Release
 dotnet test src/NexNet.Generator.Tests -c Release
 dotnet test src/NexNet.IntegrationTests -c Release
 ```
-Single test: `dotnet test ... --filter "FullyQualifiedName~TestName"`
+Tests run on Microsoft.Testing.Platform (the root `global.json` selects it), so options after the project path go to the
+test app. Filters depend on the suite's framework:
+- NUnit suites: `dotnet test <proj> -c Release --filter "FullyQualifiedName~TestName"`
+  (class: `--filter "FullyQualifiedName~ClassName"`).
+- TUnit suites: `dotnet test <proj> -c Release --treenode-filter "/*/*/*/TestName"` (class: `--treenode-filter "/*/*/ClassName/*"`).
+  The path is `/assembly/namespace/class/test`. NUnit's MTP runner rejects `--treenode-filter` (exit code 5).
+
+List tests: `dotnet test <proj> -c Release --list-tests`.
 
 ---
 

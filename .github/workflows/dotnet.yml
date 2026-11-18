@@ -50,14 +50,25 @@ jobs:
           2>&1 | tee aot.log
         ! grep -E "warning IL[0-9]+" aot.log
 
+    # Tests run on Microsoft.Testing.Platform (global.json). --minimum-expected-tests guards against a suite silently
+    # discovering fewer tests; raise each count when tests are added. --results-directory goes before `--` so dotnet test
+    # resolves it against the repo root (IntegrationTests runs from its project directory via launchSettings.json).
     - name: Execute integration tests
-      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build -v=normal
+      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build --minimum-expected-tests 2834 --results-directory TestResults -- --report-trx
 
     - name: Execute generator tests
-      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build -v=normal
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build --minimum-expected-tests 189 --results-directory TestResults -- --report-trx
 
     - name: Execute serialization tests (includes fuzz harness smoke run)
-      run: dotnet test src/NexNet.Serialization.Tests -c Release --no-build -v=normal
+      run: dotnet test src/NexNet.Serialization.Tests -c Release --no-build --minimum-expected-tests 298 --results-directory TestResults -- --report-trx
+
+    - name: Upload test results
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results
+        path: TestResults/*.trx
+        if-no-files-found: ignore
       
     - name: Pack NexNet
       run: dotnet pack src/NexNet -c Release -o ./artifacts --maxcpucount:1

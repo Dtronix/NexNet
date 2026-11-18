@@ -15,6 +15,7 @@
   <Folder Name="/Solution Items/">
     <File Path="NexNet.props" />
     <File Path="Directory.Build.props" />
+    <File Path="..\global.json" />
   </Folder>
   <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="C#" />
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
