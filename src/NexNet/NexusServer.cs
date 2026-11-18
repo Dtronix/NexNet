@@ -669,6 +669,12 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     }
 
     /// <summary>
+    /// What a connection admitted by <see cref="TryAdmit"/> holds: a pending handshake slot, and a rate limiter slot
+    /// for <see cref="RemoteAddress"/> when <see cref="RateLimiter"/> is set.
+    /// </summary>
+    private readonly record struct Admission(string? RemoteAddress, IConnectionRateLimiter? RateLimiter);
+
+    /// <summary>
     /// The accept routine shared by the accept loops and <see cref="IAcceptsExternalTransport.AcceptTransport"/>.
     /// Applies the pending handshake limit and the rate limiter, then builds the session's configuration.
     /// Returns false when the transport is rejected; the transport is then closed.
@@ -681,18 +687,32 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     {
         sessionConfig = default;
 
-        if (!TryBeginHandshake(endpoint))
+        if (!TryAdmit(endpoint, transport.RemoteAddress, out var admission))
         {
             CloseRejected(transport);
             return false;
         }
 
-        // Rate limit check using ITransport.RemoteAddress
-        string? remoteAddress = null;
+        sessionConfig = CreateSessionConfig(transport, endpoint, admission, isSecure);
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a pending handshake slot, then applies the rate limiter to <paramref name="remoteAddress"/>. Returns
+    /// false when the connection is rejected; the caller closes it. On true, the caller either builds a session with
+    /// <see cref="CreateSessionConfig"/> (which takes over both slots) or calls <see cref="EndAdmission"/>.
+    /// </summary>
+    private bool TryAdmit(ServerEndpoint endpoint, string? remoteAddress, out Admission admission)
+    {
+        admission = default;
+
+        if (!TryBeginHandshake(endpoint))
+            return false;
+
+        // Rate limit check using the remote address of the transport.
         var rateLimiter = _rateLimiter;
         if (rateLimiter != null)
         {
-            remoteAddress = transport.RemoteAddress;
             var result = rateLimiter.TryAcquire(remoteAddress);
 
             if (result != ConnectionRateLimitResult.Allowed)
@@ -700,18 +720,48 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 _logger?.LogDebug($"Connection on endpoint '{endpoint.Name}' rejected: {result} from {remoteAddress ?? "unknown"}");
                 endpoint.MetricsTags.Metrics.RecordRejection(endpoint.MetricsTags, NexusMetrics.RateLimitReasonName(result));
                 _handshakeEnded();
-                CloseRejected(transport);
                 return false;
             }
+
+            admission = new Admission(remoteAddress, rateLimiter);
         }
 
+        return true;
+    }
+
+    /// <summary>
+    /// Frees the slots of an admitted connection that never became a session (its transport handshake failed, or
+    /// the server stopped meanwhile).
+    /// </summary>
+    private void EndAdmission(in Admission admission)
+    {
+        _handshakeEnded();
+        try
+        {
+            admission.RateLimiter?.Release(admission.RemoteAddress);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The server stopped and disposed the limiter; nothing to release.
+        }
+    }
+
+    /// <summary>
+    /// Builds the session configuration of an admitted transport. The session takes over the admission's slots.
+    /// </summary>
+    private NexusSessionConfigurations<TServerNexus, TClientProxy> CreateSessionConfig(
+        ITransport transport,
+        ServerEndpoint endpoint,
+        in Admission admission,
+        bool? isSecure)
+    {
         _config!.InternalOnConnect?.Invoke();
 
         // Create a composite ID of the current ticks along with the current ticks.
         // This makes guessing IDs harder, but not impossible.
         var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
-        sessionConfig = new NexusSessionConfigurations<TServerNexus, TClientProxy>()
+        return new NexusSessionConfigurations<TServerNexus, TClientProxy>()
         {
             ConnectionState = ConnectionState.Connecting,
             Transport = transport,
@@ -723,8 +773,8 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             Nexus = _nexusFactory!.Invoke(),
             CollectionManager = _collectionManager,
             Logger = endpoint.Logger,
-            RateLimiterAddress = remoteAddress,
-            RateLimiter = rateLimiter,
+            RateLimiterAddress = admission.RemoteAddress,
+            RateLimiter = admission.RateLimiter,
             HandshakeEnded = _handshakeEnded,
             PreAuthFailureLog = _preAuthFailureLog,
             MetricsTags = endpoint.MetricsTags,
@@ -732,7 +782,54 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 ? endpoint.Info with { IsSecure = secure }
                 : endpoint.Info,
         };
-        return true;
+    }
+
+    /// <summary>
+    /// Runs the setup step of a connection accepted by an <see cref="IPendingTransportListener"/> (TLS handshake,
+    /// QUIC stream accept) off the accept loop, then starts its session. The connection already holds its
+    /// admission; a failed setup, or a server that stopped meanwhile, frees it.
+    /// </summary>
+    private async Task CompletePendingAsync(
+        IPendingTransport pending,
+        ServerEndpoint endpoint,
+        Admission admission,
+        CancellationToken cancellationToken)
+    {
+        ITransport? transport;
+        try
+        {
+            transport = await pending.CompleteAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            // CompleteAsync handles its own failures; this guards the admission against a broken implementation.
+            endpoint.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
+            pending.Abort();
+            transport = null;
+        }
+
+        if (transport == null)
+        {
+            EndAdmission(admission);
+            return;
+        }
+
+        if (_state != NexusServerState.Running || endpoint.State != NexusEndpointState.Running)
+        {
+            EndAdmission(admission);
+            CloseRejected(transport);
+            return;
+        }
+
+        var sessionConfig = CreateSessionConfig(transport, endpoint, admission, null);
+        try
+        {
+            await RunSessionAsync(sessionConfig).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            sessionConfig.Configs.Logger?.LogError(e, "Exception while running client");
+        }
     }
 
     private static void CloseRejected(ITransport transport)
@@ -856,8 +953,36 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             // Read inside the try: a concurrent stop may already have disposed the source.
             var cancellationToken = _cancellationTokenSource?.Token ?? CancellationToken.None;
             _logger?.LogInfo($"Listening for connections on endpoint '{endpoint.Name}'");
+            var pendingListener = listener as IPendingTransportListener;
             while (_state == NexusServerState.Running && endpoint.State == NexusEndpointState.Running)
             {
+                if (pendingListener != null)
+                {
+                    // Only the raw accept runs here; the transport's own handshake runs on its own task, so one slow
+                    // or stalled peer does not hold up the next accept.
+                    var pending = await pendingListener.AcceptPendingAsync(cancellationToken).ConfigureAwait(false);
+                    if (pending == null)
+                        continue;
+
+                    if (!TryAdmit(endpoint, pending.RemoteAddress, out var admission))
+                    {
+                        pending.Abort();
+                        continue;
+                    }
+
+                    StartOnScheduler(
+                        endpoint.Config.ReceiveSessionPipeOptions.ReaderScheduler,
+                        static state =>
+                        {
+                            var (server, p, ep, adm, token) =
+                                ((NexusServer<TServerNexus, TClientProxy>, IPendingTransport, ServerEndpoint, Admission,
+                                    CancellationToken))state!;
+                            _ = server.CompletePendingAsync(p, ep, adm, token);
+                        },
+                        (this, pending, endpoint, admission, cancellationToken));
+                    continue;
+                }
+
                 var clientTransport = await listener.AcceptTransportAsync(cancellationToken).ConfigureAwait(false);
 
                 if(clientTransport == null)
