@@ -67,14 +67,15 @@ internal static class NexusDataExtractor
             .Select(m => ExtractMethodData(m, shapes, 0)) // ID 0 for class methods since they're not invokable
             .ToImmutableArray();
 
-        // Correlate authorize data from class methods onto interface methods
-        var authByName = classMethods
+        // Correlate authorize data from class methods onto interface methods. Skipped when the interface has
+        // duplicate method names: NEXNET042 blocks generation, and a name no longer identifies one method.
+        var authorizedClassMethods = classMethods
             .Where(m => m.AuthorizeData != null)
-            .ToDictionary(m => m.Name, m => m.AuthorizeData!);
+            .ToArray();
 
-        if (authByName.Count > 0)
+        if (authorizedClassMethods.Length > 0 && !HasDuplicateMethodNames(nexusInterface.AllMethods))
         {
-            nexusInterface = ApplyAuthorizeDataToInterface(nexusInterface, authByName);
+            nexusInterface = ApplyAuthorizeDataToInterface(nexusInterface, authorizedClassMethods);
         }
 
         var fullTypeName = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
@@ -235,6 +236,10 @@ internal static class NexusDataExtractor
         allCollectionsList = allCollectionsList.Where(c => !c.CollectionAttribute.Ignore).ToList();
         directMethods = directMethods.Where(m => !m.MethodAttribute.Ignore).ToImmutableArray();
         directCollections = directCollections.Where(c => !c.CollectionAttribute.Ignore).ToImmutableArray();
+
+        // Duplicate method names (overloads, or the same name in inherited interfaces) are reported as NEXNET042 by
+        // the validator, which blocks generation. IDs are still assigned so extraction completes, but the name-keyed
+        // ID lookups below are skipped (UpdateMethodsWithIds leaves the methods unchanged).
 
         // Convert to arrays for ID assignment
         var allMethods = allMethodsList.ToArray();
@@ -841,17 +846,72 @@ internal static class NexusDataExtractor
 
     private static InvocationInterfaceData ApplyAuthorizeDataToInterface(
         InvocationInterfaceData iface,
-        Dictionary<string, AuthorizeData> authByName)
+        MethodData[] authorizedClassMethods)
     {
-        var updatedMethods = iface.Methods
-            .Select(m => authByName.TryGetValue(m.Name, out var auth) ? m with { AuthorizeData = auth } : m)
-            .ToImmutableArray();
+        MethodData Apply(MethodData m)
+        {
+            var auth = FindClassAuthorizeData(m, authorizedClassMethods);
+            return auth != null ? m with { AuthorizeData = auth } : m;
+        }
 
-        var updatedAllMethods = iface.AllMethods
-            .Select(m => authByName.TryGetValue(m.Name, out var auth) ? m with { AuthorizeData = auth } : m)
-            .ToImmutableArray();
+        var updatedMethods = iface.Methods.Select(Apply).ToImmutableArray();
+        var updatedAllMethods = iface.AllMethods.Select(Apply).ToImmutableArray();
 
         return iface with { Methods = updatedMethods, AllMethods = updatedAllMethods };
+    }
+
+    /// <summary>
+    /// Finds the authorize data of the class method that implements the interface method <paramref name="method"/>.
+    /// A single class method with the same name is used as is; when the class overloads the name, the overload with
+    /// the same parameter types is used.
+    /// </summary>
+    private static AuthorizeData? FindClassAuthorizeData(MethodData method, MethodData[] authorizedClassMethods)
+    {
+        MethodData? byName = null;
+        var nameMatches = 0;
+        foreach (var classMethod in authorizedClassMethods)
+        {
+            if (classMethod.Name != method.Name)
+                continue;
+
+            if (HasSameParameterTypes(classMethod, method))
+                return classMethod.AuthorizeData;
+
+            byName = classMethod;
+            nameMatches++;
+        }
+
+        return nameMatches == 1 ? byName!.AuthorizeData : null;
+    }
+
+    private static bool HasSameParameterTypes(MethodData a, MethodData b)
+    {
+        if (a.Parameters.Length != b.Parameters.Length)
+            return false;
+
+        for (var i = 0; i < a.Parameters.Length; i++)
+        {
+            if (!string.Equals(a.Parameters[i].Type, b.Parameters[i].Type, StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// True when two or more methods share a name (overloads, or the same name declared in several interfaces of
+    /// the hierarchy). Such a nexus is reported as NEXNET042 and not generated.
+    /// </summary>
+    internal static bool HasDuplicateMethodNames(IEnumerable<MethodData> methods)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var method in methods)
+        {
+            if (!names.Add(method.Name))
+                return true;
+        }
+
+        return false;
     }
 
     private static void AssignMethodIds(MethodData[] methods)
@@ -922,8 +982,13 @@ internal static class NexusDataExtractor
         ImmutableArray<MethodData> methods,
         MethodData[] allMethods)
     {
+        // Duplicate names are reported as NEXNET042 and block generation; a name does not identify one method, so
+        // the IDs are left as they are.
+        if (HasDuplicateMethodNames(allMethods))
+            return methods;
+
         // Create lookup by name for matching
-        var idLookup = allMethods.ToDictionary(m => m.Name, m => m.Id);
+        var idLookup = allMethods.ToDictionary(m => m.Name, m => m.Id, StringComparer.Ordinal);
 
         return methods
             .Select(m => idLookup.TryGetValue(m.Name, out var id) ? m with { Id = id } : m)

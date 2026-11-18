@@ -124,7 +124,7 @@ internal partial class NexusGenerator : IIncrementalGenerator
         {
             var descriptor = DiagnosticDescriptors.FindSerializationDescriptor(diag.Id);
             if (descriptor != null)
-                context.ReportDiagnostic(Diagnostic.Create(descriptor, Location.None, diag.Arg0, diag.Arg1));
+                context.ReportDiagnostic(Diagnostic.Create(descriptor, NexusValidator.ToDiagnosticLocation(diag.Location), diag.Arg0, diag.Arg1));
         }
     }
 
