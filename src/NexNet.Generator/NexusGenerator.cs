@@ -6,6 +6,7 @@ using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
 using NexNet.Generator.Serialization;
+using NexNet.Generator.Targets;
 using NexNet.Generator.Validation;
 
 namespace NexNet.Generator;
@@ -121,8 +122,16 @@ internal partial class NexusGenerator : IIncrementalGenerator
 
         var ir = CreateIrPipeline(context, nexusProducts);
 
-        // Target emitters (G03+) consume the IR here. Nothing is emitted yet; the output keeps the step reachable.
-        context.RegisterSourceOutput(ir, static (_, _) => { });
+        // The target configuration (build_property.NexNetTargets and NexNetTarget_<id>_<Option>), as an equatable value.
+        var targetConfiguration = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) => TargetRegistry.ParseConfiguration(provider.GlobalOptions));
+
+        // Validate the IR against every target it opts in to (NEXNET040-047). Target emitters (G04+) consume the IR here.
+        context.RegisterSourceOutput(ir.Combine(targetConfiguration), static (ctx, source) =>
+        {
+            var (compilationIr, configuration) = source;
+            ReportTargetDiagnostics(TargetValidator.Validate(compilationIr, configuration), ctx);
+        });
     }
 
     /// <summary>
@@ -146,15 +155,20 @@ internal partial class NexusGenerator : IIncrementalGenerator
         var assemblyTargets = context.CompilationProvider
             .Select(static (compilation, ct) => TargetExtractor.ExtractAssembly(compilation, ct));
 
-        context.RegisterSourceOutput(assemblyTargets, static (ctx, data) =>
-        {
-            foreach (var diag in data.Diagnostics)
+        context.RegisterSourceOutput(assemblyTargets, static (ctx, data) => ReportTargetDiagnostics(data.Diagnostics, ctx));
+
+        // NEXNET041: exports sharing a namespace and name are merged into one by the IR, so find them before the merge.
+        var duplicateExports = classTargets.Collect()
+            .Combine(assemblyTargets)
+            .Select(static (source, _) =>
             {
-                var descriptor = DiagnosticDescriptors.FindTargetDescriptor(diag.Id);
-                if (descriptor != null)
-                    ctx.ReportDiagnostic(Diagnostic.Create(descriptor, NexusValidator.ToDiagnosticLocation(diag.Location), diag.Arg0, diag.Arg1));
-            }
-        });
+                var (fromClasses, assembly) = source;
+                return TargetValidator.DuplicateExports(fromClasses
+                    .Where(t => t.Fragment != null)
+                    .SelectMany(t => t.Fragment!.Exports)
+                    .Concat(assembly.Exports.Exports));
+            });
+        context.RegisterSourceOutput(duplicateExports, static (ctx, diagnostics) => ReportTargetDiagnostics(diagnostics, ctx));
 
         // [NexusObject] types are part of the IR (types used only at runtime need formatters in every language).
         // Only their ids flow here; they are resolved when an IR is built.
@@ -190,6 +204,16 @@ internal partial class NexusGenerator : IIncrementalGenerator
         var builder = new SerializationBuilder(compilation, new ShapeBuilder(compilation));
         builder.Require(symbol, symbol.Name, LocationData.FromSymbol(symbol));
         return new SerializationOutput(builder.Build(), new EquatableArray<SerializationDiagnostic>(builder.Diagnostics.ToArray()));
+    }
+
+    private static void ReportTargetDiagnostics(IEnumerable<TargetDiagnostic> diagnostics, SourceProductionContext context)
+    {
+        foreach (var diag in diagnostics)
+        {
+            var descriptor = DiagnosticDescriptors.FindTargetDescriptor(diag.Id);
+            if (descriptor != null)
+                context.ReportDiagnostic(Diagnostic.Create(descriptor, NexusValidator.ToDiagnosticLocation(diag.Location), diag.Arg0, diag.Arg1));
+        }
     }
 
     private static void ReportSerializationDiagnostics(IEnumerable<SerializationDiagnostic> diagnostics, SourceProductionContext context)
