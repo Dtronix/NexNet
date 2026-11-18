@@ -36,31 +36,61 @@ internal class SocketTransportListener : ITransportListener
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Accepts the next connection. Returns null when the accept was canceled, when a connection failed before it
+    /// was accepted (reset or aborted by the peer), or when an accepted connection could not be set up. Any other
+    /// accept error means the listener itself is unusable, and the original exception is rethrown so the server
+    /// faults the endpoint.
+    /// </summary>
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        Socket clientSocket = null!;
+        Socket clientSocket;
         try
         {
             clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
-
-            SocketTransport.SetNoDelay(clientSocket);
-            return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // noop.
+            return null;
+        }
+        catch (SocketException e) when (IsTransientAcceptError(e.SocketErrorCode))
+        {
+            _config.Logger?.LogWarning(e, $"Client connection failed during accept ({e.SocketErrorCode}); listener continues.");
+            return null;
+        }
+
+        try
+        {
+            SocketTransport.SetNoDelay(clientSocket);
+            return await SocketTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (Exception e)
         {
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            clientSocket.LingerState = new LingerOption(true, 0);
-            clientSocket.Close(0);
+            try
+            {
+                clientSocket.LingerState = new LingerOption(true, 0);
+                clientSocket.Close(0);
+            }
+            catch (Exception closeException)
+            {
+                _config.Logger?.LogDebug(closeException, "Failed to close the rejected client socket.");
+            }
         }
 
         return null;
     }
+
+    /// <summary>
+    /// Accept errors caused by a single pending connection (the peer reset or aborted it before it was accepted).
+    /// The listening socket stays usable after these.
+    /// </summary>
+    internal static bool IsTransientAcceptError(SocketError error) => error
+        is SocketError.ConnectionReset
+        or SocketError.ConnectionAborted
+        or SocketError.NetworkReset;
 
     public static ITransportListener Create(ServerConfig config, EndPoint endPoint, SocketType socketType, ProtocolType protocolType)
     {
