@@ -32,6 +32,10 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     /// </summary>
     public int MaxVersions { get; }
 
+    /// <summary>
+    /// Oldest base version a request can have and still be rebased exactly against the stored history.
+    /// Requests based on an older version are still accepted when the oldest stored entry is a Clear.
+    /// </summary>
     public long MinValidVersion => _history.FirstIndex;
 
     /// <summary>
@@ -60,12 +64,31 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     /// Process a client operation generated at clientVersion.
     /// Rebase, apply, record, and assign new version.
     /// </summary>
+    /// <remarks>
+    /// The history is indexed by version: the entry at global index <c>v</c> is the operation that moved the list
+    /// from version <c>v</c> to <c>v + 1</c>. A request based on version <c>b</c> is transformed against every entry
+    /// in <c>[b, Version)</c>.
+    /// <para>
+    /// A Clear wipes the history and becomes its first entry. A request whose base predates that Clear is rebased
+    /// starting at the Clear: every operation before the Clear is irrelevant because the Clear removes its effects.
+    /// </para>
+    /// <para>
+    /// A request whose base version has fallen out of the history (more than <see cref="MaxVersions"/> changes
+    /// since its base, with no Clear in between that still is in the history) cannot be rebased. It is discarded:
+    /// the method returns <see cref="NoopOperation{T}"/> with <see cref="ListProcessResult.OutOfOperationalRange"/>,
+    /// so the server answers the requester with Noop instead of closing its pipe.
+    /// </para>
+    /// <para>
+    /// A Clear request is applied for any base version up to the current version; it has nothing to rebase.
+    /// </para>
+    /// </remarks>
     /// <param name="op">The operation to process.</param>
     /// <param name="baseVersion">The client version on which the operation is based.</param>
     /// <param name="result">The result of the process.</param>
     /// <returns>
     /// The rebased operation after applying.
-    /// <see cref="NoopOperation{T}"/> indicates that the passed operation was made irrelevant invalid and should be discarded. Normally due to the operating item being removed.
+    /// <see cref="NoopOperation{T}"/> indicates that the passed operation was made irrelevant invalid and should be discarded. Normally due to the operating item being removed,
+    /// or because its base version is older than the stored history (<see cref="ListProcessResult.OutOfOperationalRange"/>).
     /// Returns null if the operation provided is invalid for the provided baseVersion.  Normally means the client has provided bad data.</returns>
     public Operation<T>? ProcessOperation(Operation<T> op, int baseVersion, out ListProcessResult result)
     {
@@ -78,19 +101,15 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
             return op;
         }
 
-        if (!_history.ValidateIndex(baseVersion-1) && baseVersion > 0)
-        {
-            result = ListProcessResult.OutOfOperationalRange;
-            return null;
-        }
-
-        if (baseVersion > State.Version)
+        var version = State.Version;
+        if (baseVersion > version)
         {
             result = ListProcessResult.InvalidVersion;
             return null;
         }
-        
+
         // Shortcut other logic as this is the only operation that is possible with a clear.
+        // A clear does not depend on its base version, so it never needs rebasing.
         if (op is ClearOperation<T> cleOp)
         {
             _history.Clear();
@@ -100,7 +119,26 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
             return cleOp;
         }
 
-        for (var i = baseVersion; i < _history.Count; i++)
+        // Entries [FirstIndex, Version) are stored. FirstIndex == Version when the history is empty.
+        long rebaseStart = baseVersion;
+        if (baseVersion < _history.FirstIndex)
+        {
+            // The entries between the base and the history start are gone. This is only recoverable when
+            // the oldest stored entry is a Clear: it discards every change before it, so the request is
+            // rebased from the Clear onwards.
+            if (_history.Count > 0 && _history[_history.FirstIndex] is ClearOperation<T>)
+            {
+                rebaseStart = _history.FirstIndex;
+            }
+            else
+            {
+                _logger?.LogDebug($"Discarding operation based on version {baseVersion}; oldest rebasable version is {_history.FirstIndex}.");
+                result = ListProcessResult.OutOfOperationalRange;
+                return NoopOperation<T>.Instance;
+            }
+        }
+
+        for (var i = rebaseStart; i < version; i++)
         {
             if (!op.TransformAgainst(_history[i]))
             {
@@ -196,7 +234,8 @@ internal class VersionedList<T> : IEquatable<T[]>, IReadOnlyList<T>
     public void Reset()
     {
         State = new ListState(ImmutableList<T>.Empty, 0);
-        _history.Clear();
+        // Keep the history indexed by version: the next entry moves the list from version 0.
+        _history.Reset(0);
     }
 
     IEnumerator IEnumerable.GetEnumerator() => State.List.GetEnumerator();
