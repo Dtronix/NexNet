@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using NexNet.Generator.Models;
 
 namespace NexNet.Generator.Validation;
@@ -64,6 +65,10 @@ internal static class NexusValidator
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Duplicate method names (NEXNET042) make method IDs and dispatch ambiguous.
+        ValidateUniqueMethodNames(data.NexusInterface, data, diagnostics);
+        ValidateUniqueMethodNames(data.ProxyInterface, data, diagnostics);
+
         // Validate versioning consistency
         ValidateVersioning(data, diagnostics);
 
@@ -80,6 +85,26 @@ internal static class NexusValidator
         ValidateAuthorization(data, diagnostics);
 
         return diagnostics.ToImmutable();
+    }
+
+    private static void ValidateUniqueMethodNames(
+        InvocationInterfaceData iface,
+        NexusGenerationData data,
+        ImmutableArray<Diagnostic>.Builder diagnostics)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var method in iface.AllMethods)
+        {
+            if (seen.Add(method.Name) || !reported.Add(method.Name))
+                continue;
+
+            diagnostics.Add(CreateDiagnostic(
+                DiagnosticDescriptors.DuplicateMethodName,
+                method.Location ?? data.IdentifierLocation,
+                iface.TypeName,
+                method.Name));
+        }
     }
 
     private static void ValidateVersioning(
@@ -425,10 +450,25 @@ internal static class NexusValidator
         LocationData location,
         params object[] args)
     {
-        // Note: In the output phase, we don't have access to compilation
-        // to reconstruct the full Location. Using Location.None with
-        // file path in the message is acceptable.
-        // In future, we could pass syntax trees to reconstruct locations.
-        return Diagnostic.Create(descriptor, Location.None, args);
+        return Diagnostic.Create(descriptor, ToDiagnosticLocation(location), args);
+    }
+
+    /// <summary>
+    /// Builds a diagnostic location from cached <see cref="LocationData"/>. The output phase has no compilation, so
+    /// this is a file location (path, span and start line/column) rather than a syntax-tree location; the build and
+    /// the IDE still report it at the right file, line and column. The stored locations are symbol identifiers, so
+    /// the span is taken to be on one line. Returns <see cref="Location.None"/> when there is no location or path.
+    /// </summary>
+    internal static Location ToDiagnosticLocation(LocationData? location)
+    {
+        if (location is null || string.IsNullOrEmpty(location.FilePath))
+            return Location.None;
+
+        var start = new LinePosition(location.StartLine, location.StartColumn);
+        var end = new LinePosition(location.StartLine, location.StartColumn + location.Length);
+        return Location.Create(
+            location.FilePath,
+            new TextSpan(location.StartPosition, location.Length),
+            new LinePositionSpan(start, end));
     }
 }
