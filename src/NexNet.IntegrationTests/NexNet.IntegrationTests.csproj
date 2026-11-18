@@ -12,9 +12,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\server.pfx" Link="server.pfx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!-- Test-only CA, server and client certificates; see certs/README.md. -->
+    <None Include="certs\**" CopyToOutputDirectory="PreserveNewest" />
     <Compile Remove="Security\AdvancedProtocolSecurityTests.cs" />
   </ItemGroup>
 

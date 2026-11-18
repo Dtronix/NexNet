@@ -19,21 +19,88 @@ internal class TlsCertificateTests : BaseTests
 {
     private X509Certificate2 ServerCertificate = null!;
     private X509Certificate2 ClientCertificate = null!;
+    private X509Certificate2 TestCa = null!;
     private string ServerFingerprint = null!;
 
     [OneTimeSetUp]
     public void LoadCertificates()
     {
-        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass");
+        ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass");
         ServerFingerprint = ServerCertificate.GetCertHashString(HashAlgorithmName.SHA256);
-        ClientCertificate = CreateClientCertificate("nexnet-test-client");
+        ClientCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "client.pfx"), "certPass");
+        TestCa = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine("certs", "test-ca.pem")));
     }
 
     public override void OneTimeTearDown()
     {
         ServerCertificate.Dispose();
         ClientCertificate.Dispose();
+        TestCa.Dispose();
         base.OneTimeTearDown();
+    }
+
+    [Test]
+    public void ServerCertificate_HasLoopbackSubjectAltNames()
+    {
+        var san = ServerCertificate.Extensions.OfType<X509SubjectAlternativeNameExtension>().Single();
+
+        Assert.That(san.EnumerateDnsNames(), Is.EquivalentTo(new[] { "localhost" }));
+        Assert.That(san.EnumerateIPAddresses(), Is.EquivalentTo(new[] { IPAddress.Loopback, IPAddress.IPv6Loopback }));
+
+        var eku = ServerCertificate.Extensions.OfType<X509EnhancedKeyUsageExtension>().Single();
+        Assert.That(eku.EnhancedKeyUsages.Cast<Oid>().Select(o => o.Value), Is.EquivalentTo(new[] { "1.3.6.1.5.5.7.3.1" }));
+    }
+
+    [Test]
+    public void TestCertificates_ChainToTestCaAndMatchReadmePin()
+    {
+        using var serverPem = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine("certs", "server.pem")));
+        using var clientPem = X509Certificate2.CreateFromPem(File.ReadAllText(Path.Combine("certs", "client.pem")));
+        Assert.That(serverPem.Thumbprint, Is.EqualTo(ServerCertificate.Thumbprint));
+        Assert.That(clientPem.Thumbprint, Is.EqualTo(ClientCertificate.Thumbprint));
+
+        Assert.That(BuildChain(ServerCertificate, "1.3.6.1.5.5.7.3.1"), Is.True, "server leaf must chain to the test CA");
+        Assert.That(BuildChain(ClientCertificate, "1.3.6.1.5.5.7.3.2"), Is.True, "client leaf must chain to the test CA");
+
+        // Later Node, Java and browser pin tests read the SPKI pin from certs/README.md.
+        var pin = Convert.ToBase64String(SHA256.HashData(ServerCertificate.PublicKey.ExportSubjectPublicKeyInfo()));
+        Assert.That(File.ReadAllText(Path.Combine("certs", "README.md")), Does.Contain($"`{pin}`"));
+    }
+
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task TrustedTestCa_AcceptsServerCertificate(Type type)
+    {
+        // Full validation: chain to the explicitly trusted test CA plus host name checks against the SAN
+        // (the IP SAN 127.0.0.1 for the HTTP transports, the DNS SAN localhost for TcpTls/QUIC). No callback.
+        var targetHost = type is Type.TcpTls ? "localhost" : null;
+        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), targetHost);
+
+        var server = CreateServer(serverConfig, null);
+        var (client, _) = CreateClient(clientConfig);
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(2);
+
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
+    // The HTTP transports always validate against the URL host (SocketsHttpHandler overrides TargetHost).
+    // QUIC reports a rejected server certificate as ConnectionRefused, so it is not listed here.
+    [TestCase(Type.TcpTls)]
+    public async Task TrustedTestCa_RejectsWrongHostName(Type type)
+    {
+        var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), "nexnet.invalid");
+
+        var server = CreateServer(serverConfig, null);
+        var (client, _) = CreateClient(clientConfig);
+
+        await server.StartAsync().Timeout(1);
+
+        var exception = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+        Assert.That(exception!.Error, Is.EqualTo(TransportError.AuthenticationError));
     }
 
     [TestCase(Type.WebSocket)]
@@ -140,7 +207,8 @@ internal class TlsCertificateTests : BaseTests
     [TestCase(Type.HttpSocket)]
     public async Task UntrustedServerCertificate_RejectedWithoutCallback(Type type)
     {
-        // server.pfx is self-signed, so the default chain validation must reject it.
+        // server.pfx is issued by the test CA, which the system trust store does not hold, so the default chain
+        // validation must reject it.
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null);
 
         var server = CreateServer(serverConfig, null);
@@ -173,6 +241,26 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(await hostSeen.Task.Timeout(1), Is.EqualTo($"127.0.0.1:{CurrentTcpPort}"));
     }
 
+    private X509ChainPolicy TrustTestCa()
+    {
+        var policy = new X509ChainPolicy
+        {
+            TrustMode = X509ChainTrustMode.CustomRootTrust,
+            RevocationMode = X509RevocationMode.NoCheck,
+        };
+        policy.CustomTrustStore.Add(TestCa);
+        return policy;
+    }
+
+    private bool BuildChain(X509Certificate2 leaf, string ekuOid)
+    {
+        using var chain = new X509Chain { ChainPolicy = TrustTestCa() };
+        chain.ChainPolicy.ApplicationPolicy.Add(new Oid(ekuOid));
+        return chain.Build(leaf)
+               && chain.ChainElements.Count == 2
+               && chain.ChainElements[1].Certificate.Thumbprint == TestCa.Thumbprint;
+    }
+
     private static RemoteCertificateValidationCallback AcceptAny => (_, _, _, _) => true;
 
     private static RemoteCertificateValidationCallback Pin(string sha256Hex) => (_, certificate, _, _) =>
@@ -183,11 +271,16 @@ internal class TlsCertificateTests : BaseTests
     /// Creates server and client configs for <paramref name="type"/> where the server presents server.pfx and
     /// accepts any client certificate, and the client presents <paramref name="clientCertificate"/> and judges the
     /// server's certificate with <paramref name="validation"/> (null for the default chain validation).
+    /// <paramref name="chainPolicy"/> replaces the client's chain policy (e.g. to trust the test CA) and
+    /// <paramref name="targetHost"/> is the host name the TcpTls/QUIC client validates (QUIC defaults to localhost);
+    /// the HTTP transports always validate against the URL host, 127.0.0.1.
     /// </summary>
     private (ServerConfig server, ClientConfig client) CreateTlsConfigs(
         Type type,
         X509Certificate2? clientCertificate,
-        RemoteCertificateValidationCallback? validation)
+        RemoteCertificateValidationCallback? validation,
+        X509ChainPolicy? chainPolicy = null,
+        string? targetHost = null)
     {
         var serverConfig = CreateServerConfig(type);
         var clientConfig = CreateClientConfig(type);
@@ -197,6 +290,7 @@ internal class TlsCertificateTests : BaseTests
             CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
             RemoteCertificateValidationCallback = validation,
             ClientCertificates = clientCertificate == null ? null : new X509CertificateCollection { clientCertificate },
+            CertificateChainPolicy = chainPolicy,
         };
 
         switch (serverConfig, clientConfig)
@@ -216,6 +310,7 @@ internal class TlsCertificateTests : BaseTests
             case (TcpTlsServerConfig tlsServer, TcpTlsClientConfig tlsClient):
                 tlsServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate != null;
                 tlsServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
+                clientOptions.TargetHost = targetHost;
                 clientOptions.EnabledSslProtocols = SslProtocols.Tls13;
                 tlsClient.SslClientAuthenticationOptions = clientOptions;
                 break;
@@ -223,7 +318,7 @@ internal class TlsCertificateTests : BaseTests
             case (QuicServerConfig quicServer, QuicClientConfig quicClient):
                 quicServer.SslServerAuthenticationOptions.ClientCertificateRequired = clientCertificate != null;
                 quicServer.SslServerAuthenticationOptions.RemoteCertificateValidationCallback = (_, _, _, _) => true;
-                clientOptions.TargetHost = "localhost";
+                clientOptions.TargetHost = targetHost ?? "localhost";
                 clientOptions.EnabledSslProtocols = SslProtocols.Tls13;
                 quicClient.SslClientAuthenticationOptions = clientOptions;
                 break;
@@ -233,16 +328,5 @@ internal class TlsCertificateTests : BaseTests
         }
 
         return (serverConfig, clientConfig);
-    }
-
-    private static X509Certificate2 CreateClientCertificate(string subject)
-    {
-        using var key = RSA.Create(2048);
-        var request = new CertificateRequest($"CN={subject}", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-            new OidCollection { new Oid("1.3.6.1.5.5.7.3.2") }, false));
-        using var ephemeral = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
-        // Windows TLS cannot use an ephemeral key for a client certificate; round-trip through PKCS#12.
-        return X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pfx), null);
     }
 }
