@@ -1,6 +1,6 @@
 using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
-using NUnit.Framework;
+using TUnit.Assertions.Enums;
 
 namespace NexNet.Generator.Tests.Ir;
 
@@ -13,16 +13,16 @@ public class IrBuilderTests
     private static ObjectDeclIr Object(NexusIr ir, string id) => (ObjectDeclIr)Decl(ir, id);
 
     private static TypeDeclIr Decl(NexusIr ir, string id)
-        => ir.Types.FirstOrDefault(t => t.Id == id) ?? throw new AssertionException($"Declaration '{id}' not found.");
+        => ir.Types.FirstOrDefault(t => t.Id == id) ?? throw new InvalidOperationException($"Declaration '{id}' not found.");
 
     private static MemberIr Member(ObjectDeclIr decl, string name)
-        => decl.Members.FirstOrDefault(m => m.Name == name) ?? throw new AssertionException($"Member '{name}' not found.");
+        => decl.Members.FirstOrDefault(m => m.Name == name) ?? throw new InvalidOperationException($"Member '{name}' not found.");
 
     private static ExportIr Export(NexusIr ir, string name)
-        => ir.Exports.FirstOrDefault(e => e.Name == name) ?? throw new AssertionException($"Export '{name}' not found.");
+        => ir.Exports.FirstOrDefault(e => e.Name == name) ?? throw new InvalidOperationException($"Export '{name}' not found.");
 
     private static MethodIr Method(InterfaceIr api, string name)
-        => api.Methods.FirstOrDefault(m => m.Name == name) ?? throw new AssertionException($"Method '{name}' not found.");
+        => api.Methods.FirstOrDefault(m => m.Name == name) ?? throw new InvalidOperationException($"Method '{name}' not found.");
 
     private static Serialization.EquatableArray<T> Array<T>(IEnumerable<T> items)
         where T : IEquatable<T>
@@ -31,39 +31,39 @@ public class IrBuilderTests
     // ------------------------------------------------------------------ snapshots
 
     [Test]
-    public void BasicTestNexusSnapshot() => IrSnapshots.Verify("basic", IrJson.Write(IrTestRunner.Run(IrFixtures.Basic).Ir));
+    public Task BasicTestNexusSnapshot() => IrSnapshots.Verify("basic", IrJson.Write(IrTestRunner.Run(IrFixtures.Basic).Ir));
 
     [Test]
-    public void VersionedTestNexusSnapshot() => IrSnapshots.Verify("versioned", IrJson.Write(IrTestRunner.Run(IrFixtures.Versioned).Ir));
+    public Task VersionedTestNexusSnapshot() => IrSnapshots.Verify("versioned", IrJson.Write(IrTestRunner.Run(IrFixtures.Versioned).Ir));
 
     [Test]
-    public void ZooSnapshot() => IrSnapshots.Verify("zoo", IrJson.Write(Zoo.Ir));
+    public Task ZooSnapshot() => IrSnapshots.Verify("zoo", IrJson.Write(Zoo.Ir));
 
     // ------------------------------------------------------------------ determinism and JSON
 
     [Test]
-    public void BuildIsDeterministicAndIndependentOfSourceOrder()
+    public async Task BuildIsDeterministicAndIndependentOfSourceOrder()
     {
         var first = IrTestRunner.Run(IrFixtures.ZooTypes, IrFixtures.ZooNexus, IrFixtures.Versioned);
         var second = IrTestRunner.Run(IrFixtures.Versioned, IrFixtures.ZooNexus, IrFixtures.ZooTypes);
         var third = IrTestRunner.Run(IrFixtures.ZooTypes, IrFixtures.ZooNexus, IrFixtures.Versioned);
 
-        Assert.That(IrJson.Write(second.Ir), Is.EqualTo(IrJson.Write(first.Ir)));
-        Assert.That(IrJson.Write(third.Ir), Is.EqualTo(IrJson.Write(first.Ir)));
-        Assert.That(third.Ir, Is.EqualTo(first.Ir));
+        await Assert.That(IrJson.Write(second.Ir)).IsEqualTo(IrJson.Write(first.Ir));
+        await Assert.That(IrJson.Write(third.Ir)).IsEqualTo(IrJson.Write(first.Ir));
+        await Assert.That(third.Ir).IsEqualTo(first.Ir);
     }
 
     [Test]
-    public void IrIsEquatable()
+    public async Task IrIsEquatable()
     {
         var a = IrTestRunner.Run(IrFixtures.ZooTypes, IrFixtures.ZooNexus).Ir;
         var b = IrTestRunner.Run(IrFixtures.ZooTypes, IrFixtures.ZooNexus).Ir;
-        Assert.That(b, Is.EqualTo(a));
-        Assert.That(b.GetHashCode(), Is.EqualTo(a.GetHashCode()));
+        await Assert.That(b).IsEqualTo(a);
+        await Assert.That(b.GetHashCode()).IsEqualTo(a.GetHashCode());
     }
 
     [Test]
-    public void MergeIgnoresFragmentOrder()
+    public async Task MergeIgnoresFragmentOrder()
     {
         var run = IrTestRunner.Run(IrFixtures.Basic, IrFixtures.Versioned);
         var merged = IrBuilder.Merge(new[]
@@ -71,11 +71,11 @@ public class IrBuilderTests
             new IrFragment(Array(run.Ir.Exports.Reverse()), run.Ir.Types),
             new IrFragment(run.Ir.Exports, Array(run.Ir.Types.Reverse())),
         });
-        Assert.That(merged, Is.EqualTo(run.Ir));
+        await Assert.That(merged).IsEqualTo(run.Ir);
     }
 
     [Test]
-    public void JsonRoundTrips()
+    public async Task JsonRoundTrips()
     {
         foreach (var json in new[]
                  {
@@ -85,12 +85,12 @@ public class IrBuilderTests
                  })
         {
             var read = IrJson.Read(json);
-            Assert.That(IrJson.Write(read), Is.EqualTo(json));
+            await Assert.That(IrJson.Write(read)).IsEqualTo(json);
         }
     }
 
     [Test]
-    public void JsonReadRestoresEverythingButLocations()
+    public async Task JsonReadRestoresEverythingButLocations()
     {
         static InterfaceIr WithoutLocations(InterfaceIr api)
             => api with { Methods = Array(api.Methods.Select(m => m with { Location = null })) };
@@ -105,64 +105,64 @@ public class IrBuilderTests
                 ClientApi = WithoutLocations(e.ClientApi),
             })),
         };
-        Assert.That(read, Is.EqualTo(expected));
+        await Assert.That(read).IsEqualTo(expected);
     }
 
     [Test]
-    public void JsonIsSortedAndHasNoPathsOrCarriageReturns()
+    public async Task JsonIsSortedAndHasNoPathsOrCarriageReturns()
     {
         var json = IrJson.Write(Zoo.Ir);
-        Assert.That(json, Does.Not.Contain("\r"));
-        Assert.That(json, Does.Not.Contain(".cs\""));
-        Assert.That(json, Does.StartWith("{\n  \"exports\": ["));
-        Assert.That(json, Does.EndWith("}\n"));
+        await Assert.That(json).DoesNotContain("\r");
+        await Assert.That(json).DoesNotContain(".cs\"");
+        await Assert.That(json).StartsWith("{\n  \"exports\": [");
+        await Assert.That(json).EndsWith("}\n");
     }
 
     [Test]
-    public void JsonReadRejectsInvalidInput()
+    public async Task JsonReadRejectsInvalidInput()
     {
-        Assert.Throws<FormatException>(() => IrJson.Read("{ \"irVersion\": 2 }"));
-        Assert.Throws<FormatException>(() => IrJson.Read("{ \"irVersion\": 1, \"exports\": [ { \"name\": 1 } ] }"));
-        Assert.Throws<FormatException>(() => IrJson.Read("{ \"irVersion\": 1 } trailing"));
+        await Assert.That(() => IrJson.Read("{ \"irVersion\": 2 }")).ThrowsExactly<FormatException>();
+        await Assert.That(() => IrJson.Read("{ \"irVersion\": 1, \"exports\": [ { \"name\": 1 } ] }")).ThrowsExactly<FormatException>();
+        await Assert.That(() => IrJson.Read("{ \"irVersion\": 1 } trailing")).ThrowsExactly<FormatException>();
     }
 
     // ------------------------------------------------------------------ hashes and handshake
 
     [Test]
-    public void HashesEqualTheGenerationData()
+    public async Task HashesEqualTheGenerationData()
     {
         foreach (var run in new[] { IrTestRunner.Run(IrFixtures.Basic), IrTestRunner.Run(IrFixtures.Versioned), Zoo })
         {
-            Assert.That(run.Ir.Exports.Length, Is.EqualTo(run.Data.Length));
+            await Assert.That(run.Ir.Exports.Length).IsEqualTo(run.Data.Length);
             foreach (var data in run.Data)
             {
                 var export = run.Ir.Exports.Single(e => e.Name == data.TypeName && e.ClrNamespace == data.Namespace);
                 var server = data.NexusAttribute.IsServer ? data.NexusInterface : data.ProxyInterface;
                 var client = data.NexusAttribute.IsServer ? data.ProxyInterface : data.NexusInterface;
 
-                AssertApi(export.ServerApi, server);
-                AssertApi(export.ClientApi, client);
-                Assert.That(export.Handshake.ClientNexusHash, Is.EqualTo(client.NexusHash));
-                Assert.That(export.ClientAcceptedIds.Select(a => a.Hash).Distinct(), Is.EqualTo(new[] { client.NexusHash }));
-                Assert.That(export.ClientAcceptedIds.Select(a => a.Id),
-                    Is.EquivalentTo(client.AllMethods.Select(m => m.Id).Concat(client.AllCollections.Select(c => c.Id))));
+                await AssertApi(export.ServerApi, server);
+                await AssertApi(export.ClientApi, client);
+                await Assert.That(export.Handshake.ClientNexusHash).IsEqualTo(client.NexusHash);
+                await Assert.That(export.ClientAcceptedIds.Select(a => a.Hash).Distinct().ToArray()).IsEquivalentTo(new[] { client.NexusHash }, CollectionOrdering.Matching);
+                await Assert.That(export.ClientAcceptedIds.Select(a => a.Id).ToArray())
+                    .IsEquivalentTo(client.AllMethods.Select(m => m.Id).Concat(client.AllCollections.Select(c => c.Id)));
             }
         }
     }
 
-    private static void AssertApi(InterfaceIr api, InvocationInterfaceData data)
+    private static async Task AssertApi(InterfaceIr api, InvocationInterfaceData data)
     {
-        Assert.That(api.Hash, Is.EqualTo(data.NexusHash), api.ClrName);
-        Assert.That(api.Methods.Select(m => (m.Id, m.Name, m.Hash)),
-            Is.EquivalentTo(data.AllMethods.Select(m => (m.Id, m.Name, m.NexusHash))), api.ClrName);
-        Assert.That(api.Collections.Select(c => (c.Id, c.Name, c.Hash)),
-            Is.EquivalentTo(data.AllCollections.Select(c => (c.Id, c.Name, c.NexusHash))), api.ClrName);
-        Assert.That(api.Versions.Select(v => (v.Version, v.Hash)),
-            Is.EqualTo(data.Versions.Select(v => (v.VersionAttribute?.Version ?? "", v.NexusHash))), api.ClrName);
+        await Assert.That(api.Hash).IsEqualTo(data.NexusHash).Because(api.ClrName);
+        await Assert.That(api.Methods.Select(m => (m.Id, m.Name, m.Hash)).ToArray())
+            .IsEquivalentTo(data.AllMethods.Select(m => (m.Id, m.Name, m.NexusHash))).Because(api.ClrName);
+        await Assert.That(api.Collections.Select(c => (c.Id, c.Name, c.Hash)).ToArray())
+            .IsEquivalentTo(data.AllCollections.Select(c => (c.Id, c.Name, c.NexusHash))).Because(api.ClrName);
+        await Assert.That(api.Versions.Select(v => (v.Version, v.Hash)).ToArray())
+            .IsEquivalentTo(data.Versions.Select(v => (v.VersionAttribute?.Version ?? "", v.NexusHash)), CollectionOrdering.Matching).Because(api.ClrName);
     }
 
     [Test]
-    public void HashesEqualTheEmittedCSharp()
+    public async Task HashesEqualTheEmittedCSharp()
     {
         foreach (var source in new[] { IrFixtures.Basic, IrFixtures.Versioned })
         {
@@ -177,217 +177,218 @@ public class IrBuilderTests
                 var expected = data.NexusAttribute.IsServer
                     ? new[] { export.ServerApi.Hash, export.ClientApi.Hash }
                     : new[] { export.ClientApi.Hash, export.ServerApi.Hash };
-                Assert.That(hashes, Is.EqualTo(expected), data.TypeName);
+                await Assert.That(hashes).IsEquivalentTo(expected, CollectionOrdering.Matching).Because(data.TypeName);
             }
         }
     }
 
     [Test]
-    public void HandshakeUsesTheLastServerVersion()
+    public async Task HandshakeUsesTheLastServerVersion()
     {
         var ir = IrTestRunner.Run(IrFixtures.Versioned).Ir;
 
         var v2 = Export(ir, "VersionedClientNexusV2");
-        Assert.That(v2.Handshake.Version, Is.EqualTo("v1.2"));
-        Assert.That(v2.Handshake.ServerNexusHash, Is.EqualTo(1866304169));
-        Assert.That(v2.ServerApi.Versions.Select(v => v.Version), Is.EqualTo(new[] { "v1.0", "v1.1", "v1.2" }));
-        Assert.That(v2.ServerApi.Versions.Select(v => v.Hash), Is.EqualTo(new[] { -326045431, -1058213897, 1866304169 }));
-        Assert.That(v2.ServerApi.Versions[0].MethodIds, Is.EqualTo(new ushort[] { 1 }));
-        Assert.That(v2.ServerApi.Versions[2].MethodIds, Is.EqualTo(new ushort[] { 1, 2, 3, 4 }));
+        await Assert.That(v2.Handshake.Version).IsEqualTo("v1.2");
+        await Assert.That(v2.Handshake.ServerNexusHash).IsEqualTo(1866304169);
+        await Assert.That(v2.ServerApi.Versions.Select(v => v.Version).ToArray()).IsEquivalentTo(new[] { "v1.0", "v1.1", "v1.2" }, CollectionOrdering.Matching);
+        await Assert.That(v2.ServerApi.Versions.Select(v => v.Hash).ToArray()).IsEquivalentTo(new[] { -326045431, -1058213897, 1866304169 }, CollectionOrdering.Matching);
+        await Assert.That(v2.ServerApi.Versions[0].MethodIds).IsEquivalentTo(new ushort[] { 1 }, CollectionOrdering.Matching);
+        await Assert.That(v2.ServerApi.Versions[2].MethodIds).IsEquivalentTo(new ushort[] { 1, 2, 3, 4 }, CollectionOrdering.Matching);
 
         var v1 = Export(ir, "VersionedClientNexusV1");
-        Assert.That(v1.Handshake.Version, Is.EqualTo("v1.0"));
-        Assert.That(v1.Handshake.ServerNexusHash, Is.EqualTo(-326045431));
+        await Assert.That(v1.Handshake.Version).IsEqualTo("v1.0");
+        await Assert.That(v1.Handshake.ServerNexusHash).IsEqualTo(-326045431);
 
         var unversioned = Export(ir, "NonVersionedClientNexus");
-        Assert.That(unversioned.Handshake.Version, Is.Null);
-        Assert.That(unversioned.Handshake.ServerNexusHash, Is.EqualTo(unversioned.ServerApi.Hash));
+        await Assert.That(unversioned.Handshake.Version).IsNull();
+        await Assert.That(unversioned.Handshake.ServerNexusHash).IsEqualTo(unversioned.ServerApi.Hash);
 
         // Server and client builds of the same pair agree.
-        Assert.That(Export(ir, "VersionedServerNexusV2").Handshake, Is.EqualTo(v2.Handshake));
+        await Assert.That(Export(ir, "VersionedServerNexusV2").Handshake).IsEqualTo(v2.Handshake);
     }
 
     // ------------------------------------------------------------------ methods
 
     [Test]
-    public void MethodsDescribeReturnsParametersAndPipes()
+    public async Task MethodsDescribeReturnsParametersAndPipes()
     {
         var api = Export(Zoo.Ir, "ZooServerNexus").ServerApi;
 
-        Assert.That(api.Methods.Select(m => m.Name), Does.Not.Contain("Skipped"));
-        Assert.That(api.Methods.Select(m => (int)m.Id), Is.Ordered);
+        await Assert.That(api.Methods.Select(m => m.Name)).DoesNotContain("Skipped");
+        await Assert.That(api.Methods.Select(m => (int)m.Id).ToArray()).IsInOrder();
 
         var echo = Method(api, "Echo");
-        Assert.That(echo.ReturnKind, Is.EqualTo(ReturnKind.TaskOf));
-        Assert.That(echo.ReturnType, Is.EqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Everything" }));
-        Assert.That(echo.HasCancellation, Is.True);
-        Assert.That(echo.SerializedCount, Is.EqualTo(1));
-        Assert.That(echo.Params.Select(p => (p.Name, p.Kind, p.WireIndex)), Is.EqualTo(new[]
+        await Assert.That(echo.ReturnKind).IsEqualTo(ReturnKind.TaskOf);
+        await Assert.That(echo.ReturnType).IsEqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Everything" });
+        await Assert.That(echo.HasCancellation).IsTrue();
+        await Assert.That(echo.SerializedCount).IsEqualTo(1);
+        await Assert.That(echo.Params.Select(p => (p.Name, p.Kind, p.WireIndex)).ToArray()).IsEquivalentTo(new[]
         {
             ("value", ParamKind.Value, 1),
             ("cancellationToken", ParamKind.CancellationToken, 0),
-        }));
-        Assert.That(echo.Docs, Is.EqualTo("Echoes value back."));
+        }, CollectionOrdering.Matching);
+        await Assert.That(echo.Docs).IsEqualTo("Echoes value back.");
 
         var fire = Method(api, "Fire");
-        Assert.That(fire.ReturnKind, Is.EqualTo(ReturnKind.Void));
-        Assert.That(fire.Params.Select(p => p.Nullable), Is.EqualTo(new[] { true, true }));
-        Assert.That(fire.Params[1].Type!.Kind, Is.EqualTo(TypeRefKind.Nullable));
+        await Assert.That(fire.ReturnKind).IsEqualTo(ReturnKind.Void);
+        await Assert.That(fire.Params.Select(p => p.Nullable).ToArray()).IsEquivalentTo(new[] { true, true }, CollectionOrdering.Matching);
+        await Assert.That(fire.Params[1].Type!.Kind).IsEqualTo(TypeRefKind.Nullable);
 
         var stream = Method(api, "Stream");
-        Assert.That(stream.PipeKind, Is.EqualTo(PipeKind.Channel));
-        Assert.That(stream.PipeType, Is.EqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Node" }));
-        Assert.That(stream.Params.Single().Kind, Is.EqualTo(ParamKind.DuplexChannel));
-        Assert.That(stream.Params.Single().WireIndex, Is.EqualTo(1));
+        await Assert.That(stream.PipeKind).IsEqualTo(PipeKind.Channel);
+        await Assert.That(stream.PipeType).IsEqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Node" });
+        await Assert.That(stream.Params.Single().Kind).IsEqualTo(ParamKind.DuplexChannel);
+        await Assert.That(stream.Params.Single().WireIndex).IsEqualTo(1);
 
-        Assert.That(Method(api, "Upload").PipeKind, Is.EqualTo(PipeKind.DuplexPipe));
-        Assert.That(Method(api, "Upload").ReturnKind, Is.EqualTo(ReturnKind.Task));
-        Assert.That(Method(api, "Fixed").Id, Is.EqualTo(50));
-        Assert.That(Method(api, "Slow").SeparatePool, Is.True);
-        Assert.That(Method(api, "Slow").IsAuthorized, Is.True);
-        Assert.That(Method(api, "Echo").IsAuthorized, Is.False);
+        await Assert.That(Method(api, "Upload").PipeKind).IsEqualTo(PipeKind.DuplexPipe);
+        await Assert.That(Method(api, "Upload").ReturnKind).IsEqualTo(ReturnKind.Task);
+        await Assert.That(Method(api, "Fixed").Id).IsEqualTo(50);
+        await Assert.That(Method(api, "Slow").SeparatePool).IsTrue();
+        await Assert.That(Method(api, "Slow").IsAuthorized).IsTrue();
+        await Assert.That(Method(api, "Echo").IsAuthorized).IsFalse();
 
         // Authorization lives on the server class: the client's view of the same API does not know it.
-        Assert.That(Method(Export(Zoo.Ir, "ZooClientNexus").ServerApi, "Slow").IsAuthorized, Is.False);
+        await Assert.That(Method(Export(Zoo.Ir, "ZooClientNexus").ServerApi, "Slow").IsAuthorized).IsFalse();
 
         var shapes = api.Collections.Single();
-        Assert.That(shapes.Kind, Is.EqualTo(CollectionKind.List));
-        Assert.That(shapes.Mode, Is.EqualTo(CollectionMode.ServerToClient));
-        Assert.That(shapes.Item, Is.EqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Shape" }));
-        Assert.That(shapes.Docs, Is.EqualTo("Every shape on the server."));
+        await Assert.That(shapes.Kind).IsEqualTo(CollectionKind.List);
+        await Assert.That(shapes.Mode).IsEqualTo(CollectionMode.ServerToClient);
+        await Assert.That(shapes.Item).IsEqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Shape" });
+        await Assert.That(shapes.Docs).IsEqualTo("Every shape on the server.");
     }
 
     // ------------------------------------------------------------------ types
 
     [Test]
-    public void TypeRefsFollowTheWireFormat()
+    public async Task TypeRefsFollowTheWireFormat()
     {
         var e = Object(Zoo.Ir, "Zoo.Everything");
         TypeRef Type(string name) => Member(e, name).Type;
 
-        Assert.That(Type("Flag"), Is.EqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.Bool }));
-        Assert.That(Type("Bytes"), Is.EqualTo(new TypeRef(TypeRefKind.Bin) { Clr = "Array" }));
-        Assert.That(Type("Memory"), Is.EqualTo(new TypeRef(TypeRefKind.Bin) { Clr = "Memory" }));
-        Assert.That(Type("Ints"), Is.EqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Int32, Clr = "Array" }));
-        Assert.That(Type("Longs"), Is.EqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Int64, Clr = "List" }));
-        Assert.That(Type("Floats"), Is.EqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Single, Clr = "ReadOnlyMemory" }));
-        Assert.That(Type("Halves"), Is.EqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Half, Clr = "Array", RefNullable = true }));
-        Assert.That(Type("ByteList").Kind, Is.EqualTo(TypeRefKind.Seq));
-        Assert.That(Type("ByteList").Args.Single(), Is.EqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.Byte }));
+        await Assert.That(Type("Flag")).IsEqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.Bool });
+        await Assert.That(Type("Bytes")).IsEqualTo(new TypeRef(TypeRefKind.Bin) { Clr = "Array" });
+        await Assert.That(Type("Memory")).IsEqualTo(new TypeRef(TypeRefKind.Bin) { Clr = "Memory" });
+        await Assert.That(Type("Ints")).IsEqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Int32, Clr = "Array" });
+        await Assert.That(Type("Longs")).IsEqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Int64, Clr = "List" });
+        await Assert.That(Type("Floats")).IsEqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Single, Clr = "ReadOnlyMemory" });
+        await Assert.That(Type("Halves")).IsEqualTo(new TypeRef(TypeRefKind.PrimArray) { Prim = PrimKind.Half, Clr = "Array", RefNullable = true });
+        await Assert.That(Type("ByteList").Kind).IsEqualTo(TypeRefKind.Seq);
+        await Assert.That(Type("ByteList").Args.Single()).IsEqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.Byte });
 
         var names = Type("Names");
-        Assert.That(names.Kind, Is.EqualTo(TypeRefKind.Seq));
-        Assert.That(names.Clr, Is.EqualTo("IReadOnlyList"));
-        Assert.That(names.Args.Single(), Is.EqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.String, RefNullable = true }));
+        await Assert.That(names.Kind).IsEqualTo(TypeRefKind.Seq);
+        await Assert.That(names.Clr).IsEqualTo("IReadOnlyList");
+        await Assert.That(names.Args.Single()).IsEqualTo(new TypeRef(TypeRefKind.Prim) { Prim = PrimKind.String, RefNullable = true });
 
-        Assert.That(Type("Ids").Kind, Is.EqualTo(TypeRefKind.Set));
-        Assert.That(Type("Colors").Kind, Is.EqualTo(TypeRefKind.Map));
-        Assert.That(Type("Colors").Args[1], Is.EqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Color" }));
-        Assert.That(Type("Queue").Kind, Is.EqualTo(TypeRefKind.Queue));
-        Assert.That(Type("Stack").Kind, Is.EqualTo(TypeRefKind.Stack));
-        Assert.That(Type("Tuple").TupleKind, Is.EqualTo("Value"));
-        Assert.That(Type("RefTuple").TupleKind, Is.EqualTo("Ref"));
-        Assert.That(Type("RefTuple").RefNullable, Is.True);
-        Assert.That(Type("Kvp").TupleKind, Is.EqualTo("KVP"));
-        Assert.That(Type("MaybeInt").Kind, Is.EqualTo(TypeRefKind.Nullable));
-        Assert.That(Type("MaybeInt").MayBeNull, Is.True);
-        Assert.That(Type("When").Prim, Is.EqualTo(PrimKind.DateTimeOffset));
-        Assert.That(Type("Huge").Prim, Is.EqualTo(PrimKind.BigInteger));
-        Assert.That(Type("Stamp").Prim, Is.EqualTo(PrimKind.DateTime));
-        Assert.That(Type("Point"), Is.EqualTo(new TypeRef(TypeRefKind.External) { Clr = "Zoo.Point" }));
+        await Assert.That(Type("Ids").Kind).IsEqualTo(TypeRefKind.Set);
+        await Assert.That(Type("Colors").Kind).IsEqualTo(TypeRefKind.Map);
+        await Assert.That(Type("Colors").Args[1]).IsEqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Color" });
+        await Assert.That(Type("Queue").Kind).IsEqualTo(TypeRefKind.Queue);
+        await Assert.That(Type("Stack").Kind).IsEqualTo(TypeRefKind.Stack);
+        await Assert.That(Type("Tuple").TupleKind).IsEqualTo("Value");
+        await Assert.That(Type("RefTuple").TupleKind).IsEqualTo("Ref");
+        await Assert.That(Type("RefTuple").RefNullable).IsTrue();
+        await Assert.That(Type("Kvp").TupleKind).IsEqualTo("KVP");
+        await Assert.That(Type("MaybeInt").Kind).IsEqualTo(TypeRefKind.Nullable);
+        await Assert.That(Type("MaybeInt").MayBeNull).IsTrue();
+        await Assert.That(Type("When").Prim).IsEqualTo(PrimKind.DateTimeOffset);
+        await Assert.That(Type("Huge").Prim).IsEqualTo(PrimKind.BigInteger);
+        await Assert.That(Type("Stamp").Prim).IsEqualTo(PrimKind.DateTime);
+        await Assert.That(Type("Point")).IsEqualTo(new TypeRef(TypeRefKind.External) { Clr = "Zoo.Point" });
 
         var wrapped = Type("Wrapped");
-        Assert.That(wrapped.DeclId, Is.EqualTo("Zoo.Envelope`1"));
-        Assert.That(wrapped.RefNullable, Is.True);
-        Assert.That(wrapped.Args.Single(), Is.EqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Shape", RefNullable = true }));
+        await Assert.That(wrapped.DeclId).IsEqualTo("Zoo.Envelope`1");
+        await Assert.That(wrapped.RefNullable).IsTrue();
+        await Assert.That(wrapped.Args.Single()).IsEqualTo(new TypeRef(TypeRefKind.Decl) { DeclId = "Zoo.Shape", RefNullable = true });
     }
 
     [Test]
-    public void MembersCarryNullabilityVisibilityAndLiterals()
+    public async Task MembersCarryNullabilityVisibilityAndLiterals()
     {
         var e = Object(Zoo.Ir, "Zoo.Everything");
         LiteralIr? Literal(string name) => Member(e, name).DefaultLiteral;
 
-        Assert.That(Literal("Flag"), Is.EqualTo(new LiteralIr(LiteralKind.Bool, "true")));
-        Assert.That(Literal("Color"), Is.EqualTo(new LiteralIr(LiteralKind.Enum, "Green")));
-        Assert.That(Literal("Access"), Is.Null, "Only simple constants are recorded.");
-        Assert.That(Literal("Bytes"), Is.Null);
-        Assert.That(Literal("Price"), Is.EqualTo(new LiteralIr(LiteralKind.Decimal, "1.25")));
-        Assert.That(Literal("Letter"), Is.EqualTo(new LiteralIr(LiteralKind.Char, "x")));
-        Assert.That(Literal("Secret"), Is.EqualTo(new LiteralIr(LiteralKind.String, "")));
-        Assert.That(Literal("Note"), Is.EqualTo(new LiteralIr(LiteralKind.Null, null)));
-        Assert.That(Literal("Big"), Is.EqualTo(new LiteralIr(LiteralKind.Integer, "-9000000000")));
-        Assert.That(Member(Object(Zoo.Ir, "Zoo.Circle"), "Radius").DefaultLiteral, Is.EqualTo(new LiteralIr(LiteralKind.Real, "1.5")));
-        Assert.That(Member(Object(Zoo.Ir, "Zoo.Square"), "Side").DefaultLiteral, Is.EqualTo(new LiteralIr(LiteralKind.Integer, "-3")));
-        Assert.That(Member(Object(Zoo.Ir, "Zoo.Circle"), "Name").DefaultLiteral, Is.EqualTo(new LiteralIr(LiteralKind.String, "shape")));
+        await Assert.That(Literal("Flag")).IsEqualTo(new LiteralIr(LiteralKind.Bool, "true"));
+        await Assert.That(Literal("Color")).IsEqualTo(new LiteralIr(LiteralKind.Enum, "Green"));
+        await Assert.That(Literal("Access")).IsNull().Because("Only simple constants are recorded.");
+        await Assert.That(Literal("Bytes")).IsNull();
+        await Assert.That(Literal("Price")).IsEqualTo(new LiteralIr(LiteralKind.Decimal, "1.25"));
+        await Assert.That(Literal("Letter")).IsEqualTo(new LiteralIr(LiteralKind.Char, "x"));
+        await Assert.That(Literal("Secret")).IsEqualTo(new LiteralIr(LiteralKind.String, ""));
+        await Assert.That(Literal("Note")).IsEqualTo(new LiteralIr(LiteralKind.Null, null));
+        await Assert.That(Literal("Big")).IsEqualTo(new LiteralIr(LiteralKind.Integer, "-9000000000"));
+        await Assert.That(Member(Object(Zoo.Ir, "Zoo.Circle"), "Radius").DefaultLiteral).IsEqualTo(new LiteralIr(LiteralKind.Real, "1.5"));
+        await Assert.That(Member(Object(Zoo.Ir, "Zoo.Square"), "Side").DefaultLiteral).IsEqualTo(new LiteralIr(LiteralKind.Integer, "-3"));
+        await Assert.That(Member(Object(Zoo.Ir, "Zoo.Circle"), "Name").DefaultLiteral).IsEqualTo(new LiteralIr(LiteralKind.String, "shape"));
 
-        Assert.That(Member(e, "Secret").WasNonPublic, Is.True);
-        Assert.That(Member(e, "Note").WasNonPublic, Is.False);
-        Assert.That(Member(e, "Note").RefNullable, Is.True);
-        Assert.That(Member(e, "Bytes").RefNullable, Is.False);
-        Assert.That(Member(e, "MaybeInt").RefNullable, Is.False);
-        Assert.That(e.ArrayLength, Is.EqualTo(36));
+        await Assert.That(Member(e, "Secret").WasNonPublic).IsTrue();
+        await Assert.That(Member(e, "Note").WasNonPublic).IsFalse();
+        await Assert.That(Member(e, "Note").RefNullable).IsTrue();
+        await Assert.That(Member(e, "Bytes").RefNullable).IsFalse();
+        await Assert.That(Member(e, "MaybeInt").RefNullable).IsFalse();
+        await Assert.That(e.ArrayLength).IsEqualTo(36);
     }
 
     [Test]
-    public void UnionsGenericsEnumsAndRecursion()
+    public async Task UnionsGenericsEnumsAndRecursion()
     {
         var ir = Zoo.Ir;
 
         var shape = (UnionDeclIr)Decl(ir, "Zoo.Shape");
-        Assert.That(shape.IsInterface, Is.False);
-        Assert.That(shape.Cases.Select(c => (c.Tag, c.CaseDeclId, c.InheritanceDepth)), Is.EqualTo(new[]
+        await Assert.That(shape.IsInterface).IsFalse();
+        await Assert.That(shape.Cases.Select(c => (c.Tag, c.CaseDeclId, c.InheritanceDepth)).ToArray()).IsEquivalentTo(new[]
         {
             ((ushort)1, "Zoo.Circle", 2),
             ((ushort)2, "Zoo.Square", 2),
             ((ushort)3, "Zoo.RoundedSquare", 3),
-        }));
-        Assert.That(shape.Docs, Is.EqualTo("A drawable shape with a ignored reference."));
-        Assert.That(Object(ir, "Zoo.RoundedSquare").BaseDeclId, Is.EqualTo("Zoo.Square"));
-        Assert.That(Object(ir, "Zoo.Circle").BaseDeclId, Is.EqualTo("Zoo.Shape"));
-        Assert.That(Object(ir, "Zoo.RoundedSquare").Members.Select(m => m.Key), Is.EqualTo(new[] { 0, 1, 2 }));
+        }, CollectionOrdering.Matching);
+        await Assert.That(shape.Docs).IsEqualTo("A drawable shape with a ignored reference.");
+        await Assert.That(Object(ir, "Zoo.RoundedSquare").BaseDeclId).IsEqualTo("Zoo.Square");
+        await Assert.That(Object(ir, "Zoo.Circle").BaseDeclId).IsEqualTo("Zoo.Shape");
+        await Assert.That(Object(ir, "Zoo.RoundedSquare").Members.Select(m => m.Key).ToArray()).IsEquivalentTo(new[] { 0, 1, 2 }, CollectionOrdering.Matching);
 
         var envelope = Object(ir, "Zoo.Envelope`1");
-        Assert.That(envelope.Name, Is.EqualTo("Envelope"));
-        Assert.That(envelope.TypeParams, Is.EqualTo(new[] { "T" }));
-        Assert.That(envelope.ArrayLength, Is.EqualTo(4));
-        Assert.That(Member(envelope, "Value").Type, Is.EqualTo(new TypeRef(TypeRefKind.TypeParam) { Ordinal = 0 }));
-        Assert.That(Member(envelope, "Maybe").Type, Is.EqualTo(new TypeRef(TypeRefKind.TypeParam) { Ordinal = 0, RefNullable = true }));
+        await Assert.That(envelope.Name).IsEqualTo("Envelope");
+        await Assert.That(envelope.TypeParams).IsEquivalentTo(new[] { "T" }, CollectionOrdering.Matching);
+        await Assert.That(envelope.ArrayLength).IsEqualTo(4);
+        await Assert.That(Member(envelope, "Value").Type).IsEqualTo(new TypeRef(TypeRefKind.TypeParam) { Ordinal = 0 });
+        await Assert.That(Member(envelope, "Maybe").Type).IsEqualTo(new TypeRef(TypeRefKind.TypeParam) { Ordinal = 0, RefNullable = true });
 
         var color = (EnumDeclIr)Decl(ir, "Zoo.Color");
-        Assert.That(color.Underlying, Is.EqualTo(PrimKind.Byte));
-        Assert.That(color.IsFlags, Is.False);
-        Assert.That(color.Members.Select(m => (m.Name, m.Value)), Is.EqualTo(new[] { ("Red", 1L), ("Green", 2L), ("Blue", 4L) }));
-        Assert.That(color.Docs, Is.EqualTo("Primary colors. See Shape."));
+        await Assert.That(color.Underlying).IsEqualTo(PrimKind.Byte);
+        await Assert.That(color.IsFlags).IsFalse();
+        await Assert.That(color.Members.Select(m => (m.Name, m.Value)).ToArray()).IsEquivalentTo(new[] { ("Red", 1L), ("Green", 2L), ("Blue", 4L) }, CollectionOrdering.Matching);
+        await Assert.That(color.Docs).IsEqualTo("Primary colors. See Shape.");
 
         var access = (EnumDeclIr)Decl(ir, "Zoo.Access");
-        Assert.That(access.Underlying, Is.EqualTo(PrimKind.UInt64));
-        Assert.That(access.IsFlags, Is.True);
-        Assert.That(access.Members.Single(m => m.Name == "All").Value, Is.EqualTo(-1L));
+        await Assert.That(access.Underlying).IsEqualTo(PrimKind.UInt64);
+        await Assert.That(access.IsFlags).IsTrue();
+        await Assert.That(access.Members.Single(m => m.Name == "All").Value).IsEqualTo(-1L);
 
-        Assert.That(Object(ir, "Zoo.Node").IsRecursive, Is.True);
-        Assert.That(Object(ir, "Zoo.Tree").IsRecursive, Is.True);
-        Assert.That(Object(ir, "Zoo.Everything").IsRecursive, Is.False);
-        Assert.That(shape.IsRecursive, Is.False);
+        await Assert.That(Object(ir, "Zoo.Node").IsRecursive).IsTrue();
+        await Assert.That(Object(ir, "Zoo.Tree").IsRecursive).IsTrue();
+        await Assert.That(Object(ir, "Zoo.Everything").IsRecursive).IsFalse();
+        await Assert.That(shape.IsRecursive).IsFalse();
 
         var pair = Object(ir, "Zoo.Pair");
-        Assert.That(pair.IsStruct, Is.True);
-        Assert.That(pair.IsRecord, Is.True);
+        await Assert.That(pair.IsStruct).IsTrue();
+        await Assert.That(pair.IsRecord).IsTrue();
 
         // Reached only through other producers.
-        Assert.That(ir.Types.Select(t => t.Id), Does.Contain("Zoo.RuntimeOnly"));
-        Assert.That(ir.Types.Select(t => t.Id), Does.Contain("Zoo.Orphan"));
-        Assert.That(ir.Types.Select(t => t.Id), Is.Ordered.Using((IComparer<string>)StringComparer.Ordinal));
+        await Assert.That(ir.Types.Select(t => t.Id)).Contains("Zoo.RuntimeOnly");
+        await Assert.That(ir.Types.Select(t => t.Id)).Contains("Zoo.Orphan");
+        var ids = ir.Types.Select(t => t.Id).ToArray();
+        await Assert.That(ids).IsEquivalentTo(ids.OrderBy(id => id, StringComparer.Ordinal), CollectionOrdering.Matching);
     }
 
     [Test]
-    public void NestedTypesRecordTheirContainers()
+    public async Task NestedTypesRecordTheirContainers()
     {
         var ir = IrTestRunner.Run(IrFixtures.Versioned).Ir;
         var state = (EnumDeclIr)Decl(ir, "NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1_1+ReturnState");
-        Assert.That(state.Name, Is.EqualTo("ReturnState"));
-        Assert.That(state.ClrNamespace, Is.EqualTo("NexNet.IntegrationTests.TestInterfaces"));
-        Assert.That(state.ContainingTypes, Is.EqualTo(new[] { "IVersionedServerNexusV1_1" }));
-        Assert.That(state.Underlying, Is.EqualTo(PrimKind.UInt16));
+        await Assert.That(state.Name).IsEqualTo("ReturnState");
+        await Assert.That(state.ClrNamespace).IsEqualTo("NexNet.IntegrationTests.TestInterfaces");
+        await Assert.That(state.ContainingTypes).IsEquivalentTo(new[] { "IVersionedServerNexusV1_1" }, CollectionOrdering.Matching);
+        await Assert.That(state.Underlying).IsEqualTo(PrimKind.UInt16);
     }
 }

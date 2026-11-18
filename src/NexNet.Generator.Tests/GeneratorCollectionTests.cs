@@ -1,11 +1,10 @@
-﻿using NUnit.Framework;
-
+﻿
 namespace NexNet.Generator.Tests;
 
 class GeneratorCollectionTests
 {
     [Test]
-    public void GeneratesCollection_WithInvocationId()
+    public async Task GeneratesCollection_WithInvocationId()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -25,11 +24,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
   }
 ");
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void GeneratesCollection_WithoutInvocationId()
+    public async Task GeneratesCollection_WithoutInvocationId()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -49,11 +48,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
   }
 ");
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
     
     [Test]
-    public void GeneratesMultipleCollections()
+    public async Task GeneratesMultipleCollections()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -77,11 +76,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
   }
 ");
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void Diagnostic_015()
+    public async Task Diagnostic_015()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -101,11 +100,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionUnknownType.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionUnknownType.Id)).IsTrue();
     }
     
     [Test]
-    public void Diagnostic_016()
+    public async Task Diagnostic_016()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -125,11 +124,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionUnknownMode.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionUnknownMode.Id)).IsTrue();
     }  
     
     [Test]
-    public void Diagnostic_007_DuplicatedWithCollection()
+    public async Task Diagnostic_007_DuplicatedWithCollection()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -151,11 +150,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id)).IsTrue();
     }
     
     [Test]
-    public void Diagnostic_007_DuplicatedWithMethod()
+    public async Task Diagnostic_007_DuplicatedWithMethod()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -176,11 +175,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.DuplicatedMethodId.Id)).IsTrue();
     }
     
     [Test]
-    public void Diagnostic_017()
+    public async Task Diagnostic_017()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -199,11 +198,11 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionAttributeMissing.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionAttributeMissing.Id)).IsTrue();
     }
     
     [Test]
-    public void Diagnostic_018()
+    public async Task Diagnostic_018()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -223,7 +222,6 @@ partial class ClientNexus : IClientNexus{ }
 partial class ServerNexus : IServerNexus {
 }
 ");
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionCanNotBeOnClient.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.CollectionCanNotBeOnClient.Id)).IsTrue();
     }
 }
-
