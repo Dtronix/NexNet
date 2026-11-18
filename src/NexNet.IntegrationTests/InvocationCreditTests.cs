@@ -322,7 +322,7 @@ internal class InvocationCreditTests : BaseTests
 
         await Task.WhenAll(done).Timeout(5);
         foreach (var order in orders)
-            await Assert.That(order).IsEqualTo(Enumerable.Range(0, count));
+            await Assert.That(order).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
     }
 
     [Test]

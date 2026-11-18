@@ -158,6 +158,17 @@ internal abstract class BaseTests
 
         var stops = new List<Task>();
 
+        // The test is over, so nothing needs the disconnect message to reach the peer: skip the DisconnectDelay
+        // (200 ms by default) that every graceful disconnect would otherwise wait out.
+        foreach (var nexusClient in Clients)
+            nexusClient.Config.DisconnectDelay = 0;
+
+        foreach (var nexusServer in Servers.Concat(ServerFactories.Select(f => f.ServerBase)))
+        {
+            if (nexusServer.State == NexusServerState.Running)
+                nexusServer.Config.DisconnectDelay = 0;
+        }
+
         foreach (var nexusClient in Clients)
         {
             if (nexusClient.State != ConnectionState.Connected)
