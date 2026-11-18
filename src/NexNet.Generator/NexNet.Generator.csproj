@@ -29,6 +29,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
+  <!-- MSBuild files of the multi-language targets (bundle unpack). NexNet.Generator.Tasks.cs is compiled by MSBuild's
+       RoslynCodeTaskFactory in the consuming build, not into the generator. -->
+  <ItemGroup>
+    <Compile Remove="build/**;buildTransitive/**" />
+    <None Remove="build/**;buildTransitive/**" />
+    <None Include="build/**" Pack="true" PackagePath="build/" />
+    <None Include="buildTransitive/**" Pack="true" PackagePath="buildTransitive/" />
+  </ItemGroup>
+
   <!-- for nuget publish -->
   <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
     <ItemGroup>

@@ -1,0 +1,3 @@
+<Project>
+  <Import Project="../build/NexNet.Generator.targets" Condition="'$(_NexNetGeneratorTargetsImported)' != 'true'" />
+</Project>
