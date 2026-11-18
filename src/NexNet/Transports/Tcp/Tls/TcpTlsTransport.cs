@@ -55,18 +55,30 @@ internal class TcpTlsTransport : ITransport
     }
 
     /// <summary>
-    /// Open a new or existing socket as a server accepting a client
+    /// Runs the server side of the TLS handshake on an accepted socket. Bounded by
+    /// <see cref="TcpTlsServerConfig.SslConnectionTimeout"/> and by <paramref name="cancellationToken"/>. On failure
+    /// the streams are disposed; the caller closes the socket.
     /// </summary>
-    public static async ValueTask<ITransport> CreateFromSocket(Socket socket, TcpTlsServerConfig config)
+    public static async ValueTask<ITransport> CreateFromSocket(Socket socket, TcpTlsServerConfig config,
+        CancellationToken cancellationToken = default)
     {
         var networkStream = new NetworkStream(socket, false);
         var sslStream = new SslStream(networkStream, true);
 
-        var sslTimeout = new CancellationTokenSource(config.SslConnectionTimeout);
+        try
+        {
+            using var sslTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            sslTimeout.CancelAfter(config.SslConnectionTimeout);
 
-
-        await sslStream.AuthenticateAsServerAsync(config.SslServerAuthenticationOptions, sslTimeout.Token)
-            .ConfigureAwait(false);
+            await sslStream.AuthenticateAsServerAsync(config.SslServerAuthenticationOptions, sslTimeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch
+        {
+            await sslStream.DisposeAsync().ConfigureAwait(false);
+            await networkStream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
 
         // Extract remote endpoint
         var (remoteAddress, remotePort) = EndPointHelper.ExtractEndPointInfo(socket.RemoteEndPoint);

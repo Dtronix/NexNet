@@ -35,17 +35,17 @@ internal class QuicTransport : ITransport
         Input = PipeReader.Create(stream);
         _sendPipe = new StreamSendPipe(stream, sendPipeOptions);
 
-        // Extract from QUIC connection's RemoteEndPoint
-        if (quicConnection.RemoteEndPoint is System.Net.IPEndPoint ipEndPoint)
-        {
-            RemoteAddress = ipEndPoint.Address.ToString();
-            RemotePort = ipEndPoint.Port;
-        }
-        else
-        {
-            RemoteAddress = quicConnection.RemoteEndPoint?.ToString();
-            RemotePort = null;
-        }
+        (RemoteAddress, RemotePort) = GetRemoteEndPointInfo(quicConnection);
+    }
+
+    /// <summary>
+    /// The remote address and port of a QUIC connection.
+    /// </summary>
+    internal static (string? Address, int? Port) GetRemoteEndPointInfo(QuicConnection connection)
+    {
+        return connection.RemoteEndPoint is System.Net.IPEndPoint ipEndPoint
+            ? (ipEndPoint.Address.ToString(), ipEndPoint.Port)
+            : (connection.RemoteEndPoint?.ToString(), null);
     }
 
     public async ValueTask CloseAsync(bool linger)
@@ -69,11 +69,16 @@ internal class QuicTransport : ITransport
     }
 
     /// <summary>
-    /// Open a new or existing socket as a client
+    /// Accepts the NexNet stream of an accepted server connection. Bounded by
+    /// <see cref="ConfigBase.HandshakeTimeout"/> and by <paramref name="cancellationToken"/>: a peer that never opens
+    /// a stream fails here instead of waiting forever. The caller disposes the connection on failure.
     /// </summary>
-    public static async ValueTask<ITransport> CreateFromConnection(QuicConnection connection, QuicServerConfig config)
+    public static async ValueTask<ITransport> CreateFromConnection(QuicConnection connection, QuicServerConfig config,
+        CancellationToken cancellationToken = default)
     {
-        var stream = await connection.AcceptInboundStreamAsync(CancellationToken.None).ConfigureAwait(false);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(config.HandshakeTimeout);
+        var stream = await connection.AcceptInboundStreamAsync(timeout.Token).ConfigureAwait(false);
         return new QuicTransport(connection, stream, config.SendSessionPipeOptions);
     }
 
@@ -88,15 +93,11 @@ internal class QuicTransport : ITransport
 
             throw new PlatformNotSupportedException("QUIC is not supported on this platform.");
 
-        // Set the application protocol.
-        clientConfig.SslClientAuthenticationOptions.ApplicationProtocols = new List<SslApplicationProtocol>
-        {
-            new SslApplicationProtocol("nn1"),
-        };
         var connectionOptions = new QuicClientConnectionOptions()
         {
             RemoteEndPoint = clientConfig.EndPoint,
-            ClientAuthenticationOptions = clientConfig.SslClientAuthenticationOptions,
+            // Set the application protocol on a copy, leaving the caller's options unchanged.
+            ClientAuthenticationOptions = QuicHelpers.WithNexNetAlpn(clientConfig.SslClientAuthenticationOptions),
             DefaultStreamErrorCode = 0x0A, // Protocol-dependent error code.
             DefaultCloseErrorCode = 0x0B, // Protocol-dependent error code.
         };
