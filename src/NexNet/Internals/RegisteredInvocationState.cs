@@ -81,11 +81,6 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
 
     public bool IsCanceled { get; private set; }
 
-    /// <summary>
-    /// Completed without a result: canceled before it was sent. The call returns nothing (the default value).
-    /// </summary>
-    public bool IsNoResult { get; private set; }
-
     public Exception? Exception { get; set; }
 
     public InvocationResultMessage? Result { get; set; } = null;
@@ -119,7 +114,6 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         Volatile.Write(ref _consumed, 0);
         _send = default;
         IsCanceled = false;
-        IsNoResult = false;
         Exception = null;
         Owner = null;
         Result?.Dispose();
@@ -163,19 +157,6 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
             return false;
 
         IsCanceled = true;
-        _source.SetResult(false);
-        return true;
-    }
-
-    /// <summary>
-    /// Completes the invocation without a result: it was canceled before it was sent.
-    /// </summary>
-    public bool TrySetNoResult()
-    {
-        if (!TryClaim())
-            return false;
-
-        IsNoResult = true;
         _source.SetResult(false);
         return true;
     }
@@ -277,9 +258,6 @@ internal class RegisteredInvocationState : IValueTaskSource, IResettable
         if (IsCanceled)
             throw new TaskCanceledException();
 
-        if (IsNoResult)
-            return;
-
         switch (Result!.State)
         {
             case InvocationResultMessage.StateType.CompletedResult:
@@ -342,9 +320,6 @@ internal sealed class RegisteredInvocationState<T> : RegisteredInvocationState, 
         try
         {
             ThrowIfFailed();
-
-            if (IsNoResult)
-                return default!;
 
             if (!Result!.TryGetResult<T>(out var result))
                 throw new InvalidOperationException($"Could not get result of type {typeof(T)} from invocation result.");
