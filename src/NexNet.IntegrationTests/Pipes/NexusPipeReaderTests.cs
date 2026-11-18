@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -30,7 +29,7 @@ public class NexusPipeReaderTests
             await Assert.That(bufferResult).IsEqualTo(NexusPipeBufferResult.Success);
             await Assert.That(reader.TryRead(out var readResult)).IsTrue().Because("TryRead should return true after buffering");
             var actual = readResult.Buffer.ToArray();
-            await Assert.That(actual).IsEqualTo(payload).Because("Payload should match what was buffered");
+            await Assert.That(actual).IsEquivalentTo(payload, CollectionOrdering.Matching).Because("Payload should match what was buffered");
             await Assert.That(readResult.IsCanceled).IsFalse();
             await Assert.That(readResult.IsCompleted).IsFalse();
         }
@@ -75,7 +74,7 @@ public class NexusPipeReaderTests
         reader.BufferData(new ReadOnlySequence<byte>(payload));
         var readResult = await reader.ReadAsync();
 
-        await Assert.That(readResult.Buffer.ToArray()).IsEqualTo(payload).Because("Initial read sees full payload");
+        await Assert.That(readResult.Buffer.ToArray()).IsEquivalentTo(payload, CollectionOrdering.Matching).Because("Initial read sees full payload");
 
         reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.End);
 
@@ -201,7 +200,7 @@ public class NexusPipeReaderTests
 
         // The data beyond the credit was not buffered.
         await Assert.That(reader.TryRead(out var result)).IsTrue();
-        await Assert.That(result.Buffer.ToArray()).IsEqualTo(new byte[] { 1, 2, 3 });
+        await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -224,7 +223,7 @@ public class NexusPipeReaderTests
         await Assert.That(spy.Grants).IsEmpty().Because("Less than half the window consumed");
 
         reader.AdvanceTo(1, 1);
-        await Assert.That(spy.Grants).IsEqualTo(new[] { 4 }).Because("Half the window consumed");
+        await Assert.That(spy.Grants).IsEquivalentTo(new[] { 4 }, CollectionOrdering.Matching).Because("Half the window consumed");
 
         // The grant is usable: 4 more bytes fit, a fifth does not.
         await Assert.That(reader.BufferData(new ReadOnlySequence<byte>([8, 9, 10, 11]))).IsEqualTo(NexusPipeBufferResult.Success);

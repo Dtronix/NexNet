@@ -669,7 +669,7 @@ internal class NexusListTests : NexusCollectionBaseTests
         await client.Proxy.IntListBi.AddAsync(15).Timeout(1);
 
         var list = client.Proxy.IntListBi.ToList();
-        await Assert.That(list).IsEqualTo(new[] { 5, 10, 15 });
+        await Assert.That(list).IsEquivalentTo(new[] { 5, 10, 15 }, CollectionOrdering.Matching);
     }
     
     [Test]

@@ -466,7 +466,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var sourceItems = sourceList.ToList();
         var relayItems = relayList.ToList();
 
-        await Assert.That(sourceItems).IsEqualTo(relayItems);
+        await Assert.That(sourceItems).IsEquivalentTo(relayItems, CollectionOrdering.Matching);
 
         // Verify items are in correct order
         for (int i = 0; i < 10; i++)
@@ -901,7 +901,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await sourceList.AddAsync(3);
         await waitInitial.Wait();
 
-        await Assert.That(relayList.ToList()).IsEqualTo(new[] { 1, 2, 3 });
+        await Assert.That(relayList.ToList()).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
 
         // Stop parent
         await clSv.Server1.StopAsync();
@@ -1367,7 +1367,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var array = new int[5];
         relayList.CopyTo(array, 0);
 
-        await Assert.That(array).IsEqualTo(new[] { 0, 10, 20, 30, 40 });
+        await Assert.That(array).IsEquivalentTo(new[] { 0, 10, 20, 30, 40 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1423,7 +1423,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         }
 
         // Always verify final state matches
-        await Assert.That(relayList.ToList()).IsEqualTo(sourceList.ToList());
+        await Assert.That(relayList.ToList()).IsEquivalentTo(sourceList.ToList(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1448,7 +1448,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitReplace.Wait();
 
         await Assert.That(relayList[1]).IsEqualTo(999);
-        await Assert.That(relayList.ToList()).IsEqualTo(new[] { 1, 999, 3 });
+        await Assert.That(relayList.ToList()).IsEquivalentTo(new[] { 1, 999, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1472,9 +1472,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var relay1 = clSvs.Child1Relay.ToList();
         var relay2 = clSvs.Child2Relay.ToList();
 
-        await Assert.That(relay1).IsEqualTo(source);
-        await Assert.That(relay2).IsEqualTo(source);
-        await Assert.That(relay1).IsEqualTo(relay2);
+        await Assert.That(relay1).IsEquivalentTo(source, CollectionOrdering.Matching);
+        await Assert.That(relay2).IsEquivalentTo(source, CollectionOrdering.Matching);
+        await Assert.That(relay1).IsEquivalentTo(relay2, CollectionOrdering.Matching);
     }
 
     [Test]

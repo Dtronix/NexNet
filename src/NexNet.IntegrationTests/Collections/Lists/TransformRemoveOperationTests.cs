@@ -1,6 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
 public class TransformRemoveOperationTests
@@ -14,7 +13,7 @@ public class TransformRemoveOperationTests
         {
             var list = new VersionedList<int>().FillNegative(1);
             list.ProcessOperation(txOp, 0, out _);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -28,7 +27,7 @@ public class TransformRemoveOperationTests
         {
             var list = new VersionedList<int>().FillNegative(3);
             list.ProcessOperation(txOp, 0, out _);
-            await Assert.That(list).IsEqualTo(new[] { -2, -3 });
+            await Assert.That(list).IsEquivalentTo(new[] { -2, -3 }, CollectionOrdering.Matching);
 
         }
     }
@@ -42,7 +41,7 @@ public class TransformRemoveOperationTests
         {
             var list = new VersionedList<int>().FillNegative(3);
             list.ProcessOperation(txOp, 0, out _);
-            await Assert.That(list).IsEqualTo(new[] { -1, -3 });
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -3 }, CollectionOrdering.Matching);
 
         }
     }
@@ -56,7 +55,7 @@ public class TransformRemoveOperationTests
         {
             var list = new VersionedList<int>().FillNegative(3);
             list.ProcessOperation(txOp, 0, out _);
-            await Assert.That(list).IsEqualTo(new[] { -1, -2 });
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -2 }, CollectionOrdering.Matching);
 
         }
     }
@@ -108,7 +107,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -1 , 1});
+            await Assert.That(list).IsEquivalentTo(new[] { -1 , 1}, CollectionOrdering.Matching);
 
         }
     }
@@ -128,7 +127,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { 1, -1 });
+            await Assert.That(list).IsEquivalentTo(new[] { 1, -1 }, CollectionOrdering.Matching);
 
         }
     }
@@ -148,7 +147,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(1);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { 1 });
+            await Assert.That(list).IsEquivalentTo(new[] { 1 }, CollectionOrdering.Matching);
 
         }
     }
@@ -168,7 +167,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -187,7 +186,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsTypeOf<NoopOperation<int>>();
-            await Assert.That(list).IsEqualTo(new[] { -1 });
+            await Assert.That(list).IsEquivalentTo(new[] { -1 }, CollectionOrdering.Matching);
 
         }
     }
@@ -207,7 +206,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(3);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -3, -2 });
+            await Assert.That(list).IsEquivalentTo(new[] { -3, -2 }, CollectionOrdering.Matching);
 
         }
     }
@@ -227,7 +226,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -2 });
+            await Assert.That(list).IsEquivalentTo(new[] { -2 }, CollectionOrdering.Matching);
 
         }
     }
@@ -247,7 +246,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(2);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -2 });
+            await Assert.That(list).IsEquivalentTo(new[] { -2 }, CollectionOrdering.Matching);
 
         }
     }
@@ -268,7 +267,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(5);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -1, -4, -2, -5 });
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -4, -2, -5 }, CollectionOrdering.Matching);
 
         }
     }
@@ -289,7 +288,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(5);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -1, -5, -2, -4 });
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -5, -2, -4 }, CollectionOrdering.Matching);
 
         }
     }
@@ -310,7 +309,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(5);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -1, -3, -5, -2});
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -3, -5, -2}, CollectionOrdering.Matching);
 
         }
     }
@@ -331,7 +330,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(5);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { -1, -5, -2, -3});
+            await Assert.That(list).IsEquivalentTo(new[] { -1, -5, -2, -3}, CollectionOrdering.Matching);
 
         }
     }
@@ -351,7 +350,7 @@ public class TransformRemoveOperationTests
             var list = new VersionedList<int>().FillNegative(3);
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out _)).IsEqualTo(txOp);
-            await Assert.That(list).IsEqualTo(new[] { 2, -3});
+            await Assert.That(list).IsEquivalentTo(new[] { 2, -3}, CollectionOrdering.Matching);
 
         }
     }

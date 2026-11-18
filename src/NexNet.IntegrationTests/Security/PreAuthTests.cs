@@ -2,7 +2,6 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -49,7 +48,7 @@ internal class PreAuthTests : BaseTests
         if (type.ToString().StartsWith("Disconnect", StringComparison.Ordinal))
             await Assert.That(received.Length == 0 || received.SequenceEqual(new[] { (byte)DisconnectReason.ProtocolError })).IsTrue();
         else
-            await Assert.That(received).IsEqualTo(new[] { (byte)DisconnectReason.ProtocolError });
+            await Assert.That(received).IsEquivalentTo(new[] { (byte)DisconnectReason.ProtocolError }, CollectionOrdering.Matching);
     }
 
     [Test]

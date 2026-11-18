@@ -2,7 +2,6 @@ using System.Buffers;
 using NexNet.IntegrationTests.SessionManagement;
 using NexNet.Messages;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 internal class NexusPipeManagerTests

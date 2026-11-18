@@ -1,5 +1,4 @@
 ﻿using NexNet.Internals.Collections.Lists;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -33,7 +32,7 @@ internal class SnapshotListTests
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         var expected = new[] { 3, 2, 1 };
-        await Assert.That(list.ToList()).IsEqualTo(expected);
+        await Assert.That(list.ToList()).IsEquivalentTo(expected, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -42,7 +41,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int>();
         list.Insert(0, 100);
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 100 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 100 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -51,7 +50,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int> { 1, 2 };
         list.Insert(2, 3);
         await Assert.That(list.Count).IsEqualTo(3);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 2, 1, 3 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 2, 1, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -60,7 +59,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int> { 1, 3 };
         list.Insert(1, 2);
         await Assert.That(list.Count).IsEqualTo(3);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 3, 2, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -105,7 +104,7 @@ internal class SnapshotListTests
         await Assert.That(list.Remove(1)).IsTrue();
         await Assert.That(list.Count).IsEqualTo(2);
         var items = list.ToList();
-        await Assert.That(items).IsEqualTo(new[] { 2, 1 });
+        await Assert.That(items).IsEquivalentTo(new[] { 2, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -138,7 +137,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int> { 1, 2 };
         var snapshot = list.ToList();
         list.Add(3);
-        await Assert.That(snapshot).IsEqualTo(new[] { 2, 1 });
+        await Assert.That(snapshot).IsEquivalentTo(new[] { 2, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -150,7 +149,7 @@ internal class SnapshotListTests
         var result = new List<int>();
         while (enumerator.MoveNext())
             result.Add(enumerator.Current);
-        await Assert.That(result).IsEqualTo(new[] { 1 });
+        await Assert.That(result).IsEquivalentTo(new[] { 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -162,7 +161,7 @@ internal class SnapshotListTests
         var result = new List<int>();
         while (enumerator.MoveNext())
             result.Add(enumerator.Current);
-        await Assert.That(result).IsEqualTo(new[] { 2 }); // removal happens after snapshot, so still listed
+        await Assert.That(result).IsEquivalentTo(new[] { 2 }, CollectionOrdering.Matching); // removal happens after snapshot, so still listed
     }
 
     [Test]
@@ -172,7 +171,7 @@ internal class SnapshotListTests
         await Assert.That(list.Remove(1)).IsTrue();
         list.Add(3); // should reuse slot
         await Assert.That(list.Count).IsEqualTo(2);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 3, 2 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -181,7 +180,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int>(2) { 1, 2, 3 // force grow
         };
         await Assert.That(list.Count).IsEqualTo(3);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 3, 2, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -327,7 +326,7 @@ internal class SnapshotListTests
         e.Reset();
         var secondRun = new List<int>();
         while (e.MoveNext()) secondRun.Add(e.Current);
-        await Assert.That(secondRun).IsEqualTo(firstRun);
+        await Assert.That(secondRun).IsEquivalentTo(firstRun, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -335,7 +334,7 @@ internal class SnapshotListTests
     {
         var list = new SnapshotList<string?> { null };
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new string?[] { null });
+        await Assert.That(list.ToList()).IsEquivalentTo(new string?[] { null }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -352,7 +351,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<string?>();
         list.Insert(0, null);
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new string?[] { null });
+        await Assert.That(list.ToList()).IsEquivalentTo(new string?[] { null }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -384,7 +383,7 @@ internal class SnapshotListTests
         list.Remove(1);
         list.Add(2);
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 2 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 2 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -392,7 +391,7 @@ internal class SnapshotListTests
     {
         var list = new SnapshotList<int> { 1, 3 };
         list.Insert(1, 2);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 3, 2, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -400,7 +399,7 @@ internal class SnapshotListTests
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         list.Remove(2);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 1 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 3, 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -410,7 +409,7 @@ internal class SnapshotListTests
         };
         list.Insert(1, 3); // [1,3]
         list.Add(2); // [2,1,3]
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 2, 1, 3 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 2, 1, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -420,7 +419,7 @@ internal class SnapshotListTests
         var seq = list.ToList();
         list.Add(2);
         list.Remove(1);
-        await Assert.That(seq).IsEqualTo(new[] { 1 });
+        await Assert.That(seq).IsEquivalentTo(new[] { 1 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -439,7 +438,7 @@ internal class SnapshotListTests
         // enumerate twice
         var first = snapshot.ToList();
         var second = snapshot.ToList();
-        await Assert.That(second).IsEqualTo(first);
+        await Assert.That(second).IsEquivalentTo(first, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -510,7 +509,7 @@ internal class SnapshotListTests
         list.Insert(0, 1); // [1]
         list.Insert(1, 3); // [1,3]
         list.Insert(1, 2); // [1,2,3]
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 1, 2, 3 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -971,7 +970,6 @@ internal class SnapshotListTests
             },
             _ => { });
         // just ensure it completed without deadlock
-        ;
     }
 
     [Test]
@@ -1066,7 +1064,7 @@ internal class SnapshotListTests
         list.Clear();
         list.Add(42);
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 42 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 42 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1076,7 +1074,7 @@ internal class SnapshotListTests
         list.Clear();
         list.Insert(0, 100);
         await Assert.That(list.Count).IsEqualTo(1);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 100 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 100 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -1085,7 +1083,7 @@ internal class SnapshotListTests
         var list = new SnapshotList<int> { 1, 2, 3 };
         var snapshot = list.ToList();
         list.Clear();
-        await Assert.That(snapshot).IsEqualTo(new[] { 3, 2, 1 });
+        await Assert.That(snapshot).IsEquivalentTo(new[] { 3, 2, 1 }, CollectionOrdering.Matching);
         await Assert.That(list.Count).IsEqualTo(0);
     }
 
@@ -1120,7 +1118,7 @@ internal class SnapshotListTests
         list.Add(5);
         list.Add(6);
         await Assert.That(list.Count).IsEqualTo(3);
-        await Assert.That(list.ToList()).IsEqualTo(new[] { 6, 5, 4 });
+        await Assert.That(list.ToList()).IsEquivalentTo(new[] { 6, 5, 4 }, CollectionOrdering.Matching);
     }
 
     [Test]

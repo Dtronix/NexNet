@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using System.IO.Pipelines;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -60,7 +59,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             // If the connection is still alive, the buffer should contain the data.
             if (!result.IsCompleted)
             {
-                await Assert.That(result.Buffer.ToArray()).IsEqualTo(Data);
+                await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(Data, CollectionOrdering.Matching);
             }
         };
 
@@ -116,7 +115,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         cNexus.ClientTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
         {
             var result = await pipe.Input.ReadAsync().Timeout(1);
-            await Assert.That(result.Buffer.ToArray()).IsEqualTo(Data);
+            await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(Data, CollectionOrdering.Matching);
             tcs.SetResult();
         };
 
@@ -147,7 +146,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
 
         await pipe.ReadyTask.Timeout(1);
         var result = await pipe.Input.ReadAsync().Timeout(1);
-        await Assert.That(result.Buffer.ToArray()).IsEqualTo(Data);
+        await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(Data, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -334,7 +333,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
         await pipe.Output.CompleteAsync().Timeout(1);
 
         var result = await pipe.Input.ReadAsync().Timeout(1);
-        await Assert.That(result.Buffer.ToArray()).IsEqualTo(Data);
+        await Assert.That(result.Buffer.ToArray()).IsEquivalentTo(Data, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -357,7 +356,7 @@ internal class NexusClientTests_NexusDuplexPipe : BasePipeTests
             pipe.Input.AdvanceTo(buffer.Buffer.Start);
 
             var readResult = await pipe.Input.ReadAsync().Timeout(1);
-            await Assert.That(readResult.Buffer.ToArray()).IsEqualTo(Data);
+            await Assert.That(readResult.Buffer.ToArray()).IsEquivalentTo(Data, CollectionOrdering.Matching);
             tcs.SetResult();
         };
 

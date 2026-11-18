@@ -4,7 +4,6 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Pipes;
 using NexNet.Serialization;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 // CountedItem has a hand-written formatter, registered by the test that uses it.
@@ -50,7 +49,7 @@ internal class PipeForwardingTests : BaseTests
         // Half-close: the other direction of the destination pipe is still open.
         await r.BPipe.Output.WriteAsync(new byte[] { 1, 2, 3 }).Timeout(1);
         var back = await r.ServerDestination.Input.ReadAsync().AsTask().Timeout(1);
-        await Assert.That(back.Buffer.ToArray()).IsEqualTo(new byte[] { 1, 2, 3 });
+        await Assert.That(back.Buffer.ToArray()).IsEquivalentTo(new byte[] { 1, 2, 3 }, CollectionOrdering.Matching);
         r.ServerDestination.Input.AdvanceTo(back.Buffer.End);
     }
 
@@ -109,14 +108,14 @@ internal class PipeForwardingTests : BaseTests
         await r.APipe.Output.WriteAsync(new byte[] { 9, 9 }).Timeout(1);
         var read = await r.ServerSource.Input.ReadAsync().AsTask().Timeout(1);
         await Assert.That(read.IsCompleted).IsFalse();
-        await Assert.That(read.Buffer.ToArray()).IsEqualTo(new byte[] { 9, 9 });
+        await Assert.That(read.Buffer.ToArray()).IsEquivalentTo(new byte[] { 9, 9 }, CollectionOrdering.Matching);
         r.ServerSource.Input.AdvanceTo(read.Buffer.End);
 
         // The destination is still open: B receives what the server writes next.
         await r.ServerDestination.Output.WriteAsync(new byte[] { 4, 5 }).Timeout(1);
         var atB = await r.BPipe.Input.ReadAsync().AsTask().Timeout(1);
         await Assert.That(atB.IsCompleted).IsFalse();
-        await Assert.That(atB.Buffer.ToArray()).IsEqualTo(new byte[] { 4, 5 });
+        await Assert.That(atB.Buffer.ToArray()).IsEquivalentTo(new byte[] { 4, 5 }, CollectionOrdering.Matching);
         r.BPipe.Input.AdvanceTo(atB.Buffer.End);
     }
 
@@ -169,7 +168,7 @@ internal class PipeForwardingTests : BaseTests
             await Assert.That(write.IsCompleted).IsFalse();
             var read = await input.ReadAsync().AsTask().Timeout(1);
             await Assert.That(read.IsCompleted).IsFalse();
-            await Assert.That(read.Buffer.ToArray()).IsEqualTo(new[] { value, value });
+            await Assert.That(read.Buffer.ToArray()).IsEquivalentTo(new[] { value, value }, CollectionOrdering.Matching);
             input.AdvanceTo(read.Buffer.End);
         }
     }
@@ -282,7 +281,7 @@ internal class PipeForwardingTests : BaseTests
         await writing.Timeout(5);
         await forward.Timeout(5);
 
-        await Assert.That(received.Select(i => i.Sequence)).IsEqualTo(Enumerable.Range(0, count));
+        await Assert.That(received.Select(i => i.Sequence)).IsEquivalentTo(Enumerable.Range(0, count), CollectionOrdering.Matching);
 
         // A serializes each item once and B deserializes it once; a relay that re-typed the items would double both.
         await Assert.That(CountingFormatter.Serialized).IsEqualTo(count);

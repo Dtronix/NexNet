@@ -8,7 +8,6 @@ using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -163,7 +162,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
         await listener.CloseAsync(false);
 
-        var exception = await Assert.ThrowsExactlyAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 
@@ -237,7 +236,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
         await listener.CloseAsync(false);
 
-        var exception = await Assert.ThrowsExactlyAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
         await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 

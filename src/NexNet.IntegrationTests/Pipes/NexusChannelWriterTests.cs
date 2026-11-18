@@ -4,7 +4,6 @@ using NexNet.Internals;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Messages;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 

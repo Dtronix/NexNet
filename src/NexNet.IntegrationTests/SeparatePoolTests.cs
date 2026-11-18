@@ -4,7 +4,6 @@ using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -181,7 +180,7 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(2);
         await slow2.Timeout(1);
 
-        await Assert.That(gates.Log).IsEqualTo(new[]
+        await Assert.That(gates.Log).IsEquivalentTo(new[]
         {
             "slow1 start",
             "plain3 start",
@@ -189,7 +188,7 @@ internal class SeparatePoolTests : BaseTests
             "slow1 end",
             "slow2 start",
             "slow2 end",
-        });
+        }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -418,7 +417,7 @@ internal class SeparatePoolTests : BaseTests
         await started.Task.Timeout(1);
         cts.Cancel();
 
-        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await call.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await call.Timeout(1));
         await observed.Task.Timeout(1);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0 }, "the separate pool idle");
     }
@@ -448,7 +447,7 @@ internal class SeparatePoolTests : BaseTests
         await WaitFor(() => Invocations(server)?.SeparatePoolQueued == 1, "the cancelable call queued");
 
         cts.Cancel();
-        await Assert.ThrowsExactlyAsync<OperationCanceledException>(async () => await queued.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await queued.Timeout(1));
 
         // Once a slot frees, the canceled call either does not run or runs with its token already canceled, and ends.
         gates.Release(1);

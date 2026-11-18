@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Internals;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

@@ -1,6 +1,5 @@
 ﻿using System.Collections.Concurrent;
 using NexNet.Internals.Collections;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -345,7 +344,7 @@ internal class ConcurrentRemovableQueueTests
         var list = new List<int>();
         while (e.MoveNext()) list.Add(e.Current);
 
-        await Assert.That(list).IsEqualTo(new[] { 5, 6 });
+        await Assert.That(list).IsEquivalentTo(new[] { 5, 6 }, CollectionOrdering.Matching);
     }
     
     [Test]
@@ -461,7 +460,7 @@ internal class ConcurrentRemovableQueueTests
 
         var list = new List<int>();
         while (q.TryDequeue(out var v)) list.Add(v);
-        await Assert.That(list).IsEqualTo(new[] { 1, 3, 5, 7, 9 });
+        await Assert.That(list).IsEquivalentTo(new[] { 1, 3, 5, 7, 9 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -500,7 +499,7 @@ internal class ConcurrentRemovableQueueTests
         var list = new List<int>();
         while (e.MoveNext()) list.Add(e.Current);
 
-        await Assert.That(list).IsEqualTo(new[] { 1, 2, 3 });
+        await Assert.That(list).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -534,7 +533,7 @@ internal class ConcurrentRemovableQueueTests
 
         var seen = new List<int>();
         while (q.TryDequeue(out var v)) seen.Add(v);
-        await Assert.That(seen).IsEqualTo(new[] { 2, 3, 4 });
+        await Assert.That(seen).IsEquivalentTo(new[] { 2, 3, 4 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -740,7 +739,7 @@ internal class ConcurrentRemovableQueueTests
         var seen = new List<int>();
         while (e.MoveNext()) seen.Add(e.Current);
 
-        await Assert.That(seen).IsEqualTo(new[] { 5, 6, 7, 8, 9 });
+        await Assert.That(seen).IsEquivalentTo(new[] { 5, 6, 7, 8, 9 }, CollectionOrdering.Matching);
         remover.Wait();
     }
 

@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using NexNet.Internals.Pipelines.Buffers;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -102,11 +101,11 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
 
         await Buffer(pipeReader, bytes[..split]);
         var first = await reader.ReadAsync().Timeout(1);
-        await Assert.That(first).IsEqualTo(small);
+        await Assert.That(first).IsEquivalentTo(small, CollectionOrdering.Matching);
 
         await Buffer(pipeReader, bytes[split..]);
         var second = await reader.ReadAsync().Timeout(1);
-        await Assert.That(second).IsEqualTo(new[] { large });
+        await Assert.That(second).IsEquivalentTo(new[] { large }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -154,7 +153,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
             while (read.Count < items.Length)
                 read.AddRange(await reader.ReadAsync().Timeout(1));
 
-            await Assert.That(read).IsEqualTo(items).Because($"split {split}");
+            await Assert.That(read).IsEquivalentTo(items, CollectionOrdering.Matching).Because($"split {split}");
         }
     }
 
@@ -227,7 +226,7 @@ internal class NexusChannelReaderTests : NexusChannelTestBase
         await Task.Delay(50);
 
         // The difference was granted as extra credit, so the rest fits.
-        await Assert.That(stateManager.Grants).IsEqualTo(new[] { item.Length - 64 });
+        await Assert.That(stateManager.Grants).IsEquivalentTo(new[] { item.Length - 64 }, CollectionOrdering.Matching);
         await Assert.That(pipeReader.BufferData(new ReadOnlySequence<byte>(item, 64, item.Length - 64))).IsEqualTo(NexusPipeBufferResult.Success);
         await Assert.That((await read.Timeout(1)).Single()).Count().IsEqualTo(100);
 

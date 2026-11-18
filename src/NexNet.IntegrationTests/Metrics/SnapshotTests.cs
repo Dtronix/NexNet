@@ -1,6 +1,5 @@
 using NexNet.Diagnostics;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

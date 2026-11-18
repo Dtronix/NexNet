@@ -4,7 +4,6 @@ using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -578,7 +577,6 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         await validClient.AssertReceiveMessageAsync<ServerGreetingMessage>();
 
         // Server should still be responsive to valid clients
-        ;
     }
     
     private async Task InvokeMethod(RawTcpClient client, ushort methodId)

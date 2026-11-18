@@ -1,7 +1,6 @@
 using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.IntegrationTests.TestInterfaces;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 

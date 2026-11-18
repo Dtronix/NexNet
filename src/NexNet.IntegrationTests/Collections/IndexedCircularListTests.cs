@@ -1,6 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using System.Collections.Concurrent;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -357,8 +356,8 @@ internal class IndexedCircularListTests
         list.Add("B");
         list.Add("C");
         var items = list.ToList();
-        await Assert.That(items.Select(t => t.Item)).IsEqualTo(new[] { "A", "B", "C" });
-        await Assert.That(items.Select(t => t.Index)).IsEqualTo(new long[] { 0, 1, 2 });
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "A", "B", "C" }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 0, 1, 2 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -371,8 +370,8 @@ internal class IndexedCircularListTests
         list.Add("D");
         list.Add("E");
         var items = list.ToList();
-        await Assert.That(items.Select(t => t.Item)).IsEqualTo(new[] { "C", "D", "E" });
-        await Assert.That(items.Select(t => t.Index)).IsEqualTo(new long[] { 2, 3, 4 });
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "C", "D", "E" }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 2, 3, 4 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -489,7 +488,7 @@ internal class IndexedCircularListTests
             list.Add($"X{i}");
         var items = list.ToList();
         await Assert.That(items.Count).IsEqualTo(3);
-        await Assert.That(items.Select(t => t.Index)).IsEqualTo(new long[] { 7, 8, 9 });
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 7, 8, 9 }, CollectionOrdering.Matching);
     }
 
     [Test]
@@ -540,8 +539,8 @@ internal class IndexedCircularListTests
         list.Add("C");
         list.Add("D");
         var items = list.ToList();
-        await Assert.That(items.Select(t => t.Index)).IsEqualTo(new long[] { 2, 3 });
-        await Assert.That(items.Select(t => t.Item)).IsEqualTo(new[] { "C", "D" });
+        await Assert.That(items.Select(t => t.Index)).IsEquivalentTo(new long[] { 2, 3 }, CollectionOrdering.Matching);
+        await Assert.That(items.Select(t => t.Item)).IsEquivalentTo(new[] { "C", "D" }, CollectionOrdering.Matching);
     }
 
     [Test]

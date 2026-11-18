@@ -1,5 +1,4 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;

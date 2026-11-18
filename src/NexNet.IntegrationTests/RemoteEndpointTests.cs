@@ -3,7 +3,6 @@ using NexNet.Asp.HttpSocket;
 using NexNet.Asp.WebSocket;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;

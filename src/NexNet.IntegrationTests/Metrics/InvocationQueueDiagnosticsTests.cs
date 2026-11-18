@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Time.Testing;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -93,7 +92,7 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
 
         await Eventually(() => _recorder.Events("nexnet.invocation.queue_wait").Count >= 2);
         var waits = _recorder.Events("nexnet.invocation.queue_wait");
-        await Assert.That(waits.Select(w => w.Value)).IsEqualTo(new[] { 0.0, 2.0 });
+        await Assert.That(waits.Select(w => w.Value)).IsEquivalentTo(new[] { 0.0, 2.0 }, CollectionOrdering.Matching);
         await Assert.That(waits.All(w => w.Has("nexnet.role", "server") && w.Has("nexnet.transport", "uds"))).IsTrue();
     }
 

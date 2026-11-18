@@ -5,7 +5,6 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -230,7 +229,7 @@ internal class ProtocolSecurityTests : BaseTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Repeat(9)] // TUnit's Repeat(n) runs n + 1 times; NUnit's ran n.
     public async Task MalformedMessageHeader_PreClientGreeting_ShouldDisconnectWithProtocolError()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
@@ -263,7 +262,7 @@ internal class ProtocolSecurityTests : BaseTests
     }
     
     [Test]
-    [Repeat(10)]
+    [Repeat(9)] // TUnit's Repeat(n) runs n + 1 times; NUnit's ran n.
     public async Task MalformedMessageHeader_AfterConnection_ShouldDisconnectWithProtocolError()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);

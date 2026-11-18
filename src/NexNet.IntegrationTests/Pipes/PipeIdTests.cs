@@ -1,5 +1,4 @@
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 public class PipeIdTests

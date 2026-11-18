@@ -1,6 +1,5 @@
 using System;
 using NexNet.RateLimiting;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 internal class ConnectionRateLimiterUnitTests

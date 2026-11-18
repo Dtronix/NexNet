@@ -1,5 +1,4 @@
 ﻿using NexNet.Collections;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 

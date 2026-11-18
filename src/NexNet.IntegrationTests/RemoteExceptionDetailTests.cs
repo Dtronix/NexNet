@@ -5,7 +5,6 @@ using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Serialization;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

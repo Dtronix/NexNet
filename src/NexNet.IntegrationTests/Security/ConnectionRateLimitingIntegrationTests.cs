@@ -4,7 +4,6 @@ using System.Net.WebSockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

@@ -2,7 +2,6 @@
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

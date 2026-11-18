@@ -1,5 +1,4 @@
 using NexNet.Invocation;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 internal class LocalServerSessionManagerTests
@@ -24,7 +23,6 @@ internal class LocalServerSessionManagerTests
         await _manager.InitializeAsync();
 
         // No exception = success
-        ;
     }
 
     [Test]

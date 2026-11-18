@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 

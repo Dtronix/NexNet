@@ -9,7 +9,6 @@ using NexNet.Invocation;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;

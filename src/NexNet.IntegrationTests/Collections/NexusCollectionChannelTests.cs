@@ -1,7 +1,6 @@
 ﻿using NexNet.Collections;
 using NexNet.IntegrationTests.TestInterfaces;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -84,7 +83,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
         await Assert.That(serverNexus.IntListBi.Count).IsEqualTo(50);
-        await Assert.That(serverNexus.IntListBi).IsEqualTo(client.Proxy.IntListBi);
+        await Assert.That(serverNexus.IntListBi).IsEquivalentTo(client.Proxy.IntListBi, CollectionOrdering.Matching);
     }
 
     /*[TestCase(Type.Tcp)]

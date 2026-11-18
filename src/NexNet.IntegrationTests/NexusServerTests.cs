@@ -4,7 +4,6 @@ using System.Net.Sockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
 using NexNet.Transports;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;

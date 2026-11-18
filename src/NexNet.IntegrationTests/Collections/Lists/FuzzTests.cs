@@ -1,6 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
 public class VersionedListFuzzTests

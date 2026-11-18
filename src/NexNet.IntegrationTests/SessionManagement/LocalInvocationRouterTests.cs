@@ -1,5 +1,4 @@
 using NexNet.Invocation;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 internal class LocalInvocationRouterTests
@@ -38,7 +37,6 @@ internal class LocalInvocationRouterTests
         await _router.InvokeAllAsync(message);
 
         // Should not throw
-        ;
     }
 
     [Test]
@@ -272,7 +270,6 @@ internal class LocalInvocationRouterTests
         await _router.InitializeAsync();
 
         // No exception = success
-        ;
     }
 
     [Test]
@@ -281,7 +278,6 @@ internal class LocalInvocationRouterTests
         await _router.ShutdownAsync();
 
         // No exception = success
-        ;
     }
 
     [Test]
@@ -297,8 +293,8 @@ internal class LocalInvocationRouterTests
         await _router.InvokeAllAsync(message);
 
         await Assert.That(message.InvocationId).IsEqualTo(0);
-        await Assert.That(session1.SentMessages).IsEqualTo(new object[] { message });
-        await Assert.That(session2.SentMessages).IsEqualTo(new object[] { message });
+        await Assert.That(session1.SentMessages).IsEquivalentTo(new object[] { message }, CollectionOrdering.Matching);
+        await Assert.That(session2.SentMessages).IsEquivalentTo(new object[] { message }, CollectionOrdering.Matching);
     }
 
     private static MockInvocationMessage CreateTestMessage()

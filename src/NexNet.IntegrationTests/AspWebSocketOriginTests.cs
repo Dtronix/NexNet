@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.WebSockets;
 using NexNet.Asp.WebSocket;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

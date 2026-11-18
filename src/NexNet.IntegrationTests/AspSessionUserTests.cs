@@ -4,7 +4,6 @@ using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
 using NexNet.Transports;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

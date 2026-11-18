@@ -1,5 +1,4 @@
 using NexNet.Invocation;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 internal class LocalGroupRegistryTests
@@ -96,7 +95,6 @@ internal class LocalGroupRegistryTests
         await _registry.RemoveFromGroupAsync("nonexistent", session);
 
         // Should not throw
-        ;
     }
 
     [Test]
@@ -134,7 +132,6 @@ internal class LocalGroupRegistryTests
         await _registry.RemoveFromAllGroupsAsync(session);
 
         // Should not throw
-        ;
     }
 
     [Test]
@@ -221,7 +218,6 @@ internal class LocalGroupRegistryTests
         await _registry.InitializeAsync();
 
         // No exception = success
-        ;
     }
 
     [Test]

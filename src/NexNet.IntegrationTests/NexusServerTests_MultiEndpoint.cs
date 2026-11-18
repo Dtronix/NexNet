@@ -13,7 +13,6 @@ using NexNet.Messages;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 using NexNet.Transports.Uds;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -77,7 +76,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
     {
         var multi = CreateMultiEndpointServer(AllTransports);
 
-        await Assert.That(multi.Server.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "uds", "websocket", "httpsocket" });
+        await Assert.That(multi.Server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds", "websocket", "httpsocket" }, CollectionOrdering.Matching);
         await Assert.That(multi.Server.Endpoints[2]).IsEqualTo(new NexusEndpointInfo("websocket", "websocket", false, "/websocket-test"));
 
         await multi.Server.StartAsync().Timeout(1);
@@ -85,7 +84,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         await WaitFor(() => multi.Server.GetSnapshot().Sessions.Count == AllTransports.Length).Timeout(2);
         var snapshot = multi.Server.GetSnapshot();
-        await Assert.That(snapshot.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "uds", "websocket", "httpsocket" });
+        await Assert.That(snapshot.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds", "websocket", "httpsocket" }, CollectionOrdering.Matching);
         await Assert.That(snapshot.Endpoints.All(e => e.State == NexusEndpointState.Running && e.Sessions == 1)).IsTrue();
         await Assert.That(snapshot.Endpoints[0].IsListener).IsTrue();
         await Assert.That(snapshot.Endpoints[3].IsListener).IsFalse();
@@ -172,7 +171,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         foreach (var (type, (client, _)) in clients)
         {
             await WaitFor(() => client.Proxy.IntListBi.Count == 2).Timeout(2);
-            await Assert.That(client.Proxy.IntListBi).IsEqualTo(new[] { 7, 8 }).Because($"{type} list differs.");
+            await Assert.That(client.Proxy.IntListBi).IsEquivalentTo(new[] { 7, 8 }, CollectionOrdering.Matching).Because($"{type} list differs.");
         }
     }
 
@@ -464,7 +463,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         }
 
-        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "uds", "ws" });
+        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds", "ws" }, CollectionOrdering.Matching);
 
         await server.StartAsync().Timeout(1);
         Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
@@ -528,7 +527,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await using var app = builder.Build();
         var server = app.Services.GetRequiredService<NexusServer<ServerNexus, ServerNexus.ClientProxy>>();
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
-        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "uds" });
+        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds" }, CollectionOrdering.Matching);
 
         await app.StartAsync().Timeout(5);
         await WaitFor(() => server.State == NexusServerState.Running).Timeout(2);
@@ -558,7 +557,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         var server = app.UseWebSocketNexusServerAsync<ServerNexus, ServerNexus.ClientProxy>(
             c => c.NexusConfig.Path = "/websocket-test");
-        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEqualTo(new[] { "tcp", "websocket" });
+        await Assert.That(server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "websocket" }, CollectionOrdering.Matching);
 
         await app.StartAsync().Timeout(5);
         await WaitFor(() => server.State == NexusServerState.Running).Timeout(2);

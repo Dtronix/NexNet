@@ -1,6 +1,5 @@
 using NexNet.Diagnostics;
 using NexNet.Messages;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Metrics;
 

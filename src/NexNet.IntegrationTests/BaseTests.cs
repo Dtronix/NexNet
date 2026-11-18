@@ -1,5 +1,4 @@
-﻿using System.IO;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -20,7 +19,6 @@ using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
 using NexNet.Transports.WebSocket;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

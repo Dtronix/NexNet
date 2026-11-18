@@ -1,5 +1,4 @@
 using NexNet.IntegrationTests.TestInterfaces;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -32,7 +31,7 @@ internal class LargeValueTests : BaseTests
         Random.Shared.NextBytes(data);
 
         var echoed = await client.Proxy.ServerEcho(data).Timeout(10);
-        await Assert.That(echoed).IsEqualTo(data);
+        await Assert.That(echoed).IsEquivalentTo(data, CollectionOrdering.Matching);
 
         // The session is still usable, and nothing stays reserved for the streams.
         await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1)).Count().IsEqualTo(10);

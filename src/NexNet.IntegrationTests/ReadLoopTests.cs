@@ -2,7 +2,6 @@ using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

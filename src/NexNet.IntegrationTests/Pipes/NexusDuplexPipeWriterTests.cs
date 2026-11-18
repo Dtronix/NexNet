@@ -3,7 +3,6 @@ using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Pipes;
@@ -150,7 +149,7 @@ internal class NexusDuplexPipeWriterTests
 
         writer.AddCredit(6);
         await write.Timeout(1);
-        await Assert.That(sent).IsEqualTo(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+        await Assert.That(sent).IsEquivalentTo(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, CollectionOrdering.Matching);
         await Assert.That(writer.Credit).IsZero();
     }
 

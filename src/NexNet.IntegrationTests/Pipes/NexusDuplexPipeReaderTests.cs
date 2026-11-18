@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using NexNet.Pipes;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Pipes;

@@ -1,7 +1,6 @@
 using NexNet.IntegrationTests.SessionManagement;
 using NexNet.Invocation;
 using NexNet.Pools;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

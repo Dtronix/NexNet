@@ -1,7 +1,6 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
 using System.Diagnostics;
 using NexNet.Messages;
-using System.Threading.Tasks;
 #pragma warning disable CS1998
 #pragma warning disable VSTHRD200
 

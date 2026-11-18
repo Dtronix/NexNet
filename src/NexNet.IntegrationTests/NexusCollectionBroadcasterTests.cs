@@ -3,7 +3,6 @@ using NexNet.Collections;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.Logging;
 using NexNet.Pipes.Broadcast;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 internal class NexusBroadcastConnectionManagerTests : BaseTests

@@ -1,5 +1,4 @@
 using NexNet.Invocation;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
 internal class LocalSessionRegistryTests
@@ -69,7 +68,6 @@ internal class LocalSessionRegistryTests
         await _registry.UnregisterSessionAsync(session);
 
         // Should not throw
-        ;
     }
 
     [Test]
@@ -173,7 +171,6 @@ internal class LocalSessionRegistryTests
         await _registry.InitializeAsync();
 
         // No exception = success
-        ;
     }
 
     [Test]

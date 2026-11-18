@@ -1,6 +1,5 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
 public class TransformClearOperationTests
@@ -14,7 +13,7 @@ public class TransformClearOperationTests
         {
             var list = new VersionedList<int>().FillNegative(1);
             list.ProcessOperation(txOp, 0, out _);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -74,7 +73,7 @@ public class TransformClearOperationTests
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out var result)).IsEqualTo(NoopOperation<int>.Instance);
             await Assert.That(result).IsEqualTo(ListProcessResult.DiscardOperation);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -95,7 +94,7 @@ public class TransformClearOperationTests
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out var result)).IsEqualTo(NoopOperation<int>.Instance);
             await Assert.That(result).IsEqualTo(ListProcessResult.DiscardOperation);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -116,7 +115,7 @@ public class TransformClearOperationTests
             list.ProcessOperation(history, 0, out _);
             await Assert.That(list.ProcessOperation(listOp, 0, out var result)).IsEqualTo(NoopOperation<int>.Instance);
             await Assert.That(result).IsEqualTo(ListProcessResult.DiscardOperation);
-            await Assert.That(list).IsEqualTo(Array.Empty<int>());
+            await Assert.That(list).IsEquivalentTo(Array.Empty<int>(), CollectionOrdering.Matching);
 
         }
     }
@@ -151,7 +150,7 @@ public class TransformClearOperationTests
             var operation4 = list.ProcessOperation(txOp4, 1, out var opResult4);
             await Assert.That(operation4).IsNull();
             await Assert.That(opResult4).IsEqualTo(ListProcessResult.BadOperation);
-            await Assert.That(list).IsEqualTo(new[] { 1, 2, 3 });
+            await Assert.That(list).IsEquivalentTo(new[] { 1, 2, 3 }, CollectionOrdering.Matching);
 
         }
     }

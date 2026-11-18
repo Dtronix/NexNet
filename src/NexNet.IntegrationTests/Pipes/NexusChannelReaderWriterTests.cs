@@ -1,5 +1,4 @@
 ﻿using NexNet.Pipes;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -68,7 +67,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         //await Assert.That(result.Count()).IsEqualTo(iterations);
     }*/
     
-    [Repeat(20)]
+    [Repeat(19)] // TUnit's Repeat(n) runs n + 1 times; NUnit's ran n.
     [Test]
     public async Task WritesAndReadsMultipleDataParallel()
     {
@@ -133,7 +132,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
                     var result = await reader.ReadAsync().Timeout(1);
                     foreach (var simpleMessage in result)
                     {
-                        await Assert.That(simpleMessage.Data).IsEqualTo(value.Data);
+                        await Assert.That(simpleMessage.Data).IsEquivalentTo(value.Data, CollectionOrdering.Matching);
                         count++;
                     }
 

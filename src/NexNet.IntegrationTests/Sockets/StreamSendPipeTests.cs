@@ -1,6 +1,5 @@
 using System.IO.Pipelines;
 using NexNet.Internals.Pipelines;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Sockets;
@@ -46,8 +45,8 @@ internal class StreamSendPipeTests
         await CompleteAndDrain(sendPipe);
 
         await Assert.That(stream.Writes).Count().IsEqualTo(2);
-        await Assert.That(stream.Writes[0]).IsEqualTo(first);
-        await Assert.That(stream.Writes[1]).IsEqualTo(expected.ToArray());
+        await Assert.That(stream.Writes[0]).IsEquivalentTo(first, CollectionOrdering.Matching);
+        await Assert.That(stream.Writes[1]).IsEquivalentTo(expected.ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -71,7 +70,7 @@ internal class StreamSendPipeTests
         await CompleteAndDrain(sendPipe);
 
         await Assert.That(stream.Writes.Select(w => w.Length)).All(length => length <= StreamSendPipe.CoalesceSize);
-        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEqualTo(expected.ToArray());
+        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEquivalentTo(expected.ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]
@@ -127,7 +126,7 @@ internal class StreamSendPipeTests
 
         stream.Release();
         await drain.Timeout(1);
-        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEqualTo(Frame(1, 10).Concat(Frame(2, 10)).ToArray());
+        await Assert.That(stream.Writes.SelectMany(w => w).ToArray()).IsEquivalentTo(Frame(1, 10).Concat(Frame(2, 10)).ToArray(), CollectionOrdering.Matching);
     }
 
     [Test]

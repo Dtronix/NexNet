@@ -1,4 +1,3 @@
-using System.IO;
 using System.Net;
 using System.Net.Security;
 using System.Security.Authentication;
@@ -7,7 +6,6 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using NexNet.Quic;
 using NexNet.Transports;
-using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;

@@ -1,6 +1,5 @@
 ﻿using System.Buffers;
 using NexNet.Internals.Pipelines.Buffers;
-using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

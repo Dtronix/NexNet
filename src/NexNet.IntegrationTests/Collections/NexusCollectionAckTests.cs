@@ -1,7 +1,6 @@
 ﻿ using System.Diagnostics;
 using NexNet.Collections;
 using NexNet.Pipes.Broadcast;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 

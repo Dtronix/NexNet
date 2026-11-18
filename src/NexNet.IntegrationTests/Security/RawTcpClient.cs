@@ -7,7 +7,6 @@ using NexNet.Messages;
 using NexNet.Transports;
 using StreamStruct;
 using LogLevel = StreamStruct.LogLevel;
-using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
