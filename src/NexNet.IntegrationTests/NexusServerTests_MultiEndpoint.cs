@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Net.WebSockets;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NexNet.Asp;
+using NexNet.Asp.HttpSocket;
+using NexNet.Asp.WebSocket;
 using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
@@ -19,9 +22,34 @@ namespace NexNet.IntegrationTests;
 /// <summary>
 /// One server accepting sessions on several endpoints at once (TCP, UDS, WebSocket, HttpSocket, ...).
 /// </summary>
-internal class NexusServerTests_MultiEndpoint : BaseTests
+internal class NexusServerTests_MultiEndpoint : BaseAspTests
 {
     private static readonly Type[] AllTransports = [Type.Tcp, Type.Uds, Type.WebSocket, Type.HttpSocket];
+
+    /// <summary>
+    /// Stops this test's servers and ASP.NET apps before the next test starts, so their shutdown work does not
+    /// overlap it (the base TearDown only starts stopping them).
+    /// </summary>
+    [TearDown]
+    public async Task StopServersAndApps()
+    {
+        foreach (var server in TrackedServers)
+        {
+            if (server.State == NexusServerState.Running)
+                await server.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        foreach (var app in TrackedAspServers)
+        {
+            try
+            {
+                await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+    }
 
     private static async Task WaitFor(Func<bool> condition)
     {
@@ -195,7 +223,7 @@ internal class NexusServerTests_MultiEndpoint : BaseTests
     public async Task ContextEndpoint_AspOverHttps_IsSecure()
     {
         AspListenOptions = listen => listen.UseHttps(
-            System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass"));
+            System.Security.Cryptography.X509Certificates.X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass"));
 
         NexusEndpointInfo? endpoint = null;
         var multi = CreateMultiEndpointServer(
@@ -544,6 +572,81 @@ internal class NexusServerTests_MultiEndpoint : BaseTests
         Assert.That(webSocketClient.State, Is.EqualTo(ConnectionState.Connected));
 
         await app.StopAsync().Timeout(5);
+    }
+
+    [Test]
+    public async Task AddedWebSocketEndpoint_ChecksItsAllowedOrigins()
+    {
+        const string allowed = "https://allowed.example";
+        var multi = CreateMultiEndpointServer(null,
+            (type, config) =>
+            {
+                if (config is WebSocketServerConfig webSocket)
+                    webSocket.AllowedOrigins.Add(allowed);
+            },
+            Type.Tcp, Type.WebSocket);
+        Assert.That(multi.Server.Endpoints[1].Name, Is.EqualTo("websocket"), "The WebSocket is an added endpoint.");
+        await multi.Server.StartAsync().Timeout(1);
+        var url = ((HttpClientConfig)multi.CreateClientConfig(Type.WebSocket)).Url;
+
+        using (var blocked = new ClientWebSocket())
+        {
+            blocked.Options.CollectHttpResponseDetails = true;
+            blocked.Options.SetRequestHeader("Origin", "https://evil.example");
+            await Assert.ThrowsAsync<WebSocketException>(() => blocked.ConnectAsync(url, CancellationToken.None).Timeout(1));
+            Assert.That(blocked.HttpStatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+        }
+
+        using (var permitted = new ClientWebSocket())
+        {
+            permitted.Options.SetRequestHeader("Origin", allowed);
+            await permitted.ConnectAsync(url, CancellationToken.None).Timeout(1);
+            Assert.That(permitted.State, Is.EqualTo(WebSocketState.Open));
+            permitted.Abort();
+        }
+
+        // The TCP endpoint is unaffected.
+        var (tcpClient, _) = CreateClient(multi.CreateClientConfig(Type.Tcp));
+        await tcpClient.ConnectAsync().Timeout(2);
+    }
+
+    [TestCase(Type.WebSocket, true)]
+    [TestCase(Type.WebSocket, false)]
+    [TestCase(Type.HttpSocket, true)]
+    [TestCase(Type.HttpSocket, false)]
+    public async Task AddedAspEndpoint_PromotesItsQueryStringToken(Type type, bool validToken)
+    {
+        var multi = CreateMultiEndpointServer(null,
+            (t, config) =>
+            {
+                if (config is not AspServerConfig asp)
+                    return;
+                asp.AspEnableAuthentication = true;
+                asp.AspAuthenticationScheme = "BearerToken";
+                if (config is WebSocketServerConfig ws)
+                    ws.AccessTokenQueryParameter = "access_token";
+                else if (config is HttpSocketServerConfig hs)
+                    hs.AccessTokenQueryParameter = "access_token";
+            },
+            AspCreateAuthServices,
+            AspAppAuthConfigure,
+            Type.Tcp, type);
+        await multi.Server.StartAsync().Timeout(1);
+
+        var clientConfig = (HttpClientConfig)multi.CreateClientConfig(type);
+        clientConfig.Url = new Uri(clientConfig.Url + "?access_token=" + (validToken ? "Token123" : "Bad"));
+        var (client, _) = CreateClient(clientConfig);
+
+        if (validToken)
+        {
+            await client.ConnectAsync().Timeout(2);
+            Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        }
+        else
+        {
+            var actual = await Assert.ThrowsAsync<TransportException>(() => client.ConnectAsync().Timeout(2));
+            Assert.That(actual!.Error, Is.EqualTo(TransportError.AuthenticationError));
+        }
     }
 
     private sealed class FakeTime : TimeProvider;

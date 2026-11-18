@@ -53,6 +53,14 @@ internal abstract class BaseTests
     public RollingLogger Logger => _logger;
 
     /// <summary>
+    /// Servers and ASP.NET apps this test created; the base TearDown stops them without waiting.
+    /// </summary>
+    protected IReadOnlyList<INexusServer> TrackedServers => Servers;
+
+    /// <inheritdoc cref="TrackedServers"/>
+    protected IReadOnlyList<WebApplication> TrackedAspServers => AspServers;
+
+    /// <summary>
     /// Applied to the Kestrel endpoint of ASP servers created by this test, e.g. to enable HTTPS.
     /// Cleared after each test.
     /// </summary>
@@ -582,6 +590,20 @@ internal abstract class BaseTests
         Action<ServerNexus>? nexusCreated,
         Action<Type, ServerConfig>? configure,
         params Type[] types)
+        => CreateMultiEndpointServer(nexusCreated, configure, null, null, types);
+
+    /// <inheritdoc cref="CreateMultiEndpointServer(Type[])"/>
+    /// <param name="nexusCreated">Called with every nexus the server creates.</param>
+    /// <param name="configure">Called with each endpoint's configuration before it is added to the server.</param>
+    /// <param name="onAspCreateServices">Adds services to the ASP.NET app, when there is one.</param>
+    /// <param name="onAspAppConfigure">Adds middleware to the ASP.NET app before the NexNet endpoints.</param>
+    /// <param name="types">The transports, the primary one first.</param>
+    protected MultiEndpointServer CreateMultiEndpointServer(
+        Action<ServerNexus>? nexusCreated,
+        Action<Type, ServerConfig>? configure,
+        Action<WebApplicationBuilder>? onAspCreateServices,
+        Action<WebApplication>? onAspAppConfigure,
+        params Type[] types)
     {
         if (types.Length == 0 || types.Distinct().Count() != types.Length)
             throw new ArgumentException("Give each transport once.", nameof(types));
@@ -650,8 +672,10 @@ internal abstract class BaseTests
                 serverOptions.Listen(IPAddress.Loopback, aspPort.Value, listen => AspListenOptions?.Invoke(listen)));
             builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>();
             builder.Logging.AddProvider(new AspLoggerProviderBridge(_logger));
+            onAspCreateServices?.Invoke(builder);
 
             var app = builder.Build();
+            onAspAppConfigure?.Invoke(app);
             app.UseWebSockets();
             app.UseHttpSockets();
 
