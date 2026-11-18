@@ -113,14 +113,17 @@ public sealed class TypeSchema
     /// <summary><see cref="TypeSchemaKind.TypeParam"/>: the type parameter position.</summary>
     public int Ordinal { get; }
 
-    /// <summary><see cref="TypeSchemaKind.External"/>: the .NET type name.</summary>
+    /// <summary>
+    /// <see cref="TypeSchemaKind.External"/>: the .NET type name. <see cref="TypeSchemaKind.Seq"/>: the .NET container
+    /// (<c>Array</c>, <c>List</c>, <c>IReadOnlyList</c>…), which decides the wire form once a generic element is bound.
+    /// </summary>
     public string? Clr { get; }
 
 #pragma warning disable CS1591 // Factories named after the kind they create.
     public static TypeSchema Primitive(SchemaPrim prim) => new(TypeSchemaKind.Prim, prim);
     public static TypeSchema Bin() => new(TypeSchemaKind.Bin);
     public static TypeSchema PrimArray(SchemaPrim element) => new(TypeSchemaKind.PrimArray, element);
-    public static TypeSchema Seq(TypeSchema item) => new(TypeSchemaKind.Seq, args: new[] { item });
+    public static TypeSchema Seq(TypeSchema item, string? container = null) => new(TypeSchemaKind.Seq, args: new[] { item }, clr: container);
     public static TypeSchema Set(TypeSchema item) => new(TypeSchemaKind.Set, args: new[] { item });
     public static TypeSchema Queue(TypeSchema item) => new(TypeSchemaKind.Queue, args: new[] { item });
     public static TypeSchema Stack(TypeSchema item) => new(TypeSchemaKind.Stack, args: new[] { item });

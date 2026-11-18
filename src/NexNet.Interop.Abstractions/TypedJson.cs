@@ -73,6 +73,10 @@ public static class TypedJson
             }
             case TypeSchemaKind.PrimArray:
                 return ReadPrimArray(ref r, s.Prim);
+            case TypeSchemaKind.Seq when BoundWireForm(s) == TypeSchemaKind.PrimArray:
+                return ReadPrimArray(ref r, s.ArgsArray[0].Prim);
+            case TypeSchemaKind.Seq when BoundWireForm(s) == TypeSchemaKind.Bin:
+                return JsonValue.Create(Convert.ToBase64String(r.ReadBinaryToArray() ?? System.Array.Empty<byte>()));
             case TypeSchemaKind.Seq:
             case TypeSchemaKind.Set:
             case TypeSchemaKind.Queue:
@@ -319,6 +323,12 @@ public static class TypedJson
             case TypeSchemaKind.PrimArray:
                 WritePrimArray(ref w, AsArray(v), s.Prim);
                 break;
+            case TypeSchemaKind.Seq when BoundWireForm(s) == TypeSchemaKind.PrimArray:
+                WritePrimArray(ref w, AsArray(v), s.ArgsArray[0].Prim);
+                break;
+            case TypeSchemaKind.Seq when BoundWireForm(s) == TypeSchemaKind.Bin:
+                w.WriteBinary(Base64(v));
+                break;
             case TypeSchemaKind.Seq:
             case TypeSchemaKind.Set:
             case TypeSchemaKind.Queue:
@@ -527,6 +537,36 @@ public static class TypedJson
     // ------------------------------------------------------------------ helpers
 
     private static void Push(JsonArray array, JsonNode? node) => array.Add(node);
+
+    /// <summary>
+    /// The wire form of a sequence. A generic <c>T[]</c>/<c>List&lt;T&gt;</c>/<c>Memory&lt;T&gt;</c> member bound to a primitive
+    /// resolves to the built-in formatter of the closed type at run time: the ext 78 primitive array (bin for
+    /// <c>byte[]</c>/<c>Memory&lt;byte&gt;</c>), not an element-wise array.
+    /// </summary>
+    private static TypeSchemaKind BoundWireForm(TypeSchema seq)
+    {
+        if (seq.ArgsArray.Length != 1 || seq.ArgsArray[0].Kind != TypeSchemaKind.Prim)
+            return TypeSchemaKind.Seq;
+
+        var element = seq.ArgsArray[0].Prim;
+        switch (seq.Clr)
+        {
+            case "Array":
+            case "Memory":
+            case "ReadOnlyMemory":
+                if (element == SchemaPrim.Byte)
+                    return TypeSchemaKind.Bin;
+                return IsExtElement(element) ? TypeSchemaKind.PrimArray : TypeSchemaKind.Seq;
+            case "List":
+                return IsExtElement(element) ? TypeSchemaKind.PrimArray : TypeSchemaKind.Seq;
+            default:
+                return TypeSchemaKind.Seq;
+        }
+    }
+
+    private static bool IsExtElement(SchemaPrim element) => element is SchemaPrim.SByte or SchemaPrim.Int16 or SchemaPrim.UInt16
+        or SchemaPrim.Int32 or SchemaPrim.UInt32 or SchemaPrim.Int64 or SchemaPrim.UInt64 or SchemaPrim.Single or SchemaPrim.Double
+        or SchemaPrim.Char or SchemaPrim.Half;
 
     private static TypeSchema Arg(TypeSchema s, int index)
         => index < s.ArgsArray.Length ? s.ArgsArray[index] : throw new FormatException(s.Kind + " schema is missing argument " + index + ".");
