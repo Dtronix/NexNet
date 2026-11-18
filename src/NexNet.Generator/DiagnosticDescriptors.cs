@@ -320,6 +320,29 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor TargetsOnClientNexus = new(
+        id: "NEXNET043",
+        title: "Targets set on a client nexus",
+        messageFormat: "The client nexus '{0}' sets Targets. Set Targets on the server nexus, or export the client with [assembly: NexusClientExport<TServer, TClient>(Targets = ...)].",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static readonly DiagnosticDescriptor InvalidTargetFormatter = new(
+        id: "NEXNET048",
+        title: "Invalid NexusTargetFormatter",
+        messageFormat: "The [NexusTargetFormatter] for '{0}' is invalid: {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
+    public static DiagnosticDescriptor? FindTargetDescriptor(string id) => id switch
+    {
+        "NEXNET042" => DuplicateMethodName,
+        "NEXNET048" => InvalidTargetFormatter,
+        _ => null
+    };
+
     public static DiagnosticDescriptor? FindSerializationDescriptor(string id) => id switch
     {
         "NEXNET028" => TypeNotSerializable,
