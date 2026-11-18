@@ -170,7 +170,7 @@ internal class InvocationValueTaskTests : BaseTests
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
-    public async Task BlockingOnACallCanceledBeforeItIsSent_ReturnsTheDefault(Type type)
+    public async Task BlockingOnACallCanceledBeforeItIsSent_Throws(Type type)
     {
         await using var wait = await StartCreditWait(type);
 
@@ -180,8 +180,8 @@ internal class InvocationValueTaskTests : BaseTests
         await Task.Delay(50);
         cts.Cancel();
 
-        // Like any call canceled before it is sent, it returns the default value; it was never sent.
-        Assert.That(await blocked.Timeout(1), Is.Zero);
+        // Like any call canceled before it is sent, it throws TaskCanceledException; it was never sent.
+        await Assert.ThrowsAsync<TaskCanceledException>(async () => await blocked.Timeout(1));
         wait.Release.SetResult();
         await Task.WhenAll(wait.First, wait.Second).Timeout(1);
         Assert.That(wait.Received, Is.EqualTo(2));

@@ -273,6 +273,62 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
     [TestCase(Type.Uds)]
     [TestCase(Type.Tcp)]
+    [TestCase(Type.WebSocket)]
+    public async Task AlreadyCanceledToken_ValueTaskOfT_ThrowsAndSendsNothing(Type type)
+    {
+        var received = 0;
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.ServerTaskValueWithCancellationEvent = (_, _) =>
+        {
+            Interlocked.Increment(ref received);
+            return ValueTask.FromResult(1);
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+            await client.Proxy.ServerTaskValueWithCancellation(cts.Token).AsTask().Timeout(1));
+
+        // Never sent and no id taken: the next call gets id 1 and is the only one the server sees.
+        var stateManager = client.Session!.SessionInvocationStateManager;
+        Assert.That(stateManager.IsOutstanding(1), Is.False);
+        Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(1), Is.EqualTo(1));
+        Assert.That(received, Is.EqualTo(1));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.WebSocket)]
+    public async Task AlreadyCanceledToken_ValueTask_ThrowsAndSendsNothing(Type type)
+    {
+        var received = 0;
+        var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
+        server.OnNexusCreated = nexus => nexus.ServerTaskWithCancellationEvent = (_, _) =>
+        {
+            Interlocked.Increment(ref received);
+            return ValueTask.CompletedTask;
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAsync<TaskCanceledException>(async () =>
+            await client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask().Timeout(1));
+
+        Assert.That(client.Session!.SessionInvocationStateManager.IsOutstanding(1), Is.False);
+        await client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask().Timeout(1);
+        Assert.That(received, Is.EqualTo(1));
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
     public async Task RemoteMethodCanceledOnItsOwn_CancelsTheCaller(Type type)
     {
         // Without a reply the caller, which has no token, would wait forever.

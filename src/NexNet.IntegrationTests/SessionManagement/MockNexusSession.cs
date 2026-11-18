@@ -159,7 +159,7 @@ internal class MockSessionInvocationStateManager : ISessionInvocationStateManage
     {
         argumentsOwner?.Return();
         // No-op for testing: never started
-        state.TrySetNoResult();
+        state.TrySetCanceled();
         return default;
     }
 
