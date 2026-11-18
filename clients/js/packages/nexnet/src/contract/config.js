@@ -132,4 +132,6 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  * @property {number} [progressTimeout]
  * @property {import('./enums.js').RemoteExceptionDetailValue} [remoteExceptionDetail]
  * @property {import('./codec.js').SerializerOptions} [serializerOptions]
+ * @property {import('../session/clock.js').Clock} [clock] Time source of the client's timers (C# `ConfigBase.Time`).
+ *   Default: `performance.now()` and the platform timers. Tests inject a manual clock.
  */
