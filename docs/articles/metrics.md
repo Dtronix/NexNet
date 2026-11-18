@@ -101,6 +101,7 @@ A snapshot holds:
 | Pipes | Per pipe: ID, state, receive window, credit the peer still has, bytes buffered, bytes consumed and not yet granted back, extra credit outstanding, time since data last arrived, partial channel item (bytes received of its total), send credit, how long the writer has waited for credit and how many bytes it holds, how long the pipe has been closing. |
 | Large messages | Per value: direction, kind (argument or result), invocation ID, bytes transferred of the total, time since the last chunk. |
 | Transport | Frames and bytes sent and received. |
+| Security | `IsSecure`: on a client, true when the transport is encrypted or local (TLS, `wss://`, `https://`, QUIC, UDS) and false for plain TCP, `ws://`, `http://` and custom transports that do not override `ClientConfig.IsSecureTransport`; the same value as `INexusClient.IsSecure`. Null on server sessions. See [Authentication: Plaintext Transports](authentication.md#plaintext-transports). |
 
 The values are read one at a time from a running session, so they are not an atomic picture: two values in one snapshot can come from moments microseconds apart. Taking a snapshot takes the per-pipe buffer lock briefly and allocates; it is meant for diagnostics, not for every request.
 

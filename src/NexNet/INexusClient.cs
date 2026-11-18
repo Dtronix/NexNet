@@ -27,6 +27,13 @@ public interface INexusClient : IAsyncDisposable
     ClientConfig Config { get; }
 
     /// <summary>
+    /// True when the connection is encrypted or local to the machine: TLS, <c>wss://</c>, <c>https://</c>, QUIC and
+    /// Unix domain sockets. False for plain TCP, <c>ws://</c> and <c>http://</c>, where credentials (including the
+    /// <see cref="ClientConfig.Authenticate"/> token) and data are visible on the network.
+    /// </summary>
+    bool IsSecure { get; }
+
+    /// <summary>
     /// Task which completes upon the disconnection of the client.
     /// </summary>
     Task DisconnectedTask { get; }

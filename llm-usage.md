@@ -323,7 +323,8 @@ Fire-and-forget (`void`) methods send nothing.
 | `ConnectionTimeout` | 50000ms | Connect timeout |
 | `PingInterval` | 10000ms | Keepalive interval |
 | `ReconnectionPolicy` | null | `IReconnectionPolicy`; null = disabled |
-| `Authenticate` | null | `Func<Memory<byte>>` auth token provider |
+| `Authenticate` | null | `Func<Memory<byte>>` auth token provider; called on every connect/reconnect |
+| `AuthenticateAsync` | null | `Func<CancellationToken, ValueTask<Memory<byte>>>` async token provider; called before the transport connects, bounded by `HandshakeTimeout`. Mutually exclusive with `Authenticate` (`InvalidOperationException`) |
 
 ### Server-specific
 
@@ -347,6 +348,7 @@ await client.ConnectAsync();                   // throws on failure
 var result = await client.TryConnectAsync();   // ConnectionResult: .Success (bool), .State (ConnectionResult.StateValue; StateValue.Success on success), .DisconnectReason, .Exception
 client.StateChanged += (s, state) => { };      // ConnectionState enum
 await client.DisconnectedTask;                 // wait for disconnect
+bool secure = client.IsSecure;                 // false for TCP, ws://, http:// (see Authentication)
 await client.DisconnectAsync();
 // Create pipes/channels
 var pipe = client.CreatePipe();                // IRentedNexusDuplexPipe
@@ -491,7 +493,15 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? au
 }
 // Client config
 var clientConfig = new TcpClientConfig { EndPoint = ep, Authenticate = () => Encoding.UTF8.GetBytes("valid") };
+// Or async (not both): throws/timeout -> connect fails with DisconnectReason.Authentication, no transport opened
+clientConfig.AuthenticateAsync = async ct => Encoding.UTF8.GetBytes(await GetTokenAsync(ct));
 ```
+
+Plaintext: `INexusClient.IsSecure` is true for TLS, `wss://`, `https://`, QUIC and UDS; false for TCP, `ws://`, `http://`
+(also `NexusSessionSnapshot.IsSecure` on client snapshots; null on server). When false, each client logs one Warning on
+its first connect: `NexNet: unencrypted transport (<tcp|ws://|http://>); credentials and data are visible on the network.`
+`protected internal virtual bool IsSecureTransport` defaults to false: a custom `ClientConfig` subclass that does not
+override it is plaintext and warns, named by its `TransportName` or, if unset, its type name.
 
 ## Authorization
 

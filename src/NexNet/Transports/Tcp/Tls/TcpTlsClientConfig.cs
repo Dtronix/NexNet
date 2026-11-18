@@ -14,6 +14,9 @@ public sealed class TcpTlsClientConfig : TcpClientConfig
     /// <inheritdoc />
     protected internal override string TransportName => "tls";
 
+    /// <inheritdoc />
+    protected internal override bool IsSecureTransport => true;
+
     private SslClientAuthenticationOptions _sslClientAuthenticationOptions = null!;
 
     /// <summary>

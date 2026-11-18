@@ -34,6 +34,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     private bool _isReconnecting = false;
     private readonly INexusLogger? _logger;
     private readonly MetricsTagSet _metricsTags;
+    private int _plaintextWarningLogged;
 
     internal NexusSession<TClientNexus, TServerProxy>? Session => _session;
     
@@ -70,11 +71,16 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     /// <inheritdoc />
     public ClientConfig Config => _config;
 
+    /// <inheritdoc />
+    public bool IsSecure => _config.IsSecureTransport;
+
     /// <summary>
     /// Snapshot of the current session's live state, or null when not connected. Not an atomic picture; exposes
     /// internal state, so do not serve it to unauthenticated callers. See docs/articles/metrics.md.
     /// </summary>
-    public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot();
+    public NexusSessionSnapshot? GetSnapshot() => _session?.GetSnapshot() is { } snapshot
+        ? snapshot with { IsSecure = IsSecure }
+        : null;
 
     /// <inheritdoc />
     public Task DisconnectedTask => _disconnectedTaskCompletionSource?.Task ?? Task.CompletedTask;
@@ -88,6 +94,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     {
         ArgumentNullException.ThrowIfNull(config);
         config.ValidateFlowControl();
+        config.ValidateAuthentication();
 
         var id = Interlocked.Increment(ref _id);
         _config = config;
@@ -130,6 +137,25 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
             return new ConnectionResult(ConnectionResult.StateValue.Success, DisconnectReason.None);
         
         _isReconnecting = isReconnecting;
+
+        LogPlaintextWarningOnce();
+
+        // The token is acquired before the transport connects, so a slow provider does not run down the server's
+        // handshake timeout and a failing one opens no connection.
+        Memory<byte> authenticationToken;
+        try
+        {
+            authenticationToken = await _config.GetAuthenticationToken(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException e) when (cancellationToken.IsCancellationRequested)
+        {
+            return new ConnectionResult(ConnectionResult.StateValue.Canceled, DisconnectReason.None, e);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Could not acquire the authentication token.");
+            return new ConnectionResult(ConnectionResult.StateValue.Exception, DisconnectReason.Authentication, e);
+        }
 
         // Set the ready task completion source now and get the task since the ConnectTransport call below can/will await.
         // This TCS needs to run continuations asynchronously to avoid deadlocks on the receiving end.
@@ -182,7 +208,7 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
 
         _proxy.Configure(session, null, ProxyInvocationMode.Caller, null);
 
-        await session.StartAsClient().ConfigureAwait(false);
+        await session.StartAsClient(authenticationToken).ConfigureAwait(false);
 
         await readyTaskCompletionSource.Task.ConfigureAwait(false);
 
@@ -299,6 +325,22 @@ public sealed class NexusClient<TClientNexus, TServerProxy> : INexusClient
     public INexusDuplexChannel<T> CreateChannel<T>()
     {
         return CreatePipe().GetChannel<T>();
+    }
+
+    private void LogPlaintextWarningOnce()
+    {
+        if (_config.IsSecureTransport || Interlocked.Exchange(ref _plaintextWarningLogged, 1) != 0)
+            return;
+
+        // A configuration type that does not set TransportName (a custom transport) is named by its type.
+        var transport = _config switch
+        {
+            HttpClientConfig { Url: { } url } => $"{url.Scheme}://",
+            { TransportName: "custom" } => _config.GetType().Name,
+            _ => _config.TransportName,
+        };
+        _logger?.LogWarning(
+            $"NexNet: unencrypted transport ({transport}); credentials and data are visible on the network.");
     }
 
     private void PingTimer(object? state)

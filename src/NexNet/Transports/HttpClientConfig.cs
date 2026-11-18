@@ -31,4 +31,12 @@ public abstract class HttpClientConfig : ClientConfig
     /// not an <see cref="SslStream"/>. Ignored for <c>http</c>/<c>ws</c> URLs.
     /// </remarks>
     public SslClientAuthenticationOptions? SslClientAuthenticationOptions { get; set; }
+
+    /// <summary>
+    /// True for <c>https</c> and <c>wss</c> URLs; false for <c>http</c> and <c>ws</c>.
+    /// </summary>
+    protected internal override bool IsSecureTransport
+        => Url != null
+           && (string.Equals(Url.Scheme, "https", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(Url.Scheme, "wss", StringComparison.OrdinalIgnoreCase));
 }

@@ -336,10 +336,12 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
         OnStateChanged?.Invoke(State);
     }
 
-    public async ValueTask StartAsClient()
+    /// <param name="authenticationToken">
+    /// Greeting token, acquired by the client from <see cref="ClientConfig.Authenticate"/> or
+    /// <see cref="ClientConfig.AuthenticateAsync"/> before the transport connected.
+    /// </param>
+    public async ValueTask StartAsClient(Memory<byte> authenticationToken)
     {
-        var clientConfig = Unsafe.As<ClientConfig>(_config);
-
         var isReconnecting = _state == ConnectionState.Reconnecting;
         using IClientGreetingMessageBase greetingMessage = isReconnecting
             ? _poolManager.Rent<ClientGreetingReconnectionMessage>()
@@ -355,7 +357,7 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
             ? TProxy.MethodHash 
             : TProxy.VersionHashTable.GetValueOrDefault(latestVersion, TProxy.MethodHash);
         greetingMessage.ClientNexusHash = TNexus.MethodHash;
-        greetingMessage.AuthenticationToken = clientConfig.Authenticate?.Invoke() ?? Memory<byte>.Empty;
+        greetingMessage.AuthenticationToken = authenticationToken;
         greetingMessage.MaxMessageSize = _config.MaxMessageSize;
         greetingMessage.InvocationCredits = _config.InvocationCredits;
         
