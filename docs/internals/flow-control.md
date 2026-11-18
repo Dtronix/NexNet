@@ -79,7 +79,8 @@ before the pre-auth allow-list is applied. A unit test asserts this for every `M
 
 New disconnect reasons use the free codes 35–38: `DisconnectFlowControl` (35, credit or window violation) and
 `DisconnectStalled` (37, progress timeout). Limits refuse the operation or fail the call rather than disconnect, so
-no other reason is needed; 36 and 38 are not assigned.
+no other reason is needed; 36 and 38 are not assigned. How disconnect bytes are sent and received is specified
+in [protocol-specification.md](protocol-specification.md) §5.6.
 
 ### 4.2 Greeting
 
@@ -90,7 +91,7 @@ no other reason is needed; 36 and 38 are not assigned.
 
 The sender's limit is min(own configured limit, peer's advertised limit). The receiver still enforces its own
 limits. A client's advertised values are used only after authentication succeeds. The pipe window is not in the
-greeting; see 4.4.
+greeting; see 4.4. Greeting validation is specified in [protocol-specification.md](protocol-specification.md) §5.2.
 
 ### 4.3 Large arguments and results
 
@@ -101,7 +102,8 @@ MessageStart[invId, kind, innerType, totalLen]
 MessageChunk[invId, kind] + bytes   (repeated; payload bytes sum to totalLen)
 ```
 
-Messages that fit in one frame are unchanged.
+Messages that fit in one frame are unchanged. The exact thresholds (65,535-byte bodies, 65,526-byte arguments,
+chunk sizes) are in [protocol-specification.md](protocol-specification.md) §6.1.
 
 **Key.** A large-message stream is keyed by (InvocationId, kind). Direction is implied: an Argument flows from
 caller to callee, a Result from callee to caller. Every invocation that sends a large argument gets a tracked
@@ -191,7 +193,8 @@ Ignore an `Abort` for an unknown key, since it can race with completion. Dispose
 - Execution concurrency (`MaxConcurrentConnectionInvocations`) is local and is not advertised.
 - Receiving an invocation with no credit left is a protocol violation.
 - Pipe and collection methods release their execution slot when the pipe registers (`RegisterDuplexPipe`) and
-  count against `MaxPipes` from then on.
+  count against `MaxPipes` from then on. How they are invoked, and how pipe IDs are allocated, is in
+  [protocol-specification.md](protocol-specification.md) §7.5 and §7.6.
 
 ## 5. Session internals
 
@@ -233,7 +236,8 @@ The read loop awaits only `PipeReader.ReadAsync` on the transport. Specifically:
   - a Closing pipe since it entered Closing;
   - an outbound transport flush that has not completed.
   Waiting for credit is never a stall. A pipe writer waiting for credit is cancelled through its own token.
-- The idle timeout is refreshed only by complete frames.
+- The idle timeout is refreshed only by complete frames. Ping roles and the idle timeout are specified in
+  [protocol-specification.md](protocol-specification.md) §5.5.
 
 ### 5.4 Decode guard
 
@@ -269,7 +273,7 @@ half.
 
 ## 7. Pre-authentication
 
-Before `NexusCompletedConnection`:
+The wire rules are specified in [protocol-specification.md](protocol-specification.md) §5.1 to §5.4. Before `NexusCompletedConnection`:
 
 - Body length is checked when the header is read. A pre-auth frame larger than the greeting maximum (about
   16 KiB) disconnects before its body is buffered. The 8 KiB auth-token check moves ahead of deserialization.
