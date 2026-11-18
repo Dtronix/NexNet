@@ -87,9 +87,9 @@ internal class TlsCertificateTests : BaseTests
         Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
     }
 
-    // The HTTP transports always validate against the URL host (SocketsHttpHandler overrides TargetHost).
-    // QUIC reports a rejected server certificate as ConnectionRefused, so it is not listed here.
+    // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task TrustedTestCa_RejectsWrongHostName(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, null, null, TrustTestCa(), "nexnet.invalid");
@@ -167,6 +167,7 @@ internal class TlsCertificateTests : BaseTests
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task PinnedFingerprint_AcceptsServerCertificate(Type type)
     {
         var (serverConfig, clientConfig) = CreateTlsConfigs(type, ClientCertificate, Pin(ServerFingerprint));
@@ -183,6 +184,7 @@ internal class TlsCertificateTests : BaseTests
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
     [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task PinnedFingerprint_RejectsWrongCertificate(Type type)
     {
         var wrongPin = Convert.ToHexString(SHA256.HashData("not the server"u8));
@@ -205,6 +207,8 @@ internal class TlsCertificateTests : BaseTests
 
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
     public async Task UntrustedServerCertificate_RejectedWithoutCallback(Type type)
     {
         // server.pfx is issued by the test CA, which the system trust store does not hold, so the default chain
