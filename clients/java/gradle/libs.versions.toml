@@ -1,0 +1,17 @@
+# Versions are pinned and at least two weeks old when added. Hot file: one in-flight unit edits it at a time.
+
+[versions]
+junit = "5.14.4"
+jspecify = "1.0.1"
+animalsniffer = "1.28"
+android-signature = "7.0_r2"
+
+[libraries]
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+android-api24-signature = { module = "net.sf.androidscents.signature:android-api-level-24", version.ref = "android-signature" }
+
+# Build-logic dependency: the Animal Sniffer signature checker (used by the AnimalSnifferCheck task).
+animalsniffer = { module = "org.codehaus.mojo:animal-sniffer", version.ref = "animalsniffer" }
