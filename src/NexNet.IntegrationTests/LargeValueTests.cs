@@ -1,5 +1,5 @@
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -19,7 +19,8 @@ internal class LargeValueTests : BaseTests
         }
     }
 
-    [TestCaseSource(nameof(TransportsAndSizes))]
+    [Test]
+    [MethodDataSource(nameof(TransportsAndSizes))]
     public async Task LargeArgumentAndResult_RoundTrip(Type type, int size)
     {
         var server = CreateServer(CreateServerConfig(type), null);
@@ -31,7 +32,8 @@ internal class LargeValueTests : BaseTests
         Random.Shared.NextBytes(data);
 
         var echoed = await client.Proxy.ServerEcho(data).Timeout(10);
-        Assert.That(echoed, Is.EqualTo(data));
+        await Assert.That(echoed).IsEqualTo(data);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // The session is still usable, and nothing stays reserved for the streams.
         Assert.That(await client.Proxy.ServerDataResult(10).Timeout(1), Has.Length.EqualTo(10));
@@ -52,7 +54,7 @@ internal class LargeValueTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(5);
-        Assert.That(await received.Task.Timeout(5), Is.EqualTo(1024 * 1024));
+        await Assert.That(await received.Task.Timeout(5)).IsEqualTo(1024 * 1024);
     }
 
     [Test]
@@ -82,7 +84,7 @@ internal class LargeValueTests : BaseTests
         await context.Proxy.All.ClientData(new byte[300 * 1024]).Timeout(5);
 
         foreach (var tcs in received)
-            Assert.That(await tcs.Task.Timeout(5), Is.EqualTo(300 * 1024));
+            await Assert.That(await tcs.Task.Timeout(5)).IsEqualTo(300 * 1024);
     }
 
     [Test]
@@ -117,25 +119,28 @@ internal class LargeValueTests : BaseTests
 
         await Assert.ThatAsync(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(5),
             Throws.InstanceOf<NexusBusyException>());
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         // The session is fine; once the first call ends its reservation is released.
         Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(1), Has.Length.EqualTo(10));
         hold.SetResult();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(await first.Timeout(5), Has.Length.EqualTo(900 * 1024));
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(5), Has.Length.EqualTo(900 * 1024));
     }
 
     [Test]
-    public void ConfigResolvesTheElementLimitFromMaxMessageSize()
+    public async Task ConfigResolvesTheElementLimitFromMaxMessageSize()
     {
         var config = CreateServerConfig(Type.Tcp);
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(4 * 1024 * 1024 / 16));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(4 * 1024 * 1024 / 16);
 
         config.MaxMessageSize = 64 * 1024;
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(65536));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(65536);
 
         // An explicit limit is kept.
         config.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Untrusted with { MaxElements = 10 };
-        Assert.That(config.SerializerOptions.MaxElements, Is.EqualTo(10));
+        await Assert.That(config.SerializerOptions.MaxElements).IsEqualTo(10);
     }
 }

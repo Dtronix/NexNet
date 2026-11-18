@@ -9,7 +9,7 @@ using NexNet.Invocation;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -188,7 +188,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await client.Proxy.UnprotectedMethod().Timeout(1);
         await methodInvoked.Task.Timeout(1);
-        Assert.That(authCalled, Is.False);
+        await Assert.That(authCalled).IsFalse();
     }
 
     [Test]
@@ -215,7 +215,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await client.Proxy.MarkerOnlyMethod().Timeout(1);
         await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(0));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(0);
     }
 
     [Test]
@@ -242,7 +242,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await client.Proxy.ProtectedMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
-        Assert.That(capturedName, Is.EqualTo("ProtectedMethod"));
+        await Assert.That(capturedName).IsEqualTo("ProtectedMethod");
     }
 
     [Test]
@@ -269,8 +269,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await client.Proxy.ProtectedMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(1));
-        Assert.That(capturedPermissions.Span[0], Is.EqualTo((int)TestPermission.Write));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(1);
+        await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Write);
     }
 
     [Test]
@@ -297,9 +297,9 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await client.Proxy.MultiPermissionMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
-        Assert.That(capturedPermissions.Length, Is.EqualTo(2));
-        Assert.That(capturedPermissions.Span[0], Is.EqualTo((int)TestPermission.Read));
-        Assert.That(capturedPermissions.Span[1], Is.EqualTo((int)TestPermission.Admin));
+        await Assert.That(capturedPermissions.Length).IsEqualTo(2);
+        await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Read);
+        await Assert.That(capturedPermissions.Span[1]).IsEqualTo((int)TestPermission.Admin);
     }
 
     [Test]
@@ -318,7 +318,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var result = await client.Proxy.ProtectedWithReturn(21).Timeout(1);
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
     }
 
     [Test]
@@ -339,18 +339,19 @@ internal class NexusServerTests_Authorization : BaseTests
             await client.Proxy.ProtectedWithReturn(21).Timeout(1));
     }
 
-    [TestCase(Type.Uds, false)]
-    [TestCase(Type.Tcp, false)]
-    [TestCase(Type.TcpTls, false)]
-    [TestCase(Type.Quic, false)]
-    [TestCase(Type.WebSocket, false)]
-    [TestCase(Type.HttpSocket, false)]
-    [TestCase(Type.Uds, true)]
-    [TestCase(Type.Tcp, true)]
-    [TestCase(Type.TcpTls, true)]
-    [TestCase(Type.Quic, true)]
-    [TestCase(Type.WebSocket, true)]
-    [TestCase(Type.HttpSocket, true)]
+    [Test]
+    [Arguments(Type.Uds, false)]
+    [Arguments(Type.Tcp, false)]
+    [Arguments(Type.TcpTls, false)]
+    [Arguments(Type.Quic, false)]
+    [Arguments(Type.WebSocket, false)]
+    [Arguments(Type.HttpSocket, false)]
+    [Arguments(Type.Uds, true)]
+    [Arguments(Type.Tcp, true)]
+    [Arguments(Type.TcpTls, true)]
+    [Arguments(Type.Quic, true)]
+    [Arguments(Type.WebSocket, true)]
+    [Arguments(Type.HttpSocket, true)]
     public async Task Unauthorized_SessionRemainsUsable(Type type, bool cacheEnabled)
     {
         var unprotectedInvoked = 0;
@@ -383,8 +384,8 @@ internal class NexusServerTests_Authorization : BaseTests
             await client.Proxy.UnprotectedMethod().Timeout(1);
         }
 
-        Assert.That(unprotectedInvoked, Is.EqualTo(2));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(unprotectedInvoked).IsEqualTo(2);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
@@ -411,7 +412,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         // Small delay to ensure any async work settles
         await Task.Delay(100);
-        Assert.That(bodyExecuted, Is.False);
+        await Assert.That(bodyExecuted).IsFalse();
     }
 
     [Test]
@@ -429,7 +430,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var enabled = await client.Proxy.ProtectedList.EnableAsync().Timeout(2);
-        Assert.That(enabled, Is.True);
+        await Assert.That(enabled).IsTrue();
 
         var serverNexus = server.NexusCreatedQueue.First();
         var completeTask = client.Proxy.ProtectedList.WaitForEvent(
@@ -438,7 +439,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await serverNexus.ProtectedList.AddAsync("hello");
         await completeTask.Wait(2);
 
-        Assert.That(client.Proxy.ProtectedList.Count, Is.EqualTo(1));
+        await Assert.That(client.Proxy.ProtectedList.Count).IsEqualTo(1);
     }
 
     [Test]
@@ -492,8 +493,8 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var enabled = await client.Proxy.UnprotectedList.EnableAsync().Timeout(2);
-        Assert.That(enabled, Is.True);
-        Assert.That(authCalled, Is.False);
+        await Assert.That(enabled).IsTrue();
+        await Assert.That(authCalled).IsFalse();
     }
 
     [Test]
@@ -548,7 +549,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
 
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -574,17 +575,17 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Still cached
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Advance past the 2s TTL
         fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await Assert.That(authCallCount).IsEqualTo(2);
     }
 
     [Test]
@@ -610,13 +611,13 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Advance to just before the 2s TTL would expire
         fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1), "Cache should remain hot until the TTL elapses");
+        await Assert.That(authCallCount).IsEqualTo(1).Because("Cache should remain hot until the TTL elapses");
     }
 
     [Test]
@@ -646,7 +647,7 @@ internal class NexusServerTests_Authorization : BaseTests
         {
             await client.Proxy.CachedMethod().Timeout(1);
             await client.Proxy.CachedMethod().Timeout(1);
-            Assert.That(authCallCount, Is.EqualTo(cycle), $"Cycle {cycle}: cache hits within TTL should not re-invoke OnAuthorize");
+            await Assert.That(authCallCount).IsEqualTo(cycle).Because($"Cycle {cycle}: cache hits within TTL should not re-invoke OnAuthorize");
 
             fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
         }
@@ -677,7 +678,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.NeverCachedMethod().Timeout(1);
         await client.Proxy.NeverCachedMethod().Timeout(1);
 
-        Assert.That(authCallCount, Is.EqualTo(3));
+        await Assert.That(authCallCount).IsEqualTo(3);
     }
 
     [Test]
@@ -705,7 +706,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.ProtectedMethod("b").Timeout(1);
         await client.Proxy.ProtectedMethod("c").Timeout(1);
 
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -732,7 +733,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.ProtectedMethod("a").Timeout(1);
         await client.Proxy.ProtectedMethod("b").Timeout(1);
 
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await Assert.That(authCallCount).IsEqualTo(2);
     }
 
     [Test]
@@ -760,7 +761,7 @@ internal class NexusServerTests_Authorization : BaseTests
         try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
         try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
 
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -790,7 +791,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         await disconnected.Task.Timeout(2);
         // Disconnect result should not be cached (session dies anyway)
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -830,8 +831,8 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.CachedMethod().Timeout(1);
 
         // Both methods should have been invoked twice (cache is per-method)
-        Assert.That(protectedCallCount, Is.EqualTo(2));
-        Assert.That(cachedCallCount, Is.EqualTo(2));
+        await Assert.That(protectedCallCount).IsEqualTo(2);
+        await Assert.That(cachedCallCount).IsEqualTo(2);
     }
 
     [Test]
@@ -855,14 +856,14 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
 
         // Invalidate cache
         var serverNexus = server.NexusCreatedQueue.First();
         serverNexus.CallInvalidateAll();
 
         await client.Proxy.CachedMethod().Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await Assert.That(authCallCount).IsEqualTo(2);
     }
 
     [Test]
@@ -892,7 +893,7 @@ internal class NexusServerTests_Authorization : BaseTests
         // Prime both caches
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.ProtectedMethod("a").Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(2));
+        await Assert.That(authCallCount).IsEqualTo(2);
 
         // Invalidate only CachedMethod
         var serverNexus = server.NexusCreatedQueue.First();
@@ -901,7 +902,7 @@ internal class NexusServerTests_Authorization : BaseTests
         // CachedMethod should re-check, ProtectedMethod should still be cached
         await client.Proxy.CachedMethod().Timeout(1);
         await client.Proxy.ProtectedMethod("b").Timeout(1);
-        Assert.That(authCallCount, Is.EqualTo(3)); // Only CachedMethod re-checked
+        await Assert.That(authCallCount).IsEqualTo(3); // Only CachedMethod re-checked
     }
 
     [Test]
@@ -932,7 +933,7 @@ internal class NexusServerTests_Authorization : BaseTests
         try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
 
         // Session disconnected due to exception — auth was called once
-        Assert.That(authCallCount, Is.EqualTo(1));
+        await Assert.That(authCallCount).IsEqualTo(1);
     }
 
     [Test]
@@ -976,6 +977,6 @@ internal class NexusServerTests_Authorization : BaseTests
 
         // All calls should have completed without exceptions.
         // Auth may be called multiple times (cache misses race) but never throws.
-        Assert.That(authCallCount, Is.GreaterThan(0));
+        await Assert.That(authCallCount).IsGreaterThan(0);
     }
 }

@@ -1,6 +1,6 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -170,15 +170,15 @@ internal partial class NexusServerTests_SendInvocation : BaseTests
                     return;
 
                 var message = TestSerialization.DeserializeMessage<InvocationMessage>(new ReadOnlySpan<byte>(bytes).Slice(3));
-                Assert.That(message, Is.Not.Null);
+                await Assert.That(message).IsNotNull();
 
                 if (message == null)
                     return;
 
-                Assert.That(message.Arguments.ToArray(), Is.EqualTo(expectedMessage.Arguments.ToArray()));
-                Assert.That(message.Flags, Is.EqualTo(expectedMessage.Flags));
-                Assert.That(message.InvocationId, Is.EqualTo(expectedMessage.InvocationId));
-                Assert.That(message.MethodId, Is.EqualTo(expectedMessage.MethodId));
+                await Assert.That(message.Arguments.ToArray()).IsEqualTo(expectedMessage.Arguments.ToArray());
+                await Assert.That(message.Flags).IsEqualTo(expectedMessage.Flags);
+                await Assert.That(message.InvocationId).IsEqualTo(expectedMessage.InvocationId);
+                await Assert.That(message.MethodId).IsEqualTo(expectedMessage.MethodId);
                 tcs.SetResult();
             }
             catch

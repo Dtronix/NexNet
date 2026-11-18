@@ -1,148 +1,148 @@
 ﻿using NexNet.Internals.Collections.Lists;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
 internal class SnapshotListTests
 {
     [Test]
-    public void Constructor_NegativeOrZeroCapacity_Throws()
+    public async Task Constructor_NegativeOrZeroCapacity_Throws()
     {
         // ReSharper disable twice ObjectCreationAsStatement
-        Assert.Throws<ArgumentOutOfRangeException>(() => new SnapshotList<int>(0));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new SnapshotList<int>(-5));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SnapshotList<int>(0));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => new SnapshotList<int>(-5));
     }
 
     [Test]
-    public void Add_SingleItem_CountIsOne()
+    public async Task Add_SingleItem_CountIsOne()
     {
         var list = new SnapshotList<int> { 42 };
-        Assert.That(list.Count, Is.EqualTo(1));
+        await Assert.That(list.Count).IsEqualTo(1);
     }
 
     [Test]
-    public void Add_MultipleItems_CountMatches()
+    public async Task Add_MultipleItems_CountMatches()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 5; i++) list.Add(i);
-        Assert.That(list.Count, Is.EqualTo(5));
+        await Assert.That(list.Count).IsEqualTo(5);
     }
 
     [Test]
-    public void Add_MultipleItems_OrderIsLifo()
+    public async Task Add_MultipleItems_OrderIsLifo()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         var expected = new[] { 3, 2, 1 };
-        Assert.That(list.ToList(), Is.EqualTo(expected));
+        await Assert.That(list.ToList()).IsEqualTo(expected);
     }
 
     [Test]
-    public void Insert_AtBeginningOnEmpty_Works()
+    public async Task Insert_AtBeginningOnEmpty_Works()
     {
         var list = new SnapshotList<int>();
         list.Insert(0, 100);
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 100 }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 100 });
     }
 
     [Test]
-    public void Insert_AtEnd_Works()
+    public async Task Insert_AtEnd_Works()
     {
         var list = new SnapshotList<int> { 1, 2 };
         list.Insert(2, 3);
-        Assert.That(list.Count, Is.EqualTo(3));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 2, 1, 3 }));
+        await Assert.That(list.Count).IsEqualTo(3);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 2, 1, 3 });
     }
 
     [Test]
-    public void Insert_InMiddle_Works()
+    public async Task Insert_InMiddle_Works()
     {
         var list = new SnapshotList<int> { 1, 3 };
         list.Insert(1, 2);
-        Assert.That(list.Count, Is.EqualTo(3));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 3, 2, 1 }));
+        await Assert.That(list.Count).IsEqualTo(3);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
     }
 
     [Test]
-    public void Insert_NegativeIndex_Throws()
+    public async Task Insert_NegativeIndex_Throws()
     {
         var list = new SnapshotList<int>();
-        Assert.Throws<ArgumentOutOfRangeException>(() => list.Insert(-1, 5));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => list.Insert(-1, 5));
     }
 
     [Test]
-    public void Insert_IndexGreaterThanCount_Throws()
+    public async Task Insert_IndexGreaterThanCount_Throws()
     {
         var list = new SnapshotList<int> { 1 };
-        Assert.Throws<ArgumentOutOfRangeException>(() => list.Insert(2, 2));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => list.Insert(2, 2));
     }
 
     [Test]
-    public void Remove_OnEmptyList_ReturnsFalse()
+    public async Task Remove_OnEmptyList_ReturnsFalse()
     {
         var list = new SnapshotList<int>();
-        Assert.That(list.Remove(99), Is.False);
+        await Assert.That(list.Remove(99)).IsFalse();
     }
 
     [Test]
-    public void Remove_ItemNotExists_ReturnsFalse()
+    public async Task Remove_ItemNotExists_ReturnsFalse()
     {
         var list = new SnapshotList<int> { 1 };
-        Assert.That(list.Remove(2), Is.False);
+        await Assert.That(list.Remove(2)).IsFalse();
     }
 
     [Test]
-    public void Remove_ExistingItem_ReturnsTrue()
+    public async Task Remove_ExistingItem_ReturnsTrue()
     {
         var list = new SnapshotList<int> { 5 };
-        Assert.That(list.Remove(5), Is.True);
+        await Assert.That(list.Remove(5)).IsTrue();
     }
 
     [Test]
-    public void Remove_DuplicateItems_RemovesFirstOnly()
+    public async Task Remove_DuplicateItems_RemovesFirstOnly()
     {
         var list = new SnapshotList<int> { 1, 2, 1 };
-        Assert.That(list.Remove(1), Is.True);
-        Assert.That(list.Count, Is.EqualTo(2));
+        await Assert.That(list.Remove(1)).IsTrue();
+        await Assert.That(list.Count).IsEqualTo(2);
         var items = list.ToList();
-        Assert.That(items, Is.EqualTo(new[] { 2, 1 }));
+        await Assert.That(items).IsEqualTo(new[] { 2, 1 });
     }
 
     [Test]
-    public void Remove_DecrementsCount()
+    public async Task Remove_DecrementsCount()
     {
         var list = new SnapshotList<int> { 10, 20 };
         list.Remove(10);
-        Assert.That(list.Count, Is.EqualTo(1));
+        await Assert.That(list.Count).IsEqualTo(1);
     }
 
     [Test]
-    public void Count_AfterAddRemove_Correct()
+    public async Task Count_AfterAddRemove_Correct()
     {
         var list = new SnapshotList<int> { 1, 2 };
         list.Remove(1);
         list.Add(3);
-        Assert.That(list.Count, Is.EqualTo(2));
+        await Assert.That(list.Count).IsEqualTo(2);
     }
 
     [Test]
-    public void Enumeration_OnEmptyList_ReturnsNothing()
+    public async Task Enumeration_OnEmptyList_ReturnsNothing()
     {
         var list = new SnapshotList<int>();
-        Assert.That(list.Any(), Is.False);
+        await Assert.That(list.Any()).IsFalse();
     }
 
     [Test]
-    public void Enumeration_ReturnsSnapshotAtStart()
+    public async Task Enumeration_ReturnsSnapshotAtStart()
     {
         var list = new SnapshotList<int> { 1, 2 };
         var snapshot = list.ToList();
         list.Add(3);
-        Assert.That(snapshot, Is.EqualTo(new[] { 2, 1 }));
+        await Assert.That(snapshot).IsEqualTo(new[] { 2, 1 });
     }
 
     [Test]
-    public void Enumeration_IgnoresItemsAddedAfterSnapshot()
+    public async Task Enumeration_IgnoresItemsAddedAfterSnapshot()
     {
         var list = new SnapshotList<int> { 1 };
         using var enumerator = list.GetEnumerator();
@@ -150,11 +150,11 @@ internal class SnapshotListTests
         var result = new List<int>();
         while (enumerator.MoveNext())
             result.Add(enumerator.Current);
-        Assert.That(result, Is.EqualTo(new[] { 1 }));
+        await Assert.That(result).IsEqualTo(new[] { 1 });
     }
 
     [Test]
-    public void Enumeration_RemovesItemsAfterSnapshot()
+    public async Task Enumeration_RemovesItemsAfterSnapshot()
     {
         var list = new SnapshotList<int> { 1, 2 };
         using var enumerator = list.GetEnumerator();
@@ -162,30 +162,30 @@ internal class SnapshotListTests
         var result = new List<int>();
         while (enumerator.MoveNext())
             result.Add(enumerator.Current);
-        Assert.That(result, Is.EqualTo(new[] { 2 })); // removal happens after snapshot, so still listed
+        await Assert.That(result).IsEqualTo(new[] { 2 }); // removal happens after snapshot, so still listed
     }
 
     [Test]
-    public void FreeList_ReusedNodes()
+    public async Task FreeList_ReusedNodes()
     {
         var list = new SnapshotList<int>(2) { 1, 2 };
-        Assert.That(list.Remove(1), Is.True);
+        await Assert.That(list.Remove(1)).IsTrue();
         list.Add(3); // should reuse slot
-        Assert.That(list.Count, Is.EqualTo(2));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 3, 2 }));
+        await Assert.That(list.Count).IsEqualTo(2);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2 });
     }
 
     [Test]
-    public void GrowArray_WhenCapacityExceeded_Works()
+    public async Task GrowArray_WhenCapacityExceeded_Works()
     {
         var list = new SnapshotList<int>(2) { 1, 2, 3 // force grow
         };
-        Assert.That(list.Count, Is.EqualTo(3));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 3, 2, 1 }));
+        await Assert.That(list.Count).IsEqualTo(3);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAdds_CountCorrect()
+    public async Task ThreadSafety_ConcurrentAdds_CountCorrect()
     {
         var list = new SnapshotList<int>();
         int threads = 10, perThread = 1000;
@@ -194,11 +194,11 @@ internal class SnapshotListTests
             for (int j = 0; j < perThread; j++)
                 list.Add(i * perThread + j);
         });
-        Assert.That(list.Count, Is.EqualTo(threads * perThread));
+        await Assert.That(list.Count).IsEqualTo(threads * perThread);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAdds_ItemsCorrect()
+    public async Task ThreadSafety_ConcurrentAdds_ItemsCorrect()
     {
         var list = new SnapshotList<int>();
         int threads = 5, perThread = 200;
@@ -208,13 +208,13 @@ internal class SnapshotListTests
                 list.Add(i * perThread + j);
         });
         var items = list.ToList();
-        Assert.That(items.Count, Is.EqualTo(threads * perThread));
+        await Assert.That(items.Count).IsEqualTo(threads * perThread);
         for (int i = 0; i < threads * perThread; i++)
-            Assert.That(items.Contains(i), Is.True);
+            await Assert.That(items.Contains(i)).IsTrue();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentRemoves_CountCorrect()
+    public async Task ThreadSafety_ConcurrentRemoves_CountCorrect()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 1000; i++) list.Add(i);
@@ -223,11 +223,11 @@ internal class SnapshotListTests
             for (int i = 0; i < 100; i++)
                 list.Remove(i + t * 100);
         });
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAddsAndRemoves_NoExceptions()
+    public async Task ThreadSafety_ConcurrentAddsAndRemoves_NoExceptions()
     {
         var list = new SnapshotList<int>();
         Parallel.Invoke(
@@ -242,15 +242,15 @@ internal class SnapshotListTests
                     list.Remove(i);
             }
         );
-        Assert.That(list.Count, Is.GreaterThanOrEqualTo(0));
+        await Assert.That(list.Count).IsGreaterThanOrEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentEnumerationWithAdds_NoExceptions()
+    public async Task ThreadSafety_ConcurrentEnumerationWithAdds_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -262,15 +262,15 @@ internal class SnapshotListTests
                     for (int i = 100; i < 200; i++) list.Add(i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentEnumerationWithRemoves_NoExceptions()
+    public async Task ThreadSafety_ConcurrentEnumerationWithRemoves_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -282,43 +282,43 @@ internal class SnapshotListTests
                     for (int i = 0; i < 100; i++) list.Remove(i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ResetEnumerator_Works()
+    public async Task ResetEnumerator_Works()
     {
         var list = new SnapshotList<int> { 1, 2 };
         using var e = list.GetEnumerator();
-        Assert.That(e.MoveNext(), Is.True);
+        await Assert.That(e.MoveNext()).IsTrue();
         e.Reset();
-        Assert.That(e.MoveNext(), Is.True);
-        Assert.That(e.Current, Is.EqualTo(2));
+        await Assert.That(e.MoveNext()).IsTrue();
+        await Assert.That(e.Current).IsEqualTo(2);
     }
 
     [Test]
-    public void MultipleEnumerators_Independence()
+    public async Task MultipleEnumerators_Independence()
     {
         var list = new SnapshotList<int> { 1, 2 };
         using var e1 = list.GetEnumerator();
         using var e2 = list.GetEnumerator();
         e1.MoveNext(); // at 2
-        Assert.That(e2.MoveNext(), Is.True);
-        Assert.That(e2.Current, Is.EqualTo(2));
+        await Assert.That(e2.MoveNext()).IsTrue();
+        await Assert.That(e2.Current).IsEqualTo(2);
     }
 
     [Test]
-    public void Enumerator_MoveNextAfterCompletion_ReturnsFalse()
+    public async Task Enumerator_MoveNextAfterCompletion_ReturnsFalse()
     {
         var list = new SnapshotList<int> { 1 };
         using var e = list.GetEnumerator();
         while (e.MoveNext()) { }
 
-        Assert.That(e.MoveNext(), Is.False);
+        await Assert.That(e.MoveNext()).IsFalse();
     }
 
     [Test]
-    public void Enumerator_Reset_AllowsReiteration()
+    public async Task Enumerator_Reset_AllowsReiteration()
     {
         var list = new SnapshotList<int> { 1, 2 };
         using var e = list.GetEnumerator();
@@ -327,123 +327,123 @@ internal class SnapshotListTests
         e.Reset();
         var secondRun = new List<int>();
         while (e.MoveNext()) secondRun.Add(e.Current);
-        Assert.That(secondRun, Is.EqualTo(firstRun));
+        await Assert.That(secondRun).IsEqualTo(firstRun);
     }
 
     [Test]
-    public void Add_NullValue_ForReferenceTypes()
+    public async Task Add_NullValue_ForReferenceTypes()
     {
         var list = new SnapshotList<string?> { null };
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new string?[] { null }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new string?[] { null });
     }
 
     [Test]
-    public void Remove_NullValue_ReturnsTrue()
+    public async Task Remove_NullValue_ReturnsTrue()
     {
         var list = new SnapshotList<string?> { null };
-        Assert.That(list.Remove(null), Is.True);
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Remove(null)).IsTrue();
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Insert_NullValue_Works()
+    public async Task Insert_NullValue_Works()
     {
         var list = new SnapshotList<string?>();
         list.Insert(0, null);
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new string?[] { null }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new string?[] { null });
     }
 
     [Test]
-    public void Add_Remove_Add_Remove_Repeatedly_Works()
+    public async Task Add_Remove_Add_Remove_Repeatedly_Works()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++)
         {
             list.Add(i);
-            Assert.That(list.Remove(i), Is.True);
+            await Assert.That(list.Remove(i)).IsTrue();
         }
 
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void RemoveAll_Items_ThenCountZero()
+    public async Task RemoveAll_Items_ThenCountZero()
     {
         var list = new SnapshotList<int>();
         foreach (var i in Enumerable.Range(0, 10)) list.Add(i);
         foreach (var i in Enumerable.Range(0, 10)) list.Remove(i);
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void AddAfterRemove_CountAndEnumeration()
+    public async Task AddAfterRemove_CountAndEnumeration()
     {
         var list = new SnapshotList<int> { 1 };
         list.Remove(1);
         list.Add(2);
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 2 }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 2 });
     }
 
     [Test]
-    public void Insert_MaintainsOrder()
+    public async Task Insert_MaintainsOrder()
     {
         var list = new SnapshotList<int> { 1, 3 };
         list.Insert(1, 2);
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 3, 2, 1 }));
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 2, 1 });
     }
 
     [Test]
-    public void Remove_MaintainsOrder()
+    public async Task Remove_MaintainsOrder()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         list.Remove(2);
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 3, 1 }));
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 3, 1 });
     }
 
     [Test]
-    public void Add_Interleaved_WithInsert_MaintainsCorrectSequence()
+    public async Task Add_Interleaved_WithInsert_MaintainsCorrectSequence()
     {
         var list = new SnapshotList<int> { 1 // [1]
         };
         list.Insert(1, 3); // [1,3]
         list.Add(2); // [2,1,3]
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 2, 1, 3 }));
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 2, 1, 3 });
     }
 
     [Test]
-    public void SnapshotEnumeration_CapturesVersionIndependentOfFurtherOperations()
+    public async Task SnapshotEnumeration_CapturesVersionIndependentOfFurtherOperations()
     {
         var list = new SnapshotList<int> { 1 };
         var seq = list.ToList();
         list.Add(2);
         list.Remove(1);
-        Assert.That(seq, Is.EqualTo(new[] { 1 }));
+        await Assert.That(seq).IsEqualTo(new[] { 1 });
     }
 
     [Test]
-    public void SnapshotEnumerator_Dispose_DoesNothing()
+    public async Task SnapshotEnumerator_Dispose_DoesNothing()
     {
         var list = new SnapshotList<int> { 1 };
         var e = list.GetEnumerator();
-        Assert.DoesNotThrow(() => e.Dispose());
+        await Assert.That(() => e.Dispose()).ThrowsNothing();
     }
 
     [Test]
-    public void Enumeration_IsIdempotent_ForFixedSnapshot()
+    public async Task Enumeration_IsIdempotent_ForFixedSnapshot()
     {
         var list = new SnapshotList<int> { 1, 2 };
         var snapshot = list.ToList();
         // enumerate twice
         var first = snapshot.ToList();
         var second = snapshot.ToList();
-        Assert.That(second, Is.EqualTo(first));
+        await Assert.That(second).IsEqualTo(first);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsert_CountCorrect()
+    public async Task ThreadSafety_ConcurrentInsert_CountCorrect()
     {
         var list = new SnapshotList<int>();
         int threads = 5, perThread = 200;
@@ -452,11 +452,11 @@ internal class SnapshotListTests
             for (int j = 0; j < perThread; j++)
                 list.Insert(0, i * perThread + j);
         });
-        Assert.That(list.Count, Is.EqualTo(threads * perThread));
+        await Assert.That(list.Count).IsEqualTo(threads * perThread);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsert_ItemsCorrect()
+    public async Task ThreadSafety_ConcurrentInsert_ItemsCorrect()
     {
         var list = new SnapshotList<int>();
         int threads = 3, perThread = 100;
@@ -466,13 +466,13 @@ internal class SnapshotListTests
                 list.Insert(0, i * perThread + j);
         });
         var items = list.ToList();
-        Assert.That(items.Count, Is.EqualTo(threads * perThread));
+        await Assert.That(items.Count).IsEqualTo(threads * perThread);
         for (int i = 0; i < threads * perThread; i++)
-            Assert.That(items.Contains(i), Is.True);
+            await Assert.That(items.Contains(i)).IsTrue();
     }
 
     [Test]
-    public void ThreadSafety_MixedOperations_NoDeadlock()
+    public async Task ThreadSafety_MixedOperations_NoDeadlock()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
@@ -487,34 +487,34 @@ internal class SnapshotListTests
             for (int i = 0; i < 100; i++)
                 list.Remove(i);
         });
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks));
+        await Assert.That(() => Task.WaitAll(tasks)).ThrowsNothing();
     }
 
     [Test]
-    public void AddLargeNumber_StressTest()
+    public async Task AddLargeNumber_StressTest()
     {
         var list = new SnapshotList<int>();
         int n = 5000;
         for (int i = 0; i < n; i++)
             list.Add(i);
-        Assert.That(list.Count, Is.EqualTo(n));
+        await Assert.That(list.Count).IsEqualTo(n);
         var items = list.ToList();
-        Assert.That(items.First(), Is.EqualTo(n - 1));
-        Assert.That(items.Last(), Is.EqualTo(0));
+        await Assert.That(items.First()).IsEqualTo(n - 1);
+        await Assert.That(items.Last()).IsEqualTo(0);
     }
 
     [Test]
-    public void Insert_MultipleSequentialIndices_MaintainsOrder()
+    public async Task Insert_MultipleSequentialIndices_MaintainsOrder()
     {
         var list = new SnapshotList<int>();
         list.Insert(0, 1); // [1]
         list.Insert(1, 3); // [1,3]
         list.Insert(1, 2); // [1,2,3]
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 1, 2, 3 }));
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 1, 2, 3 });
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAddRemoveDistinctRanges_CountZero()
+    public async Task ThreadSafety_ConcurrentAddRemoveDistinctRanges_CountZero()
     {
         var list = new SnapshotList<int>();
         int threads = 10, range = 1000;
@@ -525,11 +525,11 @@ internal class SnapshotListTests
             for (int j = 0; j < range; j++)
                 list.Remove(i * range + j);
         });
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsertRemoveDistinctRanges_CountZero()
+    public async Task ThreadSafety_ConcurrentInsertRemoveDistinctRanges_CountZero()
     {
         var list = new SnapshotList<int>();
         int threads = 5, range = 500;
@@ -540,11 +540,11 @@ internal class SnapshotListTests
             for (int j = 0; j < range; j++)
                 list.Remove(i * range + j);
         });
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAdd_CausesGrowArray_CorrectCount()
+    public async Task ThreadSafety_ConcurrentAdd_CausesGrowArray_CorrectCount()
     {
         var list = new SnapshotList<int>(2);
         int threads = 20, per = 200;
@@ -553,11 +553,11 @@ internal class SnapshotListTests
             for (int j = 0; j < per; j++)
                 list.Add(i * per + j);
         });
-        Assert.That(list.Count, Is.EqualTo(threads * per));
+        await Assert.That(list.Count).IsEqualTo(threads * per);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsert_CausesGrowArray_CorrectCount()
+    public async Task ThreadSafety_ConcurrentInsert_CausesGrowArray_CorrectCount()
     {
         var list = new SnapshotList<int>(2);
         int threads = 10, per = 100;
@@ -566,11 +566,11 @@ internal class SnapshotListTests
             for (int j = 0; j < per; j++)
                 list.Insert(0, i * per + j);
         });
-        Assert.That(list.Count, Is.EqualTo(threads * per));
+        await Assert.That(list.Count).IsEqualTo(threads * per);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentMixedOperationsDistinctRanges_CountZero()
+    public async Task ThreadSafety_ConcurrentMixedOperationsDistinctRanges_CountZero()
     {
         var list = new SnapshotList<int>();
         int threads = 8, range = 500;
@@ -587,15 +587,15 @@ internal class SnapshotListTests
                 list.Remove(i * range + j);
             }
         });
-        Assert.That(list.Count, Is.EqualTo(threads * range)); // only the inserts remain
+        await Assert.That(list.Count).IsEqualTo(threads * range); // only the inserts remain
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAdd_AndEnumeration_NoExceptions()
+    public async Task ThreadSafety_ConcurrentAdd_AndEnumeration_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -607,15 +607,15 @@ internal class SnapshotListTests
                     for (int i = 100; i < 1000; i++) list.Add(i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentRemove_AndEnumeration_NoExceptions()
+    public async Task ThreadSafety_ConcurrentRemove_AndEnumeration_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 500; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -627,15 +627,15 @@ internal class SnapshotListTests
                     for (int i = 0; i < 500; i++) list.Remove(i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsert_AndEnumeration_NoExceptions()
+    public async Task ThreadSafety_ConcurrentInsert_AndEnumeration_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 200; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -647,14 +647,14 @@ internal class SnapshotListTests
                     for (int i = 0; i < 200; i++) list.Insert(1, i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_EnumerationDuringGrow_NoExceptions()
+    public async Task ThreadSafety_EnumerationDuringGrow_NoExceptions()
     {
         var list = new SnapshotList<int>(1);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -666,11 +666,11 @@ internal class SnapshotListTests
                     foreach (var _ in list) { }
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_HighConcurrencyStress_NoDeadlock()
+    public async Task ThreadSafety_HighConcurrencyStress_NoDeadlock()
     {
         var list = new SnapshotList<int>();
         var tasks = Enumerable.Range(0, 50).Select(_ => Task.Run(() =>
@@ -682,14 +682,14 @@ internal class SnapshotListTests
                 list.Insert(0, i);
             }
         })).ToArray();
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks));
+        await Assert.That(() => Task.WaitAll(tasks)).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAddRemoveLoop_NoExceptions()
+    public async Task ThreadSafety_ConcurrentAddRemoveLoop_NoExceptions()
     {
         var list = new SnapshotList<int>();
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.For(0, 100, _ =>
             {
@@ -699,11 +699,11 @@ internal class SnapshotListTests
                     list.Remove(i);
                 }
             });
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsertRemoveLoop_CountZero()
+    public async Task ThreadSafety_ConcurrentInsertRemoveLoop_CountZero()
     {
         var list = new SnapshotList<int>();
         int loops = 50, per = 50;
@@ -715,11 +715,11 @@ internal class SnapshotListTests
                 list.Remove(i);
             }
         });
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentFreeListReuseUnderContention()
+    public async Task ThreadSafety_ConcurrentFreeListReuseUnderContention()
     {
         var list = new SnapshotList<int>(4);
         // fill and empty repeatedly
@@ -735,11 +735,11 @@ internal class SnapshotListTests
                 list.Remove(i);
             }
         });
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentGrowUnderContention()
+    public async Task ThreadSafety_ConcurrentGrowUnderContention()
     {
         var list = new SnapshotList<int>(2);
         Parallel.For(0, 20, i =>
@@ -747,11 +747,11 @@ internal class SnapshotListTests
             for (int j = 0; j < 200; j++)
                 list.Add(i * 200 + j);
         });
-        Assert.That(list.Count, Is.EqualTo(20 * 200));
+        await Assert.That(list.Count).IsEqualTo(20 * 200);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAddRemoveAlternating_NoDeadlock()
+    public async Task ThreadSafety_ConcurrentAddRemoveAlternating_NoDeadlock()
     {
         var list = new SnapshotList<int>();
         var tasks = new[]
@@ -769,11 +769,11 @@ internal class SnapshotListTests
                 for (int i = 0; i < 1000; i++) list.Insert(0, i);
             })
         };
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks));
+        await Assert.That(() => Task.WaitAll(tasks)).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentShadowingOperations_CountMatches()
+    public async Task ThreadSafety_ConcurrentShadowingOperations_CountMatches()
     {
         var list = new SnapshotList<int>();
         int threads = 4, per = 250;
@@ -785,11 +785,11 @@ internal class SnapshotListTests
                 list.Insert(1, t * per + i);
             }
         });
-        Assert.That(list.Count, Is.EqualTo(threads * per * 2));
+        await Assert.That(list.Count).IsEqualTo(threads * per * 2);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsertAtEnd_CountMatches()
+    public async Task ThreadSafety_ConcurrentInsertAtEnd_CountMatches()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
@@ -797,46 +797,46 @@ internal class SnapshotListTests
         {
             list.Insert(list.Count, 999);
         });
-        Assert.That(list.Count, Is.EqualTo(100 + 10));
+        await Assert.That(list.Count).IsEqualTo(100 + 10);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentInsertAtRandomPositions_NoExceptions()
+    public async Task ThreadSafety_ConcurrentInsertAtRandomPositions_NoExceptions()
     {
         var rnd = new Random();
         var list = new SnapshotList<int>();
         for (int i = 0; i < 500; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.For(0, 200, _ =>
             {
                 int idx = rnd.Next(0, list.Count + 1);
                 list.Insert(idx, -1);
             });
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentAddRemoveWithParallelForEach_NoExceptions()
+    public async Task ThreadSafety_ConcurrentAddRemoveWithParallelForEach_NoExceptions()
     {
         var list = new SnapshotList<int>();
         var data = Enumerable.Range(0, 1000).ToArray();
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.ForEach(data, i =>
             {
                 list.Add(i);
                 list.Remove(i / 2);
             });
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentSnapshotEnumerationUnderLoad()
+    public async Task ThreadSafety_ConcurrentSnapshotEnumerationUnderLoad()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 1000; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () =>
@@ -852,11 +852,11 @@ internal class SnapshotListTests
                     for (int i = 0; i < 500; i++) list.Remove(i);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentDeepEnumerationAfterOperations()
+    public async Task ThreadSafety_ConcurrentDeepEnumerationAfterOperations()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 200; i++) list.Add(i);
@@ -872,50 +872,50 @@ internal class SnapshotListTests
                 for (int i = 0; i < 200; i++) list.Remove(i);
             }
         );
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             while (enumerator.MoveNext())
             {
                 _ = enumerator.Current;
             }
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentEnumeratorReset_NoExceptions()
+    public async Task ThreadSafety_ConcurrentEnumeratorReset_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
         var e = list.GetEnumerator();
         using var e1 = e as IDisposable;
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () => e.Reset(),
                 () => list.Add(101),
                 () => list.Remove(0)
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentEnumeratorDisposeDuringOperations_NoExceptions()
+    public async Task ThreadSafety_ConcurrentEnumeratorDisposeDuringOperations_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
         var e = list.GetEnumerator();
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () => e.Dispose(),
                 () => list.Add(200),
                 () => list.Remove(1)
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentOperationsWithThreadSleep_NoDeadlock()
+    public async Task ThreadSafety_ConcurrentOperationsWithThreadSleep_NoDeadlock()
     {
         var list = new SnapshotList<int>();
         var t1 = Task.Run(() =>
@@ -934,11 +934,11 @@ internal class SnapshotListTests
                 Thread.Sleep(1);
             }
         });
-        Assert.DoesNotThrow(() => Task.WaitAll(t1, t2));
+        await Assert.That(() => Task.WaitAll(t1, t2)).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_TaskBasedConcurrency_NoExceptions()
+    public async Task ThreadSafety_TaskBasedConcurrency_NoExceptions()
     {
         var list = new SnapshotList<int>();
         var tasks = new Task[3];
@@ -954,7 +954,7 @@ internal class SnapshotListTests
         {
             for (int i = 0; i < 500; i++) list.Insert(0, i);
         });
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks));
+        await Assert.That(() => Task.WaitAll(tasks)).ThrowsNothing();
     }
 
     [Test]
@@ -971,11 +971,11 @@ internal class SnapshotListTests
             },
             _ => { });
         // just ensure it completed without deadlock
-        Assert.Pass();
+        ;
     }
 
     [Test]
-    public void ThreadSafety_InterleavedAddInsertRemoveStressTest()
+    public async Task ThreadSafety_InterleavedAddInsertRemoveStressTest()
     {
         var list = new SnapshotList<int>();
         var tasks = new[]
@@ -993,11 +993,11 @@ internal class SnapshotListTests
                 for (int i = 0; i < 1000; i++) list.Remove(i);
             })
         };
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks));
+        await Assert.That(() => Task.WaitAll(tasks)).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_BulkConcurrentOps_CountMatchesAddsAndInserts()
+    public async Task ThreadSafety_BulkConcurrentOps_CountMatchesAddsAndInserts()
     {
         var list = new SnapshotList<int>();
         int adds = 500, inserts = 500;
@@ -1010,11 +1010,11 @@ internal class SnapshotListTests
             for (int i = 0; i < inserts; i++) list.Insert(0, i);
         });
         Task.WaitAll(t1, t2);
-        Assert.That(list.Count, Is.EqualTo(adds + inserts));
+        await Assert.That(list.Count).IsEqualTo(adds + inserts);
     }
 
     [Test]
-    public void ThreadSafety_CombinedHighLoadTest_NoDeadlock()
+    public async Task ThreadSafety_CombinedHighLoadTest_NoDeadlock()
     {
         var list = new SnapshotList<int>();
         var tasks = new List<Task>();
@@ -1031,66 +1031,66 @@ internal class SnapshotListTests
             }));
         }
 
-        Assert.DoesNotThrow(() => Task.WaitAll(tasks.ToArray()));
+        await Assert.That(() => Task.WaitAll(tasks.ToArray())).ThrowsNothing();
     }
 
     [Test]
-    public void Clear_OnEmptyList_CountRemainsZero()
+    public async Task Clear_OnEmptyList_CountRemainsZero()
     {
         var list = new SnapshotList<int>();
         list.Clear();
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Clear_OnNonEmptyList_CountBecomesZero()
+    public async Task Clear_OnNonEmptyList_CountBecomesZero()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         list.Clear();
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Clear_OnNonEmptyList_EnumerationReturnsEmpty()
+    public async Task Clear_OnNonEmptyList_EnumerationReturnsEmpty()
     {
         var list = new SnapshotList<int> { 1, 2, 3, 4, 5 };
         list.Clear();
-        Assert.That(list.Any(), Is.False);
-        Assert.That(list.ToList(), Is.Empty);
+        await Assert.That(list.Any()).IsFalse();
+        await Assert.That(list.ToList()).IsEmpty();
     }
 
     [Test]
-    public void Clear_ThenAdd_Works()
+    public async Task Clear_ThenAdd_Works()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         list.Clear();
         list.Add(42);
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 42 }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 42 });
     }
 
     [Test]
-    public void Clear_ThenInsert_Works()
+    public async Task Clear_ThenInsert_Works()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         list.Clear();
         list.Insert(0, 100);
-        Assert.That(list.Count, Is.EqualTo(1));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 100 }));
+        await Assert.That(list.Count).IsEqualTo(1);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 100 });
     }
 
     [Test]
-    public void Clear_SnapshotBeforeClear_StillHasItems()
+    public async Task Clear_SnapshotBeforeClear_StillHasItems()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         var snapshot = list.ToList();
         list.Clear();
-        Assert.That(snapshot, Is.EqualTo(new[] { 3, 2, 1 }));
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(snapshot).IsEqualTo(new[] { 3, 2, 1 });
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Clear_EnumeratorBeforeClear_StillHasItems()
+    public async Task Clear_EnumeratorBeforeClear_StillHasItems()
     {
         var list = new SnapshotList<int> { 1, 2, 3 };
         using var enumerator = list.GetEnumerator();
@@ -1098,52 +1098,52 @@ internal class SnapshotListTests
         var result = new List<int>();
         while (enumerator.MoveNext())
             result.Add(enumerator.Current);
-        Assert.That(result, Is.Empty);
+        await Assert.That(result).IsEmpty();
     }
 
     [Test]
-    public void Clear_MultipleTimes_Works()
+    public async Task Clear_MultipleTimes_Works()
     {
         var list = new SnapshotList<int> { 1, 2 };
         list.Clear();
         list.Clear();
         list.Clear();
-        Assert.That(list.Count, Is.EqualTo(0));
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Clear_FreesNodesForReuse()
+    public async Task Clear_FreesNodesForReuse()
     {
         var list = new SnapshotList<int>(4) { 1, 2, 3 };
         list.Clear();
         list.Add(4);
         list.Add(5);
         list.Add(6);
-        Assert.That(list.Count, Is.EqualTo(3));
-        Assert.That(list.ToList(), Is.EqualTo(new[] { 6, 5, 4 }));
+        await Assert.That(list.Count).IsEqualTo(3);
+        await Assert.That(list.ToList()).IsEqualTo(new[] { 6, 5, 4 });
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentClear_NoExceptions()
+    public async Task ThreadSafety_ConcurrentClear_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 1000; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.For(0, 10, _ =>
             {
                 list.Clear();
             });
-        });
-        Assert.That(list.Count, Is.EqualTo(0));
+        }).ThrowsNothing();
+        await Assert.That(list.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentClearAndAdd_NoExceptions()
+    public async Task ThreadSafety_ConcurrentClearAndAdd_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () => list.Clear(),
@@ -1152,15 +1152,15 @@ internal class SnapshotListTests
                     for (int i = 0; i < 100; i++) list.Add(i + 1000);
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentClearAndEnumeration_NoExceptions()
+    public async Task ThreadSafety_ConcurrentClearAndEnumeration_NoExceptions()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 100; i++) list.Add(i);
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             Parallel.Invoke(
                 () => list.Clear(),
@@ -1169,18 +1169,17 @@ internal class SnapshotListTests
                     foreach (var _ in list) { }
                 }
             );
-        });
+        }).ThrowsNothing();
     }
 
     [Test]
-    public void Clear_LargeList_Works()
+    public async Task Clear_LargeList_Works()
     {
         var list = new SnapshotList<int>();
         for (int i = 0; i < 10000; i++) list.Add(i);
-        Assert.That(list.Count, Is.EqualTo(10000));
+        await Assert.That(list.Count).IsEqualTo(10000);
         list.Clear();
-        Assert.That(list.Count, Is.EqualTo(0));
-        Assert.That(list.Any(), Is.False);
+        await Assert.That(list.Count).IsEqualTo(0);
+        await Assert.That(list.Any()).IsFalse();
     }
 }
-

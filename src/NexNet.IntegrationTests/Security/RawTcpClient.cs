@@ -5,9 +5,9 @@ using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
 using StreamStruct;
 using LogLevel = StreamStruct.LogLevel;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -57,28 +57,28 @@ internal class RawTcpClient : IDisposable
         }
     }
     
-    public void Write(byte data)
+    public async Task Write(byte data)
     {
         _logger.LogTrace($"Sending: {data}");
-        Assert.DoesNotThrow(() => _stream!.WriteByte(data));
+        await Assert.That(() => _stream!.WriteByte(data)).ThrowsNothing();
     }
     
-    public void Write(byte[] data)
+    public async Task Write(byte[] data)
     {
         _logger.LogTrace($"Sending: [{string.Join(",", data)}]");
-        Assert.DoesNotThrow(() => _stream!.Write(data));
+        await Assert.That(() => _stream!.Write(data)).ThrowsNothing();
     }
 
     public async Task AssertVerify(string definition, object?[]? expectedValues)
     {
         var result = await _streamProcessor!.VerifyAsync(definition, expectedValues);
-        Assert.That(result.ValidationErrors, Is.Empty);
+        await Assert.That(result.ValidationErrors).IsEmpty();
     }
     
     public async Task AssertReadSuccess(string definition)
     {
         var result = await _streamProcessor!.ReadAsync(definition);
-        Assert.That(result.ErrorCode, Is.EqualTo(ParseError.Success));
+        await Assert.That(result.ErrorCode).IsEqualTo(ParseError.Success);
     }
     
     public async Task AssertDisconnectReason(DisconnectReason reason)
@@ -107,7 +107,7 @@ internal class RawTcpClient : IDisposable
         var result = await _streamProcessor!.WriteAsync(ProtocolHeader, values).Timeout(1);
         
         
-        Assert.That(result, Is.True);
+        await Assert.That(result).IsTrue();
     }
 
     public Task SendClientGreetingMessage<TServer, TClient, TClientProxy>(string? version = null) 
@@ -151,7 +151,7 @@ internal class RawTcpClient : IDisposable
             throw new InvalidOperationException("Not connected");
         
         var result = await _streamProcessor!.WriteAsync(definition, data).Timeout(1);
-        Assert.That(result, Is.True);
+        await Assert.That(result).IsTrue();
     } 
     
     public async Task<TMessage?> AssertReceiveMessageAsync<TMessage>()
@@ -159,15 +159,15 @@ internal class RawTcpClient : IDisposable
     {
         
         var typeResult = await _streamProcessor!.ReadAsync("[type:byte]");
-        Assert.That(typeResult.ErrorCode, Is.EqualTo(ParseError.Success));
-        Assert.That(typeResult.TryRead<byte>("type", out var typeValue), Is.True);
-        Assert.That(typeValue, Is.EqualTo((byte)TMessage.Type));
-        
+        await Assert.That(typeResult.ErrorCode).IsEqualTo(ParseError.Success);
+        await Assert.That(typeResult.TryRead<byte>("type", out var typeValue)).IsTrue();
+        await Assert.That(typeValue).IsEqualTo((byte)TMessage.Type);
+
         var bodyResult = await _streamProcessor!.ReadAsync("[body_length:ushort][body:body_length]");
-        Assert.That(bodyResult.ErrorCode, Is.EqualTo(ParseError.Success));
-        Assert.That(bodyResult.TryRead<byte[]>("body", out var bodyValue), Is.True);
+        await Assert.That(bodyResult.ErrorCode).IsEqualTo(ParseError.Success);
+        await Assert.That(bodyResult.TryRead<byte[]>("body", out var bodyValue)).IsTrue();
         TMessage? message = null;
-        Assert.DoesNotThrow(() => message = TestSerialization.DeserializeMessage<TMessage>(bodyValue));
+        await Assert.That(() => message = TestSerialization.DeserializeMessage<TMessage>(bodyValue)).ThrowsNothing();
 
         return message;
     }

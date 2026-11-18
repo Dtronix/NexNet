@@ -3,7 +3,7 @@ using NexNet.IntegrationTests.Security;
 using NexNet.Messages;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -58,16 +58,16 @@ internal class MetricsSessionTests : BaseTests
         await client.ConnectAsync().Timeout(1);
 
         var transport = TransportName(type);
-        Assert.That(_recorder.ObserveSum("nexnet.session.active",
-            ("nexnet.role", "server"), ("nexnet.transport", transport)), Is.EqualTo(1));
-        Assert.That(_recorder.ObserveSum("nexnet.session.active",
-            ("nexnet.role", "client"), ("nexnet.transport", transport)), Is.EqualTo(1));
-        Assert.That(_recorder.ObserveSum("nexnet.session.handshaking"), Is.EqualTo(0));
+        await Assert.That(_recorder.ObserveSum("nexnet.session.active",
+            ("nexnet.role", "server"), ("nexnet.transport", transport))).IsEqualTo(1);
+        await Assert.That(_recorder.ObserveSum("nexnet.session.active",
+            ("nexnet.role", "client"), ("nexnet.transport", transport))).IsEqualTo(1);
+        await Assert.That(_recorder.ObserveSum("nexnet.session.handshaking")).IsEqualTo(0);
 
         await client.DisconnectAsync().Timeout(1);
         await WaitFor(() => _recorder.Metrics.TableSize.Count == 0).Timeout(2);
 
-        Assert.That(_recorder.ObserveSum("nexnet.session.active"), Is.EqualTo(0));
+        await Assert.That(_recorder.ObserveSum("nexnet.session.active")).IsEqualTo(0);
     }
 
     [Test]
@@ -83,15 +83,15 @@ internal class MetricsSessionTests : BaseTests
         await Task.Delay(100);
 
         var disconnects = _recorder.Events("nexnet.session.disconnects");
-        Assert.That(disconnects, Has.Count.EqualTo(2));
-        Assert.That(disconnects.Count(e => e.Has("nexnet.role", "client")), Is.EqualTo(1));
-        Assert.That(disconnects.Count(e => e.Has("nexnet.role", "server")), Is.EqualTo(1));
-        Assert.That(disconnects.All(e => e.Has("nexnet.disconnect.reason", "graceful")), Is.True);
-        Assert.That(disconnects.All(e => e.Has("nexnet.session.phase", "established")), Is.True);
+        await Assert.That(disconnects).Count().IsEqualTo(2);
+        await Assert.That(disconnects.Count(e => e.Has("nexnet.role", "client"))).IsEqualTo(1);
+        await Assert.That(disconnects.Count(e => e.Has("nexnet.role", "server"))).IsEqualTo(1);
+        await Assert.That(disconnects.All(e => e.Has("nexnet.disconnect.reason", "graceful"))).IsTrue();
+        await Assert.That(disconnects.All(e => e.Has("nexnet.session.phase", "established"))).IsTrue();
 
         var durations = _recorder.Events("nexnet.session.duration");
-        Assert.That(durations, Has.Count.EqualTo(2));
-        Assert.That(durations.All(e => e.Value > 0 && e.Has("nexnet.disconnect.reason", "graceful")), Is.True);
+        await Assert.That(durations).Count().IsEqualTo(2);
+        await Assert.That(durations.All(e => e.Value > 0 && e.Has("nexnet.disconnect.reason", "graceful"))).IsTrue();
     }
 
     [Test]
@@ -112,9 +112,9 @@ internal class MetricsSessionTests : BaseTests
         await WaitFor(() => _recorder.Events("nexnet.session.disconnects").Count == 1).Timeout(2);
 
         var disconnect = _recorder.Events("nexnet.session.disconnects").Single();
-        Assert.That(disconnect.Has("nexnet.disconnect.reason", "timeout"), Is.True);
-        Assert.That(disconnect.Has("nexnet.session.phase", "handshake"), Is.True);
-        Assert.That(disconnect.Has("nexnet.role", "server"), Is.True);
+        await Assert.That(disconnect.Has("nexnet.disconnect.reason", "timeout")).IsTrue();
+        await Assert.That(disconnect.Has("nexnet.session.phase", "handshake")).IsTrue();
+        await Assert.That(disconnect.Has("nexnet.role", "server")).IsTrue();
     }
 
     [Test]
@@ -133,8 +133,8 @@ internal class MetricsSessionTests : BaseTests
 
         await WaitFor(() => _recorder.Events("nexnet.connection.rejections").Count == 1).Timeout(2);
         var rejection = _recorder.Events("nexnet.connection.rejections").Single();
-        Assert.That(rejection.Has("nexnet.rejection.reason", "max_concurrent_connections"), Is.True);
-        Assert.That(rejection.Has("nexnet.transport", "tcp"), Is.True);
+        await Assert.That(rejection.Has("nexnet.rejection.reason", "max_concurrent_connections")).IsTrue();
+        await Assert.That(rejection.Has("nexnet.transport", "tcp")).IsTrue();
     }
 
     [Test]
@@ -156,7 +156,7 @@ internal class MetricsSessionTests : BaseTests
                 connected.Add(client);
             }
 
-            Assert.That(_recorder.Metrics.TableSize.Count, Is.EqualTo(clients * 2));
+            await Assert.That(_recorder.Metrics.TableSize.Count).IsEqualTo(clients * 2);
 
             foreach (var client in connected)
                 await client.DisconnectAsync().Timeout(1);
@@ -164,17 +164,17 @@ internal class MetricsSessionTests : BaseTests
             await WaitFor(() => _recorder.Metrics.TableSize.Count == 0).Timeout(2);
         }
 
-        Assert.That(_recorder.Metrics.TableSize.Capacity, Is.EqualTo(16));
+        await Assert.That(_recorder.Metrics.TableSize.Capacity).IsEqualTo(16);
         await WaitFor(() => _recorder.Events("nexnet.session.disconnects").Count == rounds * clients * 2).Timeout(2);
     }
 
     [Test]
-    public void SharedMeter_UsedWithoutFactory()
+    public async Task SharedMeter_UsedWithoutFactory()
     {
         var shared = NexusMetrics.Get(null);
-        Assert.That(NexusMetrics.Get(null), Is.SameAs(shared));
-        Assert.That(shared.Meter.Name, Is.EqualTo(NexusMeter.Name));
-        Assert.That(NexusMetrics.Get(_recorder), Is.Not.SameAs(shared));
+        await Assert.That(NexusMetrics.Get(null)).IsSameReferenceAs(shared);
+        await Assert.That(shared.Meter.Name).IsEqualTo(NexusMeter.Name);
+        await Assert.That(NexusMetrics.Get(_recorder)).IsNotSameReferenceAs(shared);
     }
 
     internal static async Task WaitFor(Func<bool> condition)

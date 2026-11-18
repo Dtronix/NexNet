@@ -1,5 +1,5 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -54,7 +54,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
         await context.Proxy.Clients(context.Proxy.GetIds().ToArray()).ClientTask();
         await context.Proxy.Group("myGroup").ClientTask();
         await context.Proxy.Groups(["myGroup"]).ClientTask();
-        Assert.That(completed, Is.False);
+        await Assert.That(completed).IsFalse();
     }
 
     [Test]
@@ -77,7 +77,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
                 await nexus.Context.Clients.Clients(server!.ContextProvider.Rent().Proxy.GetIds().ToArray()).ClientTask();
                 await nexus.Context.Clients.Group("myGroup").ClientTask();
                 await nexus.Context.Clients.Groups(["myGroup"]).ClientTask();
-                Assert.That(completed, Is.False);
+                await Assert.That(completed).IsFalse();
                 tcs1.SetResult();
             };
         });
@@ -135,7 +135,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         var result = await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue();
 
-        Assert.That(result, Is.EqualTo(54321));
+        await Assert.That(result).IsEqualTo(54321);
     }
 
     [Test]
@@ -208,7 +208,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
     [Test]
@@ -246,7 +246,7 @@ internal class NexusServerTests_NexusInvocations : BaseTests
 
         await tcs.Task.Timeout(1);
 
-        Assert.That(invocationCount, Is.EqualTo(1));
+        await Assert.That(invocationCount).IsEqualTo(1);
     }
 
     [Test]

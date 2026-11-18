@@ -1,16 +1,14 @@
 using NexNet.Invocation;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
-
-[TestFixture]
 internal class LocalInvocationRouterTests
 {
     private LocalSessionContext _context = null!;
     private LocalInvocationRouter _router = null!;
     private LocalGroupRegistry _groupRegistry = null!;
 
-    [SetUp]
+    [Before(HookType.Test)]
     public void Setup()
     {
         _context = new LocalSessionContext();
@@ -29,8 +27,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeAllAsync(message);
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -40,7 +38,7 @@ internal class LocalInvocationRouterTests
         await _router.InvokeAllAsync(message);
 
         // Should not throw
-        Assert.Pass();
+        ;
     }
 
     [Test]
@@ -54,8 +52,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeAllAsync(message);
 
-        Assert.That(session1.SentMessages, Is.Empty); // Failed
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1)); // Succeeded
+        await Assert.That(session1.SentMessages).IsEmpty(); // Failed
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1); // Succeeded
     }
 
     [Test]
@@ -69,8 +67,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeAllExceptAsync(message, excludeSessionId: 1);
 
-        Assert.That(session1.SentMessages, Is.Empty);
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).IsEmpty();
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -84,8 +82,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeAllExceptAsync(message, excludeSessionId: 999);
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -97,8 +95,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         var result = await _router.InvokeClientAsync(message, sessionId: 1);
 
-        Assert.That(result, Is.True);
-        Assert.That(session.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(result).IsTrue();
+        await Assert.That(session.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -107,7 +105,7 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         var result = await _router.InvokeClientAsync(message, sessionId: 999);
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
@@ -119,7 +117,7 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         var result = await _router.InvokeClientAsync(message, sessionId: 1);
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
@@ -133,8 +131,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeClientsAsync(message, [1L, 2L, 999L]); // 999 doesn't exist
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -146,7 +144,7 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeClientsAsync(message, []);
 
-        Assert.That(session.SentMessages, Is.Empty);
+        await Assert.That(session.SentMessages).IsEmpty();
     }
 
     [Test]
@@ -166,9 +164,9 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupAsync(message, "mygroup");
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session3.SentMessages, Is.Empty);
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session3.SentMessages).IsEmpty();
     }
 
     [Test]
@@ -180,7 +178,7 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupAsync(message, "nonexistent");
 
-        Assert.That(session.SentMessages, Is.Empty);
+        await Assert.That(session.SentMessages).IsEmpty();
     }
 
     [Test]
@@ -197,8 +195,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupAsync(message, "mygroup", excludeSessionId: 1);
 
-        Assert.That(session1.SentMessages, Is.Empty);
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).IsEmpty();
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -215,8 +213,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupsAsync(message, ["group1", "group2"]);
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -232,7 +230,7 @@ internal class LocalInvocationRouterTests
         await _router.InvokeGroupsAsync(message, ["group1", "group2"]);
 
         // Session is in both groups, so receives message twice
-        Assert.That(session.SentMessages, Has.Count.EqualTo(2));
+        await Assert.That(session.SentMessages).Count().IsEqualTo(2);
     }
 
     [Test]
@@ -251,8 +249,8 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupsAsync(message, ["group1", "group2"], excludeSessionId: 1);
 
-        Assert.That(session1.SentMessages, Is.Empty);
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(2)); // Once per group
+        await Assert.That(session1.SentMessages).IsEmpty();
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(2); // Once per group
     }
 
     [Test]
@@ -265,7 +263,7 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeGroupsAsync(message, []);
 
-        Assert.That(session.SentMessages, Is.Empty);
+        await Assert.That(session.SentMessages).IsEmpty();
     }
 
     [Test]
@@ -274,7 +272,7 @@ internal class LocalInvocationRouterTests
         await _router.InitializeAsync();
 
         // No exception = success
-        Assert.Pass();
+        ;
     }
 
     [Test]
@@ -283,7 +281,7 @@ internal class LocalInvocationRouterTests
         await _router.ShutdownAsync();
 
         // No exception = success
-        Assert.Pass();
+        ;
     }
 
     [Test]
@@ -298,9 +296,9 @@ internal class LocalInvocationRouterTests
         var message = CreateTestMessage();
         await _router.InvokeAllAsync(message);
 
-        Assert.That(message.InvocationId, Is.EqualTo(0));
-        Assert.That(session1.SentMessages, Is.EqualTo(new object[] { message }));
-        Assert.That(session2.SentMessages, Is.EqualTo(new object[] { message }));
+        await Assert.That(message.InvocationId).IsEqualTo(0);
+        await Assert.That(session1.SentMessages).IsEqualTo(new object[] { message });
+        await Assert.That(session2.SentMessages).IsEqualTo(new object[] { message });
     }
 
     private static MockInvocationMessage CreateTestMessage()

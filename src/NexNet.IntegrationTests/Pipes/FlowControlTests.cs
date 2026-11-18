@@ -1,6 +1,6 @@
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Pipes;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -48,7 +48,7 @@ internal class FlowControlTests : BaseTests
         });
 
         // The call is answered while the burst is still being read.
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
 
         await writing.Timeout(10);
         await allReceived.Task.Timeout(10);
@@ -80,8 +80,8 @@ internal class FlowControlTests : BaseTests
         var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
         await writer.WriteAsync(new byte[300 * 1024]).Timeout(5);
 
-        Assert.That(await item.Task.Timeout(5), Is.EqualTo(300 * 1024));
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await item.Task.Timeout(5)).IsEqualTo(300 * 1024);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
     }
 
     [Test]
@@ -109,7 +109,7 @@ internal class FlowControlTests : BaseTests
         // The server accepts 64 KiB; the client checks before sending.
         await Assert.ThatAsync(async () => await writer.WriteAsync(new byte[100 * 1024]), Throws.InstanceOf<NexusMessageTooLargeException>());
         await writer.WriteAsync(new byte[10]).Timeout(1);
-        Assert.That(await received.Task.Timeout(1), Is.EqualTo(10));
+        await Assert.That(await received.Task.Timeout(1)).IsEqualTo(10);
     }
 
     [Test]
@@ -133,12 +133,12 @@ internal class FlowControlTests : BaseTests
         // More than the window: the write waits for credit that never comes, in the writer's own task.
         using var cts = new CancellationTokenSource(500);
         var result = await pipe.Output.WriteAsync(new byte[1024 * 1024], cts.Token).AsTask().Timeout(2);
-        Assert.That(result.IsCanceled, Is.True);
+        await Assert.That(result.IsCanceled).IsTrue();
 
         await pipe.CompleteAsync().Timeout(1);
         await pipe.DisposeAsync();
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
     }
 
     [Test]
@@ -174,7 +174,7 @@ internal class FlowControlTests : BaseTests
         // Every window reserved by the client was released.
         for (var i = 0; i < 50 && budget.Reserved != baseline; i++)
             await Task.Delay(20);
-        Assert.That(budget.Reserved, Is.EqualTo(baseline));
+        await Assert.That(budget.Reserved).IsEqualTo(baseline);
     }
 
     [Test]
@@ -207,7 +207,7 @@ internal class FlowControlTests : BaseTests
         await Assert.ThrowsAsync<NexusBusyException>(async () => await refused.ReadyTask.Timeout(1));
         await refused.DisposeAsync();
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(1);
         foreach (var pipe in pipes)
             await pipe.DisposeAsync();
     }

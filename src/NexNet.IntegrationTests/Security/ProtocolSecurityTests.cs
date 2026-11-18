@@ -5,7 +5,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -70,7 +70,7 @@ internal class ProtocolSecurityTests : BaseTests
         // The handshake completes off the read loop, so the server greeting may or may not be sent before the
         // second greeting is rejected.
         var type = await client.Processor.ReadAsync("[type:byte]").Timeout(1);
-        Assert.That(type.TryRead<byte>("type", out var typeValue), Is.True);
+        await Assert.That(type.TryRead<byte>("type", out var typeValue)).IsTrue();
         if (typeValue == (byte)MessageType.ServerGreeting)
         {
             await client.AssertReadSuccess("[body_length:ushort][body:body_length]").Timeout(1);
@@ -78,7 +78,7 @@ internal class ProtocolSecurityTests : BaseTests
         }
         else
         {
-            Assert.That(typeValue, Is.EqualTo((byte)DisconnectReason.ProtocolError));
+            await Assert.That(typeValue).IsEqualTo((byte)DisconnectReason.ProtocolError);
         }
     }
     
@@ -184,9 +184,10 @@ internal class ProtocolSecurityTests : BaseTests
         await client.AssertDisconnectReason(DisconnectReason.ProtocolError).Timeout(1);
     }
 
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(6)]
+    [Test]
+    [Arguments(4)]
+    [Arguments(5)]
+    [Arguments(6)]
     public async Task NonZeroReservedByte_ShouldDisconnectWithProtocolError(int reservedIndex)
     {
         var serverConfig = CreateServerConfig(Type.Tcp);

@@ -3,8 +3,7 @@ using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
-using NUnit.Framework;
-using NUnit.Framework.Interfaces;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 

@@ -1,9 +1,8 @@
-using System.Net.Sockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -15,20 +14,21 @@ namespace NexNet.IntegrationTests.Security;
 internal class PreAuthTests : BaseTests
 {
     [Test]
-    public void MessageTypes_NonDisconnectTypesStayOutsideDisconnectRange()
+    public async Task MessageTypes_NonDisconnectTypesStayOutsideDisconnectRange()
     {
         // The read loop treats every byte in 20-38 as a disconnect reason before it applies the pre-auth allow-list.
         foreach (var type in Enum.GetValues<MessageType>())
         {
             var isDisconnect = type.ToString().StartsWith("Disconnect", StringComparison.Ordinal);
-            Assert.That((byte)type is >= 20 and <= 38, Is.EqualTo(isDisconnect), $"{type} = {(byte)type}");
+            await Assert.That((byte)type is >= 20 and <= 38).IsEqualTo(isDisconnect).Because($"{type} = {(byte)type}");
         }
     }
 
     private static IEnumerable<MessageType> TypesOtherThanClientGreetings() => Enum.GetValues<MessageType>()
         .Where(t => t is not MessageType.ClientGreeting and not MessageType.ClientGreetingReconnection);
 
-    [TestCaseSource(nameof(TypesOtherThanClientGreetings))]
+    [Test]
+    [MethodDataSource(nameof(TypesOtherThanClientGreetings))]
     public async Task AnyMessageBeforeGreeting_Disconnects(MessageType type)
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
@@ -47,9 +47,10 @@ internal class PreAuthTests : BaseTests
         // anything else is a protocol error.
         var received = await ReadUntilClosed(client).Timeout(2);
         if (type.ToString().StartsWith("Disconnect", StringComparison.Ordinal))
+            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
             Assert.That(received, Is.Empty.Or.EqualTo(new[] { (byte)DisconnectReason.ProtocolError }));
         else
-            Assert.That(received, Is.EqualTo(new[] { (byte)DisconnectReason.ProtocolError }));
+            await Assert.That(received).IsEqualTo(new[] { (byte)DisconnectReason.ProtocolError });
     }
 
     [Test]
@@ -121,7 +122,10 @@ internal class PreAuthTests : BaseTests
 
         // A third is closed straight away, long before the handshake timeout.
         using (var rejected = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger))
-            await AssertRejectedAsync(rejected);
+        {
+            await rejected.ConnectAsync();
+            await Assert.That(await ReadUntilClosed(rejected).Timeout(1)).IsEmpty();
+        }
 
         // Ending one pending connection frees its slot.
         pending1.ForceDisconnect();
@@ -134,7 +138,7 @@ internal class PreAuthTests : BaseTests
     }
 
     [Test]
-    public void PreAuthFailureLog_AggregatesPerInterval()
+    public async Task PreAuthFailureLog_AggregatesPerInterval()
     {
         var logger = new CapturingLogger();
         var time = new Microsoft.Extensions.Time.Testing.FakeTimeProvider();
@@ -145,32 +149,14 @@ internal class PreAuthTests : BaseTests
         for (var i = 0; i < 100; i++)
             log.Record(DisconnectReason.ProtocolError);
         log.RecordHandshakeLimit();
-        Assert.That(logger.Warnings, Has.Count.EqualTo(1));
+        await Assert.That(logger.Warnings).Count().IsEqualTo(1);
 
         time.Advance(PreAuthFailureLog.Interval);
         log.Record(DisconnectReason.Timeout);
 
-        Assert.That(logger.Warnings, Has.Count.EqualTo(2));
+        await Assert.That(logger.Warnings).Count().IsEqualTo(2);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(logger.Warnings[1], Does.Contain("ProtocolError=100").And.Contain("MaxPendingHandshakes=1").And.Contain("Timeout=1"));
-    }
-
-    /// <summary>
-    /// Asserts that the server rejects a new connection without sending anything. The server closes it right after
-    /// accepting it, so the reset can reach the client before its connect completes (seen on Linux): a connect that
-    /// fails with a reset or refusal and a connect that is then closed or reset are the same outcome.
-    /// </summary>
-    private static async Task AssertRejectedAsync(RawTcpClient client)
-    {
-        try
-        {
-            await client.ConnectAsync().Timeout(1);
-        }
-        catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionRefused)
-        {
-            return;
-        }
-
-        Assert.That(await ReadUntilClosed(client).Timeout(1), Is.Empty);
     }
 
     /// <summary>

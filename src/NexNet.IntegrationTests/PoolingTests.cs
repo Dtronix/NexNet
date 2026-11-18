@@ -1,5 +1,5 @@
 using NexNet.Pools;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -8,7 +8,7 @@ namespace NexNet.IntegrationTests;
 internal class PoolingTests
 {
     [Test]
-    public void ListPool_Return_RetainsCapacity()
+    public async Task ListPool_Return_RetainsCapacity()
     {
         // Arrange: Rent a list and add items to grow its capacity
         var list = ListPool<int>.Rent();
@@ -17,20 +17,20 @@ internal class PoolingTests
             list.Add(i);
         }
         var originalCapacity = list.Capacity;
-        Assert.That(originalCapacity, Is.GreaterThanOrEqualTo(100));
+        await Assert.That(originalCapacity).IsGreaterThanOrEqualTo(100);
 
         // Act: Return to pool and rent again
         ListPool<int>.Return(list);
         var reusedList = ListPool<int>.Rent();
 
         // Assert: Should be same instance with retained capacity (not reset to 0)
-        Assert.That(reusedList, Is.SameAs(list));
-        Assert.That(reusedList.Capacity, Is.GreaterThanOrEqualTo(100));
-        Assert.That(reusedList.Count, Is.EqualTo(0)); // Should be cleared
+        await Assert.That(reusedList).IsSameReferenceAs(list);
+        await Assert.That(reusedList.Capacity).IsGreaterThanOrEqualTo(100);
+        await Assert.That(reusedList.Count).IsEqualTo(0); // Should be cleared
     }
 
     [Test]
-    public void ListPool_Return_TrimsOversizedLists()
+    public async Task ListPool_Return_TrimsOversizedLists()
     {
         // Arrange: Create a list with very large capacity
         var list = ListPool<int>.Rent();
@@ -38,48 +38,48 @@ internal class PoolingTests
         {
             list.Add(i);
         }
-        Assert.That(list.Capacity, Is.GreaterThan(ListPool<int>.MaxRetainedCapacity));
+        await Assert.That(list.Capacity).IsGreaterThan(ListPool<int>.MaxRetainedCapacity);
 
         // Act: Return to pool and rent again
         ListPool<int>.Return(list);
         var reusedList = ListPool<int>.Rent();
 
         // Assert: Should be trimmed to DefaultCapacity
-        Assert.That(reusedList, Is.SameAs(list));
-        Assert.That(reusedList.Capacity, Is.EqualTo(ListPool<int>.DefaultCapacity));
+        await Assert.That(reusedList).IsSameReferenceAs(list);
+        await Assert.That(reusedList.Capacity).IsEqualTo(ListPool<int>.DefaultCapacity);
     }
 
     [Test]
-    public void ListPool_Return_NullListDoesNotThrow()
+    public async Task ListPool_Return_NullListDoesNotThrow()
     {
         // Act & Assert: Should not throw for null
-        Assert.DoesNotThrow(() => ListPool<int>.Return(null!));
+        await Assert.That(() => ListPool<int>.Return(null!)).ThrowsNothing();
     }
 
     [Test]
-    public void ListPool_PoolCount_TracksPoolSize()
+    public async Task ListPool_PoolCount_TracksPoolSize()
     {
         // Clear the pool first
         ListPool<int>.Clear();
-        Assert.That(ListPool<int>.PoolCount, Is.EqualTo(0));
+        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(0);
 
         // Rent and return some lists
         var list1 = ListPool<int>.Rent();
         var list2 = ListPool<int>.Rent();
 
         ListPool<int>.Return(list1);
-        Assert.That(ListPool<int>.PoolCount, Is.EqualTo(1));
+        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(1);
 
         ListPool<int>.Return(list2);
-        Assert.That(ListPool<int>.PoolCount, Is.EqualTo(2));
+        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(2);
 
         // Rent one back
         var rented = ListPool<int>.Rent();
-        Assert.That(ListPool<int>.PoolCount, Is.EqualTo(1));
+        await Assert.That(ListPool<int>.PoolCount).IsEqualTo(1);
     }
 
     [Test]
-    public void ListPool_BoundedGrowth_DoesNotExceedMaxPoolSize()
+    public async Task ListPool_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Clear the pool
         ListPool<string>.Clear();
@@ -97,22 +97,22 @@ internal class PoolingTests
         }
 
         // Pool count should not exceed MaxPoolSize
-        Assert.That(ListPool<string>.PoolCount, Is.LessThanOrEqualTo(ListPool<string>.MaxPoolSize));
+        await Assert.That(ListPool<string>.PoolCount).IsLessThanOrEqualTo(ListPool<string>.MaxPoolSize);
     }
 
     [Test]
-    public void ListPool_Clear_ResetsPoolCount()
+    public async Task ListPool_Clear_ResetsPoolCount()
     {
         // Add some items
         var list = ListPool<double>.Rent();
         ListPool<double>.Return(list);
-        Assert.That(ListPool<double>.PoolCount, Is.GreaterThan(0));
+        await Assert.That(ListPool<double>.PoolCount).IsGreaterThan(0);
 
         // Clear
         ListPool<double>.Clear();
 
         // Pool count should be 0
-        Assert.That(ListPool<double>.PoolCount, Is.EqualTo(0));
+        await Assert.That(ListPool<double>.PoolCount).IsEqualTo(0);
     }
 
     private class TestCacheableObject
@@ -121,18 +121,18 @@ internal class PoolingTests
     }
 
     [Test]
-    public void ObjectCache_Rent_CreatesNewInstanceWhenPoolEmpty()
+    public async Task ObjectCache_Rent_CreatesNewInstanceWhenPoolEmpty()
     {
         // Clear the pool
         StaticObjectPool<TestCacheableObject>.Clear();
 
         // Rent should create new instance
         var obj = StaticObjectPool<TestCacheableObject>.Rent();
-        Assert.That(obj, Is.Not.Null);
+        await Assert.That(obj).IsNotNull();
     }
 
     [Test]
-    public void ObjectCache_Return_AddsToPool()
+    public async Task ObjectCache_Return_AddsToPool()
     {
         StaticObjectPool<TestCacheableObject>.Clear();
         var initialCount = StaticObjectPool<TestCacheableObject>.PoolCount;
@@ -140,18 +140,18 @@ internal class PoolingTests
         var obj = StaticObjectPool<TestCacheableObject>.Rent();
         StaticObjectPool<TestCacheableObject>.Return(obj);
 
-        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.GreaterThan(initialCount));
+        await Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount).IsGreaterThan(initialCount);
     }
 
     [Test]
-    public void ObjectCache_Return_NullDoesNotThrow()
+    public async Task ObjectCache_Return_NullDoesNotThrow()
     {
         // StaticObjectPool now accepts null gracefully (no-op)
-        Assert.DoesNotThrow(() => StaticObjectPool<TestCacheableObject>.Return(null!));
+        await Assert.That(() => StaticObjectPool<TestCacheableObject>.Return(null!)).ThrowsNothing();
     }
 
     [Test]
-    public void ObjectCache_BoundedGrowth_DoesNotExceedMaxPoolSize()
+    public async Task ObjectCache_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Clear the pool
         StaticObjectPool<TestCacheableObject>.Clear();
@@ -163,11 +163,11 @@ internal class PoolingTests
         }
 
         // Pool count should not exceed MaxPoolSize
-        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.LessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize));
+        await Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount).IsLessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize);
     }
 
     [Test]
-    public void ObjectCache_RentReturn_ReusesObjects()
+    public async Task ObjectCache_RentReturn_ReusesObjects()
     {
         StaticObjectPool<TestCacheableObject>.Clear();
 
@@ -176,27 +176,27 @@ internal class PoolingTests
         StaticObjectPool<TestCacheableObject>.Return(obj1);
 
         var obj2 = StaticObjectPool<TestCacheableObject>.Rent();
-        Assert.That(obj2, Is.SameAs(obj1));
-        Assert.That(obj2.Value, Is.EqualTo(42)); // State preserved (caller's responsibility to reset)
+        await Assert.That(obj2).IsSameReferenceAs(obj1);
+        await Assert.That(obj2.Value).IsEqualTo(42); // State preserved (caller's responsibility to reset)
     }
 
     [Test]
-    public void ObjectCache_Clear_ResetsPoolCount()
+    public async Task ObjectCache_Clear_ResetsPoolCount()
     {
         // Add some items
         StaticObjectPool<TestCacheableObject>.Return(new TestCacheableObject());
         StaticObjectPool<TestCacheableObject>.Return(new TestCacheableObject());
-        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.GreaterThan(0));
+        await Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount).IsGreaterThan(0);
 
         // Clear
         StaticObjectPool<TestCacheableObject>.Clear();
 
         // Pool count should be 0
-        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount, Is.EqualTo(0));
+        await Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount).IsEqualTo(0);
     }
 
     [Test]
-    public void RVTCS_BoundedGrowth_DoesNotExceedMaxPoolSize()
+    public async Task RVTCS_BoundedGrowth_DoesNotExceedMaxPoolSize()
     {
         // Create many sources and return them all
         var sources = new List<PooledValueTaskSource<int>>();
@@ -213,12 +213,11 @@ internal class PoolingTests
         }
 
         // Pool count should not exceed MaxPoolSize
-        Assert.That(PooledValueTaskSource<int>.PoolCount,
-            Is.LessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize));
+        await Assert.That(PooledValueTaskSource<int>.PoolCount).IsLessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize);
     }
 
     [Test]
-    public void RVTCS_PoolCount_TracksPoolSize()
+    public async Task RVTCS_PoolCount_TracksPoolSize()
     {
         // Rent and return to verify tracking works
         var source1 = PooledValueTaskSource<string>.Rent();
@@ -228,8 +227,7 @@ internal class PoolingTests
         source1.Return();
 
         // Count should have increased after return
-        Assert.That(PooledValueTaskSource<string>.PoolCount,
-            Is.GreaterThanOrEqualTo(countBeforeReturn));
+        await Assert.That(PooledValueTaskSource<string>.PoolCount).IsGreaterThanOrEqualTo(countBeforeReturn);
     }
 
     [Test]
@@ -253,8 +251,7 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should still respect the limit
-        Assert.That(PooledValueTaskSource<int>.PoolCount,
-            Is.LessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize));
+        await Assert.That(PooledValueTaskSource<int>.PoolCount).IsLessThanOrEqualTo(PooledValueTaskSource<int>.MaxPoolSize);
     }
 
     [Test]
@@ -279,7 +276,7 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should respect limits even under concurrent access
-        Assert.That(ListPool<int>.PoolCount, Is.LessThanOrEqualTo(ListPool<int>.MaxPoolSize));
+        await Assert.That(ListPool<int>.PoolCount).IsLessThanOrEqualTo(ListPool<int>.MaxPoolSize);
     }
 
     [Test]
@@ -304,12 +301,11 @@ internal class PoolingTests
         await Task.WhenAll(tasks);
 
         // Pool should respect limits even under concurrent access
-        Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount,
-            Is.LessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize));
+        await Assert.That(StaticObjectPool<TestCacheableObject>.PoolCount).IsLessThanOrEqualTo(StaticObjectPool<TestCacheableObject>.MaxPoolSize);
     }
 
     [Test]
-    public void ListPool_CapacityRetention_PerformanceImprovement()
+    public async Task ListPool_CapacityRetention_PerformanceImprovement()
     {
         // This test demonstrates that capacity is retained for reuse
         ListPool<byte>.Clear();
@@ -326,16 +322,15 @@ internal class PoolingTests
 
         // Second use: should have retained capacity
         var list2 = ListPool<byte>.Rent();
-        Assert.That(list2, Is.SameAs(list1));
-        Assert.That(list2.Capacity, Is.EqualTo(capacityAfterGrow));
-        Assert.That(list2.Count, Is.EqualTo(0)); // But content is cleared
+        await Assert.That(list2).IsSameReferenceAs(list1);
+        await Assert.That(list2.Capacity).IsEqualTo(capacityAfterGrow);
+        await Assert.That(list2.Count).IsEqualTo(0); // But content is cleared
 
         // Adding items shouldn't require reallocation up to the retained capacity
         for (int i = 0; i < capacityAfterGrow; i++)
         {
             list2.Add((byte)(i % 256));
-            Assert.That(list2.Capacity, Is.EqualTo(capacityAfterGrow),
-                "Capacity should not change - no reallocation needed");
+            await Assert.That(list2.Capacity).IsEqualTo(capacityAfterGrow).Because("Capacity should not change - no reallocation needed");
         }
     }
 }

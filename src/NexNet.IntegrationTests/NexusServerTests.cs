@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -94,9 +94,9 @@ internal partial class NexusServerTests : BaseTests
             CreateClientConfig(type));
 
 
-        Assert.That(server.StoppedTask, Is.Null);
+        await Assert.That(server.StoppedTask).IsNull();
         await server.StartAsync().Timeout(1);
-        Assert.That(server.StoppedTask!.IsCompleted, Is.False);
+        await Assert.That(server.StoppedTask!.IsCompleted).IsFalse();
 
         await server.StopAsync();
 
@@ -123,11 +123,11 @@ internal partial class NexusServerTests : BaseTests
         catch (TransportException e)
         {
             // Quic does not return information if a UDP port is already in use or not.
-            Assert.That(e.Error, Is.EqualTo(TransportError.AddressInUse));
+            await Assert.That(e.Error).IsEqualTo(TransportError.AddressInUse);
         }
         catch (Exception e)
         {
-            Assert.Fail($"Expected {nameof(TransportException)} but got {e.GetType().Name}");
+            Fail.Test($"Expected {nameof(TransportException)} but got {e.GetType().Name}");
         }
     }
     
@@ -142,14 +142,14 @@ internal partial class NexusServerTests : BaseTests
     public async Task ServerDoesntThrowWhenTransportConfigReturnsNullListenerOnCorrectMode()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
-        await Assert.DoesNotThrowAsync(() => server.StartAsync());
+        await Assert.That(() => server.StartAsync()).ThrowsNothing();
     }
     
     [Test]
     public async Task ServerThrowsWhenStartingTwiceWhileAlreadyRunning()
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Receiver), () => null!);
-        await Assert.DoesNotThrowAsync(() => server.StartAsync());
+        await Assert.That(() => server.StartAsync()).ThrowsNothing();
         await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
     }
     
@@ -205,8 +205,7 @@ internal partial class NexusServerTests : BaseTests
 
         // Signalled by the send itself, not by timing.
         await disconnectSent.Task.Timeout(1);
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
-            "The client should observe the authentication rejection, not a bare socket close.");
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication).Because("The client should observe the authentication rejection, not a bare socket close.");
     }
 
     /// <summary>
@@ -256,13 +255,12 @@ internal partial class NexusServerTests : BaseTests
         var result = await connectTask.Timeout(2);
         await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(disconnectSent.Task.IsCompleted, Is.True,
-                "The server should send DisconnectAuthentication even though its read loop exited first.");
-            Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
-                "The client should observe the authentication rejection, not a bare socket close.");
-        });
+            await Assert.That(disconnectSent.Task.IsCompleted).IsTrue().Because("The server should send DisconnectAuthentication even though its read loop exited first.");
+            await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication).Because("The client should observe the authentication rejection, not a bare socket close.");
+
+        }
     }
     
     /// <summary>
@@ -310,19 +308,20 @@ internal partial class NexusServerTests : BaseTests
         // Should complete only after auth succeeded
         await tcs.Task.Timeout(1);
     }
-    
-    [TestCase(Type.Quic, true)]
-    [TestCase(Type.Uds, true)]
-    [TestCase(Type.Tcp, true)]
-    [TestCase(Type.TcpTls, true)]
-    [TestCase(Type.WebSocket, true)]
-    [TestCase(Type.HttpSocket, true)]
-    [TestCase(Type.Quic, false)]
-    [TestCase(Type.Uds, false)]
-    [TestCase(Type.Tcp, false)]
-    [TestCase(Type.TcpTls, false)]
-    [TestCase(Type.WebSocket, false)]
-    [TestCase(Type.HttpSocket, false)]
+
+    [Test]
+    [Arguments(Type.Quic, true)]
+    [Arguments(Type.Uds, true)]
+    [Arguments(Type.Tcp, true)]
+    [Arguments(Type.TcpTls, true)]
+    [Arguments(Type.WebSocket, true)]
+    [Arguments(Type.HttpSocket, true)]
+    [Arguments(Type.Quic, false)]
+    [Arguments(Type.Uds, false)]
+    [Arguments(Type.Tcp, false)]
+    [Arguments(Type.TcpTls, false)]
+    [Arguments(Type.WebSocket, false)]
+    [Arguments(Type.HttpSocket, false)]
     public async Task ConnectAsyncThrowsAndOnConnectedNeverFiresWhenAuthHandlerThrows(Type type, bool authenticateClient)
     {
         // Arrange: force server to require auth, and make its auth handler throw
@@ -352,7 +351,7 @@ internal partial class NexusServerTests : BaseTests
         await AssertThrows<TransportException>(async () =>
             await client.ConnectAsync().Timeout(1));
 
-        Assert.That(connectedFired, Is.False, "OnConnectedEvent should not fire when authentication handler throws");
+        await Assert.That(connectedFired).IsFalse().Because("OnConnectedEvent should not fire when authentication handler throws");
     }
     
     /// <summary>
@@ -385,11 +384,11 @@ internal partial class NexusServerTests : BaseTests
         await client.ConnectAsync().Timeout(1);
         await client.DisconnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
 
         // Second cycle: should still accept and connect cleanly
         await client.ConnectAsync().Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
     
     // Skip the UDS & UDP protocols
@@ -473,7 +472,7 @@ internal partial class NexusServerTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(disconnectTcs.Task.IsCompleted, Is.False, "Client should still be connected at t=0.");
+        await Assert.That(disconnectTcs.Task.IsCompleted).IsFalse().Because("Client should still be connected at t=0.");
 
         // Advance past the server-side timeout. The watchdog fires under fakeTime, sees LastReceived
         // (recorded at handshake time) as expired, and closes the session — the client observes
@@ -522,7 +521,6 @@ internal partial class NexusServerTests : BaseTests
         await Task.Delay(500);
 
         var uniqueIds = sessionIds.Distinct().ToList();
-        Assert.That(uniqueIds.Count, Is.EqualTo(sessionIds.Count),
-            $"All {sessionIds.Count} session IDs should be unique, but found {uniqueIds.Count} unique");
+        await Assert.That(uniqueIds.Count).IsEqualTo(sessionIds.Count).Because($"All {sessionIds.Count} session IDs should be unique, but found {uniqueIds.Count} unique");
     }
 }

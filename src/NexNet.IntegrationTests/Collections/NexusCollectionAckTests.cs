@@ -1,7 +1,7 @@
 ﻿ using System.Diagnostics;
 using NexNet.Collections;
 using NexNet.Pipes.Broadcast;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -18,9 +18,9 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var result = await client.Proxy.IntListBi.AddAsync(42);
         stopwatch.Stop();
 
-        Assert.That(result, Is.True);
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(1000));
-        Assert.That(client.Proxy.IntListBi.Contains(42), Is.True);
+        await Assert.That(result).IsTrue();
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsLessThan(1000);
+        await Assert.That(client.Proxy.IntListBi.Contains(42)).IsTrue();
     }
     
     [Test]
@@ -42,8 +42,8 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         var completedTask = await Task.WhenAny(addTask, Task.Delay(100));
         stopwatch.Stop();
 
-        Assert.That(completedTask, Is.Not.EqualTo(addTask));
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.GreaterThan(90));
+        await Assert.That(completedTask).IsNotEqualTo(addTask);
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsGreaterThan(90);
     }
 
     [Test]
@@ -61,9 +61,10 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         }
 
         var results = await Task.WhenAll(tasks);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         Assert.That(results, Is.All.True);
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(10));
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(10);
     }
     
     [Test]
@@ -84,6 +85,6 @@ internal class NexusCollectionAckTests : NexusCollectionBaseTests
         await client.DisconnectAsync();
 
         var result = await addTask;
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 }

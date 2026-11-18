@@ -4,7 +4,7 @@ using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -107,10 +107,10 @@ internal class AspSessionUserTests : BaseAspTests
         await client.ConnectAsync().Timeout(2);
 
         var user = await seen.Task.Timeout(1);
-        Assert.That(user, Is.Not.Null);
-        Assert.That(user!.Identity?.IsAuthenticated, Is.True);
-        Assert.That(user.FindFirst(ClaimTypes.Name)?.Value, Is.EqualTo(UserName));
-        Assert.That(user.IsInRole("admin"), Is.True);
+        await Assert.That(user).IsNotNull();
+        await Assert.That(user!.Identity?.IsAuthenticated).IsTrue();
+        await Assert.That(user.FindFirst(ClaimTypes.Name)?.Value).IsEqualTo(UserName);
+        await Assert.That(user.IsInRole("admin")).IsTrue();
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ internal class AspSessionUserTests : BaseAspTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(2);
 
-        Assert.That(await seen.Task.Timeout(1), Is.EqualTo(UserName));
+        await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
     }
 
     [Test]
@@ -165,8 +165,8 @@ internal class AspSessionUserTests : BaseAspTests
         await client.ConnectAsync().Timeout(2);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
-        Assert.That(await connected.Task.Timeout(1), Is.EqualTo(UserName));
-        Assert.That(await invoked.Task.Timeout(1), Is.EqualTo(UserName));
+        await Assert.That(await connected.Task.Timeout(1)).IsEqualTo(UserName);
+        await Assert.That(await invoked.Task.Timeout(1)).IsEqualTo(UserName);
     }
 
     /// <summary>
@@ -190,7 +190,7 @@ internal class AspSessionUserTests : BaseAspTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(2);
 
-        Assert.That(await seen.Task.Timeout(1), Is.EqualTo(UserName));
+        await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
     }
 
     /// <summary>
@@ -213,8 +213,8 @@ internal class AspSessionUserTests : BaseAspTests
         await server.StartAsync().Timeout(1);
         var result = await client.TryConnectAsync().Timeout(2);
 
-        Assert.That(await seen.Task.Timeout(1), Is.EqualTo(UserName));
-        Assert.That(result.Success, Is.False);
+        await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
+        await Assert.That(result.Success).IsFalse();
     }
 
     [Test]
@@ -245,15 +245,15 @@ internal class AspSessionUserTests : BaseAspTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(2);
 
-        Assert.That(await authenticated.Task.Timeout(1), Is.Null);
-        Assert.That(await connected.Task.Timeout(1), Is.Null);
+        await Assert.That(await authenticated.Task.Timeout(1)).IsNull();
+        await Assert.That(await connected.Task.Timeout(1)).IsNull();
     }
 
     [Test]
-    public void TransportUser_DefaultsToNull()
+    public async Task TransportUser_DefaultsToNull()
     {
         ITransport transport = new MinimalTransport();
-        Assert.That(transport.User, Is.Null);
+        await Assert.That(transport.User).IsNull();
     }
 
     /// <summary>

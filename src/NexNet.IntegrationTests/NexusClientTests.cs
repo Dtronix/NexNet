@@ -2,7 +2,7 @@
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -193,15 +193,15 @@ internal partial class NexusClientTests : BaseTests
 
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(pingCount, Is.EqualTo(0), "No ping should be sent before the first interval elapses.");
+        await Assert.That(pingCount).IsEqualTo(0).Because("No ping should be sent before the first interval elapses.");
 
         fakeTime.Advance(TimeSpan.FromMilliseconds(1000));
         await firstPingTcs.Task.Timeout(1);
-        Assert.That(pingCount, Is.EqualTo(1));
+        await Assert.That(pingCount).IsEqualTo(1);
 
         fakeTime.Advance(TimeSpan.FromMilliseconds(1000));
         await secondPingTcs.Task.Timeout(1);
-        Assert.That(pingCount, Is.EqualTo(2));
+        await Assert.That(pingCount).IsEqualTo(2);
     }
     
     [Test]
@@ -340,8 +340,7 @@ internal partial class NexusClientTests : BaseTests
 
         // Without advancing fake time, the 30 s reconnect delay must not have elapsed yet.
         await Task.Delay(100);
-        Assert.That(reconnected.Task.IsCompleted, Is.False,
-            "Reconnect must not occur until fakeTime has advanced past the policy delay.");
+        await Assert.That(reconnected.Task.IsCompleted).IsFalse().Because("Reconnect must not occur until fakeTime has advanced past the policy delay.");
 
         // Advance past the configured 30 s policy delay.
         fakeTime.Advance(TimeSpan.FromSeconds(31));
@@ -507,7 +506,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         
-        Assert.That(authCompleted, Is.True);
+        await Assert.That(authCompleted).IsTrue();
     }
 
     [Test]
@@ -526,7 +525,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         await client.TryConnectAsync().Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
 
     [Test]
@@ -547,7 +546,7 @@ internal partial class NexusClientTests : BaseTests
 
         await disconnectTask.Timeout(1);
 
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
 
     [Test]
@@ -567,7 +566,7 @@ internal partial class NexusClientTests : BaseTests
         await client.TryConnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
 
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
     
     [Test]
@@ -587,7 +586,7 @@ internal partial class NexusClientTests : BaseTests
 
         // Assert: client.DisconnectedTask will complete promptly
         await client.DisconnectedTask.Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
     
     [Test]
@@ -650,8 +649,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        await Assert.ThrowsAsync<ProxyRemoteInvocationException>(
-            () => client.Proxy.ServerTaskValue().Timeout(1));
+        await Assert.ThrowsAsync<ProxyRemoteInvocationException>(() => client.Proxy.ServerTaskValue().Timeout(1));
     }
     
     [Test]
@@ -663,8 +661,8 @@ internal partial class NexusClientTests : BaseTests
             CreateClientConfig(type));
         
         // Should complete without throwing
-        await Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(async () => await client.DisconnectAsync().Timeout(1)).ThrowsNothing();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
     
     [Test]
@@ -694,13 +692,13 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
         
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         // First disconnect
         await client.DisconnectAsync().Timeout(1);
         
         // Second disconnect should be a no-op
-        await Assert.DoesNotThrowAsync(async () => await client.DisconnectAsync().Timeout(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Disconnected));
+        await Assert.That(async () => await client.DisconnectAsync().Timeout(1)).ThrowsNothing();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
     
     [Test]
@@ -723,6 +721,7 @@ internal partial class NexusClientTests : BaseTests
             .ToArray();
 
         var results = await Task.WhenAll(calls).Timeout(1);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(results, Has.Exactly(20).EqualTo(42));
     }
     
@@ -751,13 +750,12 @@ internal partial class NexusClientTests : BaseTests
 
         await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
-            Assert.That(disconnectSent.Task.IsCompleted, Is.True,
-                "Server should send a Disconnect message when auth is rejected");
-            Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.Authentication),
-                "The client should observe the authentication rejection, not a bare socket close.");
-        });
+            await Assert.That(disconnectSent.Task.IsCompleted).IsTrue().Because("Server should send a Disconnect message when auth is rejected");
+            await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication).Because("The client should observe the authentication rejection, not a bare socket close.");
+
+        }
     }
     
     [Test]
@@ -810,7 +808,7 @@ internal partial class NexusClientTests : BaseTests
 
         // Give it a moment to (not) trigger
         await Task.Delay(50);
-        Assert.That(reconnectingFired, Is.False, "With a disabled reconnection policy, OnReconnectingEvent must not fire.");
+        await Assert.That(reconnectingFired).IsFalse().Because("With a disabled reconnection policy, OnReconnectingEvent must not fire.");
     }
     
     /// <summary>
@@ -826,8 +824,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(1);
 
         // Second concurrent start should throw InvalidOperationException
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => server.StartAsync().Timeout(1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync().Timeout(1));
     }
     
     

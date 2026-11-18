@@ -8,7 +8,7 @@ using NexNet.Logging;
 using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -32,20 +32,19 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await occupier.StartAsync().Timeout(1);
 
-        var exception = await Assert.ThrowsAsync<TransportException>(() => server.StartAsync().Timeout(1));
-        Assert.That(exception!.Error, Is.EqualTo(TransportError.AddressInUse));
-        Assert.That(exception.Message, Does.Contain($"'{config.TransportName}'"),
-            "The exception should name the endpoint that failed to bind.");
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Stopped));
+        var exception = await await Assert.ThrowsAsync<TransportException>(() => server.StartAsync().Timeout(1));
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.AddressInUse);
+        await Assert.That(exception.Message).Contains($"'{config.TransportName}'").Because("The exception should name the endpoint that failed to bind.");
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
 
         await occupier.StopAsync().Timeout(1);
 
         await server.StartAsync().Timeout(1);
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Running));
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Running);
 
         var (client, _) = CreateClient(CreateClientConfig(type));
         await client.ConnectAsync().Timeout(1);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
@@ -53,7 +52,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
     {
         var server = ServerNexus.CreateServer(new CustomServerConfig(ServerConnectionMode.Listener), () => null!);
         await Assert.ThrowsAsync<InvalidOperationException>(() => server.StartAsync());
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Stopped));
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
         await server.DisposeAsync();
     }
 
@@ -69,21 +68,21 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var server = CreateServer(serverConfig, null);
 
         await server.StartAsync().Timeout(1);
-        Assert.That(server.GetSnapshot().RateLimiter, Is.Not.Null);
+        await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
         await server.StopAsync().Timeout(1);
-        Assert.That(server.GetSnapshot().RateLimiter, Is.Null);
+        await Assert.That(server.GetSnapshot().RateLimiter).IsNull();
 
         await server.StartAsync().Timeout(1);
-        Assert.That(server.GetSnapshot().RateLimiter, Is.Not.Null);
+        await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
 
         var (client1, _) = CreateClient(CreateClientConfig(type));
         await client1.ConnectAsync().Timeout(1);
-        Assert.That(client1.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
 
         var (client2, _) = CreateClient(CreateClientConfig(type));
         var result = await client2.TryConnectAsync().Timeout(2);
-        Assert.That(result.Success, Is.False, "The second connection should be rejected by the rate limiter.");
-        Assert.That(client2.State, Is.Not.EqualTo(ConnectionState.Connected));
+        await Assert.That(result.Success).IsFalse().Because("The second connection should be rejected by the rate limiter.");
+        await Assert.That(client2.State).IsNotEqualTo(ConnectionState.Connected);
     }
 
     /// <summary>
@@ -121,8 +120,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
         await server.StopAsync().Timeout(10);
         stopwatch.Stop();
 
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Stopped));
-        Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)));
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
+        await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(5));
 
         await Task.WhenAll(clients.Select(c => c.DisconnectedTask)).Timeout(5);
     }
@@ -138,7 +137,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         await server.DisposeAsync().AsTask().Timeout(2);
 
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Disposed));
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Disposed);
         await client.DisconnectedTask.Timeout(2);
         await server.StoppedTask!.Timeout(1);
     }
@@ -164,8 +163,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
         await listener.CloseAsync(false);
 
-        var exception = await Assert.CatchAsync(async () => await listener.AcceptTransportAsync(CancellationToken.None));
-        Assert.That(exception, Is.Not.InstanceOf<NullReferenceException>());
+        var exception = await await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 
     [Test]
@@ -178,20 +177,21 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         using var cts = new CancellationTokenSource(50);
         var transport = await listener.AcceptTransportAsync(cts.Token).AsTask().Timeout(1);
-        Assert.That(transport, Is.Null);
+        await Assert.That(transport).IsNull();
         await listener.CloseAsync(false);
     }
 
-    [TestCase(SocketError.ConnectionReset, true)]
-    [TestCase(SocketError.ConnectionAborted, true)]
-    [TestCase(SocketError.NetworkReset, true)]
-    [TestCase(SocketError.InvalidArgument, false)]
-    [TestCase(SocketError.OperationAborted, false)]
-    [TestCase(SocketError.NotSocket, false)]
-    [TestCase(SocketError.TooManyOpenSockets, false)]
-    public void SocketListener_TransientAcceptErrors(SocketError error, bool transient)
+    [Test]
+    [Arguments(SocketError.ConnectionReset, true)]
+    [Arguments(SocketError.ConnectionAborted, true)]
+    [Arguments(SocketError.NetworkReset, true)]
+    [Arguments(SocketError.InvalidArgument, false)]
+    [Arguments(SocketError.OperationAborted, false)]
+    [Arguments(SocketError.NotSocket, false)]
+    [Arguments(SocketError.TooManyOpenSockets, false)]
+    public async Task SocketListener_TransientAcceptErrors(SocketError error, bool transient)
     {
-        Assert.That(SocketTransportListener.IsTransientAcceptError(error), Is.EqualTo(transient));
+        await Assert.That(SocketTransportListener.IsTransientAcceptError(error)).IsEqualTo(transient);
     }
 
     /// <summary>
@@ -211,10 +211,9 @@ internal class NexusServerTests_Lifecycle : BaseTests
         while (server.State == NexusServerState.Running && sw.Elapsed < TimeSpan.FromSeconds(5))
             await Task.Delay(10);
 
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Stopped));
-        Assert.That(logger.Exceptions.OfType<NullReferenceException>(), Is.Empty);
-        Assert.That(logger.Exceptions.OfType<InvalidOperationException>(), Is.Not.Empty,
-            "The endpoint fault should log the original accept exception.");
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
+        await Assert.That(logger.Exceptions.OfType<NullReferenceException>()).IsEmpty();
+        await Assert.That(logger.Exceptions.OfType<InvalidOperationException>()).IsNotEmpty().Because("The endpoint fault should log the original accept exception.");
         await server.DisposeAsync();
     }
 
@@ -238,8 +237,8 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
         await listener.CloseAsync(false);
 
-        var exception = await Assert.CatchAsync(async () => await listener.AcceptTransportAsync(CancellationToken.None));
-        Assert.That(exception, Is.Not.InstanceOf<NullReferenceException>());
+        var exception = await await Assert.ThrowsAsync<Exception>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await Assert.That(exception).IsNotAssignableTo<NullReferenceException>();
     }
 
     [Test]
@@ -252,7 +251,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
 
         using var cts = new CancellationTokenSource(50);
         var transport = await listener.AcceptTransportAsync(cts.Token).AsTask().Timeout(1);
-        Assert.That(transport, Is.Null);
+        await Assert.That(transport).IsNull();
         await listener.CloseAsync(false);
     }
 
@@ -273,7 +272,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         await badClient.SendAsync(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }).Timeout(1);
 
         var transport = await listener.AcceptTransportAsync(CancellationToken.None).AsTask().Timeout(5);
-        Assert.That(transport, Is.Null);
+        await Assert.That(transport).IsNull();
         await listener.CloseAsync(false);
     }
 
@@ -317,17 +316,17 @@ internal class NexusServerTests_Lifecycle : BaseTests
         sslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => false;
         var (badClient, _) = CreateClient(badClientConfig);
         var badResult = await badClient.TryConnectAsync().Timeout(5);
-        Assert.That(badResult.Success, Is.False);
+        await Assert.That(badResult.Success).IsFalse();
 
         // Give the listener time to observe the failed handshake.
         await Task.Delay(200);
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Running));
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Running);
 
         var (client, _) = CreateClient(CreateClientConfig(type));
         await client.ConnectAsync().Timeout(5);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(server.State, Is.EqualTo(NexusServerState.Running));
-        Assert.That(logger.Exceptions.OfType<NullReferenceException>(), Is.Empty);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Running);
+        await Assert.That(logger.Exceptions.OfType<NullReferenceException>()).IsEmpty();
     }
 
     private static Socket CreateBoundNotListeningSocket()

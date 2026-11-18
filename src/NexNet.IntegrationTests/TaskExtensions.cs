@@ -1,4 +1,4 @@
-﻿using NUnit.Framework;
+﻿using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -29,7 +29,7 @@ internal static class TaskExtensions
         try
         {
             await task.WaitAsync(TimeSpan.FromSeconds(seconds));
-            Assert.Fail("Task did not timeout.");
+            Fail.Test("Task did not timeout.");
         }
         catch (TimeoutException)
         {
@@ -37,7 +37,7 @@ internal static class TaskExtensions
         }
         catch (Exception e)
         {
-            Assert.Fail($"Task threw exception when one was not expected. {e}");
+            Fail.Test($"Task threw exception when one was not expected. {e}");
         }
     }
 

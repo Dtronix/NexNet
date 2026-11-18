@@ -1,14 +1,12 @@
 ﻿using NexNet.Internals.Collections.Lists;
 using NexNet.Internals.Collections.Versioned;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections.Lists;
-
-[TestFixture]
 public class VersionedListFuzzTests
 {
     [Test]
-    public void FuzzTest_ProcessOperation_WithRandomValidOperations_DoesNotThrow()
+    public async Task FuzzTest_ProcessOperation_WithRandomValidOperations_DoesNotThrow()
     {
         var random = new Random(12345);
         var versionedList = new VersionedList<int>();
@@ -22,8 +20,8 @@ public class VersionedListFuzzTests
         {
             var seedOp = new InsertOperation<int>(i, random.Next());
             var returnedOp = versionedList.ProcessOperation(seedOp, versionedList.Version, out var seedResult);
-            Assert.That(seedResult, Is.EqualTo(ListProcessResult.Successful), "Seeding failed");
-            Assert.That(returnedOp, Is.Not.Null, "Returned operation failed");
+            await Assert.That(seedResult).IsEqualTo(ListProcessResult.Successful).Because("Seeding failed");
+            await Assert.That(returnedOp).IsNotNull().Because("Returned operation failed");
         }
 
         const int iterations = 50_000;
@@ -85,7 +83,7 @@ public class VersionedListFuzzTests
             // Choose a random valid baseVersion: [0 .. currentVersion]
             int baseVersion = random.Next((int)versionedList.MinValidVersion, versionedList.Version + 1);
 
-            Assert.DoesNotThrow(() =>
+            await Assert.That(() =>
                 {
                     var resultOp = versionedList.ProcessOperation(op, baseVersion, out var result);
                     
@@ -103,7 +101,7 @@ public class VersionedListFuzzTests
                             Is.True,
                             $"Iteration {i}: returned null but result was {result}");
                     }
-                }, $"Iteration {i}: throwing for operation {op.GetType().Name}");
+                }).ThrowsNothing();
         }
     }
     

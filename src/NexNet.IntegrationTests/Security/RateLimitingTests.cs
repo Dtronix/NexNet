@@ -2,7 +2,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 

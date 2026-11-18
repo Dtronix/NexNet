@@ -1,20 +1,18 @@
 using NexNet.Invocation;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
-
-[TestFixture]
 internal class LocalServerSessionManagerTests
 {
     private LocalServerSessionManager _manager = null!;
 
-    [SetUp]
+    [Before(HookType.Test)]
     public void Setup()
     {
         _manager = new LocalServerSessionManager();
     }
 
-    [TearDown]
+    [After(HookType.Test)]
     public async Task TearDown()
     {
         await _manager.ShutdownAsync();
@@ -26,25 +24,25 @@ internal class LocalServerSessionManagerTests
         await _manager.InitializeAsync();
 
         // No exception = success
-        Assert.Pass();
+        ;
     }
 
     [Test]
-    public void Sessions_IsNotNull()
+    public async Task Sessions_IsNotNull()
     {
-        Assert.That(_manager.Sessions, Is.Not.Null);
+        await Assert.That(_manager.Sessions).IsNotNull();
     }
 
     [Test]
-    public void Groups_IsNotNull()
+    public async Task Groups_IsNotNull()
     {
-        Assert.That(_manager.Groups, Is.Not.Null);
+        await Assert.That(_manager.Groups).IsNotNull();
     }
 
     [Test]
-    public void Router_IsNotNull()
+    public async Task Router_IsNotNull()
     {
-        Assert.That(_manager.Router, Is.Not.Null);
+        await Assert.That(_manager.Router).IsNotNull();
     }
 
     [Test]
@@ -58,37 +56,37 @@ internal class LocalServerSessionManagerTests
         await _manager.Sessions.RegisterSessionAsync(session2);
 
         // Verify registration
-        Assert.That(await _manager.Sessions.GetSessionCountAsync(), Is.EqualTo(2));
+        await Assert.That(await _manager.Sessions.GetSessionCountAsync()).IsEqualTo(2);
 
         // Add to group
         await _manager.Groups.AddToGroupAsync("players", session1);
         await _manager.Groups.AddToGroupAsync("players", session2);
 
         // Verify group membership
-        Assert.That(await _manager.Groups.GetGroupSizeAsync("players"), Is.EqualTo(2));
+        await Assert.That(await _manager.Groups.GetGroupSizeAsync("players")).IsEqualTo(2);
 
         // Invoke on group
         var message = CreateTestMessage();
         await _manager.Router.InvokeGroupAsync(message, "players");
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
 
         // Unregister session1
         await _manager.Groups.RemoveFromAllGroupsAsync(session1);
         await _manager.Sessions.UnregisterSessionAsync(session1);
 
         // Verify session1 is removed
-        Assert.That(await _manager.Sessions.SessionExistsAsync(1), Is.False);
-        Assert.That(await _manager.Groups.GetGroupSizeAsync("players"), Is.EqualTo(1));
+        await Assert.That(await _manager.Sessions.SessionExistsAsync(1)).IsFalse();
+        await Assert.That(await _manager.Groups.GetGroupSizeAsync("players")).IsEqualTo(1);
 
         // Invoke again - only session2 should receive
         session1.SentMessages.Clear();
         session2.SentMessages.Clear();
         await _manager.Router.InvokeGroupAsync(message, "players");
 
-        Assert.That(session1.SentMessages, Is.Empty);
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).IsEmpty();
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -100,8 +98,8 @@ internal class LocalServerSessionManagerTests
 
         await _manager.ShutdownAsync();
 
-        Assert.That(await _manager.Sessions.GetSessionCountAsync(), Is.EqualTo(0));
-        Assert.That(await _manager.Groups.GetGroupSizeAsync("group1"), Is.EqualTo(0));
+        await Assert.That(await _manager.Sessions.GetSessionCountAsync()).IsEqualTo(0);
+        await Assert.That(await _manager.Groups.GetGroupSizeAsync("group1")).IsEqualTo(0);
     }
 
     [Test]
@@ -127,9 +125,9 @@ internal class LocalServerSessionManagerTests
         var message = CreateTestMessage();
         await _manager.Router.InvokeGroupAsync(message, "players");
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session3.SentMessages, Is.Empty);
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session3.SentMessages).IsEmpty();
 
         // Clear and invoke on admins
         session1.SentMessages.Clear();
@@ -138,9 +136,9 @@ internal class LocalServerSessionManagerTests
 
         await _manager.Router.InvokeGroupAsync(message, "admins");
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Is.Empty);
-        Assert.That(session3.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).IsEmpty();
+        await Assert.That(session3.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -157,9 +155,9 @@ internal class LocalServerSessionManagerTests
         var message = CreateTestMessage();
         await _manager.Router.InvokeAllAsync(message);
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session3.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session3.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -176,9 +174,9 @@ internal class LocalServerSessionManagerTests
         var message = CreateTestMessage();
         await _manager.Router.InvokeClientsAsync(message, [1L, 3L]);
 
-        Assert.That(session1.SentMessages, Has.Count.EqualTo(1));
-        Assert.That(session2.SentMessages, Is.Empty);
-        Assert.That(session3.SentMessages, Has.Count.EqualTo(1));
+        await Assert.That(session1.SentMessages).Count().IsEqualTo(1);
+        await Assert.That(session2.SentMessages).IsEmpty();
+        await Assert.That(session3.SentMessages).Count().IsEqualTo(1);
     }
 
     [Test]
@@ -190,10 +188,10 @@ internal class LocalServerSessionManagerTests
 
         var ids = await _manager.Sessions.GetSessionIdsAsync();
 
-        Assert.That(ids, Has.Count.EqualTo(3));
-        Assert.That(ids, Contains.Item(100L));
-        Assert.That(ids, Contains.Item(200L));
-        Assert.That(ids, Contains.Item(300L));
+        await Assert.That(ids).Count().IsEqualTo(3);
+        await Assert.That(ids).Contains(100L);
+        await Assert.That(ids).Contains(200L);
+        await Assert.That(ids).Contains(300L);
     }
 
     [Test]
@@ -208,10 +206,10 @@ internal class LocalServerSessionManagerTests
 
         var names = await _manager.Groups.GetGroupNamesAsync();
 
-        Assert.That(names, Has.Count.EqualTo(3));
-        Assert.That(names, Contains.Item("alpha"));
-        Assert.That(names, Contains.Item("beta"));
-        Assert.That(names, Contains.Item("gamma"));
+        await Assert.That(names).Count().IsEqualTo(3);
+        await Assert.That(names).Contains("alpha");
+        await Assert.That(names).Contains("beta");
+        await Assert.That(names).Contains("gamma");
     }
 
     [Test]
@@ -223,8 +221,8 @@ internal class LocalServerSessionManagerTests
         await manager.Sessions.RegisterSessionAsync(session);
         await manager.Groups.AddToGroupAsync("test", session);
 
-        Assert.That(await manager.Sessions.GetSessionCountAsync(), Is.EqualTo(1));
-        Assert.That(await manager.Groups.GetGroupSizeAsync("test"), Is.EqualTo(1));
+        await Assert.That(await manager.Sessions.GetSessionCountAsync()).IsEqualTo(1);
+        await Assert.That(await manager.Groups.GetGroupSizeAsync("test")).IsEqualTo(1);
     }
 
     private static MockInvocationMessage CreateTestMessage()

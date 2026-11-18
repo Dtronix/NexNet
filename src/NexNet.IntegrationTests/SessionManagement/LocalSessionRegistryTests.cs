@@ -1,15 +1,13 @@
 using NexNet.Invocation;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.SessionManagement;
-
-[TestFixture]
 internal class LocalSessionRegistryTests
 {
     private LocalSessionContext _context = null!;
     private LocalSessionRegistry _registry = null!;
 
-    [SetUp]
+    [Before(HookType.Test)]
     public void Setup()
     {
         _context = new LocalSessionContext();
@@ -23,8 +21,8 @@ internal class LocalSessionRegistryTests
 
         var result = await _registry.RegisterSessionAsync(session);
 
-        Assert.That(result, Is.True);
-        Assert.That(_context.Sessions.ContainsKey(1), Is.True);
+        await Assert.That(result).IsTrue();
+        await Assert.That(_context.Sessions.ContainsKey(1)).IsTrue();
     }
 
     [Test]
@@ -35,7 +33,7 @@ internal class LocalSessionRegistryTests
 
         var result = await _registry.RegisterSessionAsync(session);
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
@@ -49,7 +47,7 @@ internal class LocalSessionRegistryTests
         await _registry.RegisterSessionAsync(session2);
         await _registry.RegisterSessionAsync(session3);
 
-        Assert.That(_context.Sessions.Count, Is.EqualTo(3));
+        await Assert.That(_context.Sessions.Count).IsEqualTo(3);
     }
 
     [Test]
@@ -60,7 +58,7 @@ internal class LocalSessionRegistryTests
 
         await _registry.UnregisterSessionAsync(session);
 
-        Assert.That(_context.Sessions.ContainsKey(1), Is.False);
+        await Assert.That(_context.Sessions.ContainsKey(1)).IsFalse();
     }
 
     [Test]
@@ -71,7 +69,7 @@ internal class LocalSessionRegistryTests
         await _registry.UnregisterSessionAsync(session);
 
         // Should not throw
-        Assert.Pass();
+        ;
     }
 
     [Test]
@@ -82,7 +80,7 @@ internal class LocalSessionRegistryTests
 
         var result = await _registry.GetSessionAsync(1);
 
-        Assert.That(result, Is.SameAs(session));
+        await Assert.That(result).IsSameReferenceAs(session);
     }
 
     [Test]
@@ -90,7 +88,7 @@ internal class LocalSessionRegistryTests
     {
         var result = await _registry.GetSessionAsync(999);
 
-        Assert.That(result, Is.Null);
+        await Assert.That(result).IsNull();
     }
 
     [Test]
@@ -101,7 +99,7 @@ internal class LocalSessionRegistryTests
 
         var result = await _registry.SessionExistsAsync(1);
 
-        Assert.That(result, Is.True);
+        await Assert.That(result).IsTrue();
     }
 
     [Test]
@@ -109,7 +107,7 @@ internal class LocalSessionRegistryTests
     {
         var result = await _registry.SessionExistsAsync(999);
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
@@ -122,17 +120,17 @@ internal class LocalSessionRegistryTests
 
         var sessions = _registry.LocalSessions.ToList();
 
-        Assert.That(sessions, Has.Count.EqualTo(2));
-        Assert.That(sessions, Contains.Item(session1));
-        Assert.That(sessions, Contains.Item(session2));
+        await Assert.That(sessions).Count().IsEqualTo(2);
+        await Assert.That(sessions).Contains(session1);
+        await Assert.That(sessions).Contains(session2);
     }
 
     [Test]
-    public void LocalSessions_EmptyRegistry_ReturnsEmpty()
+    public async Task LocalSessions_EmptyRegistry_ReturnsEmpty()
     {
         var sessions = _registry.LocalSessions.ToList();
 
-        Assert.That(sessions, Is.Empty);
+        await Assert.That(sessions).IsEmpty();
     }
 
     [Test]
@@ -143,7 +141,7 @@ internal class LocalSessionRegistryTests
 
         var count = await _registry.GetSessionCountAsync();
 
-        Assert.That(count, Is.EqualTo(2));
+        await Assert.That(count).IsEqualTo(2);
     }
 
     [Test]
@@ -151,7 +149,7 @@ internal class LocalSessionRegistryTests
     {
         var count = await _registry.GetSessionCountAsync();
 
-        Assert.That(count, Is.EqualTo(0));
+        await Assert.That(count).IsEqualTo(0);
     }
 
     [Test]
@@ -163,10 +161,10 @@ internal class LocalSessionRegistryTests
 
         var ids = await _registry.GetSessionIdsAsync();
 
-        Assert.That(ids, Has.Count.EqualTo(3));
-        Assert.That(ids, Contains.Item(1L));
-        Assert.That(ids, Contains.Item(2L));
-        Assert.That(ids, Contains.Item(3L));
+        await Assert.That(ids).Count().IsEqualTo(3);
+        await Assert.That(ids).Contains(1L);
+        await Assert.That(ids).Contains(2L);
+        await Assert.That(ids).Contains(3L);
     }
 
     [Test]
@@ -175,7 +173,7 @@ internal class LocalSessionRegistryTests
         await _registry.InitializeAsync();
 
         // No exception = success
-        Assert.Pass();
+        ;
     }
 
     [Test]
@@ -186,6 +184,6 @@ internal class LocalSessionRegistryTests
 
         await _registry.ShutdownAsync();
 
-        Assert.That(_context.Sessions, Is.Empty);
+        await Assert.That(_context.Sessions).IsEmpty();
     }
 }

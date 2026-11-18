@@ -1,7 +1,7 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
 using System.Diagnostics;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable CS1998
 #pragma warning disable VSTHRD200
 
@@ -21,7 +21,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.That(message.InvocationId, Is.EqualTo(1));
+                await Assert.That(message.InvocationId).IsEqualTo(1);
                 source.TrySetResult();
             },
             async nexus =>
@@ -48,7 +48,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.That(message.InvocationId, Is.EqualTo(1));
+                await Assert.That(message.InvocationId).IsEqualTo(1);
                 source.TrySetResult();
             },
             async nexus =>
@@ -76,7 +76,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.That(message.InvocationId, Is.EqualTo(1));
+                await Assert.That(message.InvocationId).IsEqualTo(1);
                 source.TrySetResult();
             },
             async nexus =>
@@ -101,7 +101,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             },
             (message, source) =>
             {
-                Assert.That(message.InvocationId, Is.EqualTo(1));
+                await Assert.That(message.InvocationId).IsEqualTo(1);
                 source.TrySetResult();
             },
             async nexus =>
@@ -121,7 +121,7 @@ internal partial class NexusServerTests_Cancellation : BaseTests
             nexus => nexus.ClientTaskWithCancellationEvent = (nexus, token) => ValueTask.CompletedTask,
             (message, source) =>
             {
-                Assert.That(message.InvocationId, Is.EqualTo(1));
+                await Assert.That(message.InvocationId).IsEqualTo(1);
                 source.TrySetResult();
             },
             nexus => nexus.Context.Clients.Caller.ClientTaskWithCancellation(new CancellationTokenSource(200).Token));

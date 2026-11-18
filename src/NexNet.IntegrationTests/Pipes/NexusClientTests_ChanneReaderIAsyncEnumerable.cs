@@ -1,5 +1,5 @@
 ﻿using NexNet.Pipes;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -72,7 +72,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         }
         await pipe.CompleteTask.Timeout(1);
         
-        Assert.That(messageReceivedCount, Is.EqualTo(1));
+        await Assert.That(messageReceivedCount).IsEqualTo(1);
     }
     
     [Test]
@@ -98,7 +98,7 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
         {
             messageReceivedCount++;
         }
-        Assert.That(messageReceivedCount, Is.EqualTo(0));
+        await Assert.That(messageReceivedCount).IsEqualTo(0);
         await pipe.CompleteTask.Timeout(1);
     }
     
@@ -126,14 +126,14 @@ internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
             messageReceivedCount++;
         }
         
-        Assert.That(messageReceivedCount, Is.EqualTo(0));
-        
+        await Assert.That(messageReceivedCount).IsEqualTo(0);
+
         await foreach (var _ in await pipe.GetChannelReader<int>())
         {
             messageReceivedCount++;
         }
         
-        Assert.That(messageReceivedCount, Is.EqualTo(1));
+        await Assert.That(messageReceivedCount).IsEqualTo(1);
         await pipe.CompleteTask.Timeout(1);
     }
 }

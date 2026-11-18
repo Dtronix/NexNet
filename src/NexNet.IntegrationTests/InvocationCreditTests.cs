@@ -3,7 +3,7 @@ using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -38,12 +38,13 @@ internal class InvocationCreditTests : BaseTests
         await Task.Delay(200);
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
-        Assert.That(received, Is.EqualTo(1));
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(received).IsEqualTo(1);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
         release.SetResult();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(await Task.WhenAll(calls).Timeout(1), Is.All.EqualTo(1));
-        Assert.That(received, Is.EqualTo(4));
+        await Assert.That(received).IsEqualTo(4);
     }
 
     [Test]
@@ -76,8 +77,8 @@ internal class InvocationCreditTests : BaseTests
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1), Is.EqualTo(1));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).Timeout(1)).IsEqualTo(1);
     }
 
     [Test]
@@ -107,8 +108,8 @@ internal class InvocationCreditTests : BaseTests
 
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(1);
-        Assert.That(received, Is.EqualTo(2), "The canceled call was never sent");
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
@@ -137,10 +138,10 @@ internal class InvocationCreditTests : BaseTests
             InvocationId = 0,
             MethodId = 0 // ServerVoid
         };
-        Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1), Is.True);
+        await Assert.That(await client.Session!.SendInvocation(message, canceled.Token).AsTask().Timeout(1)).IsTrue();
 
         await voidCalled.Task.Timeout(1);
-        Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1), Is.EqualTo(1));
+        await Assert.That(await client.Proxy.ServerTaskValue().AsTask().Timeout(1)).IsEqualTo(1);
     }
 
     [Test]
@@ -166,7 +167,7 @@ internal class InvocationCreditTests : BaseTests
             client.Proxy.ServerVoidWithParam(i);
 
         await all.Task.Timeout(10);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
     [Test]
@@ -195,7 +196,7 @@ internal class InvocationCreditTests : BaseTests
         // The first uses the only credit; the second waits ProgressTimeout, is dropped, and the broadcast finishes.
         await context.Proxy.All.ClientTask().Timeout(1);
         await context.Proxy.All.ClientTask().Timeout(2);
-        Assert.That(raw.IsConnected, Is.True);
+        await Assert.That(raw.IsConnected).IsTrue();
     }
 
     [Test]
@@ -234,13 +235,14 @@ internal class InvocationCreditTests : BaseTests
 
         // The healthy clients get it while the broadcast still waits for the stalled ones.
         await Task.WhenAll(received).Timeout(1);
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
-        Assert.That(broadcast.IsCompleted, Is.False);
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
+        await Assert.That(broadcast.IsCompleted).IsFalse();
 
         // Both stalled clients are waited for at the same time: one timeout, not two.
         await broadcast.Timeout(3);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(elapsed.ElapsedMilliseconds, Is.InRange(900, 1800));
-        Assert.That(stalled1.IsConnected && stalled2.IsConnected, Is.True);
+        await Assert.That(stalled1.IsConnected && stalled2.IsConnected).IsTrue();
     }
 
     [Test]
@@ -274,11 +276,12 @@ internal class InvocationCreditTests : BaseTests
         // Streamed to each session under its own invocation ID; the stalled client holds up neither of the others.
         var elapsed = Stopwatch.StartNew();
         var broadcast = context.Proxy.All.ClientData(new byte[300 * 1024]).AsTask();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(300 * 1024));
-        Assert.That(elapsed.ElapsedMilliseconds, Is.LessThan(500));
+        await Assert.That(elapsed.ElapsedMilliseconds).IsLessThan(500);
 
         await broadcast.Timeout(3);
-        Assert.That(stalled.IsConnected, Is.True);
+        await Assert.That(stalled.IsConnected).IsTrue();
     }
 
     [Test]
@@ -323,7 +326,7 @@ internal class InvocationCreditTests : BaseTests
 
         await Task.WhenAll(done).Timeout(5);
         foreach (var order in orders)
-            Assert.That(order, Is.EqualTo(Enumerable.Range(0, count)));
+            await Assert.That(order).IsEqualTo(Enumerable.Range(0, count));
     }
 
     [Test]
@@ -357,13 +360,14 @@ internal class InvocationCreditTests : BaseTests
 
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithParam(12345).Timeout(1);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         Assert.That(await Task.WhenAll(received).Timeout(1), Is.All.EqualTo(12345));
         lock (frames)
         {
-            Assert.That(frames, Has.Count.EqualTo(3));
-            Assert.That(frames[1], Is.EqualTo(frames[0]));
-            Assert.That(frames[2], Is.EqualTo(frames[0]));
+            await Assert.That(frames).Count().IsEqualTo(3);
+            await Assert.That(frames[1]).IsEqualTo(frames[0]);
+            await Assert.That(frames[2]).IsEqualTo(frames[0]);
         }
     }
 

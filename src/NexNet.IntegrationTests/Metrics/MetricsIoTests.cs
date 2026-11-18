@@ -1,4 +1,4 @@
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -38,13 +38,13 @@ internal class MetricsIoTests : BaseTests
 
         var clientFramesSent = Value("nexnet.io.frames", "client", "sent");
         var clientBytesSent = Value("nexnet.io.bytes", "client", "sent");
-        Assert.That(clientFramesSent, Is.GreaterThanOrEqualTo(11)); // greeting + 10 invocations
-        Assert.That(clientBytesSent, Is.GreaterThan(clientFramesSent * 3));
+        await Assert.That(clientFramesSent).IsGreaterThanOrEqualTo(11); // greeting + 10 invocations
+        await Assert.That(clientBytesSent).IsGreaterThan(clientFramesSent * 3);
 
         // Retired sessions keep counting: the counters never go back.
         await client.DisconnectAsync().Timeout(1);
         await MetricsSessionTests.WaitFor(() => recorder.Metrics.TableSize.Count == 0).Timeout(2);
-        Assert.That(Value("nexnet.io.frames", "client", "sent"), Is.GreaterThan(clientFramesSent));
-        Assert.That(Value("nexnet.io.bytes", "client", "sent"), Is.GreaterThan(clientBytesSent));
+        await Assert.That(Value("nexnet.io.frames", "client", "sent")).IsGreaterThan(clientFramesSent);
+        await Assert.That(Value("nexnet.io.bytes", "client", "sent")).IsGreaterThan(clientBytesSent);
     }
 }

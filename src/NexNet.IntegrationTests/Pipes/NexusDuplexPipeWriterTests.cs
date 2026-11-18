@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests.Pipes;
@@ -74,7 +74,7 @@ internal class NexusDuplexPipeWriterTests
 
         messenger.OnSendCustomHeaderWithBody = (type, header, body, token) =>
         {
-            Assert.That(body.ToArray(), Is.EqualTo(simpleData));
+            await Assert.That(body.ToArray()).IsEqualTo(simpleData);
             tcs.SetResult();
             return default;
         };
@@ -143,21 +143,21 @@ internal class NexusDuplexPipeWriterTests
         var write = writer.WriteAsync(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }, CancellationToken.None).AsTask();
         await Task.Delay(100);
         lock (sent)
-            Assert.That(sent, Is.EqualTo(new byte[] { 0, 1, 2, 3 }));
-        Assert.That(write.IsCompleted, Is.False);
+            await Assert.That(sent).IsEqualTo(new byte[] { 0, 1, 2, 3 });
+        await Assert.That(write.IsCompleted).IsFalse();
 
         writer.AddCredit(6);
         await write.Timeout(1);
-        Assert.That(sent, Is.EqualTo(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 }));
-        Assert.That(writer.Credit, Is.Zero);
+        await Assert.That(sent).IsEqualTo(new byte[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 });
+        await Assert.That(writer.Credit).IsZero();
     }
 
     [Test]
-    public void WriterRejectsCreditBeyondTheMaximum()
+    public async Task WriterRejectsCreditBeyondTheMaximum()
     {
         var writer = CreateWriter(credit: 0);
-        Assert.That(writer.AddCredit(NexusPipeWriter.MaxCredit), Is.True);
-        Assert.That(writer.AddCredit(1), Is.False);
+        await Assert.That(writer.AddCredit(NexusPipeWriter.MaxCredit)).IsTrue();
+        await Assert.That(writer.AddCredit(1)).IsFalse();
     }
 
 }

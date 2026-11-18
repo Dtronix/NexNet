@@ -1,5 +1,5 @@
 ﻿using NexNet.Pipes;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
@@ -12,7 +12,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         var value = ComplexMessage.Random();
         await writer.WriteAsync(value).Timeout(1);
         var result = await reader.ReadAsync().Timeout(1);
-        Assert.That(result.Single(), Is.EqualTo(value));
+        await Assert.That(result.Single()).IsEqualTo(value);
     }
 
     [Test]
@@ -29,10 +29,10 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         var result = await reader.ReadAsync().Timeout(1);
         foreach (var complexMessage in result)
         {
-            Assert.That(complexMessage, Is.EqualTo(value));
+            await Assert.That(complexMessage).IsEqualTo(value);
         }
 
-        Assert.That(result.Count(), Is.EqualTo(iterations));
+        await Assert.That(result.Count()).IsEqualTo(iterations);
     }
     
     /*
@@ -91,7 +91,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
                 var result = await reader.ReadAsync().Timeout(1);
                 foreach (var complexMessage in result)
                 {
-                    Assert.That(complexMessage, Is.EqualTo(value));
+                    await Assert.That(complexMessage).IsEqualTo(value);
                     count++;
                 }
 
@@ -102,7 +102,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
             }
         }).Timeout(1);
 
-        Assert.That(count, Is.EqualTo(iterations));
+        await Assert.That(count).IsEqualTo(iterations);
     }
     
     [Test]
@@ -133,7 +133,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
                     var result = await reader.ReadAsync().Timeout(1);
                     foreach (var simpleMessage in result)
                     {
-                        Assert.That(simpleMessage.Data, Is.EqualTo(value.Data));
+                        await Assert.That(simpleMessage.Data).IsEqualTo(value.Data);
                         count++;
                     }
 
@@ -144,7 +144,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
                 }
             }).Timeout(1);
 
-            Assert.That(count, Is.EqualTo(iterations));
+            await Assert.That(count).IsEqualTo(iterations);
         }
     }
 
@@ -163,7 +163,7 @@ internal class NexusChannelReaderWriterTests : NexusChannelReaderWriterTestBase
         
         var completeRead = await reader.ReadUntilComplete().Timeout(1);
 
-        Assert.That(completeRead.Count, Is.EqualTo(0));
+        await Assert.That(completeRead.Count).IsEqualTo(0);
     }
     private (NexusChannelWriter<T> writer, NexusChannelReader<T> reader, DummySessionMessenger sessionMessenger, NexusPipeReader pipeReader) GetChannelReaderWriter<T>()
     {

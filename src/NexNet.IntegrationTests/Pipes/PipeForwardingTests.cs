@@ -4,7 +4,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Pipes;
 using NexNet.Serialization;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 // CountedItem has a hand-written formatter, registered by the test that uses it.
@@ -20,7 +20,7 @@ internal class PipeForwardingTests : BaseTests
 {
     private Relay? _relay;
 
-    [TearDown]
+    [After(HookType.Test)]
     public void ReleaseRelay()
     {
         // Lets the server invocations holding the relayed pipes return.
@@ -43,14 +43,14 @@ internal class PipeForwardingTests : BaseTests
         });
 
         // B reads every byte in order, then sees its input complete: the forwarder completed the destination's output.
-        Assert.That(await ReadPattern(r.BPipe.Input, seed: 0).Timeout(120), Is.EqualTo(total));
+        await Assert.That(await ReadPattern(r.BPipe.Input, seed: 0).Timeout(120)).IsEqualTo(total);
         await writing.Timeout(5);
         await forward.Timeout(5);
 
         // Half-close: the other direction of the destination pipe is still open.
         await r.BPipe.Output.WriteAsync(new byte[] { 1, 2, 3 }).Timeout(1);
         var back = await r.ServerDestination.Input.ReadAsync().AsTask().Timeout(1);
-        Assert.That(back.Buffer.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+        await Assert.That(back.Buffer.ToArray()).IsEqualTo(new byte[] { 1, 2, 3 });
         r.ServerDestination.Input.AdvanceTo(back.Buffer.End);
     }
 
@@ -77,15 +77,15 @@ internal class PipeForwardingTests : BaseTests
             waiting = r.A.GetSnapshot()!.Pipes.Single().WaitingForCredit;
         }
 
-        Assert.That(waiting, Is.Not.Null, "The source's writer never waited for send credit.");
-        Assert.That(writing.IsCompleted, Is.False);
+        await Assert.That(waiting).IsNotNull().Because("The source's writer never waited for send credit.");
+        await Assert.That(writing.IsCompleted).IsFalse();
 
         // The server holds at most the source's window plus the destination's window (in flight to B).
         var buffered = r.Server.GetSnapshot().Sessions.SelectMany(s => s.Pipes).Sum(p => p.Buffered);
-        Assert.That(buffered, Is.LessThanOrEqualTo(2L * window));
+        await Assert.That(buffered).IsLessThanOrEqualTo(2L * window);
 
         // B drains: everything arrives in order and the transfer finishes.
-        Assert.That(await ReadPattern(r.BPipe.Input, seed: 7).Timeout(60), Is.EqualTo(total));
+        await Assert.That(await ReadPattern(r.BPipe.Input, seed: 7).Timeout(60)).IsEqualTo(total);
         await writing.Timeout(5);
         await forward.Timeout(5);
     }
@@ -99,7 +99,7 @@ internal class PipeForwardingTests : BaseTests
 
         var forward = r.ServerSource.ForwardToAsync(r.ServerDestination, cts.Token).AsTask();
         await r.APipe.Output.WriteAsync(new byte[1000]).Timeout(1);
-        Assert.That(await ReadExactly(r.BPipe.Input, 1000).Timeout(2), Is.EqualTo(1000));
+        await Assert.That(await ReadExactly(r.BPipe.Input, 1000).Timeout(2)).IsEqualTo(1000);
 
         // The forwarder is now waiting on the source's input.
         cts.Cancel();
@@ -108,15 +108,15 @@ internal class PipeForwardingTests : BaseTests
         // The source is still open: the server reads what A sends next.
         await r.APipe.Output.WriteAsync(new byte[] { 9, 9 }).Timeout(1);
         var read = await r.ServerSource.Input.ReadAsync().AsTask().Timeout(1);
-        Assert.That(read.IsCompleted, Is.False);
-        Assert.That(read.Buffer.ToArray(), Is.EqualTo(new byte[] { 9, 9 }));
+        await Assert.That(read.IsCompleted).IsFalse();
+        await Assert.That(read.Buffer.ToArray()).IsEqualTo(new byte[] { 9, 9 });
         r.ServerSource.Input.AdvanceTo(read.Buffer.End);
 
         // The destination is still open: B receives what the server writes next.
         await r.ServerDestination.Output.WriteAsync(new byte[] { 4, 5 }).Timeout(1);
         var atB = await r.BPipe.Input.ReadAsync().AsTask().Timeout(1);
-        Assert.That(atB.IsCompleted, Is.False);
-        Assert.That(atB.Buffer.ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+        await Assert.That(atB.IsCompleted).IsFalse();
+        await Assert.That(atB.Buffer.ToArray()).IsEqualTo(new byte[] { 4, 5 });
         r.BPipe.Input.AdvanceTo(atB.Buffer.End);
     }
 
@@ -128,7 +128,7 @@ internal class PipeForwardingTests : BaseTests
 
         var forward = r.ServerSource.ForwardToAsync(r.ServerDestination).AsTask();
         await r.APipe.Output.WriteAsync(new byte[1000]).Timeout(1);
-        Assert.That(await ReadExactly(r.BPipe.Input, 1000).Timeout(2), Is.EqualTo(1000));
+        await Assert.That(await ReadExactly(r.BPipe.Input, 1000).Timeout(2)).IsEqualTo(1000);
 
         // B closes its pipe; A keeps sending without completing. The forward notices on its next write and returns.
         await r.BPipe.CompleteAsync().Timeout(1);
@@ -150,9 +150,9 @@ internal class PipeForwardingTests : BaseTests
 
         var bridge = r.ServerSource.BridgeAsync(r.ServerDestination, cts.Token).AsTask();
         await r.APipe.Output.WriteAsync(new byte[] { 1 }).Timeout(1);
-        Assert.That(await ReadExactly(r.BPipe.Input, 1).Timeout(2), Is.EqualTo(1));
+        await Assert.That(await ReadExactly(r.BPipe.Input, 1).Timeout(2)).IsEqualTo(1);
         await r.BPipe.Output.WriteAsync(new byte[] { 2 }).Timeout(1);
-        Assert.That(await ReadExactly(r.APipe.Input, 1).Timeout(2), Is.EqualTo(1));
+        await Assert.That(await ReadExactly(r.APipe.Input, 1).Timeout(2)).IsEqualTo(1);
 
         cts.Cancel();
         await Assert.ThatAsync(async () => await bridge.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
@@ -166,18 +166,19 @@ internal class PipeForwardingTests : BaseTests
         static async Task AssertCarries(PipeWriter output, PipeReader input, byte value)
         {
             var write = await output.WriteAsync(new[] { value, value }).Timeout(1);
-            Assert.That(write.IsCompleted, Is.False);
+            await Assert.That(write.IsCompleted).IsFalse();
             var read = await input.ReadAsync().AsTask().Timeout(1);
-            Assert.That(read.IsCompleted, Is.False);
-            Assert.That(read.Buffer.ToArray(), Is.EqualTo(new[] { value, value }));
+            await Assert.That(read.IsCompleted).IsFalse();
+            await Assert.That(read.Buffer.ToArray()).IsEqualTo(new[] { value, value });
             input.AdvanceTo(read.Buffer.End);
         }
     }
 
-    [TestCase(Type.Uds, true)]
-    [TestCase(Type.Uds, false)]
-    [TestCase(Type.Tcp, true)]
-    [TestCase(Type.Tcp, false)]
+    [Test]
+    [Arguments(Type.Uds, true)]
+    [Arguments(Type.Uds, false)]
+    [Arguments(Type.Tcp, true)]
+    [Arguments(Type.Tcp, false)]
     public async Task BridgeAsync_ForwardsBothDirectionsAndReturnsWhenBothFinished(Type type, bool aFinishesFirst)
     {
         const int total = 1024 * 1024;
@@ -195,19 +196,19 @@ internal class PipeForwardingTests : BaseTests
             await WritePattern(first.Output, total, seed: 1);
             await first.Output.CompleteAsync();
         });
-        Assert.That(await ReadPattern(firstPeer.Input, seed: 1).Timeout(30), Is.EqualTo(total));
+        await Assert.That(await ReadPattern(firstPeer.Input, seed: 1).Timeout(30)).IsEqualTo(total);
         await writing.Timeout(5);
 
         // The other direction is still open, so the bridge keeps running.
         await Task.Delay(100);
-        Assert.That(bridge.IsCompleted, Is.False);
+        await Assert.That(bridge.IsCompleted).IsFalse();
 
         writing = Task.Run(async () =>
         {
             await WritePattern(second.Output, total, seed: 2);
             await second.Output.CompleteAsync();
         });
-        Assert.That(await ReadPattern(secondPeer.Input, seed: 2).Timeout(30), Is.EqualTo(total));
+        await Assert.That(await ReadPattern(secondPeer.Input, seed: 2).Timeout(30)).IsEqualTo(total);
         await writing.Timeout(5);
 
         await bridge.Timeout(5);
@@ -221,7 +222,7 @@ internal class PipeForwardingTests : BaseTests
 
         var bridge = r.ServerSource.BridgeAsync(r.ServerDestination).AsTask();
         await r.APipe.Output.WriteAsync(new byte[] { 1 }).Timeout(1);
-        Assert.That(await ReadExactly(r.BPipe.Input, 1).Timeout(2), Is.EqualTo(1));
+        await Assert.That(await ReadExactly(r.BPipe.Input, 1).Timeout(2)).IsEqualTo(1);
 
         // A's session ends abnormally: the bridge completes B's pipe and returns.
         await r.A.DisconnectAsync().Timeout(2);
@@ -256,11 +257,11 @@ internal class PipeForwardingTests : BaseTests
 
         await writing.Timeout(5);
         await forward.Timeout(5);
-        Assert.That(received.Count, Is.EqualTo(count));
+        await Assert.That(received.Count).IsEqualTo(count);
         for (var i = 0; i < count; i++)
         {
             if (!received[i].AsSpan().SequenceEqual(items[i]))
-                Assert.Fail($"Item {i} differs.");
+                Fail.Test($"Item {i} differs.");
         }
     }
 
@@ -281,11 +282,11 @@ internal class PipeForwardingTests : BaseTests
         await writing.Timeout(5);
         await forward.Timeout(5);
 
-        Assert.That(received.Select(i => i.Sequence), Is.EqualTo(Enumerable.Range(0, count)));
+        await Assert.That(received.Select(i => i.Sequence)).IsEqualTo(Enumerable.Range(0, count));
 
         // A serializes each item once and B deserializes it once; a relay that re-typed the items would double both.
-        Assert.That(CountingFormatter.Serialized, Is.EqualTo(count));
-        Assert.That(CountingFormatter.Deserialized, Is.EqualTo(count));
+        await Assert.That(CountingFormatter.Serialized).IsEqualTo(count);
+        await Assert.That(CountingFormatter.Deserialized).IsEqualTo(count);
     }
 
     [Test]
@@ -309,23 +310,23 @@ internal class PipeForwardingTests : BaseTests
         await aWriter.WriteAsync(new byte[20]).Timeout(5);
 
         var bItems = (await r.BPipe.GetChannel<byte[]>().GetReaderAsync()).GetAsyncEnumerator();
-        Assert.That(await bItems.MoveNextAsync().AsTask().Timeout(2), Is.True);
-        Assert.That(bItems.Current.Length, Is.EqualTo(10));
+        await Assert.That(await bItems.MoveNextAsync().AsTask().Timeout(2)).IsTrue();
+        await Assert.That(bItems.Current.Length).IsEqualTo(10);
 
         await Assert.ThatAsync(async () => await forward.Timeout(5), Throws.InstanceOf<NexusMessageTooLargeException>());
 
         // None of the oversized item reached B: the next item B reads is the one the server writes now.
         var serverWriter = await destination.GetWriterAsync();
         await serverWriter.WriteAsync(new byte[5]).Timeout(1);
-        Assert.That(await bItems.MoveNextAsync().AsTask().Timeout(2), Is.True);
-        Assert.That(bItems.Current.Length, Is.EqualTo(5));
+        await Assert.That(await bItems.MoveNextAsync().AsTask().Timeout(2)).IsTrue();
+        await Assert.That(bItems.Current.Length).IsEqualTo(5);
 
         // The source is still open and positioned at the oversized item, for the caller to decide.
         var sourceItems = (await source.GetReaderAsync()).GetAsyncEnumerator();
-        Assert.That(await sourceItems.MoveNextAsync().AsTask().Timeout(2), Is.True);
-        Assert.That(sourceItems.Current.Length, Is.EqualTo(100 * 1024));
-        Assert.That(await sourceItems.MoveNextAsync().AsTask().Timeout(2), Is.True);
-        Assert.That(sourceItems.Current.Length, Is.EqualTo(20));
+        await Assert.That(await sourceItems.MoveNextAsync().AsTask().Timeout(2)).IsTrue();
+        await Assert.That(sourceItems.Current.Length).IsEqualTo(100 * 1024);
+        await Assert.That(await sourceItems.MoveNextAsync().AsTask().Timeout(2)).IsTrue();
+        await Assert.That(sourceItems.Current.Length).IsEqualTo(20);
     }
 
     private async Task<RelaySetup> SetupRelay(Type type, Action<ClientConfig>? configureB = null)

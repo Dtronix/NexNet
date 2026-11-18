@@ -1,5 +1,5 @@
 using NexNet.Internals.Threading;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -8,49 +8,49 @@ namespace NexNet.IntegrationTests;
 internal class PooledResettableValueTaskCompletionSourceTests
 {
     [Test]
-    public void Rent_CreatesNewInstance_WhenPoolIsEmpty()
+    public async Task Rent_CreatesNewInstance_WhenPoolIsEmpty()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
 
-        Assert.That(source, Is.Not.Null);
+        await Assert.That(source).IsNotNull();
     }
 
     [Test]
-    public void Rent_ReusesInstance_AfterReturn()
+    public async Task Rent_ReusesInstance_AfterReturn()
     {
         var source1 = PooledResettableValueTaskCompletionSource<int>.Rent();
         source1.Return();
 
         var source2 = PooledResettableValueTaskCompletionSource<int>.Rent();
 
-        Assert.That(source2, Is.SameAs(source1));
+        await Assert.That(source2).IsSameReferenceAs(source1);
     }
 
     [Test]
-    public void Return_ThrowsInvalidOperationException_WhenNotRented()
+    public async Task Return_ThrowsInvalidOperationException_WhenNotRented()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        Assert.Throws<InvalidOperationException>(() => source.Return());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => source.Return());
     }
 
     [Test]
-    public void TrySetResult_ThrowsInvalidOperationException_WhenNotRented()
+    public async Task TrySetResult_ThrowsInvalidOperationException_WhenNotRented()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        Assert.Throws<InvalidOperationException>(() => source.TrySetResult(42));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => source.TrySetResult(42));
     }
 
     [Test]
-    public void TrySetException_ThrowsInvalidOperationException_WhenNotRented()
+    public async Task TrySetException_ThrowsInvalidOperationException_WhenNotRented()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.Return();
 
-        Assert.Throws<InvalidOperationException>(() => source.TrySetException(new Exception()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => source.TrySetException(new Exception()));
     }
 
     [Test]
@@ -62,19 +62,19 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.TrySetResult(42);
 
         var result = await task;
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
     }
 
     [Test]
-    public void TrySetResult_ReturnsFalse_WhenAlreadyCompleted()
+    public async Task TrySetResult_ReturnsFalse_WhenAlreadyCompleted()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
 
         var first = source.TrySetResult(42);
         var second = source.TrySetResult(100);
 
-        Assert.That(first, Is.True);
-        Assert.That(second, Is.False);
+        await Assert.That(first).IsTrue();
+        await Assert.That(second).IsFalse();
     }
 
     [Test]
@@ -86,42 +86,42 @@ internal class PooledResettableValueTaskCompletionSourceTests
 
         source.TrySetException(expectedException);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
-        Assert.That(ex.Message, Is.EqualTo("Test exception"));
+        var ex = await await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
+        await Assert.That(ex.Message).IsEqualTo("Test exception");
     }
 
     [Test]
-    public void TrySetException_ReturnsFalse_WhenAlreadyCompleted()
+    public async Task TrySetException_ReturnsFalse_WhenAlreadyCompleted()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
 
         var first = source.TrySetException(new Exception("First"));
         var second = source.TrySetException(new Exception("Second"));
 
-        Assert.That(first, Is.True);
-        Assert.That(second, Is.False);
+        await Assert.That(first).IsTrue();
+        await Assert.That(second).IsFalse();
     }
 
     [Test]
-    public void TrySetResult_ReturnsFalse_AfterTrySetException()
+    public async Task TrySetResult_ReturnsFalse_AfterTrySetException()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
 
         source.TrySetException(new Exception());
         var result = source.TrySetResult(42);
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
-    public void TrySetException_ReturnsFalse_AfterTrySetResult()
+    public async Task TrySetException_ReturnsFalse_AfterTrySetResult()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
 
         source.TrySetResult(42);
         var result = source.TrySetException(new Exception());
 
-        Assert.That(result, Is.False);
+        await Assert.That(result).IsFalse();
     }
 
     [Test]
@@ -138,7 +138,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.TrySetResult(100);
         var result = await task;
 
-        Assert.That(result, Is.EqualTo(100));
+        await Assert.That(result).IsEqualTo(100);
     }
 
     [Test]
@@ -151,17 +151,17 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.Return();
 
         var reused = PooledResettableValueTaskCompletionSource<int>.Rent();
-        Assert.That(reused, Is.SameAs(source));
+        await Assert.That(reused).IsSameReferenceAs(source);
 
         var task = reused.Task;
         reused.TrySetResult(100);
         var result = await task;
 
-        Assert.That(result, Is.EqualTo(100));
+        await Assert.That(result).IsEqualTo(100);
     }
 
     [Test]
-    public void PoolCount_IncreasesAfterReturn()
+    public async Task PoolCount_IncreasesAfterReturn()
     {
         var initialCount = PooledResettableValueTaskCompletionSource<int>.PoolCount;
 
@@ -169,7 +169,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.Return();
 
         var newCount = PooledResettableValueTaskCompletionSource<int>.PoolCount;
-        Assert.That(newCount, Is.GreaterThanOrEqualTo(initialCount));
+        await Assert.That(newCount).IsGreaterThanOrEqualTo(initialCount);
     }
 
     [Test]
@@ -180,9 +180,9 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var task = source.Task;
         source.TrySetResult(42);
 
-        Assert.That(task.IsCompleted, Is.True);
+        await Assert.That(task.IsCompleted).IsTrue();
         var result = await task;
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
     }
     
 
@@ -195,21 +195,21 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var task1 = source.Task;
         source.TrySetResult(42);
         var result1 = await task1;
-        Assert.That(result1, Is.EqualTo(42));
+        await Assert.That(result1).IsEqualTo(42);
 
         // Reset and second use
         source.Reset();
         var task2 = source.Task;
         source.TrySetResult(100);
         var result2 = await task2;
-        Assert.That(result2, Is.EqualTo(100));
+        await Assert.That(result2).IsEqualTo(100);
 
         // Reset and third use
         source.Reset();
         var task3 = source.Task;
         source.TrySetResult(200);
         var result3 = await task3;
-        Assert.That(result3, Is.EqualTo(200));
+        await Assert.That(result3).IsEqualTo(200);
     }
 
     [Test]
@@ -220,51 +220,51 @@ internal class PooledResettableValueTaskCompletionSourceTests
         // First use with exception
         var task1 = source.Task;
         source.TrySetException(new InvalidOperationException("First"));
-        var ex1 = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task1);
-        Assert.That(ex1?.Message, Is.EqualTo("First"));
+        var ex1 = await await Assert.ThrowsAsync<InvalidOperationException>(async () => await task1);
+        await Assert.That(ex1?.Message).IsEqualTo("First");
 
         // Reset and second use with success
         source.Reset();
         var task2 = source.Task;
         source.TrySetResult(42);
         var result = await task2;
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
 
         // Reset and third use with exception again
         source.Reset();
         var task3 = source.Task;
         source.TrySetException(new ArgumentException("Third"));
-        var ex3 = await Assert.ThrowsAsync<ArgumentException>(async () => await task3);
-        Assert.That(ex3?.Message, Is.EqualTo("Third"));
+        var ex3 = await await Assert.ThrowsAsync<ArgumentException>(async () => await task3);
+        await Assert.That(ex3?.Message).IsEqualTo("Third");
     }
 
     [Test]
-    public void Task_IsNotCompleted_BeforeSetResult()
+    public async Task Task_IsNotCompleted_BeforeSetResult()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         var task = source.Task;
 
-        Assert.That(task.IsCompleted, Is.False);
+        await Assert.That(task.IsCompleted).IsFalse();
     }
 
     [Test]
-    public void Task_IsCompleted_AfterSetResult()
+    public async Task Task_IsCompleted_AfterSetResult()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.TrySetResult(42);
         var task = source.Task;
 
-        Assert.That(task.IsCompleted, Is.True);
+        await Assert.That(task.IsCompleted).IsTrue();
     }
 
     [Test]
-    public void Task_IsCompleted_AfterSetException()
+    public async Task Task_IsCompleted_AfterSetException()
     {
         var source = PooledResettableValueTaskCompletionSource<int>.Rent();
         source.TrySetException(new Exception());
         var task = source.Task;
 
-        Assert.That(task.IsCompleted, Is.True);
+        await Assert.That(task.IsCompleted).IsTrue();
     }
     [Test]
     public async Task ConcurrentRentAndReturn_MaintainsPoolIntegrity()
@@ -286,7 +286,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         await Task.WhenAll(tasks);
 
         // Pool should have instances available
-        Assert.That(PooledResettableValueTaskCompletionSource<int>.PoolCount, Is.GreaterThan(0));
+        await Assert.That(PooledResettableValueTaskCompletionSource<int>.PoolCount).IsGreaterThan(0);
     }
 
     [Test]
@@ -296,9 +296,9 @@ internal class PooledResettableValueTaskCompletionSourceTests
         source.TrySetResult(42);
         var task = source.Task;
 
-        Assert.That(task.IsCompleted, Is.True);
+        await Assert.That(task.IsCompleted).IsTrue();
         var result = await task;
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
     }
 
 
@@ -325,7 +325,7 @@ internal class PooledResettableValueTaskCompletionSourceTests
         // Wait for continuation to execute
         await continuationTask;
 
-        Assert.That(continuationExecuted, Is.True);
+        await Assert.That(continuationExecuted).IsTrue();
     }
 
     [Test]
@@ -339,9 +339,9 @@ internal class PooledResettableValueTaskCompletionSourceTests
         var task = source.Task;
 
         // Should complete synchronously
-        Assert.That(task.IsCompleted, Is.True);
+        await Assert.That(task.IsCompleted).IsTrue();
 
         var result = await task;
-        Assert.That(result, Is.EqualTo(42));
+        await Assert.That(result).IsEqualTo(42);
     }
 }

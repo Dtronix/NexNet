@@ -1,4 +1,5 @@
-﻿using System.Collections.Concurrent;
+﻿using System.IO;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Security;
@@ -19,9 +20,8 @@ using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
 using NexNet.Transports.WebSocket;
-using NUnit.Framework;
-using NUnit.Framework.Interfaces;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -84,7 +84,7 @@ internal abstract class BaseTests
         set => _loggerMode = value;
     }
 
-    [OneTimeSetUp]
+    [Before(HookType.Class)]
     public void OneTimeSetUp()
     {
         Trace.Listeners.Add(new ConsoleTraceListener());
@@ -92,7 +92,7 @@ internal abstract class BaseTests
 
     }
 
-    [OneTimeTearDown]
+    [After(HookType.Class)]
     public virtual void OneTimeTearDown()
     {
         LoggerMode = BasePipeTests.LogMode.None;
@@ -100,14 +100,14 @@ internal abstract class BaseTests
         Trace.Flush();
     }
 
-    [SetUp]
+    [Before(HookType.Test)]
     public virtual void SetUp()
     {
         _logger = new RollingLogger();
         NexusServer<ServerNexus, ServerNexus.ClientProxy>.ResetIdCounter();
     }
 
-    [TearDown]
+    [After(HookType.Test)]
     public virtual void TearDown()
     {
         if (LoggerMode == BasePipeTests.LogMode.OnTestFail)
@@ -765,7 +765,7 @@ internal abstract class BaseTests
             thrown = e;
         }
 
-        Assert.That(thrown?.GetType(), Is.EqualTo(typeof(T)));
+        await Assert.That(thrown?.GetType()).IsEqualTo(typeof(T));
     }
 
     private class AspLoggerProviderBridge : ILoggerProvider

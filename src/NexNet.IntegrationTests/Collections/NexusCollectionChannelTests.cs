@@ -1,7 +1,7 @@
 ﻿using NexNet.Collections;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -29,8 +29,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         await completeTask.Wait();
 
-        Assert.That(serverNexus.IntListBi.Count, Is.EqualTo(60));
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(60));
+        await Assert.That(serverNexus.IntListBi.Count).IsEqualTo(60);
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(60);
     }
 
     [Test]
@@ -55,8 +55,8 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         await completeTask.Wait(2);
 
 
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(50));
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
         //Assert.Fail();
     }
 
@@ -82,9 +82,9 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         await completeTask.Wait();
 
-        Assert.That(client.Proxy.IntListBi.Count, Is.EqualTo(50));
-        Assert.That(serverNexus.IntListBi.Count, Is.EqualTo(50));
-        Assert.That(serverNexus.IntListBi, Is.EqualTo(client.Proxy.IntListBi));
+        await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
+        await Assert.That(serverNexus.IntListBi.Count).IsEqualTo(50);
+        await Assert.That(serverNexus.IntListBi).IsEqualTo(client.Proxy.IntListBi);
     }
 
     /*[TestCase(Type.Tcp)]

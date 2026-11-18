@@ -2,7 +2,7 @@
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -124,7 +124,7 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         await clients.First().Client.Proxy.ServerTask();
 
         await tcs1.Task.Timeout(1);
-        Assert.That(groupInvokedCount, Is.EqualTo(targetInvocations));
+        await Assert.That(groupInvokedCount).IsEqualTo(targetInvocations);
     }
     
     private async ValueTask RunServerContextGroupTest(
@@ -173,6 +173,6 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
         await onReady.Invoke(server.ContextProvider.Rent().Context.Clients);
 
         await tcs1.Task.Timeout(1);
-        Assert.That(groupInvokedCount, Is.EqualTo(targetInvocations));
+        await Assert.That(groupInvokedCount).IsEqualTo(targetInvocations);
     }
 }

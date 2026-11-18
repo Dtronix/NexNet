@@ -2,7 +2,7 @@ using NexNet.IntegrationTests.Security;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -37,7 +37,7 @@ internal class ReadLoopTests : BaseTests
             await pipe.ReadyTask.Timeout(1);
         }
 
-        Assert.That(await client.Proxy.ServerTaskValue().Timeout(1), Is.EqualTo(42));
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(42);
 
         foreach (var pipe in pipes)
             await pipe.DisposeAsync();

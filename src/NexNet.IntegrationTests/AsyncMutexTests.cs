@@ -1,5 +1,5 @@
 using NexNet.Internals.Threading;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -7,18 +7,18 @@ namespace NexNet.IntegrationTests;
 internal class AsyncMutexTests
 {
     [Test]
-    public void TryEnter_SucceedsOnlyWhenFree()
+    public async Task TryEnter_SucceedsOnlyWhenFree()
     {
         var mutex = new AsyncMutex();
         var first = mutex.TryEnter();
-        Assert.That(first.Success, Is.True);
-        Assert.That(mutex.IsAvailable, Is.False);
-        Assert.That(mutex.TryEnter().Success, Is.False);
+        await Assert.That(first.Success).IsTrue();
+        await Assert.That(mutex.IsAvailable).IsFalse();
+        await Assert.That(mutex.TryEnter().Success).IsFalse();
 
         first.Dispose();
-        Assert.That(mutex.IsAvailable, Is.True);
+        await Assert.That(mutex.IsAvailable).IsTrue();
         using var second = mutex.TryEnter();
-        Assert.That(second.Success, Is.True);
+        await Assert.That(second.Success).IsTrue();
     }
 
     [Test]
@@ -26,9 +26,9 @@ internal class AsyncMutexTests
     {
         var mutex = new AsyncMutex();
         var enter = mutex.EnterAsync();
-        Assert.That(enter.IsCompletedSuccessfully, Is.True);
+        await Assert.That(enter.IsCompletedSuccessfully).IsTrue();
         using var token = await enter;
-        Assert.That(token.Success, Is.True);
+        await Assert.That(token.Success).IsTrue();
     }
 
     [Test]
@@ -42,14 +42,14 @@ internal class AsyncMutexTests
         held.Dispose();
         var firstToken = await first.Timeout(1);
         await Task.Delay(50);
-        Assert.That(second.IsCompleted, Is.False);
+        await Assert.That(second.IsCompleted).IsFalse();
 
         // Handed over, not freed: nobody can barge in ahead of the queue.
-        Assert.That(mutex.TryEnter().Success, Is.False);
+        await Assert.That(mutex.TryEnter().Success).IsFalse();
 
         firstToken.Dispose();
         (await second.Timeout(1)).Dispose();
-        Assert.That(mutex.IsAvailable, Is.True);
+        await Assert.That(mutex.IsAvailable).IsTrue();
     }
 
     [Test]
@@ -62,49 +62,51 @@ internal class AsyncMutexTests
         var next = mutex.EnterAsync().AsTask();
 
         await cts.CancelAsync();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(async () => await canceled.Timeout(1), Throws.InstanceOf<TaskCanceledException>());
 
         held.Dispose();
         using var nextToken = await next.Timeout(1);
-        Assert.That(nextToken.Success, Is.True);
+        await Assert.That(nextToken.Success).IsTrue();
     }
 
     [Test]
-    public void EnterAsync_AlreadyCanceledToken_ThrowsTaskCanceled()
+    public async Task EnterAsync_AlreadyCanceledToken_ThrowsTaskCanceled()
     {
         var mutex = new AsyncMutex();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(async () => await mutex.EnterAsync(new CancellationToken(true)),
             Throws.InstanceOf<TaskCanceledException>());
-        Assert.That(mutex.IsAvailable, Is.True);
+        await Assert.That(mutex.IsAvailable).IsTrue();
     }
 
     [Test]
-    public void Dispose_Twice_Throws()
+    public async Task Dispose_Twice_Throws()
     {
         var mutex = new AsyncMutex();
         var token = mutex.TryEnter();
         token.Dispose();
-        Assert.Throws<InvalidOperationException>(() => token.Dispose());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => token.Dispose());
     }
 
     [Test]
-    public void Dispose_StaleToken_DoesNotReleaseTheNextHolder()
+    public async Task Dispose_StaleToken_DoesNotReleaseTheNextHolder()
     {
         var mutex = new AsyncMutex();
         var stale = mutex.TryEnter();
         stale.Dispose();
         using var current = mutex.TryEnter();
 
-        Assert.Throws<InvalidOperationException>(() => stale.Dispose());
-        Assert.That(mutex.IsAvailable, Is.False);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => stale.Dispose());
+        await Assert.That(mutex.IsAvailable).IsFalse();
     }
 
     [Test]
-    public void Dispose_DefaultToken_DoesNothing()
+    public async Task Dispose_DefaultToken_DoesNothing()
     {
         AsyncMutex.LockToken token = default;
-        Assert.That(token.Success, Is.False);
-        Assert.DoesNotThrow(() => token.Dispose());
+        await Assert.That(token.Success).IsFalse();
+        await Assert.That(() => token.Dispose()).ThrowsNothing();
     }
 
     [Test]
@@ -119,7 +121,7 @@ internal class AsyncMutexTests
             (await wait).Dispose();
         }
 
-        Assert.That(mutex.IsAvailable, Is.True);
+        await Assert.That(mutex.IsAvailable).IsTrue();
     }
 
     [Test]
@@ -161,8 +163,8 @@ internal class AsyncMutexTests
         })).ToArray();
 
         await Task.WhenAll(workers).Timeout(30);
-        Assert.That(maxInside, Is.EqualTo(1));
-        Assert.That(counter, Is.EqualTo(Workers * PerWorker));
-        Assert.That(mutex.IsAvailable, Is.True);
+        await Assert.That(maxInside).IsEqualTo(1);
+        await Assert.That(counter).IsEqualTo(Workers * PerWorker);
+        await Assert.That(mutex.IsAvailable).IsTrue();
     }
 }

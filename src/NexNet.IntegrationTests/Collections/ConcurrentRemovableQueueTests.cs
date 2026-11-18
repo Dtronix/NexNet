@@ -1,116 +1,116 @@
 ﻿using System.Collections.Concurrent;
 using NexNet.Internals.Collections;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
 internal class ConcurrentRemovableQueueTests
 {
     [Test]
-    public void EnqueueThenDequeue_SingleThread_FifoOrder()
+    public async Task EnqueueThenDequeue_SingleThread_FifoOrder()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         q.Enqueue(2);
         q.Enqueue(3);
 
-        Assert.That(q.TryDequeue(out var a), Is.True);
-        Assert.That(a, Is.EqualTo(1));
-        Assert.That(q.TryDequeue(out var b), Is.True);
-        Assert.That(b, Is.EqualTo(2));
-        Assert.That(q.TryDequeue(out var c), Is.True);
-        Assert.That(c, Is.EqualTo(3));
-        Assert.That(q.TryDequeue(out _), Is.False);
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(q.TryDequeue(out var a)).IsTrue();
+        await Assert.That(a).IsEqualTo(1);
+        await Assert.That(q.TryDequeue(out var b)).IsTrue();
+        await Assert.That(b).IsEqualTo(2);
+        await Assert.That(q.TryDequeue(out var c)).IsTrue();
+        await Assert.That(c).IsEqualTo(3);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void TryDequeue_EmptyQueue_ReturnsFalse()
+    public async Task TryDequeue_EmptyQueue_ReturnsFalse()
     {
         var q = new ConcurrentRemovableQueue<string>();
-        Assert.That(q.TryDequeue(out _), Is.False);
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Remove_ExistingItem_ReturnsTrue_AndDecrementsCount()
+    public async Task Remove_ExistingItem_ReturnsTrue_AndDecrementsCount()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(10);
         q.Enqueue(11);
 
-        Assert.That(q.Remove(10), Is.True);
-        Assert.That(q.Count, Is.EqualTo(1));
-        Assert.That(q.Remove(10), Is.False);
-        Assert.That(q.Count, Is.EqualTo(1));
+        await Assert.That(q.Remove(10)).IsTrue();
+        await Assert.That(q.Count).IsEqualTo(1);
+        await Assert.That(q.Remove(10)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(1);
     }
 
     [Test]
-    public void Remove_NonExisting_ReturnsFalse()
+    public async Task Remove_NonExisting_ReturnsFalse()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
-        Assert.That(q.Remove(2), Is.False);
-        Assert.That(q.Count, Is.EqualTo(1));
+        await Assert.That(q.Remove(2)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(1);
     }
 
     [Test]
-    public void Remove_DuplicateValue_RemovesOneOccurrence()
+    public async Task Remove_DuplicateValue_RemovesOneOccurrence()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(7);
         q.Enqueue(7);
         q.Enqueue(8);
 
-        Assert.That(q.Remove(7), Is.True);
-        Assert.That(q.Count, Is.EqualTo(2));
+        await Assert.That(q.Remove(7)).IsTrue();
+        await Assert.That(q.Count).IsEqualTo(2);
 
         // One more 7 remains
         var got = new List<int>();
         foreach (var x in q) got.Add(x);
-        Assert.That(got.Count(v => v == 7), Is.EqualTo(1));
-        Assert.That(got.Count(v => v == 8), Is.EqualTo(1));
+        await Assert.That(got.Count(v => v == 7)).IsEqualTo(1);
+        await Assert.That(got.Count(v => v == 8)).IsEqualTo(1);
     }
 
     [Test]
-    public void Count_MatchesAfterMixedOps()
+    public async Task Count_MatchesAfterMixedOps()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 50; i++) q.Enqueue(i);
-        for (int i = 0; i < 20; i++) Assert.That(q.Remove(i), Is.True);
-        for (int i = 0; i < 15; i++) Assert.That(q.TryDequeue(out _), Is.True);
+        for (int i = 0; i < 20; i++) await Assert.That(q.Remove(i)).IsTrue();
+        for (int i = 0; i < 15; i++) await Assert.That(q.TryDequeue(out _)).IsTrue();
 
-        Assert.That(q.Count, Is.EqualTo(50 - 20 - 15));
+        await Assert.That(q.Count).IsEqualTo(50 - 20 - 15);
     }
 
     [Test]
-    public void Enumerator_IsStruct_NoAllocationsOnCreation()
+    public async Task Enumerator_IsStruct_NoAllocationsOnCreation()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         var e = q.GetEnumerator();
-        Assert.That(e.GetType().IsValueType, Is.True);
+        await Assert.That(e.GetType().IsValueType).IsTrue();
         // Sanity: can iterate
-        Assert.That(e.MoveNext(), Is.True);
-        Assert.That(e.Current, Is.EqualTo(1));
+        await Assert.That(e.MoveNext()).IsTrue();
+        await Assert.That(e.Current).IsEqualTo(1);
     }
 
     [Test]
-    public void Enumerator_SkipsNodes_RemovedBeforeEnumeration()
+    public async Task Enumerator_SkipsNodes_RemovedBeforeEnumeration()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 10; i++) q.Enqueue(i);
-        for (int i = 0; i < 5; i++) Assert.That(q.Remove(i), Is.True); // remove first half
+        for (int i = 0; i < 5; i++) await Assert.That(q.Remove(i)).IsTrue(); // remove first half
 
         var seen = new HashSet<int>();
         foreach (var x in q) seen.Add(x);
 
         // Should only see 5..9
-        Assert.That(seen.SetEquals(Enumerable.Range(5, 5)), Is.True);
+        await Assert.That(seen.SetEquals(Enumerable.Range(5, 5))).IsTrue();
     }
 
     [Test]
-    public void Enumeration_WithConcurrentRemovals_Completes_NoDuplicates()
+    public async Task Enumeration_WithConcurrentRemovals_Completes_NoDuplicates()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int n = 2000;
@@ -133,18 +133,18 @@ internal class ConcurrentRemovableQueueTests
             start.Set();
             foreach (var x in q)
             {
-                Assert.That(enumerated.TryAdd(x, 0), Is.True, "Duplicate observed during enumeration.");
+                await Assert.That(enumerated.TryAdd(x, 0)).IsTrue().Because("Duplicate observed during enumeration.");
             }
         });
 
         Task.WaitAll(remover, enumeratorTask);
 
         // All enumerated are within original domain
-        Assert.That(enumerated.Keys.All(v => v >= 0 && v < n), Is.True);
+        await Assert.That(enumerated.Keys.All(v => v >= 0 && v < n)).IsTrue();
     }
 
     [Test]
-    public void Enumeration_WithConcurrentDequeues_Completes_NoDuplicates()
+    public async Task Enumeration_WithConcurrentDequeues_Completes_NoDuplicates()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int n = 3000;
@@ -168,17 +168,17 @@ internal class ConcurrentRemovableQueueTests
             start.Set();
             foreach (var x in q)
             {
-                Assert.That(enumerated.TryAdd(x, 0), Is.True);
+                await Assert.That(enumerated.TryAdd(x, 0)).IsTrue();
             }
         });
 
         Task.WaitAll(consumer, enumeratorTask);
         // All enumerated values valid
-        Assert.That(enumerated.Keys.All(v => v >= 0 && v < n), Is.True);
+        await Assert.That(enumerated.Keys.All(v => v >= 0 && v < n)).IsTrue();
     }
 
     [Test]
-    public void Concurrent_ProducersConsumers_NoLostOrDuplicated()
+    public async Task Concurrent_ProducersConsumers_NoLostOrDuplicated()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int producers = 4, consumers = 4, perProducer = 1000;
@@ -215,17 +215,17 @@ internal class ConcurrentRemovableQueueTests
         Task.WaitAll(prodTasks);
         Task.WaitAll(consTasks);
 
-        Assert.That(produced, Is.EqualTo(total));
-        Assert.That(consumed, Is.EqualTo(total));
+        await Assert.That(produced).IsEqualTo(total);
+        await Assert.That(consumed).IsEqualTo(total);
 
         // Verify uniqueness of values (no duplication)
-        Assert.That(bag.Count, Is.EqualTo(total));
-        Assert.That(bag.Distinct().Count(), Is.EqualTo(total));
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(bag.Count).IsEqualTo(total);
+        await Assert.That(bag.Distinct().Count()).IsEqualTo(total);
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Concurrent_Remove_RandomItems_RemainingCountCorrect()
+    public async Task Concurrent_Remove_RandomItems_RemainingCountCorrect()
     {
         int initial = 4000;
         var q = new ConcurrentRemovableQueue<int>();
@@ -241,11 +241,11 @@ internal class ConcurrentRemovableQueueTests
             }
         });
 
-        Assert.That(q.Count, Is.EqualTo(initial - successes));
+        await Assert.That(q.Count).IsEqualTo(initial - successes);
     }
     
     [Test]
-    public void Concurrent_Remove_SameValue_AtMostOneSuccessPerOccurrence()
+    public async Task Concurrent_Remove_SameValue_AtMostOneSuccessPerOccurrence()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(42);
@@ -262,13 +262,13 @@ internal class ConcurrentRemovableQueueTests
             }
         });
 
-        Assert.That(trueCount, Is.EqualTo(3));
-        Assert.That(q.Count, Is.EqualTo(0));
-        Assert.That(q.Remove(42), Is.False);
+        await Assert.That(trueCount).IsEqualTo(3);
+        await Assert.That(q.Count).IsEqualTo(0);
+        await Assert.That(q.Remove(42)).IsFalse();
     }
 
     [Test]
-    public void Interleaved_EnqueueAndRemove_CountRemainsConsistent()
+    public async Task Interleaved_EnqueueAndRemove_CountRemainsConsistent()
     {
         var q = new ConcurrentRemovableQueue<int>();
 
@@ -298,79 +298,79 @@ internal class ConcurrentRemovableQueueTests
         start.Set();
         Task.WaitAll(producer, remover);
 
-        Assert.That(q.Count, Is.EqualTo(enqs - rms));
-        Assert.That(q.Count, Is.GreaterThanOrEqualTo(0));
+        await Assert.That(q.Count).IsEqualTo(enqs - rms);
+        await Assert.That(q.Count).IsGreaterThanOrEqualTo(0);
     }
 
     [Test]
-    public void TryDequeue_SkipsTombstonedNodes()
+    public async Task TryDequeue_SkipsTombstonedNodes()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         q.Enqueue(2);
         q.Enqueue(3);
 
-        Assert.That(q.Remove(1), Is.True);
-        Assert.That(q.Remove(2), Is.True);
+        await Assert.That(q.Remove(1)).IsTrue();
+        await Assert.That(q.Remove(2)).IsTrue();
 
-        Assert.That(q.TryDequeue(out var val), Is.True);
-        Assert.That(val, Is.EqualTo(3));
-        Assert.That(q.TryDequeue(out _), Is.False);
+        await Assert.That(q.TryDequeue(out var val)).IsTrue();
+        await Assert.That(val).IsEqualTo(3);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
     }
     
     [Test]
-    public void RemoveAll_Then_TryDequeue_ReturnsFalse_CountZero()
+    public async Task RemoveAll_Then_TryDequeue_ReturnsFalse_CountZero()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 10; i++) q.Enqueue(i);
-        for (int i = 0; i < 10; i++) Assert.That(q.Remove(i), Is.True);
+        for (int i = 0; i < 10; i++) await Assert.That(q.Remove(i)).IsTrue();
 
-        Assert.That(q.TryDequeue(out _), Is.False);
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Enumerator_Reset_AllowsReiteration()
+    public async Task Enumerator_Reset_AllowsReiteration()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(5);
         q.Enqueue(6);
         var e = q.GetEnumerator();
 
-        Assert.That(e.MoveNext(), Is.True);
-        Assert.That(e.Current, Is.EqualTo(5));
+        await Assert.That(e.MoveNext()).IsTrue();
+        await Assert.That(e.Current).IsEqualTo(5);
 
         e.Reset();
 
         var list = new List<int>();
         while (e.MoveNext()) list.Add(e.Current);
 
-        Assert.That(list, Is.EqualTo(new[] { 5, 6 }));
+        await Assert.That(list).IsEqualTo(new[] { 5, 6 });
     }
     
     [Test]
-    public void Remove_ValueTypes_Works()
+    public async Task Remove_ValueTypes_Works()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(100);
-        Assert.That(q.Remove(100), Is.True);
-        Assert.That(q.Remove(100), Is.False);
+        await Assert.That(q.Remove(100)).IsTrue();
+        await Assert.That(q.Remove(100)).IsFalse();
     }
 
     [Test]
-    public void Remove_ReferenceTypes_Works()
+    public async Task Remove_ReferenceTypes_Works()
     {
         var q = new ConcurrentRemovableQueue<string>();
         q.Enqueue("a");
         q.Enqueue("b");
-        Assert.That(q.Remove("a"), Is.True);
-        Assert.That(q.Remove("a"), Is.False);
-        Assert.That(q.TryDequeue(out var left), Is.True);
-        Assert.That(left, Is.EqualTo("b"));
+        await Assert.That(q.Remove("a")).IsTrue();
+        await Assert.That(q.Remove("a")).IsFalse();
+        await Assert.That(q.TryDequeue(out var left)).IsTrue();
+        await Assert.That(left).IsEqualTo("b");
     }
     
     [Test]
-    public void Enumeration_Progresses_WhileHeadIsRemovedConcurrently()
+    public async Task Enumeration_Progresses_WhileHeadIsRemovedConcurrently()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 5000; i++) q.Enqueue(i);
@@ -397,23 +397,23 @@ internal class ConcurrentRemovableQueueTests
 
         Task.WaitAll(killer, enumeratorTask);
         // Enumeration finished (no hang) and saw some (possibly zero) items.
-        Assert.That(count, Is.GreaterThanOrEqualTo(0));
-        Assert.That(q.Count, Is.GreaterThanOrEqualTo(0));
+        await Assert.That(count).IsGreaterThanOrEqualTo(0);
+        await Assert.That(q.Count).IsGreaterThanOrEqualTo(0);
     }
 
     [Test]
-    public void Enumerator_StartedOnEmpty_DoesNotSeeFutureEnqueues()
+    public async Task Enumerator_StartedOnEmpty_DoesNotSeeFutureEnqueues()
     {
         var q = new ConcurrentRemovableQueue<int>();
         var e = q.GetEnumerator(); // snapshot when empty
         q.Enqueue(1);
         q.Enqueue(2);
 
-        Assert.That(e.MoveNext(), Is.False); // should not see items appended after creation
+        await Assert.That(e.MoveNext()).IsFalse(); // should not see items appended after creation
     }
 
     [Test]
-    public void Enumeration_DuringTailAppends_IncludesAtLeastInitial_NoExceptions()
+    public async Task Enumeration_DuringTailAppends_IncludesAtLeastInitial_NoExceptions()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 100; i++) q.Enqueue(i);
@@ -436,36 +436,36 @@ internal class ConcurrentRemovableQueueTests
         Task.WaitAll(producer, consumer);
 
         // Must at least contain the initial items; may or may not include tail appends.
-        Assert.That(enumerated.IsSupersetOf(Enumerable.Range(0, 100)), Is.True);
+        await Assert.That(enumerated.IsSupersetOf(Enumerable.Range(0, 100))).IsTrue();
     }
 
     [Test]
-    public void CustomComparer_CaseInsensitive_Remove_Works()
+    public async Task CustomComparer_CaseInsensitive_Remove_Works()
     {
         var q = new ConcurrentRemovableQueue<string>(StringComparer.OrdinalIgnoreCase);
         q.Enqueue("FOO");
 
-        Assert.That(q.Remove("foo"), Is.True);
-        Assert.That(q.Count, Is.EqualTo(0));
-        Assert.That(q.TryDequeue(out _), Is.False);
+        await Assert.That(q.Remove("foo")).IsTrue();
+        await Assert.That(q.Count).IsEqualTo(0);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
     }
 
     [Test]
-    public void Dequeue_OrderPreserved_AfterRemovingSome()
+    public async Task Dequeue_OrderPreserved_AfterRemovingSome()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 10; i++) q.Enqueue(i);
         // remove evens
         foreach (var i in Enumerable.Range(0, 10).Where(x => x % 2 == 0))
-            Assert.That(q.Remove(i), Is.True);
+            await Assert.That(q.Remove(i)).IsTrue();
 
         var list = new List<int>();
         while (q.TryDequeue(out var v)) list.Add(v);
-        Assert.That(list, Is.EqualTo(new[] { 1, 3, 5, 7, 9 }));
+        await Assert.That(list).IsEqualTo(new[] { 1, 3, 5, 7, 9 });
     }
 
     [Test]
-    public void MultipleEnumerators_SeeConsistentViews_NoInterference()
+    public async Task MultipleEnumerators_SeeConsistentViews_NoInterference()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 1000; i++) q.Enqueue(i);
@@ -476,12 +476,12 @@ internal class ConcurrentRemovableQueueTests
         foreach (var x in q) s1.Add(x);
         foreach (var x in q) s2.Add(x);
 
-        Assert.That(s1.SetEquals(Enumerable.Range(0, 1000)), Is.True);
-        Assert.That(s2.SetEquals(Enumerable.Range(0, 1000)), Is.True);
+        await Assert.That(s1.SetEquals(Enumerable.Range(0, 1000))).IsTrue();
+        await Assert.That(s2.SetEquals(Enumerable.Range(0, 1000))).IsTrue();
     }
 
     [Test]
-    public void Enumerator_Reset_AfterMutations_ReflectsCurrentState()
+    public async Task Enumerator_Reset_AfterMutations_ReflectsCurrentState()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(0);
@@ -489,75 +489,75 @@ internal class ConcurrentRemovableQueueTests
         q.Enqueue(2);
 
         var e = q.GetEnumerator();
-        Assert.That(e.MoveNext(), Is.True); // 0
-        Assert.That(e.Current, Is.EqualTo(0));
+        await Assert.That(e.MoveNext()).IsTrue(); // 0
+        await Assert.That(e.Current).IsEqualTo(0);
 
         // Mutate: remove head and add one at tail
-        Assert.That(q.Remove(0), Is.True);
+        await Assert.That(q.Remove(0)).IsTrue();
         q.Enqueue(3);
 
         e.Reset();
         var list = new List<int>();
         while (e.MoveNext()) list.Add(e.Current);
 
-        Assert.That(list, Is.EqualTo(new[] { 1, 2, 3 }));
+        await Assert.That(list).IsEqualTo(new[] { 1, 2, 3 });
     }
 
     [Test]
-    public void Remove_Tail_Then_Enqueue_Dequeue_Integrity()
+    public async Task Remove_Tail_Then_Enqueue_Dequeue_Integrity()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         q.Enqueue(2);
         q.Enqueue(3);
-        Assert.That(q.Remove(3), Is.True);
+        await Assert.That(q.Remove(3)).IsTrue();
         q.Enqueue(4);
 
-        Assert.That(q.TryDequeue(out var a), Is.True);
-        Assert.That(a, Is.EqualTo(1));
-        Assert.That(q.TryDequeue(out var b), Is.True);
-        Assert.That(b, Is.EqualTo(2));
-        Assert.That(q.TryDequeue(out var c), Is.True);
-        Assert.That(c, Is.EqualTo(4));
-        Assert.That(q.TryDequeue(out _), Is.False);
+        await Assert.That(q.TryDequeue(out var a)).IsTrue();
+        await Assert.That(a).IsEqualTo(1);
+        await Assert.That(q.TryDequeue(out var b)).IsTrue();
+        await Assert.That(b).IsEqualTo(2);
+        await Assert.That(q.TryDequeue(out var c)).IsTrue();
+        await Assert.That(c).IsEqualTo(4);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
     }
 
     [Test]
-    public void Remove_Head_Then_Enqueue_PreservesOrder()
+    public async Task Remove_Head_Then_Enqueue_PreservesOrder()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         q.Enqueue(2);
         q.Enqueue(3);
-        Assert.That(q.Remove(1), Is.True);
+        await Assert.That(q.Remove(1)).IsTrue();
         q.Enqueue(4);
 
         var seen = new List<int>();
         while (q.TryDequeue(out var v)) seen.Add(v);
-        Assert.That(seen, Is.EqualTo(new[] { 2, 3, 4 }));
+        await Assert.That(seen).IsEqualTo(new[] { 2, 3, 4 });
     }
 
     [Test]
-    public void Remove_All_Then_EnqueueNew_Works()
+    public async Task Remove_All_Then_EnqueueNew_Works()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(1);
         q.Enqueue(2);
-        Assert.That(q.Remove(1), Is.True);
-        Assert.That(q.Remove(2), Is.True);
+        await Assert.That(q.Remove(1)).IsTrue();
+        await Assert.That(q.Remove(2)).IsTrue();
 
         q.Enqueue(3);
         q.Enqueue(4);
 
-        Assert.That(q.TryDequeue(out var a), Is.True);
-        Assert.That(a, Is.EqualTo(3));
-        Assert.That(q.TryDequeue(out var b), Is.True);
-        Assert.That(b, Is.EqualTo(4));
-        Assert.That(q.TryDequeue(out _), Is.False);
+        await Assert.That(q.TryDequeue(out var a)).IsTrue();
+        await Assert.That(a).IsEqualTo(3);
+        await Assert.That(q.TryDequeue(out var b)).IsTrue();
+        await Assert.That(b).IsEqualTo(4);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
     }
 
     [Test]
-    public void ManyEnumerators_WithConcurrentRemovals_AllComplete_NoDuplicatesPerEnumerator()
+    public async Task ManyEnumerators_WithConcurrentRemovals_AllComplete_NoDuplicatesPerEnumerator()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int n = 5000;
@@ -577,7 +577,8 @@ internal class ConcurrentRemovableQueueTests
             var seen = new HashSet<int>();
             foreach (var x in q)
             {
-                Assert.That(seen.Add(x), Is.True);
+                await Assert.That(seen.Add(x)).IsTrue();
+                // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
                 Assert.That(x, Is.InRange(0, n - 1));
             }
             return seen.Count;
@@ -586,11 +587,11 @@ internal class ConcurrentRemovableQueueTests
         start.Set();
         Task.WaitAll(tasks.Append(remover).ToArray());
 
-        Assert.That(tasks.All(t => t.Result >= 0), Is.True);
+        await Assert.That(tasks.All(t => t.Result >= 0)).IsTrue();
     }
 
     [Test]
-    public void DequeueVsRemove_SingleItem_ExactlyOneWins()
+    public async Task DequeueVsRemove_SingleItem_ExactlyOneWins()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(7);
@@ -614,57 +615,57 @@ internal class ConcurrentRemovableQueueTests
         go.Set();
         Task.WaitAll(t1, t2);
 
-        Assert.That(removeSuccess ^ dequeueSuccess, Is.True); // exactly one true
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(removeSuccess ^ dequeueSuccess).IsTrue(); // exactly one true
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void TryDequeue_SkipsManyTombstonedAtFront()
+    public async Task TryDequeue_SkipsManyTombstonedAtFront()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 10; i++) q.Enqueue(i);
-        for (int i = 0; i < 9; i++) Assert.That(q.Remove(i), Is.True);
+        for (int i = 0; i < 9; i++) await Assert.That(q.Remove(i)).IsTrue();
 
-        Assert.That(q.TryDequeue(out var v), Is.True);
-        Assert.That(v, Is.EqualTo(9));
-        Assert.That(q.TryDequeue(out _), Is.False);
+        await Assert.That(q.TryDequeue(out var v)).IsTrue();
+        await Assert.That(v).IsEqualTo(9);
+        await Assert.That(q.TryDequeue(out _)).IsFalse();
     }
 
     [Test]
-    public void NullValues_NotSupported_ForReferenceTypes()
+    public async Task NullValues_NotSupported_ForReferenceTypes()
     {
         var q = new ConcurrentRemovableQueue<string>();
-        Assert.Throws<ArgumentNullException>(() => q.Enqueue(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => q.Enqueue(null!));
     }
 
     [Test]
-    public void ValueTypeStruct_Remove_WorksWithDefaultEquality()
+    public async Task ValueTypeStruct_Remove_WorksWithDefaultEquality()
     {
         var q = new ConcurrentRemovableQueue<Pair>();
         var p = new Pair(1, 2);
         q.Enqueue(p);
 
-        Assert.That(q.Remove(new Pair(1, 2)), Is.True);
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(q.Remove(new Pair(1, 2))).IsTrue();
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void Remove_ExhaustiveDuplicates_FalseAfterExhaustion()
+    public async Task Remove_ExhaustiveDuplicates_FalseAfterExhaustion()
     {
         var q = new ConcurrentRemovableQueue<int>();
         q.Enqueue(7);
         q.Enqueue(7);
         q.Enqueue(7);
 
-        Assert.That(q.Remove(7), Is.True);
-        Assert.That(q.Remove(7), Is.True);
-        Assert.That(q.Remove(7), Is.True);
-        Assert.That(q.Remove(7), Is.False);
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(q.Remove(7)).IsTrue();
+        await Assert.That(q.Remove(7)).IsTrue();
+        await Assert.That(q.Remove(7)).IsTrue();
+        await Assert.That(q.Remove(7)).IsFalse();
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void RandomConcurrentMix_CountEqualsEnumerationCount_NoExceptions()
+    public async Task RandomConcurrentMix_CountEqualsEnumerationCount_NoExceptions()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 1000; i++) q.Enqueue(i % 50);
@@ -688,11 +689,11 @@ internal class ConcurrentRemovableQueueTests
         int enumerated = 0;
         foreach (var _ in q) enumerated++;
 
-        Assert.That(q.Count, Is.EqualTo(enumerated));
+        await Assert.That(q.Count).IsEqualTo(enumerated);
     }
 
     [Test]
-    public void Enumeration_DuringContinuousEnqueues_Completes()
+    public async Task Enumeration_DuringContinuousEnqueues_Completes()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 500; i++) q.Enqueue(i);
@@ -713,11 +714,11 @@ internal class ConcurrentRemovableQueueTests
         });
 
         Task.WaitAll(producer, enumeratorTask);
-        Assert.That(count, Is.GreaterThanOrEqualTo(500)); // at least initial items were seen
+        await Assert.That(count).IsGreaterThanOrEqualTo(500); // at least initial items were seen
     }
 
     [Test]
-    public void Enumerator_Reset_AfterConcurrentRemovals_ReflectsRemaining()
+    public async Task Enumerator_Reset_AfterConcurrentRemovals_ReflectsRemaining()
     {
         var q = new ConcurrentRemovableQueue<int>();
         for (int i = 0; i < 10; i++) q.Enqueue(i);
@@ -737,12 +738,12 @@ internal class ConcurrentRemovableQueueTests
         var seen = new List<int>();
         while (e.MoveNext()) seen.Add(e.Current);
 
-        Assert.That(seen, Is.EqualTo(new[] { 5, 6, 7, 8, 9 }));
+        await Assert.That(seen).IsEqualTo(new[] { 5, 6, 7, 8, 9 });
         remover.Wait();
     }
 
     [Test]
-    public void RemoveOdds_DequeueEvens_TotalProcessedEqualsInitial()
+    public async Task RemoveOdds_DequeueEvens_TotalProcessedEqualsInitial()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int n = 2000;
@@ -771,12 +772,12 @@ internal class ConcurrentRemovableQueueTests
         start.Set();
         Task.WaitAll(remover, consumer);
 
-        Assert.That(removed + dequeued, Is.EqualTo(n));
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(removed + dequeued).IsEqualTo(n);
+        await Assert.That(q.Count).IsEqualTo(0);
     }
 
     [Test]
-    public void MassiveConcurrentRemovals_SameValue_AllOccurrencesAccounted()
+    public async Task MassiveConcurrentRemovals_SameValue_AllOccurrencesAccounted()
     {
         var q = new ConcurrentRemovableQueue<int>();
         int occurrences = 1000;
@@ -809,12 +810,12 @@ internal class ConcurrentRemovableQueueTests
         start.Set();
         Task.WaitAll(removers.Append(consumer).ToArray());
 
-        Assert.That(removed + dequeued, Is.EqualTo(occurrences));
-        Assert.That(q.Count, Is.EqualTo(0));
+        await Assert.That(removed + dequeued).IsEqualTo(occurrences);
+        await Assert.That(q.Count).IsEqualTo(0);
     }
     
     [Test]
-    public void ConcurrentFuzzing_InvariantsHold()
+    public async Task ConcurrentFuzzing_InvariantsHold()
     {
         var q = new ConcurrentRemovableQueue<int>();
 
@@ -890,7 +891,7 @@ internal class ConcurrentRemovableQueueTests
                 // Sanity: Count should never be negative
                 if ((i & 0x3FF) == 0)
                 {
-                    Assert.That(q.Count, Is.GreaterThanOrEqualTo(0));
+                    await Assert.That(q.Count).IsGreaterThanOrEqualTo(0);
                 }
             }
         })).ToArray();
@@ -902,16 +903,15 @@ internal class ConcurrentRemovableQueueTests
         // 1) Count equals number of items we can enumerate
         int enumeratedCount = 0;
         foreach (var _ in q) enumeratedCount++;
-        Assert.That(q.Count, Is.EqualTo(enumeratedCount), "Count != enumerated size at end.");
+        await Assert.That(q.Count).IsEqualTo(enumeratedCount).Because("Count != enumerated size at end.");
 
         // 2) Conservation: enqueued == removed + dequeued + remaining
-        Assert.That(enq, Is.EqualTo(rm + deq + q.Count),
-            $"Conservation failed: enq={enq}, rm={rm}, deq={deq}, remaining={q.Count}");
+        await Assert.That(enq).IsEqualTo(rm + deq + q.Count).Because($"Conservation failed: enq={enq}, rm={rm}, deq={deq}, remaining={q.Count}");
 
         // 3) A second pass should match the first (enumerator stability once quiescent)
         int secondPass = 0;
         foreach (var _ in q) secondPass++;
-        Assert.That(secondPass, Is.EqualTo(enumeratedCount));
+        await Assert.That(secondPass).IsEqualTo(enumeratedCount);
     }
     
     private static void RunConcurrently(int workers, Action body)

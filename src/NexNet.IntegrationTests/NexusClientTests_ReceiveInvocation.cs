@@ -1,5 +1,5 @@
 ﻿using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -90,14 +90,14 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
     [Test]
     [Transports]
-    public Task ClientReceivesInvocation_ClientTaskValue_ReturnedValue(Type type)
+    public async Task ClientReceivesInvocation_ClientTaskValue_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValue();
-                Assert.That(value, Is.EqualTo(54321));
+                await Assert.That(value).IsEqualTo(54321);
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueEvent = nexus => ValueTask.FromResult(54321);
@@ -124,14 +124,14 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
     [Test]
     [Transports]
-    public Task ClientReceivesInvocation_ClientTaskValueWithParam_ReturnedValue(Type type)
+    public async Task ClientReceivesInvocation_ClientTaskValueWithParam_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithParam(12345);
-                Assert.That(value, Is.EqualTo(54321));
+                await Assert.That(value).IsEqualTo(54321);
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
@@ -189,14 +189,14 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
     [Test]
     [Transports]
-    public Task ClientReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
+    public async Task ClientReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithCancellation(CancellationToken.None);
-                Assert.That(value, Is.EqualTo(54321));
+                await Assert.That(value).IsEqualTo(54321);
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
@@ -222,14 +222,14 @@ internal partial class NexusClientTests_ReceiveInvocation : BaseTests
 
     [Test]
     [Transports]
-    public Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
+    public async Task ClientReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(Type type)
     {
         return ClientReceivesInvocation(type, (sNexus, cNexus, tcs) =>
         {
             sNexus.OnConnectedEvent = async nexus =>
             {
                 var value = await nexus.Context.Clients.Caller.ClientTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-                Assert.That(value, Is.EqualTo(54321));
+                await Assert.That(value).IsEqualTo(54321);
                 tcs.SetResult();
             };
             cNexus.ClientTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);

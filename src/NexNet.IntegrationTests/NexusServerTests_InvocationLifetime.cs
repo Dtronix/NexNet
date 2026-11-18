@@ -1,5 +1,5 @@
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable CS1998
 #pragma warning disable VSTHRD200
 
@@ -66,12 +66,12 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
 
         // Neither side imposes a deadline; the invocation just stays pending and the
         // connection remains healthy.
-        Assert.That(invocationTask.IsCompleted, Is.False);
-        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        await Assert.That(invocationTask.IsCompleted).IsFalse();
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
 
         // Once the method finally returns, the invocation completes normally.
         hangTcs.TrySetResult(42);
-        Assert.That(await invocationTask.Timeout(1), Is.EqualTo(42));
+        await Assert.That(await invocationTask.Timeout(1)).IsEqualTo(42);
     }
 
     [Test]

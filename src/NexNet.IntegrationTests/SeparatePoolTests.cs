@@ -4,7 +4,7 @@ using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 #pragma warning disable VSTHRD200
 
@@ -84,38 +84,38 @@ internal class SeparatePoolTests : BaseTests
         while (!condition())
         {
             if (DateTime.UtcNow > until)
-                Assert.Fail($"Timed out waiting for: {what}");
+                Fail.Test($"Timed out waiting for: {what}");
             await Task.Delay(10);
         }
     }
 
     [Test]
-    public void MaxSeparatePoolInvocations_DefaultsFollowSerializerSecurity_ExplicitWins_Range()
+    public async Task MaxSeparatePoolInvocations_DefaultsFollowSerializerSecurity_ExplicitWins_Range()
     {
         var untrusted = CreateServerConfig(Type.Uds);
-        Assert.That(untrusted.MaxSeparatePoolInvocations, Is.EqualTo(4));
+        await Assert.That(untrusted.MaxSeparatePoolInvocations).IsEqualTo(4);
 
         var trusted = CreateServerConfig(Type.Uds);
         trusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
-        Assert.That(trusted.MaxSeparatePoolInvocations, Is.EqualTo(16));
+        await Assert.That(trusted.MaxSeparatePoolInvocations).IsEqualTo(16);
 
         // An explicit value wins, whichever is set first.
         var explicitUntrusted = CreateServerConfig(Type.Uds);
         explicitUntrusted.MaxSeparatePoolInvocations = 7;
-        Assert.That(explicitUntrusted.MaxSeparatePoolInvocations, Is.EqualTo(7));
+        await Assert.That(explicitUntrusted.MaxSeparatePoolInvocations).IsEqualTo(7);
 
         var explicitTrusted = CreateServerConfig(Type.Uds);
         explicitTrusted.MaxSeparatePoolInvocations = 3;
         explicitTrusted.SerializerOptions = NexNet.Serialization.NexusSerializerOptions.Trusted;
-        Assert.That(explicitTrusted.MaxSeparatePoolInvocations, Is.EqualTo(3));
+        await Assert.That(explicitTrusted.MaxSeparatePoolInvocations).IsEqualTo(3);
 
         // 1 to 1000.
-        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 1001);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 0);
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => trusted.MaxSeparatePoolInvocations = 1001);
         trusted.MaxSeparatePoolInvocations = 1;
-        Assert.That(trusted.MaxSeparatePoolInvocations, Is.EqualTo(1));
+        await Assert.That(trusted.MaxSeparatePoolInvocations).IsEqualTo(1);
         trusted.MaxSeparatePoolInvocations = 1000;
-        Assert.That(trusted.MaxSeparatePoolInvocations, Is.EqualTo(1000));
+        await Assert.That(trusted.MaxSeparatePoolInvocations).IsEqualTo(1000);
     }
 
     [Test]
@@ -136,11 +136,11 @@ internal class SeparatePoolTests : BaseTests
         // The only normal slot is free: the plain call runs and returns while the slow one still runs.
         gates.Release(2);
         await client.Proxy.Plain(2).Timeout(1);
-        Assert.That(slow.IsCompleted, Is.False);
+        await Assert.That(slow.IsCompleted).IsFalse();
 
         var invocations = Invocations(server)!;
-        Assert.That(invocations.SeparatePoolExecuting, Is.EqualTo(1));
-        Assert.That(invocations.Executing, Is.EqualTo(0));
+        await Assert.That(invocations.SeparatePoolExecuting).IsEqualTo(1);
+        await Assert.That(invocations.Executing).IsEqualTo(0);
 
         gates.Release(1);
         await slow.Timeout(1);
@@ -170,9 +170,9 @@ internal class SeparatePoolTests : BaseTests
         // Sent after the queued separate-pool call, the plain call runs and completes first.
         gates.Release(3);
         await client.Proxy.Plain(3).Timeout(1);
-        Assert.That(slow1.IsCompleted, Is.False);
-        Assert.That(slow2.IsCompleted, Is.False);
-        Assert.That(gates.HasStarted(2), Is.False, "The second separate-pool call started while the pool was full.");
+        await Assert.That(slow1.IsCompleted).IsFalse();
+        await Assert.That(slow2.IsCompleted).IsFalse();
+        await Assert.That(gates.HasStarted(2)).IsFalse().Because("The second separate-pool call started while the pool was full.");
 
         // The second starts only once the first has finished.
         gates.Release(1);
@@ -181,7 +181,7 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(2);
         await slow2.Timeout(1);
 
-        Assert.That(gates.Log, Is.EqualTo(new[]
+        await Assert.That(gates.Log).IsEqualTo(new[]
         {
             "slow1 start",
             "plain3 start",
@@ -189,7 +189,7 @@ internal class SeparatePoolTests : BaseTests
             "slow1 end",
             "slow2 start",
             "slow2 end",
-        }));
+        });
     }
 
     [Test]
@@ -223,15 +223,15 @@ internal class SeparatePoolTests : BaseTests
         time.Advance(TimeSpan.FromSeconds(3));
 
         var invocations = Invocations(server)!;
-        Assert.That(invocations.SeparatePoolMaxExecuting, Is.EqualTo(1));
-        Assert.That(invocations.MaxExecuting, Is.EqualTo(1));
-        Assert.That(invocations.SeparatePoolOldestQueuedWait, Is.EqualTo(TimeSpan.FromSeconds(3)));
+        await Assert.That(invocations.SeparatePoolMaxExecuting).IsEqualTo(1);
+        await Assert.That(invocations.MaxExecuting).IsEqualTo(1);
+        await Assert.That(invocations.SeparatePoolOldestQueuedWait).IsEqualTo(TimeSpan.FromSeconds(3));
 
         gates.ReleaseAll();
         await Task.WhenAll(calls).Timeout(2);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0, SeparatePoolQueued: 0, Executing: 0, Queued: 0 },
             "both pools idle");
-        Assert.That(Invocations(server)!.SeparatePoolOldestQueuedWait, Is.Null);
+        await Assert.That(Invocations(server)!.SeparatePoolOldestQueuedWait).IsNull();
     }
 
     [Test]
@@ -268,14 +268,16 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(1);
         await gates.Started(2).Timeout(1);
         await WaitFor(() => Warnings().Length >= 1, "the separate-pool warning");
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(Warnings(), Has.Length.EqualTo(1));
-        Assert.That(Warnings()[0], Does.Contain("(MaxSeparatePoolInvocations 1, threshold 1000 ms)."));
-        Assert.That(Warnings()[0], Does.Not.Contain("MaxConcurrentConnectionInvocations"));
+        await Assert.That(Warnings()[0]).Contains("(MaxSeparatePoolInvocations 1, threshold 1000 ms).");
+        await Assert.That(Warnings()[0]).DoesNotContain("MaxConcurrentConnectionInvocations");
 
         // The normal-pool wait falls in the same 30 s window: suppressed.
         gates.Release(3);
         await gates.Started(4).Timeout(1);
         await Task.Delay(100);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(Warnings(), Has.Length.EqualTo(1), "The pools do not share the 30 s warning window.");
 
         // 31 s later the next slow separate-pool call is reported, counting the suppressed normal-pool one.
@@ -285,9 +287,10 @@ internal class SeparatePoolTests : BaseTests
         gates.Release(2);
         await gates.Started(5).Timeout(1);
         await WaitFor(() => Warnings().Length >= 2, "the second warning");
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(Warnings(), Has.Length.EqualTo(2));
-        Assert.That(Warnings()[1], Does.Contain("MaxSeparatePoolInvocations 1"));
-        Assert.That(Warnings()[1], Does.EndWith("(1 more since the last warning)."));
+        await Assert.That(Warnings()[1]).Contains("MaxSeparatePoolInvocations 1");
+        await Assert.That(Warnings()[1]).EndsWith("(1 more since the last warning).");
 
         gates.ReleaseAll();
         await Task.WhenAll(calls).Timeout(2);
@@ -341,9 +344,9 @@ internal class SeparatePoolTests : BaseTests
 
         await WaitFor(() => _recorder.Events("nexnet.invocation.queue_wait").Count >= 4, "four queue waits recorded");
         var waits = _recorder.Events("nexnet.invocation.queue_wait");
-        Assert.That(waits.Count(w => w.Has("nexnet.invocation.pool", "separate")), Is.EqualTo(3));
-        Assert.That(waits.Count(w => w.Has("nexnet.invocation.pool", "normal")), Is.EqualTo(1));
-        Assert.That(waits.All(w => w.Has("nexnet.role", "server") && w.Has("nexnet.transport", "uds")), Is.True);
+        await Assert.That(waits.Count(w => w.Has("nexnet.invocation.pool", "separate"))).IsEqualTo(3);
+        await Assert.That(waits.Count(w => w.Has("nexnet.invocation.pool", "normal"))).IsEqualTo(1);
+        await Assert.That(waits.All(w => w.Has("nexnet.role", "server") && w.Has("nexnet.transport", "uds"))).IsTrue();
     }
 
     [Test]
@@ -380,7 +383,7 @@ internal class SeparatePoolTests : BaseTests
         calls.Add(client.Proxy.Plain(5).AsTask());
         await WaitFor(() => client.GetSnapshot()!.Invocations.CreditWaits == 1, "the fifth call waiting for credit");
         await Task.Delay(100);
-        Assert.That(Invocations(server)!.Queued, Is.EqualTo(1), "A call was queued beyond InvocationCredits.");
+        await Assert.That(Invocations(server)!.Queued).IsEqualTo(1).Because("A call was queued beyond InvocationCredits.");
 
         // The queued separate-pool call is dequeued when the first finishes; its credit lets the fifth call in.
         gates.Release(1);
@@ -418,7 +421,7 @@ internal class SeparatePoolTests : BaseTests
         await started.Task.Timeout(1);
         cts.Cancel();
 
-        await Assert.CatchAsync<OperationCanceledException>(async () => await call.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await call.Timeout(1));
         await observed.Task.Timeout(1);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0 }, "the separate pool idle");
     }
@@ -448,15 +451,14 @@ internal class SeparatePoolTests : BaseTests
         await WaitFor(() => Invocations(server)?.SeparatePoolQueued == 1, "the cancelable call queued");
 
         cts.Cancel();
-        await Assert.CatchAsync<OperationCanceledException>(async () => await queued.Timeout(1));
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await queued.Timeout(1));
 
         // Once a slot frees, the canceled call either does not run or runs with its token already canceled, and ends.
         gates.Release(1);
         await slow.Timeout(1);
         await WaitFor(() => Invocations(server) is { SeparatePoolExecuting: 0, SeparatePoolQueued: 0 },
             "the canceled call ended");
-        Assert.That(sawCanceledToken.All(canceled => canceled), Is.True,
-            "The queued separate-pool method started with a token that was not canceled.");
+        await Assert.That(sawCanceledToken.All(canceled => canceled)).IsTrue().Because("The queued separate-pool method started with a token that was not canceled.");
     }
 
     [Test]
@@ -464,6 +466,6 @@ internal class SeparatePoolTests : BaseTests
     {
         var (_, client) = await Start(_ => { }, _ => { });
 
-        Assert.That(await client.Proxy.SlowIsOnThreadPool().Timeout(1), Is.True);
+        await Assert.That(await client.Proxy.SlowIsOnThreadPool().Timeout(1)).IsTrue();
     }
 }

@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -31,7 +31,7 @@ internal class InvocationExecutionContextTests : BaseTests
         Local.Value = "connect";
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
 
     [Test]
@@ -56,7 +56,7 @@ internal class InvocationExecutionContextTests : BaseTests
         Local.Value = "connect";
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(await observed.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
 
     [Test]
@@ -90,7 +90,7 @@ internal class InvocationExecutionContextTests : BaseTests
         using (var owner = server.Server.ContextProvider.Rent())
             owner.Proxy.All.ClientVoidWithParam(2);
 
-        Assert.That(await second.Task.Timeout(1), Is.EqualTo("connect"));
+        await Assert.That(await second.Task.Timeout(1)).IsEqualTo("connect");
     }
 
     [Test]
@@ -111,7 +111,7 @@ internal class InvocationExecutionContextTests : BaseTests
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
-        Assert.That(observed, Is.EqualTo("start"));
+        await Assert.That(observed).IsEqualTo("start");
     }
 
     [Test]
@@ -132,6 +132,7 @@ internal class InvocationExecutionContextTests : BaseTests
         var (client, _) = CreateClient(CreateClientConfig(type));
         await client.ConnectAsync().Timeout(1);
         await client.Proxy.ServerTaskValue().Timeout(1);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         Assert.That(path, Is.Not.EqualTo("none").And.Not.Empty);
     }

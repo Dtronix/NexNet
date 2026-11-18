@@ -1,7 +1,7 @@
 ﻿using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -85,7 +85,7 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
     [Test]
@@ -156,7 +156,7 @@ internal class NexusServerTests_Versioned : BaseTests
         
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
-        Assert.That(result.Success, Is.True);
+        await Assert.That(result.Success).IsTrue();
     }
     
     [Test]
@@ -171,7 +171,7 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
     [Test]
@@ -230,7 +230,7 @@ internal class NexusServerTests_Versioned : BaseTests
         
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
-        Assert.That(result.DisconnectReason, Is.EqualTo(DisconnectReason.ServerMismatch));
+        await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
     [Test]
@@ -245,7 +245,6 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         var result = await client.client.TryConnectAsync().Timeout(1);
         
-        Assert.That(result.Success, Is.True);
+        await Assert.That(result.Success).IsTrue();
     }
 }
-

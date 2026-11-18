@@ -1,7 +1,7 @@
 using NexNet.Collections;
 using NexNet.Invocation;
 using NexNet.IntegrationTests.TestInterfaces;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -14,21 +14,21 @@ internal class CollectionManagerRestartTests : NexusCollectionBaseTests
     private const int Cycles = 200;
 
     [Test]
-    public void CollectionManager_FastStopStartCycles_DoNotThrow()
+    public async Task CollectionManager_FastStopStartCycles_DoNotThrow()
     {
         var manager = new NexusCollectionManager(null, true, TimeProvider.System);
         manager.ConfigureList<int>(0, NexusCollectionMode.BiDirectional);
         manager.ConfigureList<int>(1, NexusCollectionMode.ServerToClient);
         manager.CompleteConfigure();
 
-        Assert.DoesNotThrow(() =>
+        await Assert.That(() =>
         {
             for (var i = 0; i < Cycles; i++)
             {
                 manager.Stop();
                 manager.Start();
             }
-        });
+        }).ThrowsNothing();
 
         manager.Stop();
     }
@@ -49,14 +49,17 @@ internal class CollectionManagerRestartTests : NexusCollectionBaseTests
 
         await client.ConnectAsync().Timeout(1);
         var serverNexus = server.NexusCreatedQueue.First();
-        Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(1)).IsTrue();
         await client.Proxy.IntListBi.AddAsync(1).Timeout(1);
         await client.Proxy.IntListBi.AddAsync(2).Timeout(1);
 
-        Assert.Multiple(() =>
+        using (Assert.Multiple())
         {
+            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
             Assert.That(client.Proxy.IntListBi, Is.EquivalentTo([1, 2]));
+            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
             Assert.That(serverNexus.IntListBi, Is.EquivalentTo([1, 2]));
-        });
+
+        }
     }
 }

@@ -4,7 +4,7 @@ using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Messages;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Security;
 
@@ -104,10 +104,10 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         // Wait for all methods to complete
         await Task.WhenAll(methodCompletions.Values.Select(tcs => tcs.Task));
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
-        Assert.That(completedMethods, Contains.Item((ushort)2));
-        Assert.That(completedMethods, Contains.Item((ushort)3));
-        Assert.That(completedMethods, Contains.Item((ushort)4));
+        await Assert.That(completedMethods).Contains((ushort)1);
+        await Assert.That(completedMethods).Contains((ushort)2);
+        await Assert.That(completedMethods).Contains((ushort)3);
+        await Assert.That(completedMethods).Contains((ushort)4);
     }
 
     [Test]
@@ -175,10 +175,10 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         await client2.AssertReceiveMessageAsync<ServerGreetingMessage>();
         await InvokeMethodExpectingError(client2, 4); // RunTaskNewV2 - should disconnect
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
-        Assert.That(completedMethods, Contains.Item((ushort)2));
-        Assert.That(completedMethods, Contains.Item((ushort)3));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)4));
+        await Assert.That(completedMethods).Contains((ushort)1);
+        await Assert.That(completedMethods).Contains((ushort)2);
+        await Assert.That(completedMethods).Contains((ushort)3);
+        await Assert.That(completedMethods).DoesNotContain((ushort)4);
     }
 
     [Test]
@@ -253,10 +253,10 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         await client4.AssertReceiveMessageAsync<ServerGreetingMessage>();
         await InvokeMethodExpectingError(client4, 4); // RunTaskNewV2 - should disconnect
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)2));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)3));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)4));
+        await Assert.That(completedMethods).Contains((ushort)1);
+        await Assert.That(completedMethods).DoesNotContain((ushort)2);
+        await Assert.That(completedMethods).DoesNotContain((ushort)3);
+        await Assert.That(completedMethods).DoesNotContain((ushort)4);
     }
 
     // V1.1 Server Tests
@@ -310,9 +310,9 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         // Wait for all methods to complete
         await Task.WhenAll(methodCompletions.Values.Select(tcs => tcs.Task));
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
-        Assert.That(completedMethods, Contains.Item((ushort)2));
-        Assert.That(completedMethods, Contains.Item((ushort)3));
+        await Assert.That(completedMethods).Contains((ushort)1);
+        await Assert.That(completedMethods).Contains((ushort)2);
+        await Assert.That(completedMethods).Contains((ushort)3);
     }
 
     [Test]
@@ -374,9 +374,9 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         await client3.AssertReceiveMessageAsync<ServerGreetingMessage>();
         await InvokeMethodExpectingError(client3, 3); // RunTaskWithResultV1_1 - should disconnect
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)2));
-        Assert.That(completedMethods, Does.Not.Contain((ushort)3));
+        await Assert.That(completedMethods).Contains((ushort)1);
+        await Assert.That(completedMethods).DoesNotContain((ushort)2);
+        await Assert.That(completedMethods).DoesNotContain((ushort)3);
     }
 
     // V1 Server Tests
@@ -415,7 +415,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         // Wait for method to complete
         await Task.WhenAll(methodCompletions.Values.Select(tcs => tcs.Task));
         
-        Assert.That(completedMethods, Contains.Item((ushort)1));
+        await Assert.That(completedMethods).Contains((ushort)1);
     }
 
     // Invalid Method Tests
@@ -565,9 +565,8 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         stopwatch.Stop();
         
         // Server should handle all invalid access attempts within 10 seconds
-        Assert.That(stopwatch.ElapsedMilliseconds, Is.LessThan(10000), 
-            "Server took too long to handle high volume invalid access attempts");
-        
+        await Assert.That(stopwatch.ElapsedMilliseconds).IsLessThan(10000).Because("Server took too long to handle high volume invalid access attempts");
+
         // Create a valid client to ensure server is still responsive
         using var validClient = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
         await validClient.ConnectAsync();
@@ -577,9 +576,9 @@ internal class ServerVersionInvocationValidationTests : BaseTests
         
         await validClient.SendClientGreetingMessage<VersionedServerNexusV2, VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>().Timeout(1);
         await validClient.AssertReceiveMessageAsync<ServerGreetingMessage>();
-        
+
         // Server should still be responsive to valid clients
-        Assert.Pass();
+        ;
     }
     
     private async Task InvokeMethod(RawTcpClient client, ushort methodId)

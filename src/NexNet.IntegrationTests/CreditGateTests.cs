@@ -1,5 +1,5 @@
 using NexNet.Internals;
-using NUnit.Framework;
+using System.Threading.Tasks;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -9,16 +9,16 @@ internal class CreditGateTests
     private static readonly TimeSpan Infinite = Timeout.InfiniteTimeSpan;
 
     [Test]
-    public void TryTake_TakesOnlyAvailableCredits()
+    public async Task TryTake_TakesOnlyAvailableCredits()
     {
         var gate = new CreditGate();
-        Assert.That(gate.TryTake(), Is.False);
+        await Assert.That(gate.TryTake()).IsFalse();
 
         gate.Release(2);
-        Assert.That(gate.CurrentCount, Is.EqualTo(2));
-        Assert.That(gate.TryTake(), Is.True);
-        Assert.That(gate.TryTake(), Is.True);
-        Assert.That(gate.TryTake(), Is.False);
+        await Assert.That(gate.CurrentCount).IsEqualTo(2);
+        await Assert.That(gate.TryTake()).IsTrue();
+        await Assert.That(gate.TryTake()).IsTrue();
+        await Assert.That(gate.TryTake()).IsFalse();
     }
 
     [Test]
@@ -28,8 +28,8 @@ internal class CreditGateTests
         gate.Release();
 
         var wait = gate.WaitAsync(Infinite, CancellationToken.None);
-        Assert.That(wait.IsCompleted, Is.True);
-        Assert.That(await wait, Is.EqualTo(CreditWaitResult.Acquired));
+        await Assert.That(wait.IsCompleted).IsTrue();
+        await Assert.That(await wait).IsEqualTo(CreditWaitResult.Acquired);
     }
 
     [Test]
@@ -41,9 +41,10 @@ internal class CreditGateTests
             .ToArray();
 
         gate.Release(7);
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
 
         Assert.That(await Task.WhenAll(waits).Timeout(1), Has.All.EqualTo(CreditWaitResult.Acquired));
-        Assert.That(gate.CurrentCount, Is.EqualTo(2));
+        await Assert.That(gate.CurrentCount).IsEqualTo(2);
     }
 
     [Test]
@@ -54,12 +55,12 @@ internal class CreditGateTests
         var second = gate.WaitAsync(Infinite, CancellationToken.None).AsTask();
 
         gate.Release();
-        Assert.That(await first.Timeout(1), Is.EqualTo(CreditWaitResult.Acquired));
+        await Assert.That(await first.Timeout(1)).IsEqualTo(CreditWaitResult.Acquired);
         await Task.Delay(50);
-        Assert.That(second.IsCompleted, Is.False);
+        await Assert.That(second.IsCompleted).IsFalse();
 
         gate.Release();
-        Assert.That(await second.Timeout(1), Is.EqualTo(CreditWaitResult.Acquired));
+        await Assert.That(await second.Timeout(1)).IsEqualTo(CreditWaitResult.Acquired);
     }
 
     [Test]
@@ -67,20 +68,20 @@ internal class CreditGateTests
     {
         var gate = new CreditGate();
         var result = await gate.WaitAsync(TimeSpan.FromMilliseconds(50), CancellationToken.None).AsTask().Timeout(1);
-        Assert.That(result, Is.EqualTo(CreditWaitResult.TimedOut));
+        await Assert.That(result).IsEqualTo(CreditWaitResult.TimedOut);
 
         // The timed-out waiter no longer takes credit.
         gate.Release();
-        Assert.That(gate.CurrentCount, Is.EqualTo(1));
+        await Assert.That(gate.CurrentCount).IsEqualTo(1);
     }
 
     [Test]
-    public void WaitAsync_ZeroTimeout_DoesNotPark()
+    public async Task WaitAsync_ZeroTimeout_DoesNotPark()
     {
         var gate = new CreditGate();
         var wait = gate.WaitAsync(TimeSpan.Zero, CancellationToken.None);
-        Assert.That(wait.IsCompleted, Is.True);
-        Assert.That(wait.Result, Is.EqualTo(CreditWaitResult.TimedOut));
+        await Assert.That(wait.IsCompleted).IsTrue();
+        await Assert.That(wait.Result).IsEqualTo(CreditWaitResult.TimedOut);
     }
 
     [Test]
@@ -92,20 +93,21 @@ internal class CreditGateTests
         var next = gate.WaitAsync(Infinite, CancellationToken.None).AsTask();
 
         await cts.CancelAsync();
+        // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
         Assert.That(async () => await canceled.Timeout(1), Throws.InstanceOf<OperationCanceledException>());
 
         // The credit goes to the next waiter, not the canceled one.
         gate.Release();
-        Assert.That(await next.Timeout(1), Is.EqualTo(CreditWaitResult.Acquired));
-        Assert.That(gate.CurrentCount, Is.Zero);
+        await Assert.That(await next.Timeout(1)).IsEqualTo(CreditWaitResult.Acquired);
+        await Assert.That(gate.CurrentCount).IsZero();
     }
 
     [Test]
-    public void WaitAsync_AlreadyCanceledToken_Throws()
+    public async Task WaitAsync_AlreadyCanceledToken_Throws()
     {
         var gate = new CreditGate();
         var wait = gate.WaitAsync(Infinite, new CancellationToken(true));
-        Assert.That(wait.IsCanceled, Is.True);
+        await Assert.That(wait.IsCanceled).IsTrue();
     }
 
     [Test]
@@ -115,11 +117,11 @@ internal class CreditGateTests
         var parked = gate.WaitAsync(Infinite, CancellationToken.None).AsTask();
 
         gate.Close();
-        Assert.That(await parked.Timeout(1), Is.EqualTo(CreditWaitResult.Closed));
+        await Assert.That(await parked.Timeout(1)).IsEqualTo(CreditWaitResult.Closed);
 
         var later = gate.WaitAsync(Infinite, CancellationToken.None);
-        Assert.That(later.IsCompleted, Is.True);
-        Assert.That(later.Result, Is.EqualTo(CreditWaitResult.Closed));
+        await Assert.That(later.IsCompleted).IsTrue();
+        await Assert.That(later.Result).IsEqualTo(CreditWaitResult.Closed);
     }
 
     [Test]
@@ -130,10 +132,10 @@ internal class CreditGateTests
         {
             var wait = gate.WaitAsync(Infinite, CancellationToken.None);
             gate.Release();
-            Assert.That(await wait, Is.EqualTo(CreditWaitResult.Acquired));
+            await Assert.That(await wait).IsEqualTo(CreditWaitResult.Acquired);
         }
 
-        Assert.That(gate.CurrentCount, Is.Zero);
+        await Assert.That(gate.CurrentCount).IsZero();
     }
 
     [Test]
@@ -166,7 +168,7 @@ internal class CreditGateTests
         });
 
         await Task.WhenAll(workers.Append(releaser)).Timeout(30);
-        Assert.That(acquired, Is.EqualTo(Workers * PerWorker));
-        Assert.That(gate.CurrentCount, Is.Zero);
+        await Assert.That(acquired).IsEqualTo(Workers * PerWorker);
+        await Assert.That(gate.CurrentCount).IsZero();
     }
 }

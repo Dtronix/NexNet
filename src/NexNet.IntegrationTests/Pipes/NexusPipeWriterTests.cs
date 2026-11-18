@@ -3,14 +3,14 @@ using System.Runtime.CompilerServices;
 using NexNet.Internals;
 using NexNet.Messages;
 using NexNet.Pipes;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests.Pipes;
 
 public class NexusPipeWriterTests
 {
     [Test]
-    public void Advance_And_GetMemory_Span_DoNotThrow()
+    public async Task Advance_And_GetMemory_Span_DoNotThrow()
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
@@ -18,28 +18,29 @@ public class NexusPipeWriterTests
 
         // Should get a non-empty Memory and Span
         var mem = writer.GetMemory(10);
-        Assert.That(mem.Length, Is.GreaterThanOrEqualTo(10));
+        await Assert.That(mem.Length).IsGreaterThanOrEqualTo(10);
 
         var span = writer.GetSpan(20);
-        Assert.That(span.Length, Is.GreaterThanOrEqualTo(20));
+        await Assert.That(span.Length).IsGreaterThanOrEqualTo(20);
 
         // Advance should not throw
-        Assert.DoesNotThrow(() => writer.Advance(15));
+        await Assert.That(() => writer.Advance(15)).ThrowsNothing();
     }
 
     [Test]
-    public void Complete_Throws_InvalidOperationException()
+    public async Task Complete_Throws_InvalidOperationException()
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
         var writer = new NexusPipeWriter(state, null, messenger, isServer: true, chunkSize: 128).WithCredit();
 
-        Assert.Throws<InvalidOperationException>(() => writer.Complete());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.Complete());
     }
 
 
-    [TestCase(true)]
-    [TestCase(false)]
+    [Test]
+    [Arguments(true)]
+    [Arguments(false)]
     public async Task CompleteAsync_OnlyNotifies_WhenUpdateStateTrue(bool updateStateReturns)
     {
         var state = new SpyStateManager { UpdateStateReturnValue = updateStateReturns };
@@ -50,9 +51,8 @@ public class NexusPipeWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(state.LastUpdatedState,
-                Is.EqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete));
-            Assert.That(state.NotifyStateCalled, Is.EqualTo(updateStateReturns));
+            await Assert.That(state.LastUpdatedState).IsEqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete);
+            await Assert.That(state.NotifyStateCalled).IsEqualTo(updateStateReturns);
         }
     }
 
@@ -67,9 +67,9 @@ public class NexusPipeWriterTests
         var result = await writer.FlushAsync();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.IsCanceled, Is.False);
-            Assert.That(result.IsCompleted, Is.False);
-            Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero);
+            await Assert.That(result.IsCanceled).IsFalse();
+            await Assert.That(result.IsCompleted).IsFalse();
+            await Assert.That(messenger.SendHeaderWithBodyCount).IsZero();
         }
     }
 
@@ -89,11 +89,11 @@ public class NexusPipeWriterTests
         var result = await writer.FlushAsync();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.IsCanceled, Is.False);
-            Assert.That(result.IsCompleted, Is.False);
+            await Assert.That(result.IsCanceled).IsFalse();
+            await Assert.That(result.IsCompleted).IsFalse();
 
-            Assert.That(messenger.SendHeaderWithBodyCount, Is.EqualTo(1));
-            Assert.That(messenger.BodyLengths.Single(), Is.EqualTo(30));
+            await Assert.That(messenger.SendHeaderWithBodyCount).IsEqualTo(1);
+            await Assert.That(messenger.BodyLengths.Single()).IsEqualTo(30);
         }
     }
 
@@ -114,10 +114,11 @@ public class NexusPipeWriterTests
         var result = await writer.FlushAsync();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.IsCanceled, Is.False);
-            Assert.That(result.IsCompleted, Is.False);
+            await Assert.That(result.IsCanceled).IsFalse();
+            await Assert.That(result.IsCompleted).IsFalse();
 
-            Assert.That(messenger.SendHeaderWithBodyCount, Is.EqualTo(3));
+            await Assert.That(messenger.SendHeaderWithBodyCount).IsEqualTo(3);
+            // TODO: TUnit migration - Complex NUnit constraint. Manual conversion required.
             Assert.That(messenger.BodyLengths, Is.EqualTo(new[] { 5, 5, 2 }).AsCollection);
         }
     }
@@ -138,19 +139,19 @@ public class NexusPipeWriterTests
         writer.CancelPendingFlush();
 
         var result = await writer.FlushAsync();
-        Assert.That(result.IsCanceled, Is.True);
-        Assert.That(result.IsCompleted, Is.False);
+        await Assert.That(result.IsCanceled).IsTrue();
+        await Assert.That(result.IsCompleted).IsFalse();
         // No send should occur once canceled
-        Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero);
+        await Assert.That(messenger.SendHeaderWithBodyCount).IsZero();
     }
 
     [Test]
-    public void Dispose_DoesNotThrow()
+    public async Task Dispose_DoesNotThrow()
     {
         var state = new SpyStateManager();
         var messenger = new SpySessionMessenger();
         var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 64).WithCredit();
-        Assert.DoesNotThrow(() => writer.Dispose());
+        await Assert.That(() => writer.Dispose()).ThrowsNothing();
     }
 
     [Test]
@@ -167,10 +168,9 @@ public class NexusPipeWriterTests
         var result = await writer.FlushAsync();
 
         // exception should mark complete and notify state
-        Assert.That(result.IsCompleted, Is.True);
-        Assert.That(state.LastUpdatedState,
-            Is.EqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete));
-        Assert.That(state.NotifyStateCalled, Is.True);
+        await Assert.That(result.IsCompleted).IsTrue();
+        await Assert.That(state.LastUpdatedState).IsEqualTo(NexusDuplexPipe.State.ClientWriterServerReaderComplete);
+        await Assert.That(state.NotifyStateCalled).IsTrue();
     }
 
     [Test]
@@ -187,11 +187,11 @@ public class NexusPipeWriterTests
         var result = await writer.FlushAsync();
 
         // TaskCanceledException should break the loop but not mark complete
-        Assert.That(result.IsCanceled, Is.False, "Cancellation from messenger isn't tracked as _isCanceled");
-        Assert.That(result.IsCompleted, Is.False);
+        await Assert.That(result.IsCanceled).IsFalse().Because("Cancellation from messenger isn't tracked as _isCanceled");
+        await Assert.That(result.IsCompleted).IsFalse();
         // It should have attempted exactly one send before throwing
         // (we can't count here, but we know no NotifyState was called)
-        Assert.That(state.NotifyStateCalled, Is.False);
+        await Assert.That(state.NotifyStateCalled).IsFalse();
     }
 
     [Test]
@@ -212,9 +212,9 @@ public class NexusPipeWriterTests
 
         var result = await writer.FlushAsync(cts.Token);
 
-        Assert.That(result.IsCanceled, Is.True, "Should report canceled when token is already cancelled");
-        Assert.That(result.IsCompleted, Is.False);
-        Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero, "Should not send any data when immediately cancelled");
+        await Assert.That(result.IsCanceled).IsTrue().Because("Should report canceled when token is already cancelled");
+        await Assert.That(result.IsCompleted).IsFalse();
+        await Assert.That(messenger.SendHeaderWithBodyCount).IsZero().Because("Should not send any data when immediately cancelled");
     }
 
     [Test]
@@ -234,16 +234,16 @@ public class NexusPipeWriterTests
 
         // Give it a moment—no SendHeaderWithBody calls yet
         await Task.Delay(50);
-        Assert.That(messenger.SendHeaderWithBodyCount, Is.Zero, "Should not send without credit");
+        await Assert.That(messenger.SendHeaderWithBodyCount).IsZero().Because("Should not send without credit");
 
         // Now grant the peer's window
         writer.AddCredit(50);
 
         // Await completion and verify it sent exactly once
         var result = await flushTask;
-        Assert.That(result.IsCanceled, Is.False);
-        Assert.That(result.IsCompleted, Is.False);
-        Assert.That(messenger.SendHeaderWithBodyCount, Is.EqualTo(1));
+        await Assert.That(result.IsCanceled).IsFalse();
+        await Assert.That(result.IsCompleted).IsFalse();
+        await Assert.That(messenger.SendHeaderWithBodyCount).IsEqualTo(1);
     }
 
     // A minimal spy for ISessionMessenger

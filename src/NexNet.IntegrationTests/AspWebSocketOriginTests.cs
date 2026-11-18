@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.WebSockets;
 using NexNet.Asp.WebSocket;
 using NexNet.Transports;
-using NUnit.Framework;
+using System.Threading.Tasks;
 
 namespace NexNet.IntegrationTests;
 
@@ -19,7 +19,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.SetRequestHeader("Origin", AllowedOrigin);
         await socket.ConnectAsync(url, CancellationToken.None).Timeout(1);
 
-        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+        await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
     }
 
@@ -32,7 +32,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.SetRequestHeader("Origin", AllowedOrigin.ToUpperInvariant());
         await socket.ConnectAsync(url, CancellationToken.None).Timeout(1);
 
-        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+        await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
     }
 
@@ -46,7 +46,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.SetRequestHeader("Origin", "https://evil.example");
 
         await Assert.ThrowsAsync<WebSocketException>(() => socket.ConnectAsync(url, CancellationToken.None).Timeout(1));
-        Assert.That(socket.HttpStatusCode, Is.EqualTo(HttpStatusCode.Forbidden));
+        await Assert.That(socket.HttpStatusCode).IsEqualTo(HttpStatusCode.Forbidden);
     }
 
     [Test]
@@ -68,7 +68,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
     {
         var clientConfig = (HttpClientConfig)CreateClientConfig(Type.WebSocket);
         var serverConfig = (WebSocketServerConfig)CreateServerConfig(Type.WebSocket);
-        Assert.That(serverConfig.AllowedOrigins, Is.Empty);
+        await Assert.That(serverConfig.AllowedOrigins).IsEmpty();
 
         var server = CreateServer(serverConfig, null);
         await server.StartAsync().Timeout(1);
@@ -77,7 +77,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.SetRequestHeader("Origin", "https://any.example");
         await socket.ConnectAsync(clientConfig.Url, CancellationToken.None).Timeout(1);
 
-        Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+        await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
     }
 
