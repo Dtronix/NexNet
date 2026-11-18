@@ -556,6 +556,40 @@ internal class NexusServerTests_Authorization : BaseTests
     [TestCase(Type.Quic)]
     [TestCase(Type.WebSocket)]
     [TestCase(Type.HttpSocket)]
+    public async Task AuthorizedCollection_Unauthorized_EnableFailsFastAndSessionStaysUp(Type type)
+    {
+        var unprotectedInvoked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (server, client, _) = CreateAuthServerClient(type);
+
+        server.OnNexusCreated = nexus =>
+        {
+            nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
+            nexus.UnprotectedMethodHandler = _ =>
+            {
+                unprotectedInvoked.TrySetResult();
+                return ValueTask.CompletedTask;
+            };
+        };
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+
+        // The server refuses the collection's pipe: the connect fails at once instead of hanging.
+        await AssertThrows<NexusBusyException>(client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(1));
+
+        // The session stays up and usable.
+        await client.Proxy.UnprotectedMethod().Timeout(1);
+        await unprotectedInvoked.Task.Timeout(1);
+        Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(1), Is.True);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+    }
+
+    [TestCase(Type.Uds)]
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    [TestCase(Type.WebSocket)]
+    [TestCase(Type.HttpSocket)]
     public async Task UnprotectedCollection_NoAuthCheck(Type type)
     {
         var authCalled = false;
