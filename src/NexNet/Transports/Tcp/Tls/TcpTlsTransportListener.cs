@@ -12,7 +12,7 @@ internal class TcpTlsTransportListener : ITransportListener
     private readonly TcpTlsServerConfig _config;
     private readonly Socket _socket;
 
-    private TcpTlsTransportListener(TcpTlsServerConfig config, Socket socket)
+    internal TcpTlsTransportListener(TcpTlsServerConfig config, Socket socket)
     {
         _config = config;
         _socket = socket;
@@ -31,27 +31,48 @@ internal class TcpTlsTransportListener : ITransportListener
         return ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    /// Accepts the next connection and performs the TLS handshake. Returns null when the accept was canceled, when a
+    /// connection failed before it was accepted (reset or aborted by the peer), or when an accepted connection could
+    /// not be set up (including a failed or timed-out TLS handshake). Any other accept error means the listener itself
+    /// is unusable, and the original exception is rethrown so the server faults the endpoint.
+    /// </summary>
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        Socket clientSocket = null!;
+        Socket clientSocket;
         try
         {
             clientSocket = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
-            SocketTransport.SetNoDelay(clientSocket);
-
-            return await TcpTlsTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            // noop.
+            return null;
+        }
+        catch (SocketException e) when (SocketTransportListener.IsTransientAcceptError(e.SocketErrorCode))
+        {
+            _config.Logger?.LogWarning(e, $"Client connection failed during accept ({e.SocketErrorCode}); listener continues.");
+            return null;
+        }
+
+        try
+        {
+            SocketTransport.SetNoDelay(clientSocket);
+            return await TcpTlsTransport.CreateFromSocket(clientSocket, _config).ConfigureAwait(false);
         }
         catch (Exception e)
         {
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            clientSocket.LingerState = new LingerOption(true, 0);
-            clientSocket.Close(0);
+            try
+            {
+                clientSocket.LingerState = new LingerOption(true, 0);
+                clientSocket.Close(0);
+            }
+            catch (Exception closeException)
+            {
+                _config.Logger?.LogDebug(closeException, "Failed to close the rejected client socket.");
+            }
         }
 
         return null;

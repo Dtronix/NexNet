@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
+using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -215,6 +216,118 @@ internal class NexusServerTests_Lifecycle : BaseTests
         Assert.That(logger.Exceptions.OfType<InvalidOperationException>(), Is.Not.Empty,
             "The endpoint fault should log the original accept exception.");
         await server.DisposeAsync();
+    }
+
+    /// <summary>
+    /// TcpTls variant of <see cref="SocketListener_FatalAcceptError_RethrowsOriginalException"/>.
+    /// </summary>
+    [Test]
+    public async Task TcpTlsListener_FatalAcceptError_RethrowsOriginalException()
+    {
+        using var socket = CreateBoundNotListeningSocket();
+        var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await listener.CloseAsync(false);
+    }
+
+    [Test]
+    public async Task TcpTlsListener_ClosedSocket_DoesNotThrowNullReference()
+    {
+        var socket = CreateBoundNotListeningSocket();
+        var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
+        await listener.CloseAsync(false);
+
+        var exception = await Assert.CatchAsync(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        Assert.That(exception, Is.Not.InstanceOf<NullReferenceException>());
+    }
+
+    [Test]
+    public async Task TcpTlsListener_CanceledAccept_ReturnsNull()
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        socket.Listen();
+        var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
+
+        using var cts = new CancellationTokenSource(50);
+        var transport = await listener.AcceptTransportAsync(cts.Token).AsTask().Timeout(1);
+        Assert.That(transport, Is.Null);
+        await listener.CloseAsync(false);
+    }
+
+    /// <summary>
+    /// A connection that fails the TLS handshake (here: plain garbage instead of a ClientHello) is rejected and
+    /// the listener returns null instead of throwing.
+    /// </summary>
+    [Test]
+    public async Task TcpTlsListener_FailedHandshake_ReturnsNull()
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        socket.Listen();
+        var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
+
+        using var badClient = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        await badClient.ConnectAsync(socket.LocalEndPoint!).Timeout(1);
+        await badClient.SendAsync(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }).Timeout(1);
+
+        var transport = await listener.AcceptTransportAsync(CancellationToken.None).AsTask().Timeout(5);
+        Assert.That(transport, Is.Null);
+        await listener.CloseAsync(false);
+    }
+
+    /// <summary>
+    /// Clients that fail the handshake (a non-TLS client, or a client that rejects the server certificate) must not
+    /// stop the server, and a good client must still connect afterwards.
+    /// </summary>
+    [TestCase(Type.TcpTls)]
+    [TestCase(Type.Quic)]
+    public async Task FailedClientHandshake_DoesNotStopServer(Type type)
+    {
+        var logger = new ExceptionCapturingLogger();
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Logger = logger;
+        var server = CreateServer(serverConfig, null);
+        await server.StartAsync().Timeout(1);
+
+        if (type == Type.TcpTls)
+        {
+            // Plain bytes instead of a TLS ClientHello.
+            using var rawClient = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            await rawClient.ConnectAsync(((TcpTlsServerConfig)serverConfig).EndPoint).Timeout(1);
+            await rawClient.SendAsync(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }).Timeout(1);
+            var buffer = new byte[16];
+            // The server closes the connection once the handshake fails.
+            try
+            {
+                await rawClient.ReceiveAsync(buffer).Timeout(5);
+            }
+            catch (SocketException)
+            {
+                // Reset by the server: expected.
+            }
+        }
+
+        // A client that rejects the server certificate fails its handshake.
+        var badClientConfig = CreateClientConfig(type);
+        var sslOptions = type == Type.Quic
+            ? ((QuicClientConfig)badClientConfig).SslClientAuthenticationOptions
+            : ((TcpTlsClientConfig)badClientConfig).SslClientAuthenticationOptions;
+        sslOptions.RemoteCertificateValidationCallback = (_, _, _, _) => false;
+        var (badClient, _) = CreateClient(badClientConfig);
+        var badResult = await badClient.TryConnectAsync().Timeout(5);
+        Assert.That(badResult.Success, Is.False);
+
+        // Give the listener time to observe the failed handshake.
+        await Task.Delay(200);
+        Assert.That(server.State, Is.EqualTo(NexusServerState.Running));
+
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(5);
+        Assert.That(client.State, Is.EqualTo(ConnectionState.Connected));
+        Assert.That(server.State, Is.EqualTo(NexusServerState.Running));
+        Assert.That(logger.Exceptions.OfType<NullReferenceException>(), Is.Empty);
     }
 
     private static Socket CreateBoundNotListeningSocket()
