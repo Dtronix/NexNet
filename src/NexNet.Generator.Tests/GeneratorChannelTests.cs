@@ -1,11 +1,10 @@
-﻿using NUnit.Framework;
-
+﻿
 namespace NexNet.Generator.Tests;
 
 class GeneratorChannelTests
 {
     [Test]
-    public void GeneratesChannelOfNexusObjectStruct()
+    public async Task GeneratesChannelOfNexusObjectStruct()
     {
         // INexusDuplexUnmanagedChannel<T> was removed; struct channels use INexusDuplexChannel<T> with [NexusObject].
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
@@ -25,11 +24,11 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexChannel<Sample> pipe){ return default; }
   }
 ");
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void GeneratesChannel()
+    public async Task GeneratesChannel()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator(@"
 using NexNet;
@@ -45,11 +44,11 @@ partial class ServerNexus : IServerNexus {
   public ValueTask Update(INexusDuplexChannel <int> pipe){ return default; }
   }
 ");
-        Assert.That(diagnostic, Is.Empty);
+        await Assert.That(diagnostic).IsEmpty();
     }
 
     [Test]
-    public void MethodCanNotHaveMoreThanOneDuplexChannel()
+    public async Task MethodCanNotHaveMoreThanOneDuplexChannel()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -62,11 +61,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.TooManyPipes.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexChannelNotAllowedOnVoid()
+    public async Task NexusDuplexChannelNotAllowedOnVoid()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -79,11 +78,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeNotAllowedOnReturnTask()
+    public async Task NexusDuplexPipeNotAllowedOnReturnTask()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -96,11 +95,11 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 
     [Test]
-    public void NexusDuplexPipeNotAllowedOnMethodWithCancellationToken()
+    public async Task NexusDuplexPipeNotAllowedOnMethodWithCancellationToken()
     {
         var diagnostic = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -113,7 +112,6 @@ partial class ClientNexus : IClientNexus{ }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus : IServerNexus { }
 """);
-        Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id), Is.True);
+        await Assert.That(diagnostic.Any(d => d.Id == DiagnosticDescriptors.PipeOnVoidOrReturnTask.Id)).IsTrue();
     }
 }
-

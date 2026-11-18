@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
@@ -22,7 +21,7 @@ partial interface IAuthServerNexus
 """;
 
     [Test]
-    public void AuthorizeOnClientNexus_EmitsError()
+    public async Task AuthorizeOnClientNexus_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator($$"""
 using NexNet;
@@ -47,11 +46,11 @@ partial class ClientNexus
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus { }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeOnClientNexus.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeOnClientNexus.Id)).IsTrue();
     }
 
     [Test]
-    public void AuthorizeWithoutOnAuthorize_EmitsError()
+    public async Task AuthorizeWithoutOnAuthorize_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -68,11 +67,11 @@ partial class AuthServerNexus
     public ValueTask UnprotectedMethod() => ValueTask.CompletedTask;
 }
 """, minDiagnostic: DiagnosticSeverity.Warning);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id)).IsTrue();
     }
 
     [Test]
-    public void AuthorizeWithOnAuthorize_NoWarning()
+    public async Task AuthorizeWithOnAuthorize_NoWarning()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -94,11 +93,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """, minDiagnostic: DiagnosticSeverity.Warning);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id), Is.False);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id)).IsFalse();
     }
 
     [Test]
-    public void MixedPermissionEnums_EmitsError()
+    public async Task MixedPermissionEnums_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -128,11 +127,11 @@ partial class ServerNexus
     public ValueTask MethodB() => ValueTask.CompletedTask;
 }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id)).IsTrue();
     }
 
     [Test]
-    public void NoAuthorize_NoDiagnostics()
+    public async Task NoAuthorize_NoDiagnostics()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -147,14 +146,14 @@ partial class AuthServerNexus
     public ValueTask UnprotectedMethod() => ValueTask.CompletedTask;
 }
 """, minDiagnostic: DiagnosticSeverity.Warning);
-        Assert.That(diagnostics.Any(d =>
+        await Assert.That(diagnostics.Any(d =>
             d.Id == DiagnosticDescriptors.AuthorizeOnClientNexus.Id ||
             d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id ||
-            d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id), Is.False);
+            d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id)).IsFalse();
     }
 
     [Test]
-    public void AuthorizedMethod_GeneratesSuccessfully()
+    public async Task AuthorizedMethod_GeneratesSuccessfully()
     {
         // Verify the generator produces compilable code with auth guards
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
@@ -180,11 +179,11 @@ partial class AuthServerNexus
 }
 """);
         // No errors means generated code compiled successfully
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void MarkerOnlyAuthorize_GeneratesSuccessfully()
+    public async Task MarkerOnlyAuthorize_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -206,11 +205,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void MultiplePermissions_GeneratesSuccessfully()
+    public async Task MultiplePermissions_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -232,11 +231,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void AuthorizeWithCacheDuration_GeneratesSuccessfully()
+    public async Task AuthorizeWithCacheDuration_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -258,11 +257,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void AuthorizeWithCacheDurationZero_GeneratesSuccessfully()
+    public async Task AuthorizeWithCacheDurationZero_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -284,11 +283,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void AuthorizeOnCollection_GeneratesSuccessfully()
+    public async Task AuthorizeOnCollection_GeneratesSuccessfully()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -319,11 +318,11 @@ partial class ServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void AuthorizeOnClientCollection_EmitsError()
+    public async Task AuthorizeOnClientCollection_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -360,11 +359,11 @@ partial class ServerNexus { }
         // For a true client nexus auth error, we'd need auth on the client interface,
         // but collections can't be on client anyway (NEXNET020).
         // This test verifies that collection auth on server without OnAuthorize triggers NEXNET025.
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id)).IsTrue();
     }
 
     [Test]
-    public void CollectionAndMethodMixedEnums_EmitsError()
+    public async Task CollectionAndMethodMixedEnums_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -396,11 +395,11 @@ partial class ServerNexus
     public ValueTask MethodA() => ValueTask.CompletedTask;
 }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.MixedPermissionEnumTypes.Id)).IsTrue();
     }
 
     [Test]
-    public void AuthorizeWithLongEnum_EmitsError()
+    public async Task AuthorizeWithLongEnum_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -430,11 +429,11 @@ partial class ServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id)).IsTrue();
     }
 
     [Test]
-    public void AuthorizeWithByteEnum_EmitsError()
+    public async Task AuthorizeWithByteEnum_EmitsError()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -464,11 +463,11 @@ partial class ServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id)).IsTrue();
     }
 
     [Test]
-    public void AuthorizeWithIntEnum_NoDiagnostic()
+    public async Task AuthorizeWithIntEnum_NoDiagnostic()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator(AuthPreamble + """
 
@@ -490,11 +489,11 @@ partial class AuthServerNexus
         => new(AuthorizeResult.Allowed);
 }
 """);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id), Is.False);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeEnumUnderlyingTypeIncompatible.Id)).IsFalse();
     }
 
     [Test]
-    public void AuthorizeOnCollection_WithoutOnAuthorize_EmitsWarning()
+    public async Task AuthorizeOnCollection_WithoutOnAuthorize_EmitsWarning()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -519,6 +518,6 @@ partial class ClientNexus { }
 [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server)]
 partial class ServerNexus { }
 """, minDiagnostic: DiagnosticSeverity.Warning);
-        Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id), Is.True);
+        await Assert.That(diagnostics.Any(d => d.Id == DiagnosticDescriptors.AuthorizeWithoutOnAuthorize.Id)).IsTrue();
     }
 }

@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
-using NUnit.Framework;
+using TUnit.Assertions.Enums;
 
 namespace NexNet.Generator.Tests;
 
@@ -14,7 +14,7 @@ class GeneratorSeparatePoolTests
     private const string SeparatePoolOnPipeMethodId = "NEXNET039";
 
     [Test]
-    public void SeparatePool_OnPlainMethod_CompilesWithoutDiagnostics()
+    public async Task SeparatePool_OnPlainMethod_CompilesWithoutDiagnostics()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -42,11 +42,11 @@ partial class ServerNexus : IServerNexus
 }
 """, minDiagnostic: DiagnosticSeverity.Warning);
 
-        Assert.That(diagnostics, Is.Empty, string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
+        await Assert.That(diagnostics).IsEmpty().Because(string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
     }
 
     [Test]
-    public void SeparatePool_OnPipeMethod_ReportsWarning()
+    public async Task SeparatePool_OnPipeMethod_ReportsWarning()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -69,14 +69,14 @@ partial class ServerNexus : IServerNexus
 """, minDiagnostic: DiagnosticSeverity.Warning);
 
         var warning = diagnostics.Where(d => d.Id == SeparatePoolOnPipeMethodId).ToArray();
-        Assert.That(warning, Has.Length.EqualTo(1), string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
-        Assert.That(warning[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning));
-        Assert.That(warning[0].GetMessage(), Does.Contain("Update"));
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(warning.Length).IsEqualTo(1).Because(string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
+        await Assert.That(warning[0].Severity).IsEqualTo(DiagnosticSeverity.Warning);
+        await Assert.That(warning[0].GetMessage()).Contains("Update");
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void SeparatePool_OnChannelMethod_ReportsWarning()
+    public async Task SeparatePool_OnChannelMethod_ReportsWarning()
     {
         var diagnostics = CSharpGeneratorRunner.RunGenerator("""
 using NexNet;
@@ -99,14 +99,14 @@ partial class ServerNexus : IServerNexus
 """, minDiagnostic: DiagnosticSeverity.Warning);
 
         var warning = diagnostics.Where(d => d.Id == SeparatePoolOnPipeMethodId).ToArray();
-        Assert.That(warning, Has.Length.EqualTo(1), string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
-        Assert.That(warning[0].Severity, Is.EqualTo(DiagnosticSeverity.Warning));
-        Assert.That(warning[0].GetMessage(), Does.Contain("Stream"));
-        Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
+        await Assert.That(warning.Length).IsEqualTo(1).Because(string.Join(Environment.NewLine, diagnostics.Select(d => d.ToString())));
+        await Assert.That(warning[0].Severity).IsEqualTo(DiagnosticSeverity.Warning);
+        await Assert.That(warning[0].GetMessage()).Contains("Stream");
+        await Assert.That(diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)).IsEmpty();
     }
 
     [Test]
-    public void SeparatePool_DoesNotChangeMethodHash()
+    public async Task SeparatePool_DoesNotChangeMethodHash()
     {
         const string template = """
 using NexNet;
@@ -129,23 +129,23 @@ partial class ServerNexus : IServerNexus
 }
 """;
 
-        var plain = ServerNexusHash(template.Replace("ATTRIBUTE", ""));
-        var separate = ServerNexusHash(template.Replace("ATTRIBUTE", "[NexusMethod(SeparatePool = true)]"));
-        var explicitFalse = ServerNexusHash(template.Replace("ATTRIBUTE", "[NexusMethod(SeparatePool = false)]"));
+        var plain = await ServerNexusHash(template.Replace("ATTRIBUTE", ""));
+        var separate = await ServerNexusHash(template.Replace("ATTRIBUTE", "[NexusMethod(SeparatePool = true)]"));
+        var explicitFalse = await ServerNexusHash(template.Replace("ATTRIBUTE", "[NexusMethod(SeparatePool = false)]"));
 
-        Assert.That(separate, Is.EqualTo(plain));
-        Assert.That(explicitFalse, Is.EqualTo(plain));
+        await Assert.That(separate).IsEquivalentTo(plain, CollectionOrdering.Matching);
+        await Assert.That(explicitFalse).IsEquivalentTo(plain, CollectionOrdering.Matching);
     }
 
     /// <summary>
     /// The MethodHash values the generator emits in ServerNexus's file (the nexus's and its proxy's), sorted; asserts
     /// the source compiles.
     /// </summary>
-    private static int[] ServerNexusHash(string source)
+    private static async Task<int[]> ServerNexusHash(string source)
     {
         var compilation = CSharpGeneratorRunner.CreateCompilation(source);
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
-        Assert.That(errors, Is.Empty, string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
+        await Assert.That(errors).IsEmpty().Because(string.Join(Environment.NewLine, errors.Select(d => d.ToString())));
 
         var hashes = result.GeneratedTrees
             .Select(t => t.ToString())
@@ -156,7 +156,7 @@ partial class ServerNexus : IServerNexus
             .OrderBy(h => h)
             .ToArray();
 
-        Assert.That(hashes, Is.Not.Empty, "No MethodHash found in the generated ServerNexus.");
+        await Assert.That(hashes).IsNotEmpty().Because("No MethodHash found in the generated ServerNexus.");
         return hashes;
     }
 }

@@ -312,6 +312,14 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor DuplicateMethodName = new(
+        id: "NEXNET042",
+        title: "Duplicate nexus method name",
+        messageFormat: "Nexus interface '{0}' declares more than one method named '{1}'; method names must be unique across the interface and its inherited interfaces",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static DiagnosticDescriptor? FindSerializationDescriptor(string id) => id switch
     {
         "NEXNET028" => TypeNotSerializable,
