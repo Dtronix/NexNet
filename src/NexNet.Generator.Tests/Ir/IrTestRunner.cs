@@ -8,7 +8,6 @@ using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
 using NexNet.Generator.Serialization;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests.Ir;
 
@@ -31,8 +30,9 @@ internal static class IrTestRunner
         CSharpGeneratorDriver.Create(new[] { generator.AsSourceGenerator() }, parseOptions: parseOptions)
             .RunGenerators(compilation);
 
-        Assert.That(generator.Ir, Is.Not.Null, "The capture generator produced no IR.");
-        return new IrRun(generator.Ir!, generator.Data, compilation);
+        if (generator.Ir is null)
+            throw new InvalidOperationException("The capture generator produced no IR.");
+        return new IrRun(generator.Ir, generator.Data, compilation);
     }
 
     /// <summary>Generated C# sources of the real generator, by hint name.</summary>
@@ -96,7 +96,7 @@ internal static class IrTestRunner
 /// <summary>JSON snapshots stored beside this file in <c>Snapshots/</c>. Set NEXNET_UPDATE_SNAPSHOTS=1 to rewrite them.</summary>
 internal static class IrSnapshots
 {
-    public static void Verify(string name, string actual)
+    public static async Task Verify(string name, string actual)
     {
         var path = Path.Combine(Directory(), name + ".json");
         actual = actual.Replace("\r\n", "\n");
@@ -107,10 +107,9 @@ internal static class IrSnapshots
             return;
         }
 
-        Assert.That(File.Exists(path), Is.True, $"Missing snapshot {path}. Run the tests with NEXNET_UPDATE_SNAPSHOTS=1 to create it.");
+        await Assert.That(File.Exists(path)).IsTrue().Because($"Missing snapshot {path}. Run the tests with NEXNET_UPDATE_SNAPSHOTS=1 to create it.");
         var expected = File.ReadAllText(path).Replace("\r\n", "\n");
-        Assert.That(actual, Is.EqualTo(expected),
-            $"IR snapshot '{name}' changed. Review the difference; if intended, rerun with NEXNET_UPDATE_SNAPSHOTS=1.");
+        await Assert.That(actual).IsEqualTo(expected).Because($"IR snapshot '{name}' changed. Review the difference; if intended, rerun with NEXNET_UPDATE_SNAPSHOTS=1.");
     }
 
     private static string Directory([CallerFilePath] string path = "")
