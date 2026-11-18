@@ -30,5 +30,7 @@
   href: metrics.md
 - name: Benchmarks
   href: benchmarks.md
+- name: Contributing (Java & JS)
+  href: contributing-multilang.md
 - name: Release Notes
   href: releases/toc.yml
