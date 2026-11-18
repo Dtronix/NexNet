@@ -126,6 +126,16 @@ streamed (§6). The `invocationId` of an IgnoreReturn invocation has no meaning 
 invocations until the stream has been sent. A receiver must not use the ID of an IgnoreReturn invocation to identify
 it; nothing can cancel such an invocation except the session ending.
 
+**Method ID validation.** A receiver accepts an `Invocation` only if `methodId` is a method or collection of its own
+nexus in the negotiated version: on the server, the version selected by the greeting (§5.2); on the client, its
+client nexus. Any other `methodId` disconnects with `ProtocolError`. The check runs before the invocation credit is
+counted (§8); a streamed invocation is checked once it has been reassembled. The C# implementation looks up the
+int64 key `(versionHash << 16) | methodId` in a generated set, where `versionHash` is the negotiated version's
+nexus hash. Another implementation may keep any equivalent set of the method IDs it implements.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `Invocation` case), `VMHash` and
+`VersionMethodHashSet` in `src/NexNet.Generator/Emission/NexusEmitter.cs`.
+
 ### 4.4 InvocationResult
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`
 - With a result, which may itself be nil: `[invocationId: uint16, state: uint8, result: embedded value]`
@@ -150,6 +160,32 @@ with its cancellation token already canceled. The receiver still sends its resul
 stopped. A cancellation for an invocation that has already completed is ignored. The canceling side keeps the invocation ID outstanding until that result arrives, so the result is not a
 protocol error and the ID is not reused before it.
 
+#### Caller-side cancellation
+
+A caller may cancel an invocation that expects a result (no IgnoreReturn). What happens depends on whether the
+invocation has been sent:
+
+- **Canceled before it is sent.** This covers a token that is already canceled and a cancel while the call waits for
+  invocation credit (§8). Nothing is sent, no invocation ID stays reserved, and the call completes as canceled.
+- **Canceled after it is sent** (or while it is being written). The caller completes the call as canceled at once,
+  without waiting for the peer, and sends `InvocationCancellation`. It keeps the invocation ID outstanding until the
+  peer's `InvocationResult` arrives. That late result, whatever its state, is consumed and discarded, which then
+  releases the ID. It is not a protocol error.
+- **Canceled while a large argument is streaming** (§6). The caller stops, sends `MessageAbort(Cancelled)`, and
+  completes the call like a call canceled before it was sent. The method never runs, so no result follows.
+- **Session ends.** Every call still waiting completes as canceled.
+
+IgnoreReturn invocations can't be canceled.
+
+**Current C# behavior:** for the first case, the C# client returns without a result: a `ValueTask` method returns
+normally and a `ValueTask<T>` method returns `default`. The same applies to the large-argument case. Unit F03
+changes the C# client to throw `TaskCanceledException`, which is the required behavior for other clients (Java:
+`CancellationException`; JavaScript: `AbortError`). Neither case puts anything on the wire, so the difference is
+not visible to the peer.
+
+Source: `src/NexNet/Invocation/SessionInvocationStateManager.cs` (`InvokeMethodWithResultCore`,
+`CancelInvocation`, `UpdateInvocationResult`), `src/NexNet/Internals/RegisteredInvocationState.cs`.
+
 ### 4.6 DuplexPipeUpdateState
 `[pipeId: uint16, state: uint8, window: uint32]`
 
@@ -167,7 +203,8 @@ protocol error and the ID is not reused before it.
 ### 4.7 InvocationCredit
 `[credits: uint16]`
 
-Returns `credits` invocation credits to the peer (§8).
+Returns `credits` invocation credits to the peer (§8). `credits` is at least 1; `InvocationCredit[0]` disconnects
+with `FlowControl`.
 
 ### 4.8 MessageStart
 `[invocationId: uint16, kind: uint8, innerType: uint8, totalLength: uint32]`
@@ -469,8 +506,8 @@ Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe
   `MessageStart`) and waits locally when it has none.
 - The receiver returns credit when it dequeues an invocation for execution (or drops a refused streamed argument),
   in `InvocationCredit` messages sent once half its advertised credits are pending.
-- An invocation received without credit, or credit returned beyond what was advertised, disconnects with
-  `FlowControl`.
+- An invocation received without credit, an `InvocationCredit` whose `credits` is 0, or credit returned beyond
+  what was advertised, disconnects with `FlowControl`.
 - How many invocations run at once (`MaxConcurrentConnectionInvocations`) is local and not advertised; pipe and
   collection methods stop counting against it once their pipe is open.
 
