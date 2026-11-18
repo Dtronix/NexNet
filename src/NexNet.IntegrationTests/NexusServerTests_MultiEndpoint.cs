@@ -10,6 +10,7 @@ using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Metrics;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Messages;
+using NexNet.Quic;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 using NexNet.Transports.Uds;
@@ -473,6 +474,42 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         var unconfigured = new NexusServer<ServerNexus, ServerNexus.ClientProxy>();
         Assert.Throws<InvalidOperationException>(() => unconfigured.AddListener(
             new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "tcp"));
+    }
+
+    [Test]
+    public void AddEndpoint_QuicValidationAndAddress()
+    {
+        var multi = CreateMultiEndpointServer(Type.Tcp);
+        var server = multi.Server;
+        var udpPort = FreeUdpPort();
+        var quic = new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, udpPort) };
+        server.AddListener(quic, "quic");
+
+        Assert.Multiple(() =>
+        {
+            // Same UDP port, on a wildcard address.
+            var conflict = Assert.Throws<InvalidOperationException>(() => server.AddListener(
+                new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.IPv6Any, udpPort) }, "quic2"));
+            Assert.That(conflict!.Message, Does.Contain("'quic'").And.Contain("UDP"));
+            // Same UDP port and address.
+            Assert.Throws<InvalidOperationException>(() => server.AddListener(
+                new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, udpPort) }, "quic3"));
+        });
+
+        // A TCP listener on the same port number is a different socket; another UDP port is free.
+        server.AddListener(new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, udpPort) }, "tcp-same-number");
+        var otherPort = FreeUdpPort();
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, otherPort) }, "quic-other");
+        // Port 0 binds an ephemeral port and never conflicts.
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0) }, "quic-any1");
+        server.AddListener(new QuicServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 0) }, "quic-any2");
+
+        var endpoints = server.GetSnapshot().Endpoints;
+        Assert.That(endpoints.Select(e => e.Name),
+            Is.EqualTo(new[] { "tcp", "quic", "tcp-same-number", "quic-other", "quic-any1", "quic-any2" }));
+        Assert.That(endpoints[1].Address, Is.EqualTo($"127.0.0.1:{udpPort}"));
+        Assert.That(endpoints[3].Address, Is.EqualTo($"127.0.0.1:{otherPort}"));
+        Assert.That(server.Endpoints[1], Is.EqualTo(new NexusEndpointInfo("quic", "quic", true, null)));
     }
 
     [Test]
