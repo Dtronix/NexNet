@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NexNet.Generator.Ir;
-using NUnit.Framework;
+using TUnit.Assertions.Enums;
 
 namespace NexNet.Generator.Tests.Ir;
 
@@ -30,10 +30,12 @@ public class IrOptInTests
         compilation = compilation.AddSyntaxTrees(sources.Skip(1).Select((s, i) => CSharpSyntaxTree.ParseText(s, parseOptions, path: $"Source{i + 1}.cs")));
 
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
-        Assert.That(result.Results.Select(r => r.Exception), Is.All.Null, "The generator threw.");
+        if (result.Results.FirstOrDefault(r => r.Exception != null).Exception is { } exception)
+            throw new InvalidOperationException("The generator threw.", exception);
 
         var steps = result.Results.Single().TrackedSteps;
-        Assert.That(steps.ContainsKey(NexusGenerator.IrTrackingName), Is.True, "The IR step did not run.");
+        if (!steps.ContainsKey(NexusGenerator.IrTrackingName))
+            throw new InvalidOperationException("The IR step did not run.");
         var ir = (NexusIr?)steps[NexusGenerator.IrTrackingName].Single().Outputs.Single().Value;
 
         // Only the generator's diagnostics: the fixture classes do not implement their interfaces.
@@ -47,9 +49,13 @@ public class IrOptInTests
 
     private static ExportIr Export(NexusIr? ir, string name)
     {
-        Assert.That(ir, Is.Not.Null, "No IR was produced.");
-        return ir!.Exports.FirstOrDefault(e => e.Name == name) ?? throw new AssertionException($"Export '{name}' not found.");
+        if (ir is null)
+            throw new InvalidOperationException("No IR was produced.");
+        return ir.Exports.FirstOrDefault(e => e.Name == name) ?? throw new InvalidOperationException($"Export '{name}' not found.");
     }
+
+    private static string[] Sorted(Dictionary<string, string> sources)
+        => sources.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => p.Key + "\n" + p.Value).ToArray();
 
     /// <summary>The JSON of an export without the fields that depend on how it was declared.</summary>
     private static string Shape(ExportIr export) => IrJson.WriteExport(export with { Name = "", Targets = 0, Docs = null });
@@ -73,62 +79,62 @@ public class IrOptInTests
     // ------------------------------------------------------------------ no targets
 
     [Test]
-    public void NoTargets_ProducesNoIrAndTheSameCSharp()
+    public async Task NoTargets_ProducesNoIrAndTheSameCSharp()
     {
         var plain = Run(Nexuses.Replace("{TARGETS}", ""));
-        Assert.That(plain.Ir, Is.Null);
-        Assert.That(plain.Errors, Is.Empty);
+        await Assert.That(plain.Ir).IsNull();
+        await Assert.That(plain.Errors).IsEmpty();
 
         // Opting in changes nothing in the C# output.
         var optedIn = Run(Nexuses.Replace("{TARGETS}", ", Targets = NexusTargets.Java"));
-        Assert.That(optedIn.Errors, Is.Empty);
-        Assert.That(optedIn.Sources, Is.EquivalentTo(plain.Sources));
+        await Assert.That(optedIn.Errors).IsEmpty();
+        await Assert.That(Sorted(optedIn.Sources)).IsEquivalentTo(Sorted(plain.Sources), CollectionOrdering.Matching);
     }
 
     [Test]
-    public void ExportWithTargetsNone_ProducesNoIr()
+    public async Task ExportWithTargetsNone_ProducesNoIr()
     {
         var run = Run(
             Nexuses.Replace("{TARGETS}", ", Targets = NexusTargets.None"),
             Usings + "[assembly: NexusClientExport<Demo.IServerNexus, Demo.IClientNexus>(Targets = NexusTargets.None)]\n");
-        Assert.That(run.Ir, Is.Null);
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Ir).IsNull();
+        await Assert.That(run.Errors).IsEmpty();
     }
 
     [Test]
-    public void TargetFormatterAlone_ProducesNoIr()
+    public async Task TargetFormatterAlone_ProducesNoIr()
     {
         var run = Run(Nexuses.Replace("{TARGETS}", ""),
             Usings + "[assembly: NexusTargetFormatter<Uri>(NexusTargets.Java, \"com.example.UriFormatter\")]\n");
-        Assert.That(run.Ir, Is.Null);
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Ir).IsNull();
+        await Assert.That(run.Errors).IsEmpty();
     }
 
     // ------------------------------------------------------------------ [Nexus(Targets)]
 
     [Test]
-    public void ServerNexusWithTargets_IsExported()
+    public async Task ServerNexusWithTargets_IsExported()
     {
         var source = Nexuses.Replace("{TARGETS}", ", Targets = NexusTargets.Java | NexusTargets.JavaScript");
         var run = Run(source);
-        Assert.That(run.Errors, Is.Empty);
-        Assert.That(run.Ir!.IrVersion, Is.EqualTo(NexusIr.CurrentVersion));
+        await Assert.That(run.Errors).IsEmpty();
+        await Assert.That(run.Ir!.IrVersion).IsEqualTo(NexusIr.CurrentVersion);
 
         // Only the opted-in server nexus is an export; the client nexus is not.
-        Assert.That(run.Ir.Exports.Select(e => e.Name), Is.EqualTo(new[] { "ServerNexus" }));
+        await Assert.That(run.Ir.Exports.Select(e => e.Name).ToArray()).IsEquivalentTo(new[] { "ServerNexus" }, CollectionOrdering.Matching);
         var export = Export(run.Ir, "ServerNexus");
-        Assert.That(export.Targets, Is.EqualTo(3));
-        Assert.That(export.ClrNamespace, Is.EqualTo("Demo"));
-        Assert.That(export.ServerApi.ClrName, Is.EqualTo("Demo.IServerNexus"));
-        Assert.That(export.ClientApi.ClrName, Is.EqualTo("Demo.IClientNexus"));
+        await Assert.That(export.Targets).IsEqualTo(3);
+        await Assert.That(export.ClrNamespace).IsEqualTo("Demo");
+        await Assert.That(export.ServerApi.ClrName).IsEqualTo("Demo.IServerNexus");
+        await Assert.That(export.ClientApi.ClrName).IsEqualTo("Demo.IClientNexus");
 
         // Identical to the G01 build of the same class.
         var g01 = IrTestRunner.Run(source).Ir.Exports.Single(e => e.Name == "ServerNexus");
-        Assert.That(IrJson.WriteExport(export), Is.EqualTo(IrJson.WriteExport(g01 with { Targets = 3 })));
+        await Assert.That(IrJson.WriteExport(export)).IsEqualTo(IrJson.WriteExport(g01 with { Targets = 3 }));
     }
 
     [Test]
-    public void IrIncludesNexusObjectAndAssemblyDeclaredTypes()
+    public async Task IrIncludesNexusObjectAndAssemblyDeclaredTypes()
     {
         var run = Run(Usings + """
             [assembly: NexusSerializable<Demo.RuntimeOnly>]
@@ -143,53 +149,53 @@ public class IrOptInTests
             [Nexus<IServerNexus, IClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.JavaScript)]
             public partial class ServerNexus { }
             """);
-        Assert.That(run.Errors, Is.Empty);
-        Assert.That(run.Ir!.Types.Select(t => t.Id), Is.EquivalentTo(new[] { "Demo.RuntimeOnly", "Demo.Unreferenced" }));
+        await Assert.That(run.Errors).IsEmpty();
+        await Assert.That(run.Ir!.Types.Select(t => t.Id).ToArray()).IsEquivalentTo(new[] { "Demo.RuntimeOnly", "Demo.Unreferenced" });
     }
 
     // ------------------------------------------------------------------ [assembly: NexusClientExport]
 
     [Test]
-    public void ClientExport_OfAVersionedV1Interface_MatchesTheCSharpClient()
+    public async Task ClientExport_OfAVersionedV1Interface_MatchesTheCSharpClient()
     {
         var run = Run(IrFixtures.Versioned,
             Usings + """
                 [assembly: NexusClientExport<NexNet.IntegrationTests.TestInterfaces.IVersionedServerNexusV1,
                     NexNet.IntegrationTests.TestInterfaces.ISimpleClientNexus>(Targets = NexusTargets.JavaScript)]
                 """);
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Errors).IsEmpty();
 
         // Default name: the server interface without its leading I. No [Nexus] class opted in.
-        Assert.That(run.Ir!.Exports.Select(e => e.Name), Is.EqualTo(new[] { "VersionedServerNexusV1" }));
+        await Assert.That(run.Ir!.Exports.Select(e => e.Name).ToArray()).IsEquivalentTo(new[] { "VersionedServerNexusV1" }, CollectionOrdering.Matching);
         var export = Export(run.Ir, "VersionedServerNexusV1");
-        Assert.That(export.Targets, Is.EqualTo(2));
-        Assert.That(export.ClrNamespace, Is.EqualTo("NexNet.IntegrationTests.TestInterfaces"));
-        Assert.That(export.Handshake.Version, Is.EqualTo("v1.0"));
-        Assert.That(export.Handshake.ServerNexusHash, Is.EqualTo(-326045431));
-        Assert.That(export.Location, Is.Not.Null);
+        await Assert.That(export.Targets).IsEqualTo(2);
+        await Assert.That(export.ClrNamespace).IsEqualTo("NexNet.IntegrationTests.TestInterfaces");
+        await Assert.That(export.Handshake.Version).IsEqualTo("v1.0");
+        await Assert.That(export.Handshake.ServerNexusHash).IsEqualTo(-326045431);
+        await Assert.That(export.Location).IsNotNull();
 
         // The same ids, hashes and handshake as the C# client nexus of that version.
         var csharpClient = IrTestRunner.Run(IrFixtures.Versioned).Ir.Exports.Single(e => e.Name == "VersionedClientNexusV1");
-        Assert.That(Shape(export), Is.EqualTo(Shape(csharpClient)));
+        await Assert.That(Shape(export)).IsEqualTo(Shape(csharpClient));
     }
 
     [Test]
-    public void ClientExport_UsesTheGivenName_AndMergesWithClassExports()
+    public async Task ClientExport_UsesTheGivenName_AndMergesWithClassExports()
     {
         var run = Run(
             Nexuses.Replace("{TARGETS}", ", Targets = NexusTargets.Java"),
             Usings + "[assembly: NexusClientExport<Demo.IServerNexus, Demo.IClientNexus>(Targets = NexusTargets.JavaScript, Name = \"AdderClient\")]\n");
-        Assert.That(run.Errors, Is.Empty);
-        Assert.That(run.Ir!.Exports.Select(e => e.Name), Is.EqualTo(new[] { "AdderClient", "ServerNexus" }));
-        Assert.That(Export(run.Ir, "AdderClient").Targets, Is.EqualTo(2));
-        Assert.That(Export(run.Ir, "ServerNexus").Targets, Is.EqualTo(1));
+        await Assert.That(run.Errors).IsEmpty();
+        await Assert.That(run.Ir!.Exports.Select(e => e.Name).ToArray()).IsEquivalentTo(new[] { "AdderClient", "ServerNexus" }, CollectionOrdering.Matching);
+        await Assert.That(Export(run.Ir, "AdderClient").Targets).IsEqualTo(2);
+        await Assert.That(Export(run.Ir, "ServerNexus").Targets).IsEqualTo(1);
 
         // A class-less export does not know the server's [NexusAuthorize]; otherwise the APIs are the same.
-        Assert.That(Shape(Export(run.Ir, "AdderClient")), Is.EqualTo(Shape(Export(run.Ir, "ServerNexus"))));
+        await Assert.That(Shape(Export(run.Ir, "AdderClient"))).IsEqualTo(Shape(Export(run.Ir, "ServerNexus")));
     }
 
     [Test]
-    public void ClientExport_WithDuplicateMethodNames_ReportsNexnet042AndIsNotExported()
+    public async Task ClientExport_WithDuplicateMethodNames_ReportsNexnet042AndIsNotExported()
     {
         var run = Run(Usings + """
             [assembly: NexusClientExport<Demo.IServerApi, Demo.IClientApi>(Targets = NexusTargets.Java)]
@@ -198,9 +204,9 @@ public class IrOptInTests
             public partial interface IServerApi { void Update(int a); void Update(string a); }
             """);
         var dup = WithId(run.Errors, DiagnosticDescriptors.DuplicateMethodName);
-        Assert.That(dup, Has.Length.EqualTo(1));
-        Assert.That(dup[0].GetMessage(), Does.Contain("'IServerApi'").And.Contain("'Update'"));
-        Assert.That(run.Ir, Is.Null);
+        await Assert.That(dup.Length).IsEqualTo(1);
+        await Assert.That(dup[0].GetMessage()).Contains("'IServerApi'").And.Contains("'Update'");
+        await Assert.That(run.Ir).IsNull();
     }
 
     // ------------------------------------------------------------------ [assembly: NexusTargetFormatter]
@@ -231,13 +237,13 @@ public class IrOptInTests
         """;
 
     [Test]
-    public void TargetFormatterMappings_LandOnExternalRefs()
+    public async Task TargetFormatterMappings_LandOnExternalRefs()
     {
         var run = Run(MoneyNexus.Replace("{MAPPINGS}", """
             [assembly: NexusTargetFormatter<Demo.Money>(NexusTargets.JavaScript, "./money.js#MoneyFormatter")]
             [assembly: NexusTargetFormatter<Demo.Money>(NexusTargets.Java, "com.example.MoneyFormatter")]
             """));
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Errors).IsEmpty();
 
         var expected = new[]
         {
@@ -246,52 +252,52 @@ public class IrOptInTests
         };
 
         var convert = Export(run.Ir, "ServerNexus").ServerApi.Methods.Single(m => m.Name == "Convert");
-        Assert.That(convert.ReturnType!.Kind, Is.EqualTo(TypeRefKind.External));
-        Assert.That(convert.ReturnType.Clr, Is.EqualTo("Demo.Money"));
-        Assert.That(convert.ReturnType.NativeFormatters, Is.EqualTo(expected));
-        Assert.That(convert.Params[0].Type!.NativeFormatters, Is.EqualTo(expected));
+        await Assert.That(convert.ReturnType!.Kind).IsEqualTo(TypeRefKind.External);
+        await Assert.That(convert.ReturnType.Clr).IsEqualTo("Demo.Money");
+        await Assert.That(convert.ReturnType.NativeFormatters.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching);
+        await Assert.That(convert.Params[0].Type!.NativeFormatters.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching);
 
         // Nested references inside declarations are mapped too.
         var wallet = (ObjectDeclIr)run.Ir!.Types.Single(t => t.Id == "Demo.Wallet");
         var coins = wallet.Members.Single(m => m.Name == "Coins").Type;
-        Assert.That(coins.Kind, Is.EqualTo(TypeRefKind.Seq));
-        Assert.That(coins.Args[0].NativeFormatters, Is.EqualTo(expected));
+        await Assert.That(coins.Kind).IsEqualTo(TypeRefKind.Seq);
+        await Assert.That(coins.Args[0].NativeFormatters.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching);
 
         // The mapping is part of the JSON and reads back.
         var json = IrJson.Write(run.Ir);
-        Assert.That(json, Does.Contain("\"nativeFormatters\""));
-        Assert.That(IrJson.Write(IrJson.Read(json)), Is.EqualTo(json));
+        await Assert.That(json).Contains("\"nativeFormatters\"");
+        await Assert.That(IrJson.Write(IrJson.Read(json))).IsEqualTo(json);
     }
 
     [Test]
-    public void TargetFormatterWithCombinedTargets_MapsEachTarget()
+    public async Task TargetFormatterWithCombinedTargets_MapsEachTarget()
     {
         var run = Run(MoneyNexus.Replace("{MAPPINGS}",
             "[assembly: NexusTargetFormatter<Demo.Money>(NexusTargets.Java | NexusTargets.JavaScript, \"x.MoneyFormatter\")]"));
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Errors).IsEmpty();
         var convert = Export(run.Ir, "ServerNexus").ServerApi.Methods.Single(m => m.Name == "Convert");
-        Assert.That(convert.ReturnType!.NativeFormatters, Is.EqualTo(new[]
+        await Assert.That(convert.ReturnType!.NativeFormatters.ToArray()).IsEquivalentTo(new[]
         {
             new NativeFormatterIr(1, "x.MoneyFormatter"),
             new NativeFormatterIr(2, "x.MoneyFormatter"),
-        }));
+        }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void WithoutTargetFormatter_ExternalRefHasNoNativeFormatters()
+    public async Task WithoutTargetFormatter_ExternalRefHasNoNativeFormatters()
     {
         var run = Run(MoneyNexus.Replace("{MAPPINGS}", ""));
-        Assert.That(run.Errors, Is.Empty);
+        await Assert.That(run.Errors).IsEmpty();
         var convert = Export(run.Ir, "ServerNexus").ServerApi.Methods.Single(m => m.Name == "Convert");
-        Assert.That(convert.ReturnType!.Kind, Is.EqualTo(TypeRefKind.External));
-        Assert.That(convert.ReturnType.NativeFormatters, Is.Empty);
-        Assert.That(IrJson.Write(run.Ir!), Does.Not.Contain("nativeFormatters"));
+        await Assert.That(convert.ReturnType!.Kind).IsEqualTo(TypeRefKind.External);
+        await Assert.That(convert.ReturnType.NativeFormatters).IsEmpty();
+        await Assert.That(IrJson.Write(run.Ir!)).DoesNotContain("nativeFormatters");
     }
 
     // ------------------------------------------------------------------ diagnostics
 
     [Test]
-    public void TargetsOnClientNexus_ReportsNexnet043()
+    public async Task TargetsOnClientNexus_ReportsNexnet043()
     {
         var run = Run(Usings + """
             namespace Demo;
@@ -303,18 +309,18 @@ public class IrOptInTests
             """);
 
         var errors = WithId(run.Errors, DiagnosticDescriptors.TargetsOnClientNexus);
-        Assert.That(errors, Has.Length.EqualTo(1));
-        Assert.That(errors[0].Severity, Is.EqualTo(DiagnosticSeverity.Error));
-        Assert.That(errors[0].GetMessage(), Does.Contain("'ClientNexus'"));
-        Assert.That(errors[0].Location.GetLineSpan().Path, Is.EqualTo("Source0.cs"));
-        Assert.That(errors[0].Location.GetLineSpan().StartLinePosition.Line, Is.EqualTo(8));
+        await Assert.That(errors.Length).IsEqualTo(1);
+        await Assert.That(errors[0].Severity).IsEqualTo(DiagnosticSeverity.Error);
+        await Assert.That(errors[0].GetMessage()).Contains("'ClientNexus'");
+        await Assert.That(errors[0].Location.GetLineSpan().Path).IsEqualTo("Source0.cs");
+        await Assert.That(errors[0].Location.GetLineSpan().StartLinePosition.Line).IsEqualTo(8);
 
         // A client nexus is never an export.
-        Assert.That(run.Ir, Is.Null);
+        await Assert.That(run.Ir).IsNull();
     }
 
     [Test]
-    public void InvalidTargetFormatters_ReportNexnet048()
+    public async Task InvalidTargetFormatters_ReportNexnet048()
     {
         var run = Run(MoneyNexus.Replace("{MAPPINGS}", """
             [assembly: NexusTargetFormatter<Demo.Money>(NexusTargets.Java, "com.example.MoneyFormatter")]
@@ -325,27 +331,27 @@ public class IrOptInTests
             """));
 
         var errors = WithId(run.Errors, DiagnosticDescriptors.InvalidTargetFormatter);
-        Assert.That(errors.Select(e => e.GetMessage()), Is.EquivalentTo(new[]
+        await Assert.That(errors.Select(e => e.GetMessage()).ToArray()).IsEquivalentTo(new[]
         {
             "The [NexusTargetFormatter] for 'Demo.Money' is invalid: a formatter for Java is already declared",
             "The [NexusTargetFormatter] for 'Demo.Money' is invalid: the target is NexusTargets.None",
             "The [NexusTargetFormatter] for 'Demo.Money' is invalid: the native formatter name is empty",
             "The [NexusTargetFormatter] for 'Demo.Money' is invalid: the target 4 is not a defined NexusTargets value",
-        }));
-        Assert.That(errors.Select(e => e.Severity), Is.All.EqualTo(DiagnosticSeverity.Error));
-        Assert.That(errors.Select(e => e.Location.GetLineSpan().Path), Is.All.EqualTo("Source0.cs"));
-        Assert.That(errors.Select(e => e.Location.GetLineSpan().StartLinePosition.Line), Is.EquivalentTo(new[] { 6, 7, 8, 9 }));
+        });
+        await Assert.That(errors.All(e => e.Severity == DiagnosticSeverity.Error)).IsTrue();
+        await Assert.That(errors.All(e => e.Location.GetLineSpan().Path == "Source0.cs")).IsTrue();
+        await Assert.That(errors.Select(e => e.Location.GetLineSpan().StartLinePosition.Line).ToArray()).IsEquivalentTo(new[] { 6, 7, 8, 9 });
 
         // The valid first mapping still applies.
         var convert = Export(run.Ir, "ServerNexus").ServerApi.Methods.Single(m => m.Name == "Convert");
-        Assert.That(convert.ReturnType!.NativeFormatters, Is.EqualTo(new[] { new NativeFormatterIr(1, "com.example.MoneyFormatter") }));
+        await Assert.That(convert.ReturnType!.NativeFormatters.ToArray()).IsEquivalentTo(new[] { new NativeFormatterIr(1, "com.example.MoneyFormatter") }, CollectionOrdering.Matching);
     }
 
     [Test]
-    public void DefaultExportName()
+    public async Task DefaultExportName()
     {
-        Assert.That(Extraction.TargetExtractor.DefaultExportName("IChatServer"), Is.EqualTo("ChatServer"));
-        Assert.That(Extraction.TargetExtractor.DefaultExportName("Inventory"), Is.EqualTo("Inventory"));
-        Assert.That(Extraction.TargetExtractor.DefaultExportName("I"), Is.EqualTo("I"));
+        await Assert.That(Extraction.TargetExtractor.DefaultExportName("IChatServer")).IsEqualTo("ChatServer");
+        await Assert.That(Extraction.TargetExtractor.DefaultExportName("Inventory")).IsEqualTo("Inventory");
+        await Assert.That(Extraction.TargetExtractor.DefaultExportName("I")).IsEqualTo("I");
     }
 }
