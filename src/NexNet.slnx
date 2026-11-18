@@ -21,6 +21,9 @@
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
+  <Project Path="NexNet.InteropServer\NexNet.InteropServer.csproj" />
+  <Project Path="NexNet.InteropServer\Cli\NexNet.InteropServer.Cli.csproj" />
+  <Project Path="NexNet.InteropServer\SelfTest\NexNet.InteropServer.SelfTest.csproj" />
   <Project Path="NexNet.Quic\NexNet.Quic.csproj" />
   <Project Path="NexNet.Serialization.Tests\NexNet.Serialization.Tests.csproj" />
   <Project Path="NexNet.Fuzz\NexNet.Fuzz.csproj" />
