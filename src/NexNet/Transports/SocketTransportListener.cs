@@ -7,17 +7,39 @@ using NexNet.Logging;
 
 namespace NexNet.Transports;
 
-internal class SocketTransportListener : ITransportListener
+internal class SocketTransportListener : ITransportListener, IBoundTransportListener
 {
     private readonly ServerConfig _config;
     private readonly Socket _socket;
     private readonly Action? _afterClose;
 
+    /// <param name="config">Configuration of the endpoint.</param>
+    /// <param name="socket">A socket that is already bound and listening.</param>
+    /// <param name="afterClose">Runs after the socket is closed.</param>
     internal SocketTransportListener(ServerConfig config, Socket socket, Action? afterClose = null)
     {
         _config = config;
         _socket = socket;
         _afterClose = afterClose;
+        BoundEndPoint = GetBoundEndPoint(socket);
+    }
+
+    /// <inheritdoc />
+    public EndPoint? BoundEndPoint { get; }
+
+    /// <summary>
+    /// Reads <see cref="Socket.LocalEndPoint"/> of a bound socket; null when the platform cannot report it.
+    /// </summary>
+    internal static EndPoint? GetBoundEndPoint(Socket socket)
+    {
+        try
+        {
+            return socket.LocalEndPoint;
+        }
+        catch (Exception e) when (e is SocketException or ObjectDisposedException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
     }
 
     public ValueTask CloseAsync(bool linger)

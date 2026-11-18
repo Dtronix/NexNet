@@ -100,6 +100,52 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
     }
 
     [Test]
+    public async Task BoundEndPoint_PortZero_ReportsPickedPortClientsConnectTo()
+    {
+        var types = new[] { Type.Tcp, Type.TcpTls, Type.Uds };
+        var multi = CreateMultiEndpointServer(null,
+            (_, config) =>
+            {
+                if (config is TcpServerConfig tcp)
+                    tcp.EndPoint = new IPEndPoint(IPAddress.Loopback, 0);
+            },
+            types);
+        var server = multi.Server;
+        Assert.That(server.Endpoints.All(e => e.BoundEndPoint == null), Is.True, "Nothing is bound before start.");
+
+        for (var run = 0; run < 2; run++)
+        {
+            await server.StartAsync().Timeout(1);
+
+            var snapshot = server.GetSnapshot();
+            foreach (var type in new[] { Type.Tcp, Type.TcpTls })
+            {
+                var name = multi.Configs[type].TransportName;
+                var bound = server.Endpoints.Single(e => e.Name == name).BoundEndPoint as IPEndPoint;
+                Assert.That(bound, Is.Not.Null, $"{name}: no bound end point.");
+                Assert.That(bound!.Port, Is.Not.Zero, $"{name}: port 0 was not resolved.");
+                Assert.That(bound.Address, Is.EqualTo(IPAddress.Loopback));
+                Assert.That(snapshot.Endpoints.Single(e => e.Name == name).Address, Is.EqualTo(bound.ToString()));
+
+                var clientConfig = (TcpClientConfig)multi.CreateClientConfig(type);
+                clientConfig.EndPoint = bound;
+                var (client, _) = CreateClient(clientConfig);
+                await client.ConnectAsync().Timeout(2);
+                Assert.That(client.State, Is.EqualTo(ConnectionState.Connected), $"{name}: client did not connect.");
+            }
+
+            var udsBound = server.Endpoints.Single(e => e.Name == "uds").BoundEndPoint;
+            Assert.That(udsBound?.ToString(),
+                Is.EqualTo(((UdsServerConfig)multi.Configs[Type.Uds]).EndPoint.ToString()));
+
+            await server.StopAsync().Timeout(2);
+            Assert.That(server.Endpoints.All(e => e.BoundEndPoint == null), Is.True, "Stop clears the bound end points.");
+            Assert.That(server.GetSnapshot().Endpoints[0].Address, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, 0).ToString()),
+                "A stopped endpoint reports its configured address.");
+        }
+    }
+
+    [Test]
     public async Task Broadcasts_ReachClientsOnEveryTransport()
     {
         var serverVoidCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -206,11 +252,19 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await ConnectAll(multi);
         await WaitFor(() => { lock (seenLock) return seen.Count == types.Length; }).Timeout(2);
 
+        // Listener endpoints carry the end point they bound.
+        EndPoint? Bound(string name) => multi.Server.Endpoints.Single(e => e.Name == name).BoundEndPoint;
+
         Assert.Multiple(() =>
         {
-            Assert.That(seen["tls"].AtConnect, Is.EqualTo(new NexusEndpointInfo("tls", "tls", true, null)));
-            Assert.That(seen["tcp"].AtConnect, Is.EqualTo(new NexusEndpointInfo("tcp", "tcp", false, null)));
-            Assert.That(seen["uds"].AtConnect, Is.EqualTo(new NexusEndpointInfo("uds", "uds", false, null)));
+            Assert.That(seen["tls"].AtConnect,
+                Is.EqualTo(new NexusEndpointInfo("tls", "tls", true, null) { BoundEndPoint = Bound("tls") }));
+            Assert.That(seen["tcp"].AtConnect,
+                Is.EqualTo(new NexusEndpointInfo("tcp", "tcp", false, null) { BoundEndPoint = Bound("tcp") }));
+            Assert.That(seen["uds"].AtConnect,
+                Is.EqualTo(new NexusEndpointInfo("uds", "uds", false, null) { BoundEndPoint = Bound("uds") }));
+            Assert.That(Bound("tls"), Is.Not.Null);
+            Assert.That(Bound("tcp"), Is.Not.Null);
             Assert.That(seen["websocket"].AtConnect,
                 Is.EqualTo(new NexusEndpointInfo("websocket", "websocket", false, "/websocket-test")));
             Assert.That(seen["httpsocket"].AtConnect,

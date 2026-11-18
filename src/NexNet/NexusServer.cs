@@ -116,7 +116,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 Name = endpoint.Info.Name,
                 Transport = endpoint.Info.Transport,
                 State = endpoint.State,
-                Address = endpoint.Config.EndpointAddress,
+                Address = endpoint.Info.BoundEndPoint?.ToString() ?? endpoint.Config.EndpointAddress,
                 IsListener = endpoint.IsListener,
                 Sessions = count,
             });
@@ -438,8 +438,11 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             if (!endpoint.IsListener)
                 continue;
 
-            endpoint.Listener = await BindAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            var listener = endpoint.Listener = await BindAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            endpoint.SetBoundEndPoint((listener as IBoundTransportListener)?.BoundEndPoint);
         }
+
+        RefreshEndpointInfos();
 
         await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -565,11 +568,26 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
                 continue;
 
             endpoint.Listener = null;
+            endpoint.SetBoundEndPoint(null);
             (closes ??= new List<Task>()).Add(CloseListenerAsync(endpoint, listener, linger));
         }
 
         if (closes != null)
+            RefreshEndpointInfos();
+
+        if (closes != null)
             await Task.WhenAll(closes).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Republishes <see cref="Endpoints"/> after an endpoint's <see cref="NexusEndpointInfo.BoundEndPoint"/> changed.
+    /// </summary>
+    private void RefreshEndpointInfos()
+    {
+        var infos = new NexusEndpointInfo[_endpoints.Count];
+        for (var i = 0; i < infos.Length; i++)
+            infos[i] = _endpoints[i].Info;
+        _endpointInfos = infos;
     }
 
     private async Task CloseListenerAsync(ServerEndpoint endpoint, ITransportListener listener, bool linger)
@@ -1090,7 +1108,16 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         public ServerConfig Config { get; }
 
         /// <summary>Public description, given to sessions as Context.Endpoint.</summary>
-        public NexusEndpointInfo Info { get; }
+        public NexusEndpointInfo Info { get; private set; }
+
+        /// <summary>
+        /// Records the end point the listener actually bound (null once it is closed) in <see cref="Info"/>.
+        /// </summary>
+        public void SetBoundEndPoint(System.Net.EndPoint? boundEndPoint)
+        {
+            if (!Equals(Info.BoundEndPoint, boundEndPoint))
+                Info = Info with { BoundEndPoint = boundEndPoint };
+        }
 
         /// <summary>Name used in logs and errors.</summary>
         public string Name => Info.Name;

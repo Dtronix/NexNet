@@ -302,7 +302,8 @@ public sealed record NexusEndpointSnapshot
 
     /// <summary>
     /// What the endpoint binds or serves: the socket end point of a TCP, TLS, QUIC or UDS listener, the request path of
-    /// an ASP.NET endpoint; null when unknown.
+    /// an ASP.NET endpoint; null when unknown. While a TCP, TLS or UDS listener is bound, this is the end point it
+    /// actually bound (&lt;see cref="NexusEndpointInfo.BoundEndPoint"/&gt;), so a configured port 0 shows the picked port.
     /// </summary>
     public string? Address { get; init; }
 
