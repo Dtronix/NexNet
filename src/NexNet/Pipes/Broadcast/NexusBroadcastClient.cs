@@ -39,6 +39,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     /// </summary>
     public NexusCollectionState State { get; private set; } = NexusCollectionState.Disconnected;
 
+    /// <summary>
+    /// Test seam: runs before each message is processed. Always null outside tests.
+    /// </summary>
+    internal Action<TUnion>? ProcessTestHook { get; set; }
+
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
     /// <summary>
@@ -208,8 +213,8 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     }
 
     /// <summary>
-    /// Handles a processor that stopped on its own: logs the error, faults <see cref="ReadyTask"/> and closes the
-    /// collection pipe. The pipe close runs the normal disconnect path: the collection resets,
+    /// Handles a processor that stopped on its own: logs the error, sets <see cref="State"/> to Disconnected, faults
+    /// <see cref="ReadyTask"/> and closes the collection pipe. The pipe close runs the normal disconnect path: the collection resets,
     /// <see cref="DisabledTask"/> completes, and a pending <see cref="EnableAsync"/> throws. Re-enabling the
     /// collection (relays do it on their own) resynchronizes it from the server.
     /// </summary>
@@ -232,14 +237,17 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if (_readyTcs is { } readyTcs && readyTcs.TrySetException(failure))
             _ = readyTcs.Task.Exception; // Observed here; callers awaiting ReadyTask still see the fault.
 
-        var client = _client;
-        if (client == null)
-            return;
+        State = NexusCollectionState.Disconnected;
 
-        _ = CompletePipeAfterFailureAsync(client);
+        if (_client is { } client)
+            _ = ClosePipeAsync(client).AsTask();
     }
 
-    private async Task CompletePipeAfterFailureAsync(NexusBroadcastSession<TUnion> client)
+    /// <summary>
+    /// Closes the collection pipe after a protocol error or a processor failure. The pipe's completion then runs
+    /// <see cref="Disconnected"/>, which resets the collection.
+    /// </summary>
+    private async ValueTask ClosePipeAsync(NexusBroadcastSession<TUnion> client)
     {
         try
         {
@@ -247,7 +255,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         }
         catch (Exception e)
         {
-            Logger?.LogWarning(e, "Could not close the collection pipe after the processor stopped.");
+            Logger?.LogDebug(e, "Error while closing the collection pipe.");
         }
     }
 
@@ -317,6 +325,9 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
+        // Outside the protocol-error handling below, so an injected failure reaches the processor itself.
+        ProcessTestHook?.Invoke(message);
+
         BroadcastMessageProcessResult result;
         try
         {
@@ -333,14 +344,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if (result.Disconnect && _client is { } client)
         {
             Logger?.LogInfo($"Protocol error while processing {message.GetType().Name} message. Closing the pipe.");
-            try
-            {
-                await client.CompletePipe().ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                Logger?.LogDebug(e, "Error while closing the collection pipe after a protocol error.");
-            }
+            await ClosePipeAsync(client).ConfigureAwait(false);
         }
 
         return result;

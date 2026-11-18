@@ -52,6 +52,11 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
     /// </summary>
     internal bool IsRunning => Volatile.Read(ref _isRunning);
 
+    /// <summary>
+    /// Test seam: runs before each message is processed. Always null outside tests.
+    /// </summary>
+    internal Action<TUnion>? ProcessTestHook { get; set; }
+
     bool INexusBroadcastServerTestModifier.DoNotSendAck
     {
         get => _connectionManager.DoNotSendAck;
@@ -296,6 +301,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct)
     {
+        ProcessTestHook?.Invoke(message);
         var (broadcastMessage, disconnect) = OnProcess(message, sourceClient, ct);
         if (broadcastMessage == null)
             return new BroadcastMessageProcessResult(false, disconnect);
