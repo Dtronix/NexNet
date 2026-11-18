@@ -27,6 +27,18 @@ internal class NexusBroadcastMessageProcessor<TUnion>
 
     public ValueTask<bool> StoppedTask => _stoppedTcs.Task;
 
+    /// <summary>
+    /// The current run's processing loop. It completes when the run ends, whether cancelled or stopped by an error.
+    /// </summary>
+    internal Task LoopTask
+    {
+        get
+        {
+            lock (_runLock)
+                return _loop;
+        }
+    }
+
     public NexusBroadcastMessageProcessor(INexusLogger? logger, OnProcessDelegate process)
     {
         _process = process;
@@ -70,6 +82,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     /// <summary>
     /// Starts the processing loop. A previous run that was cancelled but is still unwinding does not block this
     /// call: the new loop waits for it to exit before it processes anything.
+    /// A run that stopped on its own after an unexpected error counts as stopped, so it can be started again.
     /// </summary>
     /// <exception cref="InvalidOperationException">A previous run is still active and was not cancelled.</exception>
     public void Run(CancellationToken token)
@@ -99,77 +112,77 @@ internal class NexusBroadcastMessageProcessor<TUnion>
         await previousLoop.ConfigureAwait(false);
 
         processor.Logger?.LogTrace("Started processing loop.");
-        
-        while (!ct.IsCancellationRequested)
+
+        // One pass only: the finally below closes the channel, so the run is over however the read loop ends.
+        // Looping again would spin on the closed channel until the token is cancelled.
+        try
         {
-            try
+            await foreach (var messageWrapper in channel.Reader.ReadAllAsync(ct)
+                               .ConfigureAwait(false))
             {
-                await foreach (var messageWrapper in channel.Reader.ReadAllAsync(ct)
-                                   .ConfigureAwait(false))
+                bool success = false;
+                try
                 {
-                    bool success = false;
-                    try
-                    {
+                    processor.Logger?.LogTrace(
+                        $"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
+
+                    (success, var disconnect) =
+                        await processor._process(messageWrapper.Message, messageWrapper.Client, ct).ConfigureAwait(false);
+
+                    if (disconnect)
                         processor.Logger?.LogTrace(
-                            $"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
+                            $"Source Client S{messageWrapper.Client?.Id}: Processing disconnected pipe. Process Success result: {success}.");
 
-                        (success, var disconnect) =
-                            await processor._process(messageWrapper.Message, messageWrapper.Client, ct).ConfigureAwait(false);
-
-                        if (disconnect)
-                            processor.Logger?.LogTrace(
-                                $"Source Client S{messageWrapper.Client?.Id}: Processing disconnected pipe. Process Success result: {success}.");
-
-                        if (disconnect && messageWrapper.Client != null)
-                        {
-                            await messageWrapper.Client.CompletePipe().ConfigureAwait(false);
-                        }
-                    }
-                    catch (Exception e)
+                    if (disconnect && messageWrapper.Client != null)
                     {
-                        processor.Logger?.LogInfo(e,
-                            $"S{messageWrapper.Client?.Id} Exception while processing collection.");
-
-                        if (messageWrapper.Client != null)
-                            await messageWrapper.Client.CompletePipe().ConfigureAwait(false)!;
-                    }
-                    finally
-                    {
-                        messageWrapper.CompletionTaskSource?.TrySetResult(success);
-                        messageWrapper.Return();
+                        await messageWrapper.Client.CompletePipe().ConfigureAwait(false);
                     }
                 }
-                
-                processor.Logger?.LogDebug("Exited broadcast reading loop.");
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                processor.Logger?.LogDebug("Broadcast loop cancelled.");
-            }
-            catch (Exception e)
-            {
-                processor.Logger?.LogError(e, "Exception in broadcast loop.");
-            }
-            finally
-            {
-                // Complete the channel writer so any pending WriteAsync calls
-                // in EnqueueWaitForResult throw ChannelClosedException instead of hanging.
-                channel.Writer.TryComplete();
-
-                // Drain any remaining items and resolve their completion sources
-                // to prevent callers from hanging on tcs.Task.
-                while (channel.Reader.TryRead(out var remaining))
+                catch (Exception e)
                 {
-                    remaining.CompletionTaskSource?.TrySetResult(false);
-                    remaining.Return();
-                }
+                    processor.Logger?.LogInfo(e,
+                        $"S{messageWrapper.Client?.Id} Exception while processing collection.");
 
-                // A restart already reset the stopped signal for its own run; leave it alone.
-                lock (processor._runLock)
-                {
-                    if (processor._runGeneration == generation)
-                        processor._stoppedTcs.TrySetResult(true);
+                    if (messageWrapper.Client != null)
+                        await messageWrapper.Client.CompletePipe().ConfigureAwait(false)!;
                 }
+                finally
+                {
+                    messageWrapper.CompletionTaskSource?.TrySetResult(success);
+                    messageWrapper.Return();
+                }
+            }
+
+            processor.Logger?.LogDebug("Exited broadcast reading loop.");
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            processor.Logger?.LogDebug("Broadcast loop cancelled.");
+        }
+        catch (Exception e)
+        {
+            // Unexpected: the run stops here. A later Run starts a fresh loop on a fresh channel.
+            processor.Logger?.LogError(e, "Exception in broadcast loop; processor stopped.");
+        }
+        finally
+        {
+            // Complete the channel writer so any pending WriteAsync calls
+            // in EnqueueWaitForResult throw ChannelClosedException instead of hanging.
+            channel.Writer.TryComplete();
+
+            // Drain any remaining items and resolve their completion sources
+            // to prevent callers from hanging on tcs.Task.
+            while (channel.Reader.TryRead(out var remaining))
+            {
+                remaining.CompletionTaskSource?.TrySetResult(false);
+                remaining.Return();
+            }
+
+            // Mark the run stopped. A restart already reset the stopped signal for its own run; leave it alone.
+            lock (processor._runLock)
+            {
+                if (processor._runGeneration == generation)
+                    processor._stoppedTcs.TrySetResult(true);
             }
         }
     }
