@@ -1,0 +1,8 @@
+# Included builds keep their own Gradle state.
+.gradle/
+build/
+.kotlin/
+# IDE files
+.idea/
+*.iml
+out/
