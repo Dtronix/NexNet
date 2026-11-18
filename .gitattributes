@@ -1,0 +1,13 @@
+# Line endings for files whose consumers require a specific form, regardless of core.autocrlf.
+# No global "* text=auto" here: src/.gitattributes covers src/, and a repo-wide default would renormalize everything.
+
+# Shell scripts and the Gradle wrapper run under bash, which rejects CRLF.
+*.sh      text eol=lf
+gradlew   text eol=lf
+
+# JSON (golden vectors, IR snapshots) is compared byte-for-byte.
+*.json    text eol=lf
+
+# Windows batch files need CRLF.
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
