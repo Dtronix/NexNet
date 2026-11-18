@@ -13,6 +13,9 @@ public class TcpClientConfig : ClientConfig
     /// <inheritdoc />
     protected internal override string TransportName => "tcp";
 
+    /// <inheritdoc />
+    protected internal override bool IsSecureTransport => false; // Plain TCP is unencrypted.
+
     /// <summary>
     /// dual mode socket
     /// </summary>

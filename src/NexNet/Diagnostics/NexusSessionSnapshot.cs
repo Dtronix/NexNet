@@ -22,6 +22,12 @@ public sealed record NexusSessionSnapshot
     /// <summary>Transport name, as in the <c>nexnet.transport</c> metric tag.</summary>
     public string Transport { get; init; } = "";
 
+    /// <summary>
+    /// On a client, true when the transport is encrypted or local (see <c>INexusClient.IsSecure</c>); null on a server
+    /// session.
+    /// </summary>
+    public bool? IsSecure { get; init; }
+
     /// <summary>Connection state.</summary>
     public ConnectionState State { get; init; }
 

@@ -15,6 +15,9 @@ public class QuicClientConfig : ClientConfig
     /// <inheritdoc />
     protected internal override string TransportName => "quic";
 
+    /// <inheritdoc />
+    protected internal override bool IsSecureTransport => true; // QUIC is always TLS.
+
 
     private SslClientAuthenticationOptions _sslClientAuthenticationOptions = null!;
 
