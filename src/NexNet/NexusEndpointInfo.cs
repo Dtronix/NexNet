@@ -14,4 +14,12 @@ namespace NexNet;
 /// the endpoint itself reports false, and a session's <c>Context.Endpoint</c> reports
 /// <c>HttpRequest.IsHttps</c> of the request that opened it.</param>
 /// <param name="Path">The request path of an ASP.NET endpoint (WebSocket, HttpSocket); null otherwise.</param>
-public sealed record NexusEndpointInfo(string Name, string Transport, bool IsSecure, string? Path);
+public sealed record NexusEndpointInfo(string Name, string Transport, bool IsSecure, string? Path)
+{
+    /// <summary>
+    /// The socket end point a TCP, TLS or UDS listener is actually bound to, read after the bind; null while the
+    /// server is stopped, and for external (ASP.NET) and QUIC endpoints. A listener configured with port 0 reports the
+    /// port the operating system picked here, which a client can connect to.
+    /// </summary>
+    public System.Net.EndPoint? BoundEndPoint { get; init; }
+}

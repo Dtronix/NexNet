@@ -7,7 +7,7 @@ using NexNet.Logging;
 
 namespace NexNet.Transports;
 
-internal class TcpTlsTransportListener : IPendingTransportListener
+internal class TcpTlsTransportListener : IPendingTransportListener, IBoundTransportListener
 {
     private readonly TcpTlsServerConfig _config;
     private readonly Socket _socket;
@@ -16,7 +16,11 @@ internal class TcpTlsTransportListener : IPendingTransportListener
     {
         _config = config;
         _socket = socket;
+        BoundEndPoint = SocketTransportListener.GetBoundEndPoint(socket);
     }
+
+    /// <inheritdoc />
+    public EndPoint? BoundEndPoint { get; }
 
     public ValueTask CloseAsync(bool linger)
     {
