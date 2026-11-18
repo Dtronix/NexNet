@@ -61,7 +61,7 @@ public static partial class NexNetMiddlewareExtensions
                     return;
                 }
 
-                if (!await ApplyAuthentication(context, config).ConfigureAwait(false))
+                if (!await ApplyAuthentication(context, config, config.AccessTokenQueryParameter).ConfigureAwait(false))
                     return;
                 
                 var lifetime = context.RequestServices.GetRequiredService<IHostApplicationLifetime>();
