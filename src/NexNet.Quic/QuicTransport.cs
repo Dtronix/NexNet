@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Net.Quic;
 using System.Net.Security;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Threading.Tasks;
@@ -107,6 +108,12 @@ internal class QuicTransport : ITransport
         try
         {
             quicConnection = await QuicConnection.ConnectAsync(connectionOptions, timeoutCancellation.Token).ConfigureAwait(false);
+        }
+        catch (AuthenticationException e)
+        {
+            // The server certificate was rejected (chain, host name or validation callback), or the server
+            // rejected the client certificate.
+            throw new TransportException(TransportError.AuthenticationError, $"TLS authentication failed: {e.Message}", e);
         }
         catch (QuicException e)
         {
