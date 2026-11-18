@@ -8,7 +8,7 @@ on:
       - 'v*'
   pull_request:
     branches:
-      - '*'
+      - '**'  # '*' does not match '/', so PRs into branches such as train/multilang never ran CI
 
 jobs:
   build:
