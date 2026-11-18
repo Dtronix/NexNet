@@ -66,28 +66,38 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if(_session == null)
             throw new InvalidOperationException("Session not connected");
 
-        OperationSemaphore = new SemaphoreSlim(1, 1);
-        StopCts = new CancellationTokenSource();
-        Processor.Run(StopCts.Token);
-        
+        // Rent first: a local refusal (pipe limit or budget) then has nothing to undo.
         var pipe = _session!.PipeManager.RentPipe();
 
         if (pipe == null)
             throw new Exception("Could not instance new pipe.");
 
-        // Invoke the method on the server to activate the pipe.
-        _invoker!.Logger?.Log(
-            (_invoker.Logger.Behaviors & NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0
-                ? NexusLogLevel.Information
-                : NexusLogLevel.Debug,
-            null,
-            null,
-            $"Connecting Proxy Collection[{Id}];");
-        var __args = new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe));
-        await _invoker.ProxyInvokeMethodCore(Id, NexNet.Internals.PayloadSerializer.Serialize(__args),
-            InvocationFlags.DuplexPipe).ConfigureAwait(false);
+        OperationSemaphore = new SemaphoreSlim(1, 1);
+        var stopCts = StopCts = new CancellationTokenSource();
+        Processor.Run(stopCts.Token);
 
-        await pipe.ReadyTask.ConfigureAwait(false);
+        try
+        {
+            // Invoke the method on the server to activate the pipe.
+            _invoker!.Logger?.Log(
+                (_invoker.Logger.Behaviors & NexusLogBehaviors.ProxyInvocationsLogAsInfo) != 0
+                    ? NexusLogLevel.Information
+                    : NexusLogLevel.Debug,
+                null,
+                null,
+                $"Connecting Proxy Collection[{Id}];");
+            var __args = new ValueTuple<byte>(_invoker.ProxyGetDuplexPipeInitialId(pipe));
+            await _invoker.ProxyInvokeMethodCore(Id, NexNet.Internals.PayloadSerializer.Serialize(__args),
+                InvocationFlags.DuplexPipe).ConfigureAwait(false);
+
+            await pipe.ReadyTask.ConfigureAwait(false);
+        }
+        catch
+        {
+            // The server refused the pipe (pipe limit or authorization), or the session ended before it opened.
+            await AbortEnableAsync(pipe, stopCts).ConfigureAwait(false);
+            throw;
+        }
 
         _pipeId = pipe.Id;
 
@@ -134,6 +144,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             // Ensure the pipe is completed if the reading loop exited.
             await clientState.CompletePipe().ConfigureAwait(false);
 
+            // Return the pipe so its ID, slot and receive window are freed once the server has closed it too.
+            if (clientState.Pipe is IRentedNexusDuplexPipe rentedPipe)
+                await rentedPipe.DisposeAsync().ConfigureAwait(false);
+
         }, this, TaskCreationOptions.DenyChildAttach);
         
         // Capture locally to avoid race with Disconnected() nulling _client.
@@ -149,6 +163,33 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         return !isDisconnected;
     }
 
+
+    /// <summary>
+    /// Undoes a failed <see cref="EnableAsync"/> before the pipe opened: returns the pipe to the pipe manager,
+    /// stops the message processor and resets the state, so a later <see cref="EnableAsync"/> can retry.
+    /// </summary>
+    private async ValueTask AbortEnableAsync(IRentedNexusDuplexPipe pipe, CancellationTokenSource stopCts)
+    {
+        try
+        {
+            await pipe.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogDebug(e, "Error while returning the pipe of a failed collection connect.");
+        }
+
+        // Stops the processor; a later Run waits for this loop to unwind before it processes anything.
+        // ReSharper disable once MethodHasAsyncOverload
+        stopCts.Cancel();
+
+        if (ReferenceEquals(StopCts, stopCts))
+            StopCts = null;
+        stopCts.Dispose();
+
+        OperationSemaphore?.Dispose();
+        OperationSemaphore = null;
+    }
 
     private void Disconnected()
     {
