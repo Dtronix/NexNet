@@ -166,7 +166,10 @@ A caller may cancel an invocation that expects a result (no IgnoreReturn). What 
 invocation has been sent:
 
 - **Canceled before it is sent.** This covers a token that is already canceled and a cancel while the call waits for
-  invocation credit (§8). Nothing is sent, no invocation ID stays reserved, and the call completes as canceled.
+  invocation credit (§8). Nothing is sent, no invocation ID stays reserved, and the call completes as canceled: it
+  throws or rejects with the language's cancellation error, never returns a default value (C#:
+  `TaskCanceledException`, for `ValueTask` and `ValueTask<T>` alike; Java: `CancellationException`; JavaScript:
+  `AbortError`).
 - **Canceled after it is sent** (or while it is being written). The caller completes the call as canceled at once,
   without waiting for the peer, and sends `InvocationCancellation`. It keeps the invocation ID outstanding until the
   peer's `InvocationResult` arrives. That late result, whatever its state, is consumed and discarded, which then
@@ -176,12 +179,6 @@ invocation has been sent:
 - **Session ends.** Every call still waiting completes as canceled.
 
 IgnoreReturn invocations can't be canceled.
-
-**Current C# behavior:** for the first case, the C# client returns without a result: a `ValueTask` method returns
-normally and a `ValueTask<T>` method returns `default`. The same applies to the large-argument case. Unit F03
-changes the C# client to throw `TaskCanceledException`, which is the required behavior for other clients (Java:
-`CancellationException`; JavaScript: `AbortError`). Neither case puts anything on the wire, so the difference is
-not visible to the peer.
 
 Source: `src/NexNet/Invocation/SessionInvocationStateManager.cs` (`InvokeMethodWithResultCore`,
 `CancelInvocation`, `UpdateInvocationResult`), `src/NexNet/Internals/RegisteredInvocationState.cs`.
@@ -550,18 +547,21 @@ arguments are read and before its pipe is registered. The outcomes are:
 | Authorization result | Method expecting a result | IgnoreReturn method | Pipe, channel or collection method |
 |---|---|---|---|
 | Allowed | runs | runs | the pipe is registered and the method runs |
-| Unauthorized | `InvocationResult` with state 3 Unauthorized | nothing is sent | nothing is sent (see below) |
+| Unauthorized | `InvocationResult` with state 3 Unauthorized | nothing is sent | `DuplexPipeUpdateState[Refused]` (see below) |
 | Disconnect | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) |
 
-**Current behavior for an unauthorized pipe method:** the server sends neither `Ready` nor `Refused`. The opener's
-pipe waits for `Ready` until the session ends, and the opener's local ID stays in use until then. Unit F04 changes
-the server to send `DuplexPipeUpdateState[Refused]` with the opener's partial ID, the same as a limit refusal
-(§7.1), so the opener fails the pipe. Clients should treat `Refused` as the failure in both cases.
+**Unauthorized pipe, channel or collection method.** The server does not register the pipe and does not run the
+method. It sends `DuplexPipeUpdateState[Refused]` with the opener's partial ID, the same message as a limit refusal
+(§7.1). To find that ID it reads only the pipe argument from `arguments` and skips the others. The session stays up.
+The opener fails the pipe at once and frees its local ID (§7.5): the C# client's pipe `ReadyTask` (and so the
+channel or the collection enable) fails with `NexusBusyException`. `Refused` does not say whether a limit or
+authorization caused it, so clients treat both the same. If the session is ending when the refusal would be sent,
+nothing is sent, and the pipe fails when the session ends.
 
 Source: `src/NexNet.Generator/Emission/MethodEmitter.cs` (`EmitNexusInvocation`, `EmitProxyMethodInvocation`),
 `src/NexNet.Generator/Emission/CollectionEmitter.cs`, `src/NexNet/Invocation/ProxyInvocationBase.cs`,
-`src/NexNet/Invocation/NexusBase.cs` (`InvokeMethodCoreTask`), `src/NexNet/Invocation/ServerNexusBase.cs`
-(`HandleAuthResult`).
+`src/NexNet/Invocation/NexusBase.cs` (`InvokeMethodCoreTask`, `RefuseUnauthorizedPipe`),
+`src/NexNet/Invocation/ServerNexusBase.cs` (`HandleAuthResult`), `src/NexNet/Pipes/NexusPipeManager.cs` (`RefusePipe`).
 
 ## 8. Invocation credits
 
@@ -989,9 +989,8 @@ behavior.
 
 **Unauthorized.** Collection authorization follows §7.6.
 - With a `Disconnect` result, the whole session ends with `Unauthorized` (34).
-- With `Unauthorized`, current servers send nothing, and enable waits until the session ends. After unit F04 the
-  server sends `Refused`, and enable fails at once.
-- Clients must handle both. A failed enable leaves the collection Disabled and can be retried.
+- With `Unauthorized`, the server sends `Refused` (§7.6), and enable fails at once. The session stays up.
+- A failed enable leaves the collection Disabled and can be retried.
 
 ### 12.9 Equality for `RemoveAsync(item)`
 
