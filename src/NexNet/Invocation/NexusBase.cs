@@ -138,6 +138,29 @@ public abstract class NexusBase<TProxy> : IMethodInvoker, ICollectionStore
         return pipe;
     }
 
+    /// <summary>
+    /// Called by generated code when authorization refused a pipe or channel method. If the result is
+    /// <see cref="AuthorizeResult.Unauthorized"/>, refuses the caller's pipe, so its <c>ReadyTask</c> fails with
+    /// <see cref="NexusBusyException"/> instead of waiting until the session ends. A disconnecting session sends nothing.
+    /// </summary>
+    /// <param name="message">The refused invocation.</param>
+    /// <param name="startId">The caller's pipe ID from the invocation's arguments.</param>
+    protected async ValueTask RefuseUnauthorizedPipe(IInvocationMessage message, byte startId)
+    {
+        if (message is not InvocationMessage { AuthorizeResult: AuthorizeResult.Unauthorized })
+            return;
+
+        try
+        {
+            await SessionContext.Session.PipeManager.RefusePipe(startId).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            // The session may be closing; the caller's pipe then fails with it.
+            SessionContext.Session.Logger?.LogDebug(e, "Could not refuse the pipe of an unauthorized invocation.");
+        }
+    }
+
     NexusSerializerOptions IMethodInvoker.SerializerOptions =>
         SessionContext.Session?.Config.SerializerOptions ?? NexusSerializerOptions.Untrusted;
 

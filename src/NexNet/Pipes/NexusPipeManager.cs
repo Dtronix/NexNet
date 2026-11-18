@@ -211,12 +211,7 @@ internal class NexusPipeManager
 
         if (!TryReserveWindow())
         {
-            // Refuse the open; the initiating side fails its pipe and frees its ID.
-            _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
-            using var refusal = _session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
-            refusal.PipeId = _session.IsServer ? ComposeId(otherId, 0) : ComposeId(0, otherId);
-            refusal.State = State.Refused;
-            await _session.SendMessage(refusal).ConfigureAwait(false);
+            await RefusePipe(otherId).ConfigureAwait(false);
             throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
         }
 
@@ -252,6 +247,20 @@ internal class NexusPipeManager
         await pipe.SendReady().ConfigureAwait(false);
         _logger?.LogTrace($"Sending Ready Notification");
         return pipe;
+    }
+
+    /// <summary>
+    /// Refuses a pipe the peer opened without registering it: sends Refused for the opener's partial ID, so the
+    /// initiating side fails its pipe and frees its ID.
+    /// </summary>
+    /// <param name="otherId">The opener's local pipe ID.</param>
+    public async ValueTask RefusePipe(byte otherId)
+    {
+        _session.MetricsTags.Metrics.RecordPipeRefusal(_session.MetricsTags, local: true);
+        using var refusal = _session.PoolManager.Rent<DuplexPipeUpdateStateMessage>();
+        refusal.PipeId = _session.IsServer ? ComposeId(otherId, 0) : ComposeId(0, otherId);
+        refusal.State = State.Refused;
+        await _session.SendMessage(refusal).ConfigureAwait(false);
     }
 
     public async ValueTask DeregisterPipe(INexusDuplexPipe pipe)
