@@ -18,6 +18,12 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
     public bool IsReadOnly { get; } = false;
     
     public NexusCollectionState State { get; }
+
+    /// <summary>
+    /// Testing only. When set, ResetStart announces this value count instead of the real one, so tests can check
+    /// how a client handles a malformed reset.
+    /// </summary>
+    internal int? TestResetTotalValuesOverride { get; set; }
     public ISubscriptionEvent<NexusCollectionChangedEventArgs> Changed => CoreChangedEvent;
     
     public NexusListServer(ushort id, NexusCollectionMode mode, INexusLogger? logger)
@@ -230,7 +236,7 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
         
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
-        reset.TotalValues = state.List.Count;
+        reset.TotalValues = TestResetTotalValuesOverride ?? state.List.Count;
         client.BufferTryWrite(reset.Wrap());
         
         foreach (var values in ResetValuesEnumerator(state))
