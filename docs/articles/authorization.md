@@ -86,14 +86,14 @@ catch (ProxyUnauthorizedException)
 | Result | Behavior |
 |--------|----------|
 | `Allowed` | Method invocation proceeds normally |
-| `Unauthorized` | Returns error to caller without invoking the method. A pipe or channel method refuses the caller's pipe (see below). Collections silently drop the request |
-| `Disconnect` | Immediately disconnects the session. Use for collections or severe violations |
+| `Unauthorized` | Returns error to caller without invoking the method. A pipe or channel method, or a collection connect, refuses the caller's pipe (see below) |
+| `Disconnect` | Immediately disconnects the session. Use for severe violations |
 
 If `OnAuthorize` throws an exception, the session is disconnected as a fail-safe to prevent accidental authorization bypass.
 
-### Pipe and Channel Methods
+### Pipe and Channel Methods, and Collections
 
-Pipe and channel methods return no result, so an `Unauthorized` result refuses the caller's pipe instead. The caller's `ReadyTask` (for a channel, `BasePipe.ReadyTask`) fails with `NexusBusyException`, the same exception as when the server's pipe limit is reached; the protocol has no separate state for an authorization refusal. The method does not run and the session stays up. Only the pipe ID is read from the arguments; the other arguments are not deserialized.
+Pipe and channel methods and collection connects return no result, so an `Unauthorized` result refuses the caller's pipe instead. For a collection, `EnableAsync()` throws `NexusBusyException`. The caller's `ReadyTask` (for a channel, `BasePipe.ReadyTask`) fails with `NexusBusyException`, the same exception as when the server's pipe limit is reached; the protocol has no separate state for an authorization refusal. The method does not run and the session stays up. Only the pipe ID is read from the arguments; the other arguments are not deserialized.
 
 ```csharp
 await using var pipe = client.CreatePipe();
