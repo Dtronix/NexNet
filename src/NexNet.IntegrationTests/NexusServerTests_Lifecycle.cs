@@ -1,6 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net;
+using System.Net.Sockets;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Logging;
 using NexNet.RateLimiting;
 using NexNet.Transports;
 using NUnit.Framework;
@@ -136,5 +140,121 @@ internal class NexusServerTests_Lifecycle : BaseTests
         Assert.That(server.State, Is.EqualTo(NexusServerState.Disposed));
         await client.DisconnectedTask.Timeout(2);
         await server.StoppedTask!.Timeout(1);
+    }
+
+    /// <summary>
+    /// A fatal accept error (here: the socket is bound but not listening) must surface as the original
+    /// exception, never as a NullReferenceException from the never-assigned client socket.
+    /// </summary>
+    [Test]
+    public async Task SocketListener_FatalAcceptError_RethrowsOriginalException()
+    {
+        using var socket = CreateBoundNotListeningSocket();
+        var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        await listener.CloseAsync(false);
+    }
+
+    [Test]
+    public async Task SocketListener_ClosedSocket_DoesNotThrowNullReference()
+    {
+        var socket = CreateBoundNotListeningSocket();
+        var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
+        await listener.CloseAsync(false);
+
+        var exception = await Assert.CatchAsync(async () => await listener.AcceptTransportAsync(CancellationToken.None));
+        Assert.That(exception, Is.Not.InstanceOf<NullReferenceException>());
+    }
+
+    [Test]
+    public async Task SocketListener_CanceledAccept_ReturnsNull()
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        socket.Listen();
+        var listener = new SocketTransportListener(new CustomServerConfig(ServerConnectionMode.Listener), socket);
+
+        using var cts = new CancellationTokenSource(50);
+        var transport = await listener.AcceptTransportAsync(cts.Token).AsTask().Timeout(1);
+        Assert.That(transport, Is.Null);
+        await listener.CloseAsync(false);
+    }
+
+    [TestCase(SocketError.ConnectionReset, true)]
+    [TestCase(SocketError.ConnectionAborted, true)]
+    [TestCase(SocketError.NetworkReset, true)]
+    [TestCase(SocketError.InvalidArgument, false)]
+    [TestCase(SocketError.OperationAborted, false)]
+    [TestCase(SocketError.NotSocket, false)]
+    [TestCase(SocketError.TooManyOpenSockets, false)]
+    public void SocketListener_TransientAcceptErrors(SocketError error, bool transient)
+    {
+        Assert.That(SocketTransportListener.IsTransientAcceptError(error), Is.EqualTo(transient));
+    }
+
+    /// <summary>
+    /// A fatal accept error while Running faults the endpoint (and, as the only endpoint, stops the server) with
+    /// the original exception logged rather than a NullReferenceException.
+    /// </summary>
+    [Test]
+    public async Task SocketListener_FatalAcceptError_FaultsEndpointWithOriginalException()
+    {
+        var logger = new ExceptionCapturingLogger();
+        var config = new FatalAcceptServerConfig { Logger = logger };
+        var server = ServerNexus.CreateServer(config, () => null!);
+
+        await server.StartAsync().Timeout(1);
+
+        var sw = Stopwatch.StartNew();
+        while (server.State == NexusServerState.Running && sw.Elapsed < TimeSpan.FromSeconds(5))
+            await Task.Delay(10);
+
+        Assert.That(server.State, Is.EqualTo(NexusServerState.Stopped));
+        Assert.That(logger.Exceptions.OfType<NullReferenceException>(), Is.Empty);
+        Assert.That(logger.Exceptions.OfType<InvalidOperationException>(), Is.Not.Empty,
+            "The endpoint fault should log the original accept exception.");
+        await server.DisposeAsync();
+    }
+
+    private static Socket CreateBoundNotListeningSocket()
+    {
+        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        return socket;
+    }
+
+    private sealed class FatalAcceptServerConfig() : ServerConfig(ServerConnectionMode.Listener)
+    {
+        protected override ValueTask<ITransportListener?> OnCreateServerListener(CancellationToken cancellationToken)
+            => new(new SocketTransportListener(this, CreateBoundNotListeningSocket()));
+    }
+
+    private sealed class ExceptionCapturingLogger : INexusLogger
+    {
+        private readonly ConcurrentQueue<Exception> _exceptions;
+
+        public ExceptionCapturingLogger() : this(new ConcurrentQueue<Exception>(), null)
+        {
+        }
+
+        private ExceptionCapturingLogger(ConcurrentQueue<Exception> exceptions, string? pathSegment)
+        {
+            _exceptions = exceptions;
+            PathSegment = pathSegment;
+        }
+
+        public IEnumerable<Exception> Exceptions => _exceptions;
+        public NexusLogBehaviors Behaviors { get; set; }
+        public string FormattedPath => PathSegment ?? "";
+        public string? PathSegment { get; set; }
+
+        public void Log(NexusLogLevel logLevel, string? category, Exception? exception, string message)
+        {
+            if (exception != null)
+                _exceptions.Enqueue(exception);
+        }
+
+        public INexusLogger CreateLogger(string? pathSegment = null) => new ExceptionCapturingLogger(_exceptions, pathSegment);
     }
 }
