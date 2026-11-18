@@ -391,9 +391,26 @@ await rental.EnsureConnectedAsync();   // reconnect if needed
 ```csharp
 var server = ServerNexus.CreateServer(config, () => new ServerNexus());
 await server.StartAsync();
-// server.State: Stopped, Running, Disposed
+// server.State: Stopped, Starting, Running, Stopping, Disposed
 await server.StopAsync();
 ```
+
+### Multiple endpoints
+
+```csharp
+// The constructor's config is the primary endpoint (named after its transport: "tcp", "tls", "uds", "websocket", ...).
+var server = ServerNexus.CreateServer(tlsConfig, () => new ServerNexus());
+server.AddListener(udsConfig, "uds");                       // listener configs only (TCP/TLS/UDS/QUIC)
+IAcceptsExternalTransport ext = server.AddExternalEndpoint(cfg, "custom"); // fed by the app / NexNet.Asp
+// Both only after configuration and while Stopped. Duplicate names, TCP ports, UDS paths, ASP paths are rejected.
+IReadOnlyList<NexusEndpointInfo> eps = server.Endpoints;   // record (Name, Transport, IsSecure, Path); primary first
+await server.StartAsync();  // binds all; one bind failure closes the others and leaves Stopped
+```
+
+- Per endpoint (that endpoint's config): Timeout, HandshakeTimeout, MaxMessageSize, flow control, Authenticate, AuthorizationCacheDuration, TLS/socket options, ASP path/auth/proxy headers.
+- Server-wide (primary config only): Logger, Time, MeterFactory, RateLimiting (spans all endpoints), MaxPendingHandshakes, collections. Added configs must keep the primary's `Time` and leave `RateLimiting` null.
+- Primary `Authenticate = true` ⇒ `StartAsync` throws unless every endpoint sets it.
+- Metric tag `nexnet.endpoint` = endpoint name; added endpoints log under `SV{id}/{name}`; `GetSnapshot().Endpoints` gives state, address, session count.
 
 ### Server Context (inside nexus methods)
 
@@ -420,6 +437,8 @@ var names = await Context.Groups.GetNamesAsync();
 long id = Context.Id;
 X509Certificate2? peerCert = Context.RemoteCertificate;  // TLS peer certificate, if any
 ClaimsPrincipal? aspUser = Context.User;                // ASP.NET HttpContext.User (WebSocket/HttpSocket server only)
+NexusEndpointInfo? ep = Context.Endpoint;               // endpoint that accepted the session (from OnAuthenticate on); null on clients
+bool secure = ep!.IsSecure;                             // TLS/QUIC; ASP: HttpRequest.IsHttps
 string? user = Context.Identity?.DisplayName;
 
 // Per-session key-value store (lifetime = connection)
@@ -710,6 +729,19 @@ var server = app.UseHttpSocketNexusServerAsync<ServerNexus, ServerNexus.ClientPr
 });
 await server.StartAsync(app.Lifetime.ApplicationStopped);
 // WebSocket: UseWebSocketNexusServerAsync instead
+// Use*NexusServerAsync on an already configured server attaches another endpoint instead of throwing.
+
+// Multi-endpoint + hosted lifecycle (starts on ApplicationStarted, stops on ApplicationStopping):
+builder.Services.AddNexusServer<ServerNexus, ServerNexus.ClientProxy>(o => {
+    o.Configure(tcpConfig);              // primary; Logger/MeterFactory default to the app's
+    o.AddListener(udsConfig, "uds");
+});
+var srv = app.Services.GetRequiredService<NexusServer<ServerNexus, ServerNexus.ClientProxy>>();
+app.UseWebSockets();
+app.MapNexusWebSocket(srv, new WebSocketServerConfig { Path = "/ws" });          // AddExternalEndpoint, name "websocket"
+app.UseHttpSockets();
+app.MapNexusHttpSocket(srv, new HttpSocketServerConfig { Path = "/hs" }, "http"); // own session settings
+// MapWebSocketNexus/MapHttpSocketNexus(cfg, server): primary cfg = old behavior; another cfg = its own endpoint.
 ```
 
 ## Logging
@@ -724,7 +756,7 @@ config.Logger = new RollingLogger(maxLines: 200);   // circular buffer, Flush(Te
 ## Metrics and Snapshots
 
 ```csharp
-// System.Diagnostics.Metrics meter "NexNet" (NexusMeter.Name); tags nexnet.role, nexnet.transport.
+// System.Diagnostics.Metrics meter "NexNet" (NexusMeter.Name); tags nexnet.role, nexnet.transport, nexnet.endpoint (server).
 builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter("NexNet"));
 
 // Live state of one session or a server; not atomic, exposes internal state: never serve unauthenticated.

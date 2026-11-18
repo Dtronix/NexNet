@@ -47,7 +47,8 @@ List tests: `dotnet test <proj> -c Release --list-tests`.
 ### 1.1 Entry Points
 
 - `NexusClient.cs` - Generic client managing connection, reconnection, proxy access, ping/timeout
-- `NexusServer.cs` - Generic server with Listener/Receiver modes, rate limiting, session management
+- `NexusServer.cs` - Generic server with Listener/Receiver modes, rate limiting, session management. Multi-endpoint: private `ServerEndpoint` list (primary first, named after its `TransportName`); public `AddListener`/`AddExternalEndpoint` (before start; validated: names, TCP ports, UDS/ASP paths, `Time`, `RateLimiting`), `Endpoints`. `TryAdmitTransport` builds each session from its endpoint: `Configs` = endpoint config, logger `SV{id}/{name}` (primary: `SV{id}`), `MetricsTags` with `nexnet.endpoint`, `Endpoint` (`NexusEndpointInfo`, `IsSecure` overridden per ASP request). Watchdog ticks at min(Timeout)/4 and checks each session against its own `Config.Timeout`. Start throws when the primary sets `Authenticate` and an endpoint does not
+- `NexusEndpointInfo.cs` - Public record (Name, Transport, IsSecure, Path); `Context.Endpoint` on server sessions (set in the `NexusSession` constructor from `NexusSessionConfigurations.Endpoint`)
 - `NexusClientPool.cs` - Connection pool with health checking, idle timeout, semaphore-controlled rental
 
 ### 1.2 Attributes (Source Generator Markers)

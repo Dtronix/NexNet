@@ -122,6 +122,44 @@ protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? to
 
 The certificate belongs to the connection and is valid while the session is connected; copy it (`X509CertificateLoader.LoadCertificate(cert.RawData)`) to keep it longer. For ASP.NET Core servers see [Client certificates](asp-net-integration.md#client-certificates).
 
+## Multiple Endpoints
+
+One server can accept sessions on several transports at once. The configuration passed to the constructor is the **primary** one; add more endpoints before starting:
+
+```csharp
+var server = ServerNexus.CreateServer(new TcpTlsServerConfig { EndPoint = new IPEndPoint(IPAddress.Any, 9001), ... },
+    () => new ServerNexus());
+server.AddListener(new UdsServerConfig { EndPoint = new UnixDomainSocketEndPoint("/run/app.sock") }, "uds");
+server.AddListener(new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, 9002) }, "tcp-local");
+await server.StartAsync();
+```
+
+- `AddListener(config, name)` takes a listener configuration (TCP, TLS, UDS, QUIC). `AddExternalEndpoint(config, name)` returns an `IAcceptsExternalTransport` that the application (or NexNet.Asp, see [ASP.NET Integration](asp-net-integration.md#multiple-endpoints)) feeds connected transports to.
+- Both are allowed only after the server is configured and while it is stopped. Endpoints can not be removed or added while running.
+- Names are unique within the server. The primary endpoint is named after its transport (`tcp`, `tls`, `uds`, `quic`, `websocket`, `httpsocket`). A second endpoint on the same TCP port (an any-address bind included), UDS path, ASP.NET path or configuration object is rejected.
+- Start binds every listener; if one fails, the ones already bound are closed and the server stays `Stopped`. A listener that faults while running stops only that endpoint; the server stops when no listener or external endpoint is left.
+- `server.Endpoints` lists `NexusEndpointInfo(Name, Transport, IsSecure, Path)`, the primary first. `server.GetSnapshot().Endpoints` adds each endpoint's state, address and session count.
+
+**Which settings come from where.** Each endpoint's configuration supplies its sessions' settings: `Timeout`, `HandshakeTimeout`, `MaxMessageSize`, flow control (`SessionBudget`, `PipeWindow`, `InvocationCredits`, ...), `Authenticate`, `AuthorizationCacheDuration`, TLS and socket options, and the ASP.NET path, authentication and proxy headers. Server-wide settings come from the primary configuration only: `Logger`, `Time`, `MeterFactory`, `RateLimiting` (its limits count connections on every endpoint together), `MaxPendingHandshakes` and collections. An added endpoint must keep the primary's `Time` and leave `RateLimiting` null.
+
+**Authentication guard.** When the primary configuration sets `Authenticate = true`, `StartAsync` throws unless every endpoint does, so an added endpoint can not silently skip `OnAuthenticate`.
+
+**In the nexus.** `Context.Endpoint` tells a session which endpoint accepted it, from `OnAuthenticate` onward:
+
+```csharp
+protected override ValueTask<IIdentity?> OnAuthenticate(ReadOnlyMemory<byte>? token)
+{
+    // Allow the local UDS endpoint without a token.
+    if (Context.Endpoint?.Name == "uds")
+        return new(new DefaultIdentity { DisplayName = "local" });
+    ...
+}
+```
+
+`IsSecure` is true for TLS and QUIC. For WebSocket and HttpSocket it is the `HttpRequest.IsHttps` of the request that opened the connection.
+
+**Metrics and logs.** Server sessions and rejections carry the `nexnet.endpoint` metric tag with the endpoint name, next to `nexnet.role` and `nexnet.transport`. Sessions of an added endpoint log under `SV{id}/{name}`; those of the primary endpoint under `SV{id}`, as before.
+
 ## Transport Selection Guide
 
 | Scenario | Recommended Transport | Reason |
