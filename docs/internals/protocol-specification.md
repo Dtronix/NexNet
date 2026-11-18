@@ -625,12 +625,12 @@ Readers accept every valid form and check ranges.
 | `Dictionary<K,V>` and dictionary interfaces | map |
 | `Nullable<T>` | nil or `T` |
 | enums | underlying integer |
-| `DateTime` | `int64` `ToBinary()` (keeps `Kind`) |
-| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]` |
-| `TimeSpan` | `int64` ticks |
-| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks |
-| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order |
-| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags) |
+| `DateTime` | `int64` `ToBinary()` (keeps `Kind`), §10.6 |
+| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]`, §10.6 |
+| `TimeSpan` | `int64` ticks, §10.6 |
+| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks, §10.6 |
+| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order, §10.6 |
+| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags), §10.6 |
 | `BigInteger` | `bin`, little-endian two's complement |
 | `Uri`, `Version` | `str` |
 | `ValueTuple<…>`, `Tuple<…>`, `KeyValuePair<K,V>` | array |
@@ -641,6 +641,85 @@ Ext type code `78`.
 - Kinds: 1 sbyte, 2 int16, 3 uint16, 4 int32, 5 uint32, 6 int64, 7 uint64, 8 float32, 9 float64, 10 char, 11 Half.
 - The data length minus one must be a multiple of the element size.
 - An empty array is `d4 4e <kind>`.
+
+### 10.6 Exact layouts
+
+A **tick** is 100 ns. Dates use the proleptic Gregorian calendar without leap seconds, starting at
+0001-01-01T00:00:00 (tick 0). The largest tick value of a date and time is 3,155,378,975,999,999,999
+(9999-12-31T23:59:59.9999999), called *MaxTicks* below. A value outside the stated range fails to decode.
+
+#### DateTime
+
+One `int64`, the value of .NET `DateTime.ToBinary()`:
+
+| Bits | Content |
+|---|---|
+| 0–61 | ticks |
+| 62–63 | kind: `00` Unspecified, `01` Utc, `1x` Local |
+
+- **Unspecified and Utc.** Bits 0–61 are the ticks of the value, 0 to MaxTicks. For example, 2020-01-01T00:00:00
+  is `0x08D78E4D8B7C0000` as Unspecified and `0x48D78E4D8B7C0000` as Utc.
+- **Local.** Bits 0–61 are the **UTC** ticks of the value: its local ticks minus the writer's UTC offset at that
+  time. UTC ticks below 0 (a local time just after 0001-01-01 in a zone east of UTC) are stored as 2⁶² + ticks.
+  Writers set bits 62–63 to `10`. .NET keeps an in-memory flag for a local time that falls in the repeated hour at
+  the end of DST (kind `11`); `ToBinary` never writes it, because the UTC ticks already identify the instant.
+- **Reading Local.** Bit 63 set means Local, whatever bit 62 holds. Take bits 0–61 as ticks. If they exceed
+  2⁶² − 864,000,000,000 (one day), subtract 2⁶². Then convert the UTC instant to the reader's local time zone. The
+  C# reader follows `DateTime.FromBinary`: a result below 0 gains one day, and a result above MaxTicks fails.
+
+A Local value therefore names the same instant on both sides, shown in each side's own time zone. Unspecified and
+Utc values are copied unchanged.
+
+#### DateTimeOffset
+
+`[UtcTicks: int64, offsetMinutes: int16]`.
+- `UtcTicks` is the UTC instant, 0 to MaxTicks.
+- `offsetMinutes` is the offset from UTC, −840 to 840. Seconds of an offset are not sent; .NET offsets are whole
+  minutes.
+- The local clock value, `UtcTicks + offsetMinutes × 600,000,000`, must also be within 0 to MaxTicks.
+
+#### TimeSpan, DateOnly, TimeOnly
+
+| Type | Encoding | Range |
+|---|---|---|
+| `TimeSpan` | `int64` ticks, signed | the full `int64` range |
+| `DateOnly` | `int32` DayNumber: days since 0001-01-01 | 0 to 3,652,058 (9999-12-31) |
+| `TimeOnly` | `int64` ticks since midnight | 0 to 863,999,999,999 |
+
+#### decimal
+
+`bin` of 16 bytes: four `int32` values, each little-endian, in the order lo, mid, hi, flags (.NET
+`decimal.GetBits`).
+- lo, mid and hi form a 96-bit unsigned magnitude: `hi × 2⁶⁴ + mid × 2³² + lo`, each read as unsigned.
+- flags: bits 16–23 hold the scale (0–28); bit 31 is the sign (1 = negative); bits 0–15 and 24–30 are 0.
+- The value is `(−1)^sign × magnitude / 10^scale`.
+- The scale is kept as written, so 1.5 and 1.50 have different encodings. A negative zero (sign 1, magnitude 0)
+  is valid.
+- A `bin` of another length, a scale above 28, or a non-zero reserved bit fails to decode.
+
+Example: −1.5 is magnitude 15, scale 1, sign 1, so flags is `0x80010000`, and the 16 bytes are
+`0f 00 00 00 00 00 00 00 00 00 00 00 00 00 01 80`.
+
+#### Guid
+
+`bin` of 16 bytes, in the order of the canonical text form. For example,
+`00112233-4455-6677-8899-aabbccddeeff` is `00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff`. This is
+.NET `Guid.ToByteArray(bigEndian: true)`, not the mixed-endian default of `Guid.ToByteArray()`. A `bin` of another
+length fails to decode.
+
+#### Half and char
+
+- **`Half`** is written as `float32` (`ca`). Widening is exact. Readers accept any float or integer form (§10.1)
+  and convert to the nearest `Half`, ties to even; values beyond the `Half` range become ±infinity. Inside ext 78
+  (§10.5, kind 11) a `Half` is its raw IEEE 754 binary16 bits, little-endian.
+- **`char`** is one UTF-16 code unit, written as a canonical unsigned integer 0–65535. Any code unit is valid,
+  including a lone surrogate. Readers accept any integer form and reject values outside 0–65535. Inside ext 78
+  (kind 10) a `char` is a little-endian `uint16`.
+
+Source: `src/NexNet/Serialization/Formatters/PrimitiveFormatters.cs` (`DateTimeFormatter`,
+`DateTimeOffsetFormatter`, `TimeSpanFormatter`, `DateOnlyFormatter`, `TimeOnlyFormatter`, `GuidFormatter`,
+`DecimalFormatter`, `HalfFormatter`, `CharFormatter`), `src/NexNet/Serialization/MsgPackReader.cs` (`ReadChar`,
+`ReadSingle`), `src/NexNet/Serialization/Ext/PrimitiveArrayCodec.cs`.
 
 ## 11. Decoding limits and hardening
 
