@@ -39,10 +39,20 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     private ServerConfig? _config;
     private Func<TServerNexus>? _nexusFactory;
     private readonly SessionPoolManager<TClientProxy> _poolManager;
-    private ITransportListener? _listener;
     private TaskCompletionSource? _stoppedTcs;
-    private NexusServerState _state = NexusServerState.Stopped;
+    private volatile NexusServerState _state = NexusServerState.Stopped;
     private CancellationTokenSource? _cancellationTokenSource;
+
+    // Serializes StartAsync, StopAsync and DisposeAsync. State reads stay lock-free.
+    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
+
+    // Endpoints this server accepts sessions on. Today: exactly one, built from the primary config. In Listener mode
+    // it owns a transport listener; in Receiver mode it is the external path fed through AcceptTransport.
+    private readonly List<ServerEndpoint> _endpoints = new();
+    private ServerEndpoint _primaryEndpoint = null!;
+
+    /// <summary>Most concurrent session disconnects while the server stops.</summary>
+    private const int MaxParallelShutdownDisconnects = 64;
     
     // ReSharper disable once StaticMemberInGenericType
     private static int _sessionIdIncrementer;
@@ -178,11 +188,9 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             }
         }
 
-        // Initialize rate limiter if configured
-        if (config.RateLimiting?.IsEnabled == true)
-        {
-            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting, config.Time);
-        }
+        _primaryEndpoint = new ServerEndpoint(config, config.TransportName,
+            config.ConnectionMode == ServerConnectionMode.Listener);
+        _endpoints.Add(_primaryEndpoint);
 
         _preAuthFailureLog = new PreAuthFailureLog(_logger, config.Time);
         _metricsTags = NexusMetrics.GetTagSet(config);
@@ -207,100 +215,175 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(_config);
-        static void FireAndForget(Task? task)
+
+        await _lifecycleLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            // make sure that any exception is observed
-            if (task == null) return;
-            if (task.IsCompleted)
-            {
-                GC.KeepAlive(task.Exception);
+            if (_state == NexusServerState.Running)
+                throw new InvalidOperationException("Server is already running");
+
+            // Only execute if the server is stopped and not disposed.
+            if (_state != NexusServerState.Stopped)
                 return;
+
+            _state = NexusServerState.Starting;
+
+            try
+            {
+                await StartCoreAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await AbortStartAsync().ConfigureAwait(false);
+                _state = NexusServerState.Stopped;
+                throw;
             }
 
-            task.ContinueWith(t => GC.KeepAlive(t.Exception), TaskContinuationOptions.OnlyOnFaulted);
-        }
-        if (State == NexusServerState.Running) 
-            throw new InvalidOperationException("Server is already running");
+            _state = NexusServerState.Running;
 
-        // Only execute if the server is stopped and not disposed.
-        if (Interlocked.CompareExchange(ref _state, NexusServerState.Running, NexusServerState.Stopped) != NexusServerState.Stopped)
-            return;
-        
-        if (_config.ConnectionMode == ServerConnectionMode.Listener)
+            foreach (var endpoint in _endpoints)
+            {
+                endpoint.State = EndpointState.Running;
+                if (endpoint.IsListener)
+                {
+                    StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
+                        static state =>
+                        {
+                            var (server, ep) = ((NexusServer<TServerNexus, TClientProxy>, ServerEndpoint))state!;
+                            ep.AcceptLoop = server.ListenForConnectionsAsync(ep);
+                        }, (this, endpoint));
+                }
+            }
+
+            _watchdogTimer!.Change(TimeSpan.FromMilliseconds(_config.Timeout / 4), TimeSpan.FromMilliseconds(_config.Timeout / 4));
+            _collectionManager.Start();
+        }
+        finally
         {
-            // Startup the listener and stopping mechanisms.
+            _lifecycleLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Everything that can fail while starting: binds every listener endpoint and initializes the session manager.
+    /// The server is not yet Running, so nothing is accepted. On failure, <see cref="AbortStartAsync"/> undoes it.
+    /// </summary>
+    private async Task StartCoreAsync(CancellationToken cancellationToken)
+    {
+        var config = _config!;
+
+        // Created on every start: StopAsync disposes it, so a restarted server gets a fresh one.
+        if (config.RateLimiting?.IsEnabled == true)
+            _rateLimiter = new ConnectionRateLimiter(config.RateLimiting, config.Time);
+
+        if (config.ConnectionMode == ServerConnectionMode.Listener)
+        {
             _cancellationTokenSource = new CancellationTokenSource();
             _stoppedTcs?.TrySetResult();
             _stoppedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            
-            _listener = await _config.CreateServerListener(cancellationToken).ConfigureAwait(false);
-            
-            if(_listener == null)
-                throw new InvalidOperationException("""
-                                                    Configuration returned a null listener.  
-                                                    If the server is directly being provided connections via the AcceptTransport method,
-                                                    then the ServerConnectionMode.Receiver should be set on the configuration.
-                                                    """);
-
-            StartOnScheduler(_config.ReceiveSessionPipeOptions.ReaderScheduler,
-                _ => FireAndForget(ListenForConnectionsAsync()), null);
         }
-        
-        _watchdogTimer!.Change(TimeSpan.FromMilliseconds(_config.Timeout / 4), TimeSpan.FromMilliseconds(_config.Timeout / 4));
 
-        // Initialize the session manager
+        foreach (var endpoint in _endpoints)
+        {
+            if (!endpoint.IsListener)
+                continue;
+
+            endpoint.Listener = await BindAsync(endpoint, cancellationToken).ConfigureAwait(false);
+        }
+
         await _sessionManager.InitializeAsync(cancellationToken).ConfigureAwait(false);
+    }
 
-        _collectionManager.Start();
+    private static async Task<ITransportListener> BindAsync(ServerEndpoint endpoint, CancellationToken cancellationToken)
+    {
+        ITransportListener? listener;
+        try
+        {
+            listener = await endpoint.Config.CreateServerListener(cancellationToken).ConfigureAwait(false);
+        }
+        catch (TransportException e)
+        {
+            throw new TransportException(e.Error, $"Endpoint '{endpoint.Name}' failed to bind: {e.Message}", e);
+        }
+        catch (System.Net.Sockets.SocketException e)
+        {
+            throw new TransportException(e.SocketErrorCode, $"Endpoint '{endpoint.Name}' failed to bind: {e.Message}", e);
+        }
+
+        return listener ?? throw new InvalidOperationException($"""
+                                                                Configuration for endpoint '{endpoint.Name}' returned a null listener.
+                                                                If the server is directly being provided connections via the AcceptTransport method,
+                                                                then the ServerConnectionMode.Receiver should be set on the configuration.
+                                                                """);
+    }
+
+    /// <summary>
+    /// Undoes a failed <see cref="StartCoreAsync"/>: closes every endpoint bound so far and releases what start created.
+    /// </summary>
+    private async Task AbortStartAsync()
+    {
+        await CloseListenersAsync(linger: false).ConfigureAwait(false);
+
+        foreach (var endpoint in _endpoints)
+            endpoint.State = EndpointState.Stopped;
+
+        DisposeCancellationTokenSource();
+
+        _rateLimiter?.Dispose();
+        _rateLimiter = null;
+
+        // Nothing ran, so the server never stopped in the StoppedTask sense; leave the task completed so a waiter
+        // does not hang on a server that is not running.
+        _stoppedTcs?.TrySetResult();
     }
 
     /// <inheritdoc />
     public async Task StopAsync()
     {
-        if (Interlocked.CompareExchange(ref _state, NexusServerState.Stopped, NexusServerState.Running) != NexusServerState.Running)
-            throw new InvalidOperationException("Server is not running");
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_state != NexusServerState.Running)
+                throw new InvalidOperationException("Server is not running");
+
+            await StopCoreAsync().ConfigureAwait(false);
+            _state = NexusServerState.Stopped;
+        }
+        finally
+        {
+            _lifecycleLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stops a Running server. The caller holds the lifecycle lock and sets the final state.
+    /// </summary>
+    private async Task StopCoreAsync()
+    {
+        // Gates new sessions: the accept loops and AcceptTransport only admit while Running.
+        _state = NexusServerState.Stopping;
 
         _logger?.LogInfo("Stopping server");
 
+        // The async overload just uses more resources.
+        // ReSharper disable once MethodHasAsyncOverload
+        try
+        {
+            _cancellationTokenSource?.Cancel();
+        }
+        catch
+        {
+            // ignored
+        }
+
+        await CloseListenersAsync(linger: !_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
+
+        foreach (var endpoint in _endpoints)
+            endpoint.State = EndpointState.Stopped;
+
         _collectionManager.Stop();
 
-        // If the server is not listening for connections, we are done.
-        if (_config?.ConnectionMode == ServerConnectionMode.Listener)
-        {
-            var listener = _listener;
-            _listener = null;
-
-            try
-            {
-                // The async overload just uses more resources.
-                // ReSharper disable once MethodHasAsyncOverload
-                _cancellationTokenSource?.Cancel();
-                
-                // If the listener is null, then the incoming connections are not handled by a listener,
-                // and we don't have any work to perform.
-                if (listener != null)
-                    await listener.CloseAsync(!_config!.InternalNoLingerOnShutdown).ConfigureAwait(false);
-            }
-            catch
-            {
-                // ignored
-            }
-
-            _stoppedTcs?.TrySetResult();
-        }
-        
-        foreach (var session in _sessionManager.Sessions.LocalSessions)
-        {
-            try
-            {
-                await session.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
-            }
-            catch (Exception e)
-            {
-                // Ignore exceptions
-                _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Id} due to server shutdown.");
-            }
-        }
+        await DisconnectSessionsAsync().ConfigureAwait(false);
 
         // Shutdown the session manager
         await _sessionManager.ShutdownAsync().ConfigureAwait(false);
@@ -313,25 +396,98 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
 
         // Stop the watchdog timer as the server is no longer running.
         _watchdogTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        DisposeCancellationTokenSource();
+
+        _stoppedTcs?.TrySetResult();
+    }
+
+    /// <summary>
+    /// Closes every bound listener in parallel. Close errors are logged and otherwise ignored.
+    /// </summary>
+    private async Task CloseListenersAsync(bool linger)
+    {
+        List<Task>? closes = null;
+        foreach (var endpoint in _endpoints)
+        {
+            var listener = endpoint.Listener;
+            if (listener == null)
+                continue;
+
+            endpoint.Listener = null;
+            (closes ??= new List<Task>()).Add(CloseListenerAsync(endpoint, listener, linger));
+        }
+
+        if (closes != null)
+            await Task.WhenAll(closes).ConfigureAwait(false);
+    }
+
+    private async Task CloseListenerAsync(ServerEndpoint endpoint, ITransportListener listener, bool linger)
+    {
+        try
+        {
+            await listener.CloseAsync(linger).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            _logger?.LogDebug($"Error while closing the listener of endpoint '{endpoint.Name}': {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Disconnects every local session with <see cref="DisconnectReason.ServerShutdown"/>, at most
+    /// <see cref="MaxParallelShutdownDisconnects"/> at a time, so each session's disconnect delay overlaps.
+    /// </summary>
+    private async Task DisconnectSessionsAsync()
+    {
+        var sessions = new List<INexusSession>(_sessionManager.Sessions.LocalSessions);
+        if (sessions.Count == 0)
+            return;
+
+        var options = new ParallelOptions { MaxDegreeOfParallelism = MaxParallelShutdownDisconnects };
+        await Parallel.ForEachAsync(sessions, options, async (session, _) =>
+        {
+            try
+            {
+                await session.DisconnectAsync(DisconnectReason.ServerShutdown).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                // Ignore exceptions
+                _config!.Logger?.LogError(e, $"Error while disconnecting session {session.Id} due to server shutdown.");
+            }
+        }).ConfigureAwait(false);
+    }
+
+    private void DisposeCancellationTokenSource()
+    {
+        var cts = _cancellationTokenSource;
+        _cancellationTokenSource = null;
+        cts?.Dispose();
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        var previousState = Interlocked.Exchange(ref _state, NexusServerState.Disposed);
-
-        if (previousState == NexusServerState.Disposed || previousState == NexusServerState.Stopped)
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
         {
+            if (_state == NexusServerState.Disposed)
+                return;
+
+            if (_state == NexusServerState.Running)
+                await StopCoreAsync().ConfigureAwait(false);
+
+            _state = NexusServerState.Disposed;
             _watchdogTimer?.Dispose();
             _watchdogTimer = null;
-            return;
         }
-
-        await StopAsync().ConfigureAwait(false);
-        _watchdogTimer?.Dispose();
-        _watchdogTimer = null;
+        finally
+        {
+            _lifecycleLock.Release();
+        }
     }
-    
+
     ValueTask IAcceptsExternalTransport.AcceptTransport(ITransport transport, CancellationToken cancellationToken)
     {
         // If the server is not running, don't accept connections.
@@ -342,34 +498,54 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             throw new InvalidOperationException(
                 "Can't accept new transport before server configuration has been completed.");
 
+        return TryAdmitTransport(transport, _primaryEndpoint, out var sessionConfig)
+            ? RunSessionAsync(sessionConfig, cancellationToken)
+            : ValueTask.CompletedTask;
+    }
+
+    /// <summary>
+    /// The accept routine shared by the accept loops and <see cref="IAcceptsExternalTransport.AcceptTransport"/>.
+    /// Applies the pending handshake limit and the rate limiter, then builds the session's configuration.
+    /// Returns false when the transport is rejected; the transport is then closed.
+    /// </summary>
+    private bool TryAdmitTransport(
+        ITransport transport,
+        ServerEndpoint endpoint,
+        out NexusSessionConfigurations<TServerNexus, TClientProxy> sessionConfig)
+    {
+        sessionConfig = default;
+
         if (!TryBeginHandshake())
         {
-            _ = transport.CloseAsync(false);
-            return ValueTask.CompletedTask;
+            CloseRejected(transport);
+            return false;
         }
 
-        // Rate limit check for external transports
+        // Rate limit check using ITransport.RemoteAddress
         string? remoteAddress = null;
-        if (_rateLimiter != null)
+        var rateLimiter = _rateLimiter;
+        if (rateLimiter != null)
         {
             remoteAddress = transport.RemoteAddress;
-            var result = _rateLimiter.TryAcquire(remoteAddress);
+            var result = rateLimiter.TryAcquire(remoteAddress);
 
             if (result != ConnectionRateLimitResult.Allowed)
             {
-                _logger?.LogDebug($"External transport rejected: {result} from {remoteAddress ?? "unknown"}");
+                _logger?.LogDebug($"Connection on endpoint '{endpoint.Name}' rejected: {result} from {remoteAddress ?? "unknown"}");
                 _metricsTags.Metrics.RecordRejection(_metricsTags, NexusMetrics.RateLimitReasonName(result));
                 _handshakeEnded();
-                _ = transport.CloseAsync(false);
-                return ValueTask.CompletedTask;
+                CloseRejected(transport);
+                return false;
             }
         }
 
-        var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
-
         _config!.InternalOnConnect?.Invoke();
 
-        return RunSessionAsync(new NexusSessionConfigurations<TServerNexus, TClientProxy>()
+        // Create a composite ID of the current ticks along with the current ticks.
+        // This makes guessing IDs harder, but not impossible.
+        var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
+
+        sessionConfig = new NexusSessionConfigurations<TServerNexus, TClientProxy>()
         {
             ConnectionState = ConnectionState.Connecting,
             Transport = transport,
@@ -382,11 +558,29 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             CollectionManager = _collectionManager,
             Logger = _logger,
             RateLimiterAddress = remoteAddress,
-            RateLimiter = _rateLimiter,
+            RateLimiter = rateLimiter,
             HandshakeEnded = _handshakeEnded,
             PreAuthFailureLog = _preAuthFailureLog,
             MetricsTags = _metricsTags
-        }, cancellationToken);
+        };
+        return true;
+    }
+
+    private static void CloseRejected(ITransport transport)
+    {
+        static async Task CloseQuietlyAsync(ITransport transport)
+        {
+            try
+            {
+                await transport.CloseAsync(false).ConfigureAwait(false);
+            }
+            catch
+            {
+                /* ignore close errors */
+            }
+        }
+
+        _ = CloseQuietlyAsync(transport);
     }
 
     private static async void RunSessionAsync(object? boxed)
@@ -481,88 +675,79 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             session.DisconnectIfTimeout(timeoutTicks);
     }
     
-    private async Task ListenForConnectionsAsync()
+    private async Task ListenForConnectionsAsync(ServerEndpoint endpoint)
     {
+        var listener = endpoint.Listener;
+        if (listener == null)
+            return;
+
         try
         {
-            _logger?.LogInfo("Listening for connections");
-            while (_state == NexusServerState.Running)
+            // Read inside the try: a concurrent stop may already have disposed the source.
+            var cancellationToken = _cancellationTokenSource?.Token ?? CancellationToken.None;
+            _logger?.LogInfo($"Listening for connections on endpoint '{endpoint.Name}'");
+            while (_state == NexusServerState.Running && endpoint.State == EndpointState.Running)
             {
-                var clientTransport = await _listener!.AcceptTransportAsync(_cancellationTokenSource!.Token).ConfigureAwait(false);
+                var clientTransport = await listener.AcceptTransportAsync(cancellationToken).ConfigureAwait(false);
 
                 if(clientTransport == null)
                     continue;
 
-                if (!TryBeginHandshake())
-                {
-                    try
-                    {
-                        await clientTransport.CloseAsync(false).ConfigureAwait(false);
-                    }
-                    catch { /* ignore close errors */ }
+                if (!TryAdmitTransport(clientTransport, endpoint, out var sessionConfig))
                     continue;
-                }
-
-                // Rate limit check using ITransport.RemoteAddress
-                string? remoteAddress = null;
-                if (_rateLimiter != null)
-                {
-                    remoteAddress = clientTransport.RemoteAddress;
-                    var result = _rateLimiter.TryAcquire(remoteAddress);
-
-                    if (result != ConnectionRateLimitResult.Allowed)
-                    {
-                        _logger?.LogDebug($"Connection rejected: {result} from {remoteAddress ?? "unknown"}");
-                        _metricsTags.Metrics.RecordRejection(_metricsTags, NexusMetrics.RateLimitReasonName(result));
-                        _handshakeEnded();
-                        try
-                        {
-                            await clientTransport.CloseAsync(false).ConfigureAwait(false);
-                        }
-                        catch { /* ignore close errors */ }
-                        continue;
-                    }
-                }
-
-                _config!.InternalOnConnect?.Invoke();
-
-                // Create a composite ID of the current ticks along with the current ticks.
-                // This makes guessing IDs harder, but not impossible.
-                var baseSessionId = Interlocked.Increment(ref _sessionIdIncrementer);
 
                 // boxed, but only once per client
                 StartOnScheduler(
-                    _config.ReceiveSessionPipeOptions.ReaderScheduler,
+                    _config!.ReceiveSessionPipeOptions.ReaderScheduler,
                     RunSessionAsync,
-                    new NexusSessionConfigurations<TServerNexus, TClientProxy>()
-                    {
-                        ConnectionState = ConnectionState.Connecting,
-                        Transport = clientTransport,
-                        Pool = _poolManager,
-                        Configs = _config,
-                        SessionManager = _sessionManager,
-                        Id = GenerateSecureSessionId(baseSessionId),
-                        Nexus = _nexusFactory!.Invoke(),
-                        CollectionManager = _collectionManager,
-                        Logger = _logger,
-                        RateLimiterAddress = remoteAddress,
-                        RateLimiter = _rateLimiter,
-                        HandshakeEnded = _handshakeEnded,
-                        PreAuthFailureLog = _preAuthFailureLog,
-                        MetricsTags = _metricsTags
-                    });
+                    sessionConfig);
             }
         }
-        catch (NullReferenceException) { }
-        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            _config!.Logger?.LogError(ex, "Server shut down.");
-            await StopAsync().ConfigureAwait(false);
+            // A closed listener faults its pending accept once the server is stopping; that is not a fault.
+            if (_state != NexusServerState.Running || endpoint.State != EndpointState.Running)
+                return;
+
+            endpoint.State = EndpointState.Faulted;
+            _logger?.LogError(ex, $"Endpoint '{endpoint.Name}' faulted and stopped accepting connections.");
+            await StopIfNoEndpointAliveAsync().ConfigureAwait(false);
         }
     }
 
-    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, in NexusSessionConfigurations<TServerNexus, TClientProxy>? state)
+    /// <summary>
+    /// Stops the server after an endpoint fault when no listener endpoint is still accepting and there is no
+    /// external path (Receiver mode). Otherwise the server keeps running on what is left.
+    /// </summary>
+    private async Task StopIfNoEndpointAliveAsync()
+    {
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_state != NexusServerState.Running)
+                return;
+
+            foreach (var endpoint in _endpoints)
+            {
+                if (!endpoint.IsListener || endpoint.State == EndpointState.Running)
+                    return;
+            }
+
+            _logger?.LogError("No endpoint is accepting connections; server shut down.");
+            await StopCoreAsync().ConfigureAwait(false);
+            _state = NexusServerState.Stopped;
+        }
+        catch (Exception e)
+        {
+            _logger?.LogError(e, "Error while stopping the server after an endpoint fault.");
+        }
+        finally
+        {
+            _lifecycleLock.Release();
+        }
+    }
+
+    private static void StartOnScheduler(PipeScheduler? scheduler, Action<object?> callback, object? state)
     {
         if (scheduler == PipeScheduler.Inline) scheduler = null;
         (scheduler ?? PipeScheduler.ThreadPool).Schedule(callback, state);
@@ -579,5 +764,52 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
         RandomNumberGenerator.Fill(randomBytes);
         uint randomPart = BitConverter.ToUInt32(randomBytes);
         return (long)baseSessionId << 32 | randomPart;
+    }
+
+    /// <summary>
+    /// One place the server accepts sessions from. Internal only; the public surface is unchanged.
+    /// </summary>
+    private sealed class ServerEndpoint
+    {
+        public ServerEndpoint(ServerConfig config, string name, bool isListener)
+        {
+            Config = config;
+            Name = name;
+            IsListener = isListener;
+        }
+
+        /// <summary>Transport configuration the endpoint binds with.</summary>
+        public ServerConfig Config { get; }
+
+        /// <summary>Name used in logs and errors.</summary>
+        public string Name { get; }
+
+        /// <summary>Free-form tags. Empty until endpoints become configurable.</summary>
+        public IReadOnlyList<string> Tags { get; } = Array.Empty<string>();
+
+        /// <summary>True when the endpoint owns a listener; false for the external (AcceptTransport) path.</summary>
+        public bool IsListener { get; }
+
+        /// <summary>Bound listener while the server is starting or running.</summary>
+        public ITransportListener? Listener { get; set; }
+
+        /// <summary>The running accept loop, if any.</summary>
+        public Task? AcceptLoop { get; set; }
+
+        /// <summary>Lifecycle state of this endpoint alone.</summary>
+        public EndpointState State
+        {
+            get => _state;
+            set => _state = value;
+        }
+
+        private volatile EndpointState _state = EndpointState.Stopped;
+    }
+
+    private enum EndpointState
+    {
+        Stopped,
+        Running,
+        Faulted,
     }
 }
