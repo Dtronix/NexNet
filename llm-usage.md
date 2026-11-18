@@ -724,3 +724,5 @@ ValueTask Operation(int data, CancellationToken ct);
 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 await client.Proxy.Operation(42, cts.Token);
 ```
+
+Canceled before or after send: the call throws `TaskCanceledException` (`ValueTask` and `ValueTask<T>`); before send, nothing is sent.
