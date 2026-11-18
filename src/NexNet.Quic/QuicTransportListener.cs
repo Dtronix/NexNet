@@ -27,25 +27,47 @@ internal class QuicTransportListener : ITransportListener
         return _listener.DisposeAsync();
     }
 
+    /// <summary>
+    /// Accepts the next connection. QUIC performs the TLS handshake inside <see cref="QuicListener.AcceptConnectionAsync"/>,
+    /// so a single client's failed handshake (rejected certificate, ALPN mismatch, handshake timeout) surfaces there.
+    /// Such per-connection failures are transient: they are logged and null is returned so the listener keeps
+    /// accepting. Returns null as well when the accept was canceled or an accepted connection could not be set up.
+    /// Only a disposed listener (<see cref="ObjectDisposedException"/>) is rethrown so the server faults the endpoint.
+    /// </summary>
     public async ValueTask<ITransport?> AcceptTransportAsync(CancellationToken cancellationToken)
     {
-        QuicConnection connection = null!;
-
+        QuicConnection connection;
         try
         {
             connection = await _listener.AcceptConnectionAsync(cancellationToken).ConfigureAwait(false);
-            return await QuicTransport.CreateFromConnection(connection, _config).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // noop.
+            return null;
+        }
+        catch (Exception e) when (e is not ObjectDisposedException)
+        {
+            _config.Logger?.LogWarning(e, "Client connection failed during the QUIC handshake; listener continues.");
+            return null;
+        }
+
+        try
+        {
+            return await QuicTransport.CreateFromConnection(connection, _config).ConfigureAwait(false);
         }
         catch (Exception e)
         {
             _config.Logger?.LogError(e, "Client attempted to connect but failed with exception.");
 
             // Immediate disconnect.
-            await connection.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await connection.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception disposeException)
+            {
+                _config.Logger?.LogDebug(disposeException, "Failed to dispose the rejected client connection.");
+            }
         }
 
         return null;
