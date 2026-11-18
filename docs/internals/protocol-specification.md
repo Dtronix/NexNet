@@ -62,7 +62,7 @@ Both forms are independent of host byte order.
 | Value | Name | Body | Sent by |
 |---|---|---|---|
 | 1 | Ping | none | both |
-| 20–37 | Disconnect* | none | both |
+| 20–38 | Disconnect* | none | both |
 | 50 | DuplexPipeWrite | raw pipe bytes | both |
 | 51 | PipeWindowUpdate | `uint32` LE credit (§7.2) | both |
 | 100 | ClientGreeting | §4.1 | client |
@@ -80,8 +80,8 @@ Both forms are independent of host byte order.
 Every byte in 20–38 is read as a disconnect reason before anything else; no other message type uses that range.
 Defined disconnect reasons: 20 SocketError, 21 Graceful, 22 ProtocolError, 23 Timeout, 24 ClientMismatch,
 25 ServerMismatch, 28 ServerShutdown, 29 Authentication, 30 ServerRestarting, 32 SocketClosedWhenWriting,
-33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (36 is not assigned)
-(no progress within the progress timeout, §9).
+33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (no progress within the
+progress timeout, §9). 26, 27, 31, 36 and 38 are not assigned, but are still disconnects (§5.6).
 
 A server rejects `ServerGreeting`, and a client rejects `ClientGreeting*`, with `DisconnectProtocolError`.
 Any type not listed here is a protocol error.
@@ -97,12 +97,16 @@ wrapped in `bin` or length-prefixed.
 ### 4.1 ClientGreeting / ClientGreetingReconnection
 `[version: str|nil, serverNexusHash: int, clientNexusHash: int, authenticationToken: bin, maxMessageSize: int, invocationCredits: int]`
 
-- `authenticationToken` is at most 8 KiB; a longer one is rejected from its `bin` header, before it is read.
+- `authenticationToken` is `bin` or `nil`, at most 8 KiB; a longer one is rejected from its `bin` header, before it
+  is read (§5.4).
 - `maxMessageSize`: the largest argument, result or channel item the client accepts (§9).
 - `invocationCredits`: how many invocations the server may have queued at the client (§4.7).
 
 ### 4.2 ServerGreeting
 `[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int]`
+
+`version` is the hash of the **client** nexus the server expects (§5.2), not a version string. `clientId` is the
+session ID the server assigned.
 
 `maxMessageSize` and `invocationCredits` have the same meaning for the server. A side whose advertised
 `maxMessageSize` is below one frame (65,526 bytes) or whose `invocationCredits` is below 1 is disconnected with
@@ -121,6 +125,16 @@ streamed (§6). The `invocationId` of an IgnoreReturn invocation has no meaning 
 0. The exception is a streamed one: its ID keys the stream (§6), so it is unique among the sender's outstanding
 invocations until the stream has been sent. A receiver must not use the ID of an IgnoreReturn invocation to identify
 it; nothing can cancel such an invocation except the session ending.
+
+**Method ID validation.** A receiver accepts an `Invocation` only if `methodId` is a method or collection of its own
+nexus in the negotiated version: on the server, the version selected by the greeting (§5.2); on the client, its
+client nexus. Any other `methodId` disconnects with `ProtocolError`. The check runs before the invocation credit is
+counted (§8); a streamed invocation is checked once it has been reassembled. The C# implementation looks up the
+int64 key `(versionHash << 16) | methodId` in a generated set, where `versionHash` is the negotiated version's
+nexus hash. Another implementation may keep any equivalent set of the method IDs it implements.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `Invocation` case), `VMHash` and
+`VersionMethodHashSet` in `src/NexNet.Generator/Emission/NexusEmitter.cs`.
 
 ### 4.4 InvocationResult
 - No result (void methods, exceptions, unauthorized): `[invocationId: uint16, state: uint8]`
@@ -146,6 +160,32 @@ with its cancellation token already canceled. The receiver still sends its resul
 stopped. A cancellation for an invocation that has already completed is ignored. The canceling side keeps the invocation ID outstanding until that result arrives, so the result is not a
 protocol error and the ID is not reused before it.
 
+#### Caller-side cancellation
+
+A caller may cancel an invocation that expects a result (no IgnoreReturn). What happens depends on whether the
+invocation has been sent:
+
+- **Canceled before it is sent.** This covers a token that is already canceled and a cancel while the call waits for
+  invocation credit (§8). Nothing is sent, no invocation ID stays reserved, and the call completes as canceled.
+- **Canceled after it is sent** (or while it is being written). The caller completes the call as canceled at once,
+  without waiting for the peer, and sends `InvocationCancellation`. It keeps the invocation ID outstanding until the
+  peer's `InvocationResult` arrives. That late result, whatever its state, is consumed and discarded, which then
+  releases the ID. It is not a protocol error.
+- **Canceled while a large argument is streaming** (§6). The caller stops, sends `MessageAbort(Cancelled)`, and
+  completes the call like a call canceled before it was sent. The method never runs, so no result follows.
+- **Session ends.** Every call still waiting completes as canceled.
+
+IgnoreReturn invocations can't be canceled.
+
+**Current C# behavior:** for the first case, the C# client returns without a result: a `ValueTask` method returns
+normally and a `ValueTask<T>` method returns `default`. The same applies to the large-argument case. Unit F03
+changes the C# client to throw `TaskCanceledException`, which is the required behavior for other clients (Java:
+`CancellationException`; JavaScript: `AbortError`). Neither case puts anything on the wire, so the difference is
+not visible to the peer.
+
+Source: `src/NexNet/Invocation/SessionInvocationStateManager.cs` (`InvokeMethodWithResultCore`,
+`CancelInvocation`, `UpdateInvocationResult`), `src/NexNet/Internals/RegisteredInvocationState.cs`.
+
 ### 4.6 DuplexPipeUpdateState
 `[pipeId: uint16, state: uint8, window: uint32]`
 
@@ -163,7 +203,8 @@ protocol error and the ID is not reused before it.
 ### 4.7 InvocationCredit
 `[credits: uint16]`
 
-Returns `credits` invocation credits to the peer (§8).
+Returns `credits` invocation credits to the peer (§8). `credits` is at least 1; `InvocationCredit[0]` disconnects
+with `FlowControl`.
 
 ### 4.8 MessageStart
 `[invocationId: uint16, kind: uint8, innerType: uint8, totalLength: uint32]`
@@ -207,6 +248,162 @@ Each side applies the peer's advertised `maxMessageSize` and `invocationCredits`
 server only after authentication). A side's send limit is the smaller of its own `maxMessageSize` and the peer's;
 it always enforces its own limit on what it receives.
 
+### 5.1 Before the connection completes
+
+The rules are the same on both sides. A side's connection completes:
+- on the server, after the greeting is validated and authentication succeeds, just before `ServerGreeting` is sent;
+- on the client, when it receives a valid `ServerGreeting`.
+
+Until then the side accepts only:
+- a disconnect byte (20–38, §5.6), which is read before anything else;
+- one greeting of the right direction: `ClientGreeting`/`ClientGreetingReconnection` on the server,
+  `ServerGreeting` on the client.
+
+Anything else is a `ProtocolError`, and so is a greeting of the wrong direction. That includes `Ping`: a client must
+not ping before `ServerGreeting` arrives (§5.5). A frame body longer than 16 KiB is a `ProtocolError` as soon as
+its length is read (§2).
+
+The client sends the preamble and its greeting, then nothing else until `ServerGreeting`. The server sends
+nothing but its preamble, then `ServerGreeting` or a disconnect.
+
+Each side also runs a **handshake timeout** (`HandshakeTimeout`, 15 s by default, real time), started when its
+read loop starts. If the connection has not completed by then, the side closes the transport with reason
+`Timeout` and sends **no** disconnect byte. On the server the timeout includes the time spent in
+`OnAuthenticate`.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the pre-completion check), and
+`src/NexNet/Internals/NexusSession.cs` (`MaxPreAuthBodyLength`, `CheckHandshakeComplete`).
+
+### 5.2 Greeting validation
+
+The nexus hashes are **opaque int32 constants** produced by the NexNet source generator from the nexus
+interfaces. A client in another language takes them from the generator output and never recomputes them. Three
+hashes are involved:
+
+| Hash | Meaning |
+|---|---|
+| client nexus hash | hash of the client nexus interface (the methods the server may invoke on the client) |
+| server nexus hash | hash of the server nexus interface, or of one of its `[NexusVersion]` versions |
+| versions table | a versioned server's map from version string to that version's hash |
+
+The client fills its greeting as follows:
+- `version`: the newest version string of the server nexus it was generated against, or nil if that nexus is
+  not versioned. A non-nil version is at most 16 characters.
+- `serverNexusHash`: the hash of that version, or the server nexus hash if unversioned.
+- `clientNexusHash`: its client nexus hash.
+
+The server checks the greeting in this order. The first failure ends the session; the server sends the disconnect
+byte (§5.6).
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | More than 3 greetings on this connection (see the note below) | `ProtocolError` |
+| 2 | A greeting was already received on this connection | `ProtocolError` |
+| 3 | The body does not decode, or `authenticationToken` is longer than 8 KiB | `ProtocolError` |
+| 4 | `version` is longer than 16 UTF-16 code units | `ProtocolError` |
+| 5 | `clientNexusHash` differs from the server's client nexus hash | `ClientMismatch` |
+| 6 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+| 7 | Unversioned server and `version` is not nil | `ServerMismatch` |
+| 8 | Versioned server and `version` is nil or not in its versions table | `ServerMismatch` |
+| 9 | `serverNexusHash` differs from the hash of the requested version (unversioned: the server nexus hash) | `ServerMismatch` |
+| 10 | Authentication is configured and `OnAuthenticate` throws or returns no identity | `Authentication` |
+
+If all checks pass, the server completes the connection and sends `ServerGreeting` with `version` set to its client
+nexus hash. The version negotiated by checks 7–9 selects the method set for §4.3.
+
+**Greeting attempts.** The server counts greetings and refuses a fourth (check 1). Check 2 refuses any second
+greeting anyway, so in practice exactly one greeting is accepted per connection, and a client that wants to retry
+opens a new connection.
+
+The client checks `ServerGreeting` in this order:
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | A `ServerGreeting` was already received | `ProtocolError` |
+| 2 | `version` differs from its own client nexus hash | `ClientMismatch` |
+| 3 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`MessageHandler`, the `ClientGreeting` and
+`ServerGreeting` cases; `CompleteServerHandshake`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`,
+`MaxVersionStringLength`, `MaxGreetingAttempts`, `ApplyPeerLimits`).
+
+### 5.3 ClientGreeting and ClientGreetingReconnection
+
+`ClientGreetingReconnection` (101) has the same body as `ClientGreeting` (100). The C# client sends 101 when it
+reconnects under its reconnection policy, and 100 otherwise. The server treats 101 exactly like 100: the same checks
+apply, and it creates a new session. Nothing from the earlier session is resumed: pipes, collections, invocations
+and the session ID are all new. Session resumption is not implemented. A new client may always send 100.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `ClientGreetingReconnection` case falls through to
+`ClientGreeting`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`).
+
+### 5.4 Authentication token
+
+`authenticationToken` is `bin` or `nil`. Senders send an empty `bin` (`c4 00`) when they have no token; readers
+treat `nil` like an empty token. The length is checked against 8,192 bytes from the `bin` header, before the
+bytes are read; a longer token is a `ProtocolError`.
+
+The server passes the token bytes to its authentication handler only when authentication is configured;
+otherwise it ignores them. The token never appears anywhere else in the protocol.
+
+Source: `src/NexNet/Messages/IClientGreetingMessageBase.cs` (`ReadAuthenticationToken`),
+`src/NexNet/Messages/ClientGreeting.cs`.
+
+### 5.5 Ping and idle timeout
+
+`Ping` (type 1) is a single byte with no length and no body.
+
+- **Only the client pings.** Every `PingInterval` (10 s by default), starting once the connection completes, the
+  client first checks its idle timeout and then sends `Ping`.
+- **The server only replies.** For every `Ping` it receives, it sends a `Ping` back. Pings that arrive before the
+  reply is sent may be answered with a single `Ping`. The server never pings on its own.
+- **The idle timeout is local to each side** and is not advertised. Each side disconnects with `Timeout` (sending
+  the disconnect byte) when it has received no complete frame for `Timeout` (30 s by default). Any complete frame
+  counts, not only `Ping`; a partial frame does not. The server checks every `Timeout` / 4. The client checks on
+  each ping tick.
+
+So a client must ping well within the server's idle timeout, which it cannot learn from the protocol today.
+
+**Forward note:** unit S04 adds a trailing field `idleTimeoutMs` to `ServerGreeting`. Clients will derive their
+ping interval from it (a third of it by default). Older readers ignore trailing fields.
+
+Source: `src/NexNet/NexusClient.cs` (`PingTimer`), `src/NexNet/NexusServer.cs` (`ConnectionWatchdog`),
+`src/NexNet/Internals/NexusSession.Receiving.cs` (the `Ping` case), `src/NexNet/Internals/SessionControlSender.cs`
+(`RequestPong`), `src/NexNet/Internals/NexusSession.cs` (`DisconnectIfTimeout`).
+
+### 5.6 Disconnect
+
+A disconnect is a single byte, the reason (20–38), with no length and no body.
+
+**Receiving.** A byte in 20–38 read where a message type is expected ends the session at once with that reason.
+This holds in every state, including before the connection completes. The receiver:
+- does not process any bytes after it;
+- does not reply;
+- closes the transport.
+
+Unassigned codes in the range (26, 27, 31, 36, 38) are still disconnects, reported with their numeric value.
+
+**Sending.** A side that ends the session for a reason the peer should know writes the disconnect byte, waits
+`DisconnectDelay` (200 ms by default; 0 disables the wait; at most 10 s) so the byte can reach the wire, and then
+closes the transport. Nothing is sent after the disconnect byte.
+
+| Cause | Reason | Byte sent |
+|---|---|---|
+| Application disconnect (`DisconnectAsync`) | `Graceful` | yes |
+| Server stopping | `ServerShutdown` | yes |
+| Protocol violation detected while reading, including a bad preamble | `ProtocolError` or the specific reason | yes |
+| Greeting rejected (§5.2) | as listed there | yes |
+| Idle timeout (§5.5) | `Timeout` | yes |
+| Progress timeout (§9) | `Stalled` | yes |
+| Authorization returns Disconnect (§7.6) | `Unauthorized` | yes |
+| Handshake timeout (§5.1) | `Timeout` | no |
+| Transport ended or failed | `SocketError` | no |
+| Disconnect byte received | the received reason | no |
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the 20–38 check),
+`src/NexNet/Internals/NexusSession.cs` (`DisconnectCore`, `DisconnectStartedCore`),
+`src/NexNet/Transports/ConfigBase.cs` (`DisconnectDelay`).
+
 ## 6. Large arguments and results
 
 ### 6.1 Sending
@@ -218,12 +415,25 @@ MessageStart[invocationId, kind, innerType, totalLength]
 MessageChunk[invocationId, kind] + payload   (repeated; payload lengths add up to totalLength)
 ```
 
+Thresholds:
+- The decision is made on the whole serialized body: a body of at most 65,535 bytes goes in one frame, and a larger
+  one is streamed. Only `Invocation` and `InvocationResult` bodies can be larger than a frame.
+- An `Invocation` body adds at most 9 bytes to its arguments (array header 1, `invocationId` 3, `methodId` 3,
+  `flags` 2). So arguments of at most 65,526 bytes are never streamed, and larger arguments may be. A sender gives
+  every invocation whose arguments exceed 65,526 bytes a unique invocation ID, including an IgnoreReturn one, and
+  keeps it reserved until the stream has been sent.
+- Each `MessageChunk` payload is at most 65,535 bytes, the frame body limit. The C# sender sends full 65,535-byte
+  chunks and a shorter last one; receivers accept any chunk sizes that add up to `totalLength`.
+
 The sender serializes the message fully first. If `totalLength` exceeds its send limit the value is not sent and
 the call fails locally. Other messages are never larger than a frame. A stream is keyed by (invocation ID, kind):
 an Argument flows from caller to callee, a Result from callee to caller. A large argument's `MessageStart` uses the
 invocation's credit (§8).
 
 ### 6.2 Receiving
+
+Any `totalLength` from 1 to the receiver's advertised `maxMessageSize` is valid, including one that would have fit
+in a single frame.
 
 On `MessageStart` the receiver reserves `totalLength` from its session budget (§9). If it can't, it replies
 `MessageAbort(Busy)` and discards the stream's chunks up to `totalLength`. Otherwise it buffers the chunks (memory is
@@ -249,6 +459,10 @@ The receiver disconnects with `ProtocolError` on:
 - a Result stream (or an `InvocationResult`) for an invocation ID it is not waiting on;
 - a chunk that would exceed the remaining `totalLength`;
 - a chunk for a stream that was never started and is not being discarded.
+
+Source: `src/NexNet/Internals/NexusSession.Sending.cs` (`WriteFrame`, `SendLargeMessage`),
+`src/NexNet/Messages/IInvocationMessage.cs` (`MaxArgumentSize`), `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Internals/LargeMessageReceiver.cs` (`OnStart`, `OnChunk`).
 
 ## 7. Pipes
 
@@ -302,6 +516,53 @@ A typed channel (`INexusDuplexChannel<T>`) sends each item as its length followe
 
 Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe must fit in the window.
 
+### 7.5 Pipe ID allocation
+
+- Each side allocates its own local IDs, 1 to 255. 0 means "not assigned yet" and is never allocated. Each side can
+  therefore have at most 255 pipes in use at once, and `MaxPipes` (§9) usually limits it further. When no ID is
+  free, opening a pipe fails locally.
+- The opener sends only its local ID, as the pipe argument of the invocation (one byte, a `uint8`).
+- The registering side allocates its own local ID and composes the full ID (`clientId | (serverId << 8)`, §2). It
+  sends `Ready` with the full ID.
+- Until `Ready` arrives, the opener knows the pipe by its **partial ID**: its own byte set and the peer's byte 0. On
+  `Ready` it finds the pipe from its own byte of the full ID and from then on uses the full ID. A `Ready` that
+  matches no pending partial ID is a `ProtocolError`.
+- A refusal (`Refused`) carries the opener's partial ID, because the registering side allocated nothing.
+- A `DuplexPipeUpdateState` other than `Ready` for an ID that is neither open, closing nor pending is ignored.
+- A local ID is free for reuse once both sides have sent and received Complete (§7.3) and the application has
+  released the pipe. The C# implementation allocates round-robin, starting after the last ID it allocated. Any
+  free ID is valid.
+
+Source: `src/NexNet/Pipes/NexusPipeManager.cs` (`GetNewLocalId`, `RegisterPipe`, `UpdateState`, `ComposeId`).
+
+### 7.6 Pipe, channel and collection methods
+
+- A method with an `INexusDuplexPipe` or `INexusDuplexChannel<T>` parameter is invoked with `flags` IgnoreReturn |
+  DuplexPipe (`0x03`) and `invocationId` 0. The pipe parameter is sent as the opener's local ID (§7.5).
+- A collection connection is the same: `methodId` is the collection's ID, and `arguments` is `[pipeId: uint8]`.
+- No `InvocationResult` is ever sent for these invocations. `Ready` or `Refused` tells the opener whether the pipe
+  opened. When the method returns or throws, the registering side closes the pipe (§7.3).
+- Other IgnoreReturn methods (those returning `void`) are sent with `flags` IgnoreReturn (`0x01`).
+
+**Authorization.** A server method or collection marked `[NexusAuthorize]` is checked on the server before its
+arguments are read and before its pipe is registered. The outcomes are:
+
+| Authorization result | Method expecting a result | IgnoreReturn method | Pipe, channel or collection method |
+|---|---|---|---|
+| Allowed | runs | runs | the pipe is registered and the method runs |
+| Unauthorized | `InvocationResult` with state 3 Unauthorized | nothing is sent | nothing is sent (see below) |
+| Disconnect | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) | the session ends with `Unauthorized` (34) |
+
+**Current behavior for an unauthorized pipe method:** the server sends neither `Ready` nor `Refused`. The opener's
+pipe waits for `Ready` until the session ends, and the opener's local ID stays in use until then. Unit F04 changes
+the server to send `DuplexPipeUpdateState[Refused]` with the opener's partial ID, the same as a limit refusal
+(§7.1), so the opener fails the pipe. Clients should treat `Refused` as the failure in both cases.
+
+Source: `src/NexNet.Generator/Emission/MethodEmitter.cs` (`EmitNexusInvocation`, `EmitProxyMethodInvocation`),
+`src/NexNet.Generator/Emission/CollectionEmitter.cs`, `src/NexNet/Invocation/ProxyInvocationBase.cs`,
+`src/NexNet/Invocation/NexusBase.cs` (`InvokeMethodCoreTask`), `src/NexNet/Invocation/ServerNexusBase.cs`
+(`HandleAuthResult`).
+
 ## 8. Invocation credits
 
 - Each side advertises `invocationCredits` in its greeting: how many invocations the peer may have queued at it.
@@ -309,8 +570,8 @@ Raw `INexusDuplexPipe` data has no framing; an application message on a raw pipe
   `MessageStart`) and waits locally when it has none.
 - The receiver returns credit when it dequeues an invocation for execution (or drops a refused streamed argument),
   in `InvocationCredit` messages sent once half its advertised credits are pending.
-- An invocation received without credit, or credit returned beyond what was advertised, disconnects with
-  `FlowControl`.
+- An invocation received without credit, an `InvocationCredit` whose `credits` is 0, or credit returned beyond
+  what was advertised, disconnects with `FlowControl`.
 - How many invocations run at once (`MaxConcurrentConnectionInvocations`) is local and not advertised; pipe and
   collection methods stop counting against it once their pipe is open.
 
@@ -364,12 +625,12 @@ Readers accept every valid form and check ranges.
 | `Dictionary<K,V>` and dictionary interfaces | map |
 | `Nullable<T>` | nil or `T` |
 | enums | underlying integer |
-| `DateTime` | `int64` `ToBinary()` (keeps `Kind`) |
-| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]` |
-| `TimeSpan` | `int64` ticks |
-| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks |
-| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order |
-| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags) |
+| `DateTime` | `int64` `ToBinary()` (keeps `Kind`), §10.6 |
+| `DateTimeOffset` | `[UtcTicks: int64, offsetMinutes: int16]`, §10.6 |
+| `TimeSpan` | `int64` ticks, §10.6 |
+| `DateOnly` / `TimeOnly` | `int32` DayNumber / `int64` ticks, §10.6 |
+| `Guid` | `bin` 16 bytes, RFC 4122 (big-endian) order, §10.6 |
+| `decimal` | `bin` 16 bytes: `GetBits` as four little-endian `int32` (lo, mid, hi, flags), §10.6 |
 | `BigInteger` | `bin`, little-endian two's complement |
 | `Uri`, `Version` | `str` |
 | `ValueTuple<…>`, `Tuple<…>`, `KeyValuePair<K,V>` | array |
@@ -380,6 +641,85 @@ Ext type code `78`.
 - Kinds: 1 sbyte, 2 int16, 3 uint16, 4 int32, 5 uint32, 6 int64, 7 uint64, 8 float32, 9 float64, 10 char, 11 Half.
 - The data length minus one must be a multiple of the element size.
 - An empty array is `d4 4e <kind>`.
+
+### 10.6 Exact layouts
+
+A **tick** is 100 ns. Dates use the proleptic Gregorian calendar without leap seconds, starting at
+0001-01-01T00:00:00 (tick 0). The largest tick value of a date and time is 3,155,378,975,999,999,999
+(9999-12-31T23:59:59.9999999), called *MaxTicks* below. A value outside the stated range fails to decode.
+
+#### DateTime
+
+One `int64`, the value of .NET `DateTime.ToBinary()`:
+
+| Bits | Content |
+|---|---|
+| 0–61 | ticks |
+| 62–63 | kind: `00` Unspecified, `01` Utc, `1x` Local |
+
+- **Unspecified and Utc.** Bits 0–61 are the ticks of the value, 0 to MaxTicks. For example, 2020-01-01T00:00:00
+  is `0x08D78E4D8B7C0000` as Unspecified and `0x48D78E4D8B7C0000` as Utc.
+- **Local.** Bits 0–61 are the **UTC** ticks of the value: its local ticks minus the writer's UTC offset at that
+  time. UTC ticks below 0 (a local time just after 0001-01-01 in a zone east of UTC) are stored as 2⁶² + ticks.
+  Writers set bits 62–63 to `10`. .NET keeps an in-memory flag for a local time that falls in the repeated hour at
+  the end of DST (kind `11`); `ToBinary` never writes it, because the UTC ticks already identify the instant.
+- **Reading Local.** Bit 63 set means Local, whatever bit 62 holds. Take bits 0–61 as ticks. If they exceed
+  2⁶² − 864,000,000,000 (one day), subtract 2⁶². Then convert the UTC instant to the reader's local time zone. The
+  C# reader follows `DateTime.FromBinary`: a result below 0 gains one day, and a result above MaxTicks fails.
+
+A Local value therefore names the same instant on both sides, shown in each side's own time zone. Unspecified and
+Utc values are copied unchanged.
+
+#### DateTimeOffset
+
+`[UtcTicks: int64, offsetMinutes: int16]`.
+- `UtcTicks` is the UTC instant, 0 to MaxTicks.
+- `offsetMinutes` is the offset from UTC, −840 to 840. Seconds of an offset are not sent; .NET offsets are whole
+  minutes.
+- The local clock value, `UtcTicks + offsetMinutes × 600,000,000`, must also be within 0 to MaxTicks.
+
+#### TimeSpan, DateOnly, TimeOnly
+
+| Type | Encoding | Range |
+|---|---|---|
+| `TimeSpan` | `int64` ticks, signed | the full `int64` range |
+| `DateOnly` | `int32` DayNumber: days since 0001-01-01 | 0 to 3,652,058 (9999-12-31) |
+| `TimeOnly` | `int64` ticks since midnight | 0 to 863,999,999,999 |
+
+#### decimal
+
+`bin` of 16 bytes: four `int32` values, each little-endian, in the order lo, mid, hi, flags (.NET
+`decimal.GetBits`).
+- lo, mid and hi form a 96-bit unsigned magnitude: `hi × 2⁶⁴ + mid × 2³² + lo`, each read as unsigned.
+- flags: bits 16–23 hold the scale (0–28); bit 31 is the sign (1 = negative); bits 0–15 and 24–30 are 0.
+- The value is `(−1)^sign × magnitude / 10^scale`.
+- The scale is kept as written, so 1.5 and 1.50 have different encodings. A negative zero (sign 1, magnitude 0)
+  is valid.
+- A `bin` of another length, a scale above 28, or a non-zero reserved bit fails to decode.
+
+Example: −1.5 is magnitude 15, scale 1, sign 1, so flags is `0x80010000`, and the 16 bytes are
+`0f 00 00 00 00 00 00 00 00 00 00 00 00 00 01 80`.
+
+#### Guid
+
+`bin` of 16 bytes, in the order of the canonical text form. For example,
+`00112233-4455-6677-8899-aabbccddeeff` is `00 11 22 33 44 55 66 77 88 99 aa bb cc dd ee ff`. This is
+.NET `Guid.ToByteArray(bigEndian: true)`, not the mixed-endian default of `Guid.ToByteArray()`. A `bin` of another
+length fails to decode.
+
+#### Half and char
+
+- **`Half`** is written as `float32` (`ca`). Widening is exact. Readers accept any float or integer form (§10.1)
+  and convert to the nearest `Half`, ties to even; values beyond the `Half` range become ±infinity. Inside ext 78
+  (§10.5, kind 11) a `Half` is its raw IEEE 754 binary16 bits, little-endian.
+- **`char`** is one UTF-16 code unit, written as a canonical unsigned integer 0–65535. Any code unit is valid,
+  including a lone surrogate. Readers accept any integer form and reject values outside 0–65535. Inside ext 78
+  (kind 10) a `char` is a little-endian `uint16`.
+
+Source: `src/NexNet/Serialization/Formatters/PrimitiveFormatters.cs` (`DateTimeFormatter`,
+`DateTimeOffsetFormatter`, `TimeSpanFormatter`, `DateOnlyFormatter`, `TimeOnlyFormatter`, `GuidFormatter`,
+`DecimalFormatter`, `HalfFormatter`, `CharFormatter`), `src/NexNet/Serialization/MsgPackReader.cs` (`ReadChar`,
+`ReadSingle`), `src/NexNet/Serialization/Ext/PrimitiveArrayCodec.cs`.
 
 ## 11. Decoding limits and hardening
 
