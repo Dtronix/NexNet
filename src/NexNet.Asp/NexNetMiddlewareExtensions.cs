@@ -116,7 +116,22 @@ public static partial class NexNetMiddlewareExtensions
         if (ReferenceEquals(server.Config, config))
             return null;
 
-        return (INexusExternalEndpoint)server.AddExternalEndpoint(config, name ?? config.TransportName);
+        if (name == null)
+        {
+            // Named after the transport, or after transport and path when that name is taken (several WebSocket
+            // endpoints, or a WebSocket primary endpoint).
+            name = config.TransportName;
+            foreach (var endpoint in server.Endpoints)
+            {
+                if (endpoint.Name == name)
+                {
+                    name = config.TransportName + config.Path;
+                    break;
+                }
+            }
+        }
+
+        return (INexusExternalEndpoint)server.AddExternalEndpoint(config, name);
     }
     
     /// <summary>

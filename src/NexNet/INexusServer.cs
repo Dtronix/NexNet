@@ -34,8 +34,8 @@ public interface INexusServer : IAsyncDisposable
     bool IsConfigured { get; }
 
     /// <summary>
-    /// Endpoints the server accepts sessions on: the primary one (named <see cref="NexusEndpointInfo.PrimaryName"/>)
-    /// first, then those added with <see cref="AddListener"/> and <see cref="AddExternalEndpoint"/>, in order.
+    /// Endpoints the server accepts sessions on: the primary one (named after its transport, for example
+    /// <c>tcp</c>) first, then those added with <see cref="AddListener"/> and <see cref="AddExternalEndpoint"/>, in order.
     /// Empty until the server is configured.
     /// </summary>
     IReadOnlyList<NexusEndpointInfo> Endpoints { get; }

@@ -216,7 +216,7 @@ public sealed class NexusServer<TServerNexus, TClientProxy> : INexusServer<TServ
             }
         }
 
-        _primaryEndpoint = new ServerEndpoint(this, config, NexusEndpointInfo.PrimaryName,
+        _primaryEndpoint = new ServerEndpoint(this, config, config.TransportName,
             config.ConnectionMode == ServerConnectionMode.Listener, _logger);
         _endpoints.Add(_primaryEndpoint);
         _endpointInfos = [_primaryEndpoint.Info];

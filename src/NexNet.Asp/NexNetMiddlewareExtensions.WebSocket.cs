@@ -57,7 +57,8 @@ public static partial class NexNetMiddlewareExtensions
     /// <param name="app">Web app to bind the endpoint to. Requires <c>app.UseWebSockets()</c>.</param>
     /// <param name="server">The server.</param>
     /// <param name="config">The endpoint's configuration.</param>
-    /// <param name="name">Endpoint name, unique within the server; defaults to <c>websocket</c>.</param>
+    /// <param name="name">Endpoint name, unique within the server; defaults to <c>websocket</c>, or <c>websocket</c>
+    /// followed by the path when that name is taken.</param>
     /// <returns>Web app.</returns>
     public static IApplicationBuilder MapNexusWebSocket<TServerNexus, TClientProxy>(
         this WebApplication app,

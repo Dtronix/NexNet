@@ -4,7 +4,7 @@ namespace NexNet;
 /// One place a server accepts sessions from: a listener added with
 /// <see cref="NexusServer{TServerNexus,TClientProxy}.AddListener"/>, an external endpoint added with
 /// <see cref="NexusServer{TServerNexus,TClientProxy}.AddExternalEndpoint"/>, or the endpoint built from the
-/// server's primary configuration (named <see cref="PrimaryName"/>).
+/// server's primary configuration (named after its transport, for example <c>tcp</c> or <c>websocket</c>).
 /// </summary>
 /// <param name="Name">Name of the endpoint; unique within its server. Reported as the <c>nexnet.endpoint</c> metric
 /// tag and in the server's log path.</param>
@@ -14,10 +14,4 @@ namespace NexNet;
 /// the endpoint itself reports false, and a session's <c>Context.Endpoint</c> reports
 /// <c>HttpRequest.IsHttps</c> of the request that opened it.</param>
 /// <param name="Path">The request path of an ASP.NET endpoint (WebSocket, HttpSocket); null otherwise.</param>
-public sealed record NexusEndpointInfo(string Name, string Transport, bool IsSecure, string? Path)
-{
-    /// <summary>
-    /// Name of the endpoint built from the configuration passed to the server's constructor or <c>Configure</c>.
-    /// </summary>
-    public const string PrimaryName = "default";
-}
+public sealed record NexusEndpointInfo(string Name, string Transport, bool IsSecure, string? Path);
