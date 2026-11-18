@@ -384,6 +384,14 @@ internal static class DiagnosticDescriptors
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor InvalidTestScaffolding = new(
+        id: "NEXNET049",
+        title: "Invalid NexusTestScaffolding",
+        messageFormat: "The C# test scaffolding of '{0}' cannot be generated: {1}",
+        category: Category,
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public static DiagnosticDescriptor? FindTargetDescriptor(string id) => id switch
     {
         "NEXNET040" => TargetTypeUnsupported,
@@ -394,6 +402,7 @@ internal static class DiagnosticDescriptors
         "NEXNET046" => TargetReferenceKey,
         "NEXNET047" => TargetFileCollision,
         "NEXNET048" => InvalidTargetFormatter,
+        "NEXNET049" => InvalidTestScaffolding,
         _ => null
     };
 
