@@ -267,6 +267,12 @@ internal sealed record TypeRef(TypeRefKind Kind)
     /// <summary>True on a reference-type occurrence that may be null (annotated, or declared nullable-oblivious).</summary>
     public bool RefNullable { get; init; }
 
+    /// <summary>
+    /// <see cref="TypeRefKind.External"/>: the native formatters declared for the type with
+    /// <c>[assembly: NexusTargetFormatter&lt;T&gt;]</c>, one per target bit, ordered by target. Empty when there are none.
+    /// </summary>
+    public EquatableArray<NativeFormatterIr> NativeFormatters { get; init; } = EquatableArray<NativeFormatterIr>.Empty;
+
     /// <summary>True when the referenced value may be null: a nullable reference or a <c>Nullable&lt;T&gt;</c>.</summary>
     public bool MayBeNull => RefNullable || Kind == TypeRefKind.Nullable;
 
@@ -280,6 +286,11 @@ internal sealed record TypeRef(TypeRefKind Kind)
             _ => "Ref",
         };
 }
+
+/// <summary>A hand-written formatter in one target language for an <see cref="TypeRefKind.External"/> type.</summary>
+/// <param name="Target">The target bit (a single value of <c>NexNet.NexusTargets</c>).</param>
+/// <param name="Formatter">Fully qualified name of the native formatter class.</param>
+internal sealed record NativeFormatterIr(int Target, string Formatter);
 
 /// <summary>A serialized declared type: a [NexusObject] object, a [NexusObject] union or an enum.</summary>
 /// <param name="Id">Unique id: the full metadata name of the definition, e.g. <c>Ns.Outer+Box`1</c>.</param>

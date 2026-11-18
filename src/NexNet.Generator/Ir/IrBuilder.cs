@@ -28,25 +28,52 @@ internal static class IrBuilder
             return IrFragment.Empty;
 
         var isServer = data.NexusAttribute.IsServer;
-        var serverData = isServer ? data.NexusInterface : data.ProxyInterface;
-        var clientData = isServer ? data.ProxyInterface : data.NexusInterface;
-        var serverSymbol = isServer ? nexusInterface : proxyInterface;
-        var clientSymbol = isServer ? proxyInterface : nexusInterface;
+        return BuildExport(
+            shapes,
+            nexusClass.Name,
+            nexusClass.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : "",
+            targets: 0,
+            isServer ? nexusInterface : proxyInterface,
+            isServer ? data.NexusInterface : data.ProxyInterface,
+            isServer ? proxyInterface : nexusInterface,
+            isServer ? data.ProxyInterface : data.NexusInterface,
+            IrDocs.FromSymbol(nexusClass, cancellationToken),
+            data.IdentifierLocation,
+            cancellationToken);
+    }
 
+    /// <summary>
+    /// The fragment of one export given directly by its two interfaces (a nexus class build, or an
+    /// <c>[assembly: NexusClientExport&lt;TServer, TClient&gt;]</c> with no class). The data must be the extractor's data
+    /// for the matching symbols.
+    /// </summary>
+    public static IrFragment BuildExport(
+        ShapeBuilder shapes,
+        string name,
+        string clrNamespace,
+        int targets,
+        INamedTypeSymbol serverSymbol,
+        InvocationInterfaceData serverData,
+        INamedTypeSymbol clientSymbol,
+        InvocationInterfaceData clientData,
+        string? docs,
+        LocationData? location,
+        CancellationToken cancellationToken = default)
+    {
         var types = new ShapeToIr(shapes, cancellationToken);
         var serverApi = InterfaceToIr.Convert(serverData, serverSymbol, types, cancellationToken);
         var clientApi = InterfaceToIr.Convert(clientData, clientSymbol, types, cancellationToken);
 
         var export = new ExportIr(
-            nexusClass.Name,
-            nexusClass.ContainingNamespace is { IsGlobalNamespace: false } ns ? ns.ToDisplayString() : "",
-            Targets: 0,
+            name,
+            clrNamespace,
+            targets,
             serverApi,
             clientApi,
             Handshake(serverData, clientData),
             ClientAcceptedIds(clientData),
-            IrDocs.FromSymbol(nexusClass, cancellationToken),
-            data.IdentifierLocation);
+            docs,
+            location);
 
         return new IrFragment(new EquatableArray<ExportIr>(new[] { export }), types.GetDecls());
     }

@@ -35,6 +35,12 @@ public class NexusAttribute<TNexusInterface, TProxyInterface> : Attribute
     public required NexusType NexusType { get; init; }
 
     /// <summary>
+    /// Client languages to generate for this nexus, in addition to C#. Valid only on a server nexus; the generator
+    /// reports NEXNET043 on a client nexus. Defaults to <see cref="NexusTargets.None"/>.
+    /// </summary>
+    public NexusTargets Targets { get; init; }
+
+    /// <summary>
     /// Creates a blank attribute to set the <see cref="NexusType"/> at a later point.
     /// </summary>
     public NexusAttribute()

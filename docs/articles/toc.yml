@@ -30,6 +30,8 @@
   href: metrics.md
 - name: Benchmarks
   href: benchmarks.md
+- name: Multi-language Clients
+  href: multi-language-clients.md
 - name: Contributing (Java & JS)
   href: contributing-multilang.md
 - name: Release Notes
