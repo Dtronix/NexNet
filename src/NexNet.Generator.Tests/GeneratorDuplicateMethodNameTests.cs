@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis;
-using NUnit.Framework;
 
 namespace NexNet.Generator.Tests;
 
@@ -9,7 +8,7 @@ namespace NexNet.Generator.Tests;
 /// </summary>
 class GeneratorDuplicateMethodNameTests
 {
-    private static Diagnostic[] RunWithoutGeneratorException(string source)
+    private static async Task<Diagnostic[]> RunWithoutGeneratorException(string source)
     {
         // A file path, as in a real build: diagnostics are reported at file locations, which need one.
         var compilation = CSharpGeneratorRunner.CreateCompilation(source);
@@ -17,8 +16,8 @@ class GeneratorDuplicateMethodNameTests
         compilation = compilation.ReplaceSyntaxTree(tree, tree.WithFilePath("Source.cs"));
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
 
-        Assert.That(result.Results.Select(r => r.Exception), Is.All.Null, "The generator threw.");
-        Assert.That(result.Diagnostics.Any(d => d.Id == "CS8785"), Is.False, "The generator reported a failure.");
+        await Assert.That(result.Results.Select(r => r.Exception).OfType<Exception>().ToArray()).IsEmpty().Because("The generator threw.");
+        await Assert.That(result.Diagnostics.Any(d => d.Id == "CS8785")).IsFalse().Because("The generator reported a failure.");
         return errors;
     }
 
@@ -26,9 +25,9 @@ class GeneratorDuplicateMethodNameTests
         diagnostics.Where(d => d.Id == DiagnosticDescriptors.DuplicateMethodName.Id).ToArray();
 
     [Test]
-    public void OverloadWithinOneInterface_ReportsNexnet042()
+    public async Task OverloadWithinOneInterface_ReportsNexnet042()
     {
-        var errors = RunWithoutGeneratorException("""
+        var errors = await RunWithoutGeneratorException("""
 using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
@@ -47,15 +46,15 @@ partial class ServerNexus
 """);
 
         var dup = Nexnet042(errors);
-        Assert.That(dup, Has.Length.EqualTo(1));
-        Assert.That(dup[0].Severity, Is.EqualTo(DiagnosticSeverity.Error));
-        Assert.That(dup[0].GetMessage(), Does.Contain("'IServerNexus'").And.Contain("'Update'"));
+        await Assert.That(dup.Length).IsEqualTo(1);
+        await Assert.That(dup[0].Severity).IsEqualTo(DiagnosticSeverity.Error);
+        await Assert.That(dup[0].GetMessage()).Contains("'IServerNexus'").And.Contains("'Update'");
     }
 
     [Test]
-    public void SameNameAcrossInheritedInterfaces_ReportsNexnet042()
+    public async Task SameNameAcrossInheritedInterfaces_ReportsNexnet042()
     {
-        var errors = RunWithoutGeneratorException("""
+        var errors = await RunWithoutGeneratorException("""
 using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
@@ -77,14 +76,14 @@ partial class ServerNexus
 """);
 
         var dup = Nexnet042(errors);
-        Assert.That(dup, Has.Length.EqualTo(1));
-        Assert.That(dup[0].GetMessage(), Does.Contain("'IServerNexus'").And.Contain("'Update'"));
+        await Assert.That(dup.Length).IsEqualTo(1);
+        await Assert.That(dup[0].GetMessage()).Contains("'IServerNexus'").And.Contains("'Update'");
     }
 
     [Test]
-    public void SameNameAcrossVersionedInterfaces_ReportsNexnet042()
+    public async Task SameNameAcrossVersionedInterfaces_ReportsNexnet042()
     {
-        var errors = RunWithoutGeneratorException("""
+        var errors = await RunWithoutGeneratorException("""
 using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
@@ -110,14 +109,14 @@ partial class ServerNexus
 """);
 
         var dup = Nexnet042(errors);
-        Assert.That(dup, Has.Length.EqualTo(1));
-        Assert.That(dup[0].GetMessage(), Does.Contain("'IServerNexusV2'").And.Contain("'Update'"));
+        await Assert.That(dup.Length).IsEqualTo(1);
+        await Assert.That(dup[0].GetMessage()).Contains("'IServerNexusV2'").And.Contains("'Update'");
     }
 
     [Test]
-    public void OverloadOnProxyInterface_ReportsNexnet042()
+    public async Task OverloadOnProxyInterface_ReportsNexnet042()
     {
-        var errors = RunWithoutGeneratorException("""
+        var errors = await RunWithoutGeneratorException("""
 using NexNet;
 using System.Threading.Tasks;
 namespace NexNetDemo;
@@ -132,12 +131,12 @@ partial class ServerNexus { }
 """);
 
         var dup = Nexnet042(errors);
-        Assert.That(dup, Has.Length.EqualTo(1));
-        Assert.That(dup[0].GetMessage(), Does.Contain("'IClientNexus'").And.Contain("'Notify'"));
+        await Assert.That(dup.Length).IsEqualTo(1);
+        await Assert.That(dup[0].GetMessage()).Contains("'IClientNexus'").And.Contains("'Notify'");
     }
 
     [Test]
-    public void Nexnet042_IsReportedAtTheDuplicateMethod()
+    public async Task Nexnet042_IsReportedAtTheDuplicateMethod()
     {
         var source = """
 using NexNet;
@@ -155,17 +154,17 @@ partial class ServerNexus
     public void Update(string value) { }
 }
 """;
-        var dup = Nexnet042(RunWithoutGeneratorException(source)).Single();
+        var dup = Nexnet042(await RunWithoutGeneratorException(source)).Single();
 
         var span = dup.Location.GetLineSpan();
-        Assert.That(dup.Location, Is.Not.EqualTo(Location.None));
-        Assert.That(span.Path, Is.EqualTo("Source.cs"));
-        Assert.That(span.StartLinePosition.Line, Is.EqualTo(6)); // void Update(string value);
-        Assert.That(source.Substring(dup.Location.SourceSpan.Start, dup.Location.SourceSpan.Length), Is.EqualTo("Update"));
+        await Assert.That(dup.Location).IsNotEqualTo(Location.None);
+        await Assert.That(span.Path).IsEqualTo("Source.cs");
+        await Assert.That(span.StartLinePosition.Line).IsEqualTo(6); // void Update(string value);
+        await Assert.That(source.Substring(dup.Location.SourceSpan.Start, dup.Location.SourceSpan.Length)).IsEqualTo("Update");
     }
 
     [Test]
-    public void SerializationDiagnostic_IsReportedAtTheMember()
+    public async Task SerializationDiagnostic_IsReportedAtTheMember()
     {
         var source = """
 using NexNet;
@@ -178,17 +177,17 @@ partial class DataObject
     public int Missing { get; set; }
 }
 """;
-        var errors = RunWithoutGeneratorException(source);
+        var errors = await RunWithoutGeneratorException(source);
         var missingKey = errors.Single(d => d.Id == DiagnosticDescriptors.MissingNexusKey.Id);
 
-        Assert.That(missingKey.Location, Is.Not.EqualTo(Location.None));
-        Assert.That(missingKey.Location.GetLineSpan().Path, Is.EqualTo("Source.cs"));
-        Assert.That(missingKey.Location.GetLineSpan().StartLinePosition.Line, Is.EqualTo(7)); // public int Missing
-        Assert.That(source.Substring(missingKey.Location.SourceSpan.Start, missingKey.Location.SourceSpan.Length), Is.EqualTo("Missing"));
+        await Assert.That(missingKey.Location).IsNotEqualTo(Location.None);
+        await Assert.That(missingKey.Location.GetLineSpan().Path).IsEqualTo("Source.cs");
+        await Assert.That(missingKey.Location.GetLineSpan().StartLinePosition.Line).IsEqualTo(7); // public int Missing
+        await Assert.That(source.Substring(missingKey.Location.SourceSpan.Start, missingKey.Location.SourceSpan.Length)).IsEqualTo("Missing");
     }
 
     [Test]
-    public void OverloadedAuthorizedClassMethods_UseTheImplementingOverload()
+    public async Task OverloadedAuthorizedClassMethods_UseTheImplementingOverload()
     {
         // The class overloads an authorized method name with a helper declared first; the interface names are
         // unique. The authorization of the overload that implements the interface method is used.
@@ -220,10 +219,10 @@ partial class ServerNexus
 """);
         var (_, result, errors) = CSharpGeneratorRunner.RunGeneratorWithResult(compilation);
 
-        Assert.That(result.Results.Select(r => r.Exception), Is.All.Null, "The generator threw.");
-        Assert.That(errors, Is.Empty);
+        await Assert.That(result.Results.Select(r => r.Exception).OfType<Exception>().ToArray()).IsEmpty().Because("The generator threw.");
+        await Assert.That(errors).IsEmpty();
         var nexusSource = result.GeneratedTrees.Single(t => t.FilePath.EndsWith("ServerNexus.Nexus.g.cs")).ToString();
-        Assert.That(nexusSource, Does.Contain("77).ConfigureAwait(false)"));
-        Assert.That(nexusSource, Does.Not.Contain("11).ConfigureAwait(false)"));
+        await Assert.That(nexusSource).Contains("77).ConfigureAwait(false)");
+        await Assert.That(nexusSource).DoesNotContain("11).ConfigureAwait(false)");
     }
 }
