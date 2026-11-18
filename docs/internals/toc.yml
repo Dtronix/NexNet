@@ -2,3 +2,5 @@
   href: protocol-specification.md
 - name: Flow Control (design)
   href: flow-control.md
+- name: Generator IR (nexnet-ir.json)
+  href: nexnet-ir.md

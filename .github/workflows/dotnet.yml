@@ -52,12 +52,12 @@ jobs:
 
     # Tests run on Microsoft.Testing.Platform (global.json). --minimum-expected-tests guards against a suite silently
     # discovering fewer tests; raise each count when tests are added. --results-directory goes before `--` so dotnet test
-    # resolves it against the repo root (IntegrationTests runs from its project directory via launchSettings.json).
+    # resolves it against the repo root rather than the test process's working directory.
     - name: Execute integration tests
-      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build --minimum-expected-tests 2834 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.IntegrationTests -c Release --no-build --minimum-expected-tests 2859 --results-directory TestResults -- --report-trx
 
     - name: Execute generator tests
-      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build --minimum-expected-tests 189 --results-directory TestResults -- --report-trx
+      run: dotnet test src/NexNet.Generator.Tests -c Release --no-build --minimum-expected-tests 214 --results-directory TestResults -- --report-trx
 
     - name: Execute serialization tests (includes fuzz harness smoke run)
       run: dotnet test src/NexNet.Serialization.Tests -c Release --no-build --minimum-expected-tests 298 --results-directory TestResults -- --report-trx
