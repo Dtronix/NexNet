@@ -121,7 +121,8 @@ dotnet test src/NexNet.IntegrationTests -c Release --no-build # about 4 min; use
 ```
 
 Record each suite's pass count for step 7. If a test fails, rerun only that test to tell a flaky test from a real
-failure (`--filter "FullyQualifiedName~Name"`). Report the result and stop; don't release while a test fails.
+failure (NUnit suites: `--filter "FullyQualifiedName~Name"`; TUnit suites: `--treenode-filter "/*/*/*/Name"`, or
+`"/*/*/ClassName/*"` for a class; see `llm-dev.md`). Report the result and stop; don't release while a test fails.
 
 ## 6. Commit
 
