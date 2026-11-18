@@ -208,7 +208,7 @@ internal abstract class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass")
                 },
             };
         }
@@ -227,7 +227,7 @@ internal abstract class BaseTests
                     ClientCertificateRequired = false,
                     AllowRenegotiation = false,
                     EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile("server.pfx", "certPass")
+                    ServerCertificate = X509CertificateLoader.LoadPkcs12FromFile(Path.Combine("certs", "server.pfx"), "certPass")
                 },
             };
         }
