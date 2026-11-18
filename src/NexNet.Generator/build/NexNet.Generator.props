@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    NexNet multi-language targets (Java, JavaScript). See docs/articles/multi-language-clients.md.
+
+    Shorthand properties, each converted to a NexNetTarget item:
+      NexNetJavaOutputDir, NexNetJavaPackage                  -> <NexNetTarget Include="java" OutputDir="..." Package="..." />
+      NexNetJavaScriptOutputDir, NexNetJavaScriptModuleName   -> <NexNetTarget Include="javascript" OutputDir="..." ModuleName="..." />
+
+    Items are evaluated after every property, so these conditions see the values set in the project file.
+  -->
+  <PropertyGroup>
+    <_NexNetGeneratorPropsImported>true</_NexNetGeneratorPropsImported>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <NexNetTarget Include="java" Condition="'$(NexNetJavaOutputDir)' != ''"
+                  OutputDir="$(NexNetJavaOutputDir)" Package="$(NexNetJavaPackage)" />
+    <NexNetTarget Include="javascript" Condition="'$(NexNetJavaScriptOutputDir)' != ''"
+                  OutputDir="$(NexNetJavaScriptOutputDir)" ModuleName="$(NexNetJavaScriptModuleName)" />
+  </ItemGroup>
+</Project>

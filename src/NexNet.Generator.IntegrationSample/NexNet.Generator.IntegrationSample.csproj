@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A tiny project that consumes NexNet.Generator the way a NuGet consumer does (build/ props and targets imported) and
+    configures both targets. NexNet.Generator.Tests copies it to a temporary directory and runs real builds of it
+    (Bundle/BundleBuildTests.cs). It is not part of NexNet.slnx: `dotnet build src` does not build it.
+
+    Properties for an out-of-tree copy:
+      NexNetSrcDir        the repository's src/ directory (default: the parent of this directory)
+      NexNetAssemblyDir   a directory holding built NexNet.dll and NexNet.Generator.dll to reference instead of the projects
+  -->
+  <PropertyGroup>
+    <NexNetSrcDir Condition="'$(NexNetSrcDir)' == ''">$(MSBuildThisFileDirectory)..\</NexNetSrcDir>
+  </PropertyGroup>
+
+  <Import Project="$(NexNetSrcDir)NexNet.Generator\buildTransitive\NexNet.Generator.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <NexNetJavaOutputDir>generated/java</NexNetJavaOutputDir>
+    <NexNetJavaPackage>com.dtronix.nexnet.sample</NexNetJavaPackage>
+    <NexNetJavaScriptOutputDir>generated/js</NexNetJavaScriptOutputDir>
+    <NexNetJavaScriptModuleName>nexnet-sample</NexNetJavaScriptModuleName>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(NexNetAssemblyDir)' == ''">
+    <ProjectReference Include="$(NexNetSrcDir)NexNet\NexNet.csproj" />
+    <ProjectReference Include="$(NexNetSrcDir)NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(NexNetAssemblyDir)' != ''">
+    <Reference Include="NexNet" HintPath="$(NexNetAssemblyDir)NexNet.dll" />
+    <Analyzer Include="$(NexNetAssemblyDir)NexNet.Generator.dll" />
+  </ItemGroup>
+
+  <Import Project="$(NexNetSrcDir)NexNet.Generator\buildTransitive\NexNet.Generator.targets" />
+</Project>

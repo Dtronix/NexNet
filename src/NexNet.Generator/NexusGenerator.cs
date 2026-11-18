@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NexNet.Generator.Bundle;
 using NexNet.Generator.Emission;
 using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
@@ -31,6 +32,14 @@ internal partial class NexusGenerator : IIncrementalGenerator
     /// Incremental step name of the compilation's IR (<see cref="NexusIr"/>, null without targets). Used by tests.
     /// </summary>
     public const string IrTrackingName = "NexusIr";
+
+    /// <summary>
+    /// Incremental step name of the target bundle source (<see cref="TargetBundle"/>, null without one). Used by tests.
+    /// </summary>
+    public const string BundleTrackingName = "NexusTargetBundle";
+
+    /// <summary>MSBuild property telling the generator it runs in a design-time (IDE) build.</summary>
+    public const string DesignTimeBuildProperty = "build_property.DesignTimeBuild";
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -126,11 +135,34 @@ internal partial class NexusGenerator : IIncrementalGenerator
         var targetConfiguration = context.AnalyzerConfigOptionsProvider
             .Select(static (provider, _) => TargetRegistry.ParseConfiguration(provider.GlobalOptions));
 
-        // Validate the IR against every target it opts in to (NEXNET040-047). Target emitters (G04+) consume the IR here.
-        context.RegisterSourceOutput(ir.Combine(targetConfiguration), static (ctx, source) =>
+        // Validate the IR against every target it opts in to (NEXNET040-047).
+        var targetCheck = ir.Combine(targetConfiguration)
+            .Select(static (source, _) =>
+            {
+                var (compilationIr, configuration) = source;
+                return new TargetCheck(
+                    compilationIr,
+                    configuration,
+                    new EquatableArray<TargetDiagnostic>(TargetValidator.Validate(compilationIr, configuration).ToArray()));
+            });
+
+        context.RegisterSourceOutput(targetCheck, static (ctx, check) => ReportTargetDiagnostics(check.Diagnostics, ctx));
+
+        // The target emitters' files, as a comment-only bundle the MSBuild unpack target writes to disk (D11). Design-time
+        // builds only validate. The bundle text is the cached value, so an unchanged IR re-emits nothing.
+        var designTimeBuild = context.AnalyzerConfigOptionsProvider
+            .Select(static (provider, _) =>
+                provider.GlobalOptions.TryGetValue(DesignTimeBuildProperty, out var value)
+                && string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+
+        var bundle = targetCheck.Combine(designTimeBuild)
+            .Select(static (source, _) => TargetBundleBuilder.Build(source.Left, source.Right))
+            .WithTrackingName(BundleTrackingName);
+
+        context.RegisterSourceOutput(bundle, static (ctx, text) =>
         {
-            var (compilationIr, configuration) = source;
-            ReportTargetDiagnostics(TargetValidator.Validate(compilationIr, configuration), ctx);
+            if (text != null)
+                ctx.AddSource(TargetBundle.HintName, text);
         });
     }
 
