@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Multi-endpoint NexNet server for cross-language interop tests (H07). Test infrastructure; not packaged. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+    <!-- The self-test and console projects live in sub-folders and are separate projects. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);SelfTest/**;Cli/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.Asp\NexNet.Asp.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The F08 test CA and leaf certificates (see src/NexNet.IntegrationTests/certs/README.md). Copied to certs/ in
+         this project's output and in the output of every project that references it. -->
+    <None Include="..\NexNet.IntegrationTests\certs\server.pfx;..\NexNet.IntegrationTests\certs\client.pfx;..\NexNet.IntegrationTests\certs\test-ca.pem;..\NexNet.IntegrationTests\certs\server.pem"
+          Link="certs\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
