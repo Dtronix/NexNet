@@ -62,7 +62,7 @@ Both forms are independent of host byte order.
 | Value | Name | Body | Sent by |
 |---|---|---|---|
 | 1 | Ping | none | both |
-| 20–37 | Disconnect* | none | both |
+| 20–38 | Disconnect* | none | both |
 | 50 | DuplexPipeWrite | raw pipe bytes | both |
 | 51 | PipeWindowUpdate | `uint32` LE credit (§7.2) | both |
 | 100 | ClientGreeting | §4.1 | client |
@@ -80,8 +80,8 @@ Both forms are independent of host byte order.
 Every byte in 20–38 is read as a disconnect reason before anything else; no other message type uses that range.
 Defined disconnect reasons: 20 SocketError, 21 Graceful, 22 ProtocolError, 23 Timeout, 24 ClientMismatch,
 25 ServerMismatch, 28 ServerShutdown, 29 Authentication, 30 ServerRestarting, 32 SocketClosedWhenWriting,
-33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (36 is not assigned)
-(no progress within the progress timeout, §9).
+33 RateLimited, 34 Unauthorized, 35 FlowControl (credit or window violation), 37 Stalled (no progress within the
+progress timeout, §9). 26, 27, 31, 36 and 38 are not assigned, but are still disconnects (§5.6).
 
 A server rejects `ServerGreeting`, and a client rejects `ClientGreeting*`, with `DisconnectProtocolError`.
 Any type not listed here is a protocol error.
@@ -97,12 +97,16 @@ wrapped in `bin` or length-prefixed.
 ### 4.1 ClientGreeting / ClientGreetingReconnection
 `[version: str|nil, serverNexusHash: int, clientNexusHash: int, authenticationToken: bin, maxMessageSize: int, invocationCredits: int]`
 
-- `authenticationToken` is at most 8 KiB; a longer one is rejected from its `bin` header, before it is read.
+- `authenticationToken` is `bin` or `nil`, at most 8 KiB; a longer one is rejected from its `bin` header, before it
+  is read (§5.4).
 - `maxMessageSize`: the largest argument, result or channel item the client accepts (§9).
 - `invocationCredits`: how many invocations the server may have queued at the client (§4.7).
 
 ### 4.2 ServerGreeting
 `[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int]`
+
+`version` is the hash of the **client** nexus the server expects (§5.2), not a version string. `clientId` is the
+session ID the server assigned.
 
 `maxMessageSize` and `invocationCredits` have the same meaning for the server. A side whose advertised
 `maxMessageSize` is below one frame (65,526 bytes) or whose `invocationCredits` is below 1 is disconnected with
@@ -206,6 +210,162 @@ validates the greeting, runs authentication if configured, and then sends `Serve
 Each side applies the peer's advertised `maxMessageSize` and `invocationCredits` once the connection completes (the
 server only after authentication). A side's send limit is the smaller of its own `maxMessageSize` and the peer's;
 it always enforces its own limit on what it receives.
+
+### 5.1 Before the connection completes
+
+The rules are the same on both sides. A side's connection completes:
+- on the server, after the greeting is validated and authentication succeeds, just before `ServerGreeting` is sent;
+- on the client, when it receives a valid `ServerGreeting`.
+
+Until then the side accepts only:
+- a disconnect byte (20–38, §5.6), which is read before anything else;
+- one greeting of the right direction: `ClientGreeting`/`ClientGreetingReconnection` on the server,
+  `ServerGreeting` on the client.
+
+Anything else is a `ProtocolError`, and so is a greeting of the wrong direction. That includes `Ping`: a client must
+not ping before `ServerGreeting` arrives (§5.5). A frame body longer than 16 KiB is a `ProtocolError` as soon as
+its length is read (§2).
+
+The client sends the preamble and its greeting, then nothing else until `ServerGreeting`. The server sends
+nothing but its preamble, then `ServerGreeting` or a disconnect.
+
+Each side also runs a **handshake timeout** (`HandshakeTimeout`, 15 s by default, real time), started when its
+read loop starts. If the connection has not completed by then, the side closes the transport with reason
+`Timeout` and sends **no** disconnect byte. On the server the timeout includes the time spent in
+`OnAuthenticate`.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the pre-completion check), and
+`src/NexNet/Internals/NexusSession.cs` (`MaxPreAuthBodyLength`, `CheckHandshakeComplete`).
+
+### 5.2 Greeting validation
+
+The nexus hashes are **opaque int32 constants** produced by the NexNet source generator from the nexus
+interfaces. A client in another language takes them from the generator output and never recomputes them. Three
+hashes are involved:
+
+| Hash | Meaning |
+|---|---|
+| client nexus hash | hash of the client nexus interface (the methods the server may invoke on the client) |
+| server nexus hash | hash of the server nexus interface, or of one of its `[NexusVersion]` versions |
+| versions table | a versioned server's map from version string to that version's hash |
+
+The client fills its greeting as follows:
+- `version`: the newest version string of the server nexus it was generated against, or nil if that nexus is
+  not versioned. A non-nil version is at most 16 characters.
+- `serverNexusHash`: the hash of that version, or the server nexus hash if unversioned.
+- `clientNexusHash`: its client nexus hash.
+
+The server checks the greeting in this order. The first failure ends the session; the server sends the disconnect
+byte (§5.6).
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | More than 3 greetings on this connection (see the note below) | `ProtocolError` |
+| 2 | A greeting was already received on this connection | `ProtocolError` |
+| 3 | The body does not decode, or `authenticationToken` is longer than 8 KiB | `ProtocolError` |
+| 4 | `version` is longer than 16 UTF-16 code units | `ProtocolError` |
+| 5 | `clientNexusHash` differs from the server's client nexus hash | `ClientMismatch` |
+| 6 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+| 7 | Unversioned server and `version` is not nil | `ServerMismatch` |
+| 8 | Versioned server and `version` is nil or not in its versions table | `ServerMismatch` |
+| 9 | `serverNexusHash` differs from the hash of the requested version (unversioned: the server nexus hash) | `ServerMismatch` |
+| 10 | Authentication is configured and `OnAuthenticate` throws or returns no identity | `Authentication` |
+
+If all checks pass, the server completes the connection and sends `ServerGreeting` with `version` set to its client
+nexus hash. The version negotiated by checks 7–9 selects the method set for §4.3.
+
+**Greeting attempts.** The server counts greetings and refuses a fourth (check 1). Check 2 refuses any second
+greeting anyway, so in practice exactly one greeting is accepted per connection, and a client that wants to retry
+opens a new connection.
+
+The client checks `ServerGreeting` in this order:
+
+| # | Check | Disconnect |
+|---|---|---|
+| 1 | A `ServerGreeting` was already received | `ProtocolError` |
+| 2 | `version` differs from its own client nexus hash | `ClientMismatch` |
+| 3 | `maxMessageSize` below 65,526, or `invocationCredits` below 1 | `ProtocolError` |
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`MessageHandler`, the `ClientGreeting` and
+`ServerGreeting` cases; `CompleteServerHandshake`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`,
+`MaxVersionStringLength`, `MaxGreetingAttempts`, `ApplyPeerLimits`).
+
+### 5.3 ClientGreeting and ClientGreetingReconnection
+
+`ClientGreetingReconnection` (101) has the same body as `ClientGreeting` (100). The C# client sends 101 when it
+reconnects under its reconnection policy, and 100 otherwise. The server treats 101 exactly like 100: the same checks
+apply, and it creates a new session. Nothing from the earlier session is resumed: pipes, collections, invocations
+and the session ID are all new. Session resumption is not implemented. A new client may always send 100.
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (the `ClientGreetingReconnection` case falls through to
+`ClientGreeting`), `src/NexNet/Internals/NexusSession.cs` (`StartAsClient`).
+
+### 5.4 Authentication token
+
+`authenticationToken` is `bin` or `nil`. Senders send an empty `bin` (`c4 00`) when they have no token; readers
+treat `nil` like an empty token. The length is checked against 8,192 bytes from the `bin` header, before the
+bytes are read; a longer token is a `ProtocolError`.
+
+The server passes the token bytes to its authentication handler only when authentication is configured;
+otherwise it ignores them. The token never appears anywhere else in the protocol.
+
+Source: `src/NexNet/Messages/IClientGreetingMessageBase.cs` (`ReadAuthenticationToken`),
+`src/NexNet/Messages/ClientGreeting.cs`.
+
+### 5.5 Ping and idle timeout
+
+`Ping` (type 1) is a single byte with no length and no body.
+
+- **Only the client pings.** Every `PingInterval` (10 s by default), starting once the connection completes, the
+  client first checks its idle timeout and then sends `Ping`.
+- **The server only replies.** For every `Ping` it receives, it sends a `Ping` back. Pings that arrive before the
+  reply is sent may be answered with a single `Ping`. The server never pings on its own.
+- **The idle timeout is local to each side** and is not advertised. Each side disconnects with `Timeout` (sending
+  the disconnect byte) when it has received no complete frame for `Timeout` (30 s by default). Any complete frame
+  counts, not only `Ping`; a partial frame does not. The server checks every `Timeout` / 4. The client checks on
+  each ping tick.
+
+So a client must ping well within the server's idle timeout, which it cannot learn from the protocol today.
+
+**Forward note:** unit S04 adds a trailing field `idleTimeoutMs` to `ServerGreeting`. Clients will derive their
+ping interval from it (a third of it by default). Older readers ignore trailing fields.
+
+Source: `src/NexNet/NexusClient.cs` (`PingTimer`), `src/NexNet/NexusServer.cs` (`ConnectionWatchdog`),
+`src/NexNet/Internals/NexusSession.Receiving.cs` (the `Ping` case), `src/NexNet/Internals/SessionControlSender.cs`
+(`RequestPong`), `src/NexNet/Internals/NexusSession.cs` (`DisconnectIfTimeout`).
+
+### 5.6 Disconnect
+
+A disconnect is a single byte, the reason (20–38), with no length and no body.
+
+**Receiving.** A byte in 20–38 read where a message type is expected ends the session at once with that reason.
+This holds in every state, including before the connection completes. The receiver:
+- does not process any bytes after it;
+- does not reply;
+- closes the transport.
+
+Unassigned codes in the range (26, 27, 31, 36, 38) are still disconnects, reported with their numeric value.
+
+**Sending.** A side that ends the session for a reason the peer should know writes the disconnect byte, waits
+`DisconnectDelay` (200 ms by default; 0 disables the wait; at most 10 s) so the byte can reach the wire, and then
+closes the transport. Nothing is sent after the disconnect byte.
+
+| Cause | Reason | Byte sent |
+|---|---|---|
+| Application disconnect (`DisconnectAsync`) | `Graceful` | yes |
+| Server stopping | `ServerShutdown` | yes |
+| Protocol violation detected while reading, including a bad preamble | `ProtocolError` or the specific reason | yes |
+| Greeting rejected (§5.2) | as listed there | yes |
+| Idle timeout (§5.5) | `Timeout` | yes |
+| Progress timeout (§9) | `Stalled` | yes |
+| Authorization returns Disconnect (§7.6) | `Unauthorized` | yes |
+| Handshake timeout (§5.1) | `Timeout` | no |
+| Transport ended or failed | `SocketError` | no |
+| Disconnect byte received | the received reason | no |
+
+Source: `src/NexNet/Internals/NexusSession.Receiving.cs` (`Process`, the 20–38 check),
+`src/NexNet/Internals/NexusSession.cs` (`DisconnectCore`, `DisconnectStartedCore`),
+`src/NexNet/Transports/ConfigBase.cs` (`DisconnectDelay`).
 
 ## 6. Large arguments and results
 
