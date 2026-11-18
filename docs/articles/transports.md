@@ -65,7 +65,7 @@ QUIC is a reliable UDP-based protocol guaranteeing packet transmission, order in
 
 WebSockets enable real-time, bidirectional data exchange over persistent TCP connections. NexNet uses binary WebSocket streams, which introduce a minor overhead of 4 bytes per message header/data frame.
 
-Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md).
+Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md). The handshake, message and close rules are in [WebSocket binding](../internals/protocol-specification.md#137-websocket).
 
 ### HttpSockets (ASP.NET Core)
 
@@ -73,7 +73,7 @@ HttpSockets establish a bidirectional, long-lived data stream by upgrading a sta
 
 Requires the [`NexNet.Asp`](https://www.nuget.org/packages/NexNet.Asp) package and an ASP.NET Core server. See [ASP.NET Integration](asp-net-integration.md).
 
-HttpSockets upgrade with the custom token `Upgrade: nexnet-httpsockets`. A reverse proxy must forward that header and the upgraded stream; one that only passes WebSocket upgrades will reject the connection. A direct connection, or a network layer that forwards TCP (for example a VPN), needs no configuration.
+HttpSockets upgrade with the custom token `Upgrade: nexnet-httpsockets`. A reverse proxy must forward that header and the upgraded stream; one that only passes WebSocket upgrades will reject the connection. A direct connection, or a network layer that forwards TCP (for example a VPN), needs no configuration. The exact upgrade request and response are in [HttpSocket binding](../internals/protocol-specification.md#136-httpsocket).
 
 ## TLS and Certificates
 
@@ -142,3 +142,4 @@ Additional transports can be added with relative ease as long as the new transpo
 - [ASP.NET Integration](asp-net-integration.md) — WebSocket and HttpSocket setup with middleware
 - [Rate Limiting](rate-limiting.md) — Rate limiting works across all transport types
 - [Wire Protocol](../internals/protocol-specification.md) — Wire protocol details
+- [Transport bindings](../internals/protocol-specification.md#13-transport-bindings) — How each transport carries the NexNet stream: TLS, the HttpSocket upgrade request, WebSocket messages and close codes
