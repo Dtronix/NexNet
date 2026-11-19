@@ -12,10 +12,11 @@ using NexNet.Logging;
 using NexNet.Internals.Threading;
 using System.Collections.Generic;
 using NexNet.Diagnostics;
+using NexNet.Pipes;
 
 namespace NexNet.Internals;
 
-internal partial class NexusSession<TNexus, TProxy>
+internal partial class NexusSession<TNexus, TProxy> : IPipeChunkSender
 {
 
     /// <summary>
@@ -545,12 +546,38 @@ internal partial class NexusSession<TNexus, TProxy>
     /// | Body            | Variable     | The body of the message. Its length is specified by the 'Content Length'. 
     /// </remarks>
     /// <returns>A ValueTask representing the asynchronous operation.</returns>
-    public async ValueTask SendHeaderWithBody(
+    public ValueTask SendHeaderWithBody(
         MessageType type,
         ReadOnlyMemory<byte>? messageHeader,
         ReadOnlySequence<byte> body,
         bool flush,
         CancellationToken cancellationToken = default)
+    {
+        return SendHeaderWithBody(type, messageHeader, body, flush, null, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    ValueTask IPipeChunkSender.SendPipeChunk(
+        NexusPipeWriter writer,
+        ReadOnlyMemory<byte> pipeId,
+        ReadOnlySequence<byte> body,
+        bool flush,
+        CancellationToken cancellationToken)
+    {
+        return SendHeaderWithBody(MessageType.DuplexPipeWrite, pipeId, body, flush, writer, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a frame as the public SendHeaderWithBody overloads do. With <paramref name="pipeWriter"/> set, the frame is dropped if that writer completed by the time the
+    /// write lock is held: the pipe's Complete may already be on the wire, and data after it breaks the protocol.
+    /// </summary>
+    private async ValueTask SendHeaderWithBody(
+        MessageType type,
+        ReadOnlyMemory<byte>? messageHeader,
+        ReadOnlySequence<byte> body,
+        bool flush,
+        NexusPipeWriter? pipeWriter,
+        CancellationToken cancellationToken)
     {
         if (_pipeOutput == null || cancellationToken.IsCancellationRequested)
             return;
@@ -568,6 +595,11 @@ internal partial class NexusSession<TNexus, TProxy>
         if (output == null || State != ConnectionState.Connected)
             return;
 
+        // A pipe's writer completes before its Complete is sent, and the Complete is sent under this lock, so a chunk
+        // that gets the lock after the Complete always sees the writer completed.
+        if (pipeWriter?.IsCompleted == true)
+            return;
+
         if (body.Length > ushort.MaxValue)
             throw new NexusMessageTooLargeException(body.Length, ushort.MaxValue);
 
@@ -578,16 +610,17 @@ internal partial class NexusSession<TNexus, TProxy>
 
         try
         {
-            var header = output.GetMemory(headerLength);
-            header.Span[0] = (byte)type;
-            BinaryPrimitives.WriteUInt16LittleEndian(header.Span.Slice(1, 2), contentLength);
+            // The whole frame is written to one span and committed at once, so a body that cannot be read leaves the
+            // output untouched instead of committing a header without its body.
+            var frame = output.GetSpan(headerLength + length);
+            frame[0] = (byte)type;
+            BinaryPrimitives.WriteUInt16LittleEndian(frame.Slice(1, 2), contentLength);
 
             // Copy the message header
-            messageHeader?.CopyTo(header.Slice(3));
+            messageHeader?.Span.CopyTo(frame.Slice(3));
 
-            output.Advance(headerLength);
-            body.CopyTo(output.GetSpan((int)body.Length));
-            output.Advance(length);
+            body.CopyTo(frame.Slice(headerLength));
+            output.Advance(headerLength + length);
             CountSent(1, headerLength + length);
         }
         catch (InvalidOperationException) when (State != ConnectionState.Connected)
