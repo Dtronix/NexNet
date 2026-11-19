@@ -190,7 +190,6 @@ internal sealed class InProcPooledClient<TServerProxy> : IClientUnderTest
     private readonly IRentedNexusClient<TServerProxy> _rented;
     private readonly InProcInvoker _invoker;
     private readonly ConcurrentDictionary<Type, object> _proxies = new();
-    private readonly ConcurrentDictionary<string, object> _lists = new(StringComparer.Ordinal);
 
     public InProcPooledClient(ClientTarget target, ClientCapabilities capabilities, IRentedNexusClient<TServerProxy> rented)
     {
@@ -253,19 +252,7 @@ internal sealed class InProcPooledClient<TServerProxy> : IClientUnderTest
 
     public Task<IRemotePipe> CreatePipeAsync() => throw new NotSupportedException();
 
-    public IRemoteList<T> List<T>(string collectionName)
-    {
-        ArgumentNullException.ThrowIfNull(collectionName);
-        return (IRemoteList<T>)_lists.GetOrAdd(collectionName, name =>
-        {
-            var serverInterface = typeof(TServerProxy).GetInterfaces()
-                .FirstOrDefault(i => i.GetProperty(name) != null && i.FullName != null)
-                ?? throw new ArgumentException($"The server nexus has no collection '{name}'.", nameof(collectionName));
-            var proxy = _proxies.GetOrAdd(serverInterface, t => NexusTypes.CreateRemoteProxy(NexusTypes.GetRemoteProxyType(t), _invoker));
-            return proxy.GetType().GetProperty(name, typeof(IRemoteList<T>))?.GetValue(proxy) as IRemoteList<T>
-                   ?? throw new ArgumentException($"The collection '{name}' does not hold {typeof(T)}.", nameof(collectionName));
-        });
-    }
+    public IRemoteList<T> List<T>(string collectionName) => throw new NotSupportedException();
 
     public Task SignalAsync(string name) => throw new NotSupportedException();
 

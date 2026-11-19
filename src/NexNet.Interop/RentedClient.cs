@@ -95,10 +95,7 @@ internal sealed class RentedClient : IRentedClientUnderTest
 
     /// <inheritdoc />
     public IRemoteList<T> List<T>(string collectionName)
-    {
-        ThrowIfReturned();
-        return _inner.List<T>(collectionName);
-    }
+        => throw new NotSupportedException("Rented clients synchronize no collections; use a client of Harness.CreateClientAsync.");
 
     /// <inheritdoc />
     public Task SignalAsync(string name)
