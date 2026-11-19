@@ -1732,7 +1732,6 @@ export class Host {
    * @returns {Promise<unknown>}
    */
   #forward(entry, slot, args, signal) {
-    if (signal.aborted) return Promise.reject(cancellationError(signal));
     const callId = this.#nextCallId++;
     return new Promise((resolve, reject) => {
       const onAbort = () => {
@@ -1751,8 +1750,11 @@ export class Host {
           reject(error);
         },
       });
-      signal.addEventListener('abort', onAbort, { once: true });
+      // Sent even when the signal is already aborted, as the C# and Java hosts do: the runner runs the handler and
+      // cancels its token (protocol §7.3).
       this.#event(entry, 'script.forward', { callId, slot, args: [...args] });
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
     });
   }
 
