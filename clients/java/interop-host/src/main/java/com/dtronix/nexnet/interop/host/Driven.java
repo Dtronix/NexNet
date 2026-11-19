@@ -79,13 +79,32 @@ abstract class Driven {
         NexusClient<?> client = client();
         NexusSession current = client.session();
         if (current != null) {
-            // The end of this session, whether or not the client then reconnects (§6.4).
-            return current.closed().handle((reason, error) -> Protocol.map("reason", reasonName(current)));
+            // The end of this session, whether or not the client then reconnects (§6.4), once the client left the
+            // session's Connected state (it then reads Disconnected or Reconnecting, as in C#).
+            return current.closed().handle((reason, error) -> null)
+                .thenCompose(v -> leftSession(client, current))
+                .thenApply(v -> Protocol.map("reason", reasonName(current)));
         }
         if (client.state() == ConnectionState.CONNECTING) {
             return client.disconnected().thenApply(v -> Protocol.map("reason", lastReason()));
         }
         return CompletableFuture.completedFuture(Protocol.map("reason", lastReason()));
+    }
+
+    private static CompletableFuture<Void> leftSession(NexusClient<?> client, NexusSession session) {
+        CompletableFuture<Void> left = new CompletableFuture<>();
+        Runnable check = () -> {
+            ConnectionState state = client.state();
+            NexusSession now = client.session();
+            if (state == ConnectionState.DISCONNECTED || state == ConnectionState.RECONNECTING
+                || state == ConnectionState.CONNECTING || (now != null && now != session)) {
+                left.complete(null);
+            }
+        };
+        Registration registration = client.addStateListener(state -> check.run());
+        left.whenComplete((v, e) -> registration.close());
+        check.run();
+        return left;
     }
 
     /** The reason the last session or connection attempt ended. */
