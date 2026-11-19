@@ -222,7 +222,11 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         if (pending > 0)
             details.Add($"{pending} invocation(s) still running");
 
-        return new LeakReport(openClients, openPipes, 0, pending, 0, details);
+        var watches = _invoker.Watches.Count;
+        if (watches > 0)
+            details.Add($"{watches} collection watch(es) not disposed");
+
+        return new LeakReport(openClients, openPipes, 0, pending, watches, details);
     }
 
     /// <inheritdoc />

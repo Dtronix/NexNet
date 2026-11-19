@@ -27,6 +27,19 @@ internal sealed class InProcInvoker : IRemoteInvoker
     private readonly ConcurrentDictionary<Task, byte> _detached = new();
     private int _pending;
 
+    /// <summary>Counts the collection watches of one client that are still attached.</summary>
+    internal sealed class WatchCounter
+    {
+        private int _count;
+
+        /// <summary>Watches not disposed.</summary>
+        public int Count => Volatile.Read(ref _count);
+
+        public void Increment() => Interlocked.Increment(ref _count);
+
+        public void Decrement() => Interlocked.Decrement(ref _count);
+    }
+
     /// <param name="proxy">Returns the client's current server proxy.</param>
     public InProcInvoker(Func<object> proxy)
     {
@@ -35,6 +48,9 @@ internal sealed class InProcInvoker : IRemoteInvoker
 
     /// <summary>Invocations started and not completed.</summary>
     public int Pending => Volatile.Read(ref _pending);
+
+    /// <summary>Collection watches (<see cref="IRemoteList{T}.WatchAsync"/>) not disposed.</summary>
+    public WatchCounter Watches { get; } = new();
 
     /// <summary>Fire-and-forget invocations not completed.</summary>
     public Task WhenDetachedCompleteAsync() => Task.WhenAll(_detached.Keys);
@@ -75,7 +91,7 @@ internal sealed class InProcInvoker : IRemoteInvoker
     {
         var proxy = _proxy();
         var list = (INexusList<T>)NexusTypes.FindProperty(proxy.GetType(), collection).GetValue(proxy)!;
-        return new InProcRemoteList<T>(collection, list);
+        return new InProcRemoteList<T>(collection, list, Watches);
     }
 
     /// <summary>The token of <paramref name="cancel"/>; disposing the result stops an <see cref="RemoteCancelKind.After"/> timer.</summary>

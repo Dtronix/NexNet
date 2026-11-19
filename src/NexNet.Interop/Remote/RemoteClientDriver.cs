@@ -21,6 +21,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
     private readonly ConcurrentDictionary<string, object> _lists = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Task, byte> _outstanding = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _forwards = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Action<ControlEvent>> _listWatches = new(StringComparer.Ordinal);
     private readonly IDisposable _events;
     private readonly ScriptFacade? _facade;
     private readonly RemoteInvoker _invoker;
@@ -271,11 +272,21 @@ public sealed class RemoteClientDriver : IClientUnderTest
     /// <summary>Creates a runner-named cancellation token in the host (control protocol §6.5) that follows <paramref name="token"/>.</summary>
     internal RemoteToken CreateToken(CancellationToken token)
     {
-        var name = "r" + Interlocked.Increment(ref _nextToken).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var name = NewName("r");
         _ = Post("token.create", new JsonObject { ["token"] = name });
         var registration = token.Register(() => Post("token.cancel", new JsonObject { ["token"] = name }));
         return new RemoteToken(this, name, registration);
     }
+
+    /// <summary>A runner-chosen name, unique per driver (tokens, list watches).</summary>
+    internal string NewName(string prefix)
+        => prefix + Interlocked.Increment(ref _nextToken).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>Routes the <c>list.changed</c> events of watch <paramref name="watch"/> to <paramref name="onChanged"/>.</summary>
+    internal void AddListWatch(string watch, Action<ControlEvent> onChanged) => _listWatches[watch] = onChanged;
+
+    /// <summary>Stops routing the events of watch <paramref name="watch"/>.</summary>
+    internal void RemoveListWatch(string watch) => _listWatches.TryRemove(watch, out _);
 
     private void Observe(Task task)
     {
@@ -325,6 +336,10 @@ public sealed class RemoteClientDriver : IClientUnderTest
                 break;
             case "script.forward":
                 Forward(evt);
+                break;
+            case "list.changed":
+                if (evt.Data["watch"]?.GetValue<string>() is { } watch && _listWatches.TryGetValue(watch, out var onChanged))
+                    onChanged(evt);
                 break;
             case "script.forwardCancel":
                 if (evt.Data["callId"]?.ToJsonString() is { } id && _forwards.TryGetValue(id, out var source))

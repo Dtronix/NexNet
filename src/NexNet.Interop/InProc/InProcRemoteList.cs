@@ -1,9 +1,13 @@
+using NexNet.Collections;
 using NexNet.Collections.Lists;
 
 namespace NexNet.Interop.InProc;
 
 /// <summary>An <see cref="IRemoteList{T}"/> over a C# client's <see cref="INexusList{T}"/>.</summary>
-internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusList<T> list) : IRemoteList<T>
+/// <param name="collection">The collection.</param>
+/// <param name="list">The C# client's list.</param>
+/// <param name="watches">Counts the watches still attached (leak report subscriptions).</param>
+internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusList<T> list, InProcInvoker.WatchCounter watches) : IRemoteList<T>
 {
     public RemoteCollection Collection { get; } = collection;
 
@@ -40,6 +44,25 @@ internal sealed class InProcRemoteList<T>(RemoteCollection collection, INexusLis
     public async ValueTask<bool> ClearAsync() => await list.ClearAsync().ConfigureAwait(false);
 
     public ValueTask<IReadOnlyList<T>> SnapshotAsync() => new(list.ToArray());
+
+    public ValueTask<IRemoteListWatch<T>> WatchAsync()
+    {
+        IDisposable? subscription = null;
+        var watch = new RemoteListWatch<T>(Collection, () =>
+        {
+            subscription?.Dispose();
+            watches.Decrement();
+            return ValueTask.CompletedTask;
+        });
+        watches.Increment();
+        // The C# client's event carries only the action (its args are pooled: read them in the handler).
+        subscription = list.Changed.Subscribe(e =>
+        {
+            if (e.ChangedAction != NexusCollectionChangedAction.Unset)
+                watch.Add(new RemoteListChange<T>(e.ChangedAction, RemoteListWatch<T>.Now));
+        });
+        return new ValueTask<IRemoteListWatch<T>>(watch);
+    }
 
     public async ValueTask<IReadOnlyList<T>> WaitForAsync(Func<IReadOnlyList<T>, bool> predicate, TimeSpan timeout)
     {
