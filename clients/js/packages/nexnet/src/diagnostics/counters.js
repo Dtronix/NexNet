@@ -6,6 +6,7 @@
 
 import { getSessionCounters } from '../session/diagnostics.js';
 import { getInvocationCounters } from '../invocation/diagnostics.js';
+import { getPipeCounters } from '../pipes/diagnostics.js';
 
 /**
  * Counters of the J10 features: reconnection, pool, metrics and browser lifecycle.
@@ -19,7 +20,7 @@ import { getInvocationCounters } from '../invocation/diagnostics.js';
 const ops = { timers: 0, subscriptions: 0, pooledClients: 0 };
 
 /**
- * A counter source of a layer that registers itself (the pipe layer, J08).
+ * A counter source of another layer that registers itself.
  * @typedef {() => { pipes?: number, timers?: number, subscriptions?: number }} CounterSource
  */
 
@@ -56,12 +57,12 @@ export function registerCounterSource(source) {
 /**
  * @typedef {object} NexusCounters
  * @property {number} sessions Sessions open (`openSessions`).
- * @property {number} pipes Pipes open (reported by the pipe layer once it registers).
+ * @property {number} pipes Pipes open (`openPipes` of the pipe layer).
  * @property {number} timers Timers running: session timers, reconnect delays, pool health checks.
  * @property {number} pendingInvocations Outbound calls not yet completed plus server-to-client invocations queued or
  *   running.
  * @property {number} subscriptions Event listeners the runtime holds.
- * @property {{ session: import('../session/diagnostics.js').SessionCounters, invocation: import('../invocation/diagnostics.js').InvocationCounters, ops: OpsCounters }} detail
+ * @property {{ session: import('../session/diagnostics.js').SessionCounters, invocation: import('../invocation/diagnostics.js').InvocationCounters, pipe: ReturnType<typeof getPipeCounters>, ops: OpsCounters }} detail
  *   The per-layer counters the totals are made of.
  */
 
@@ -73,8 +74,9 @@ export function registerCounterSource(source) {
 export function counters() {
   const session = getSessionCounters();
   const invocation = getInvocationCounters();
+  const pipe = getPipeCounters();
   const opsNow = getOpsCounters();
-  let pipes = 0;
+  let pipes = pipe.openPipes;
   let timers = session.timers + opsNow.timers;
   let subscriptions = opsNow.subscriptions;
   for (const source of sources) {
@@ -89,7 +91,7 @@ export function counters() {
     timers,
     pendingInvocations: invocation.pendingInvocations + invocation.inboundInvocations,
     subscriptions,
-    detail: { session, invocation, ops: opsNow },
+    detail: { session, invocation, pipe, ops: opsNow },
   };
 }
 
@@ -100,6 +102,6 @@ export function counters() {
  */
 export function isIdle(c = counters()) {
   const values = [c.sessions, c.pipes, c.timers, c.pendingInvocations, c.subscriptions,
-    ...Object.values(c.detail.session), ...Object.values(c.detail.invocation), ...Object.values(c.detail.ops)];
+    ...Object.values(c.detail.session), ...Object.values(c.detail.invocation), ...Object.values(c.detail.pipe), ...Object.values(c.detail.ops)];
   return values.every((v) => v === 0);
 }
