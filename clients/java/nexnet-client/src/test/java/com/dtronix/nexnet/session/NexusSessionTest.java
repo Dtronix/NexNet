@@ -627,6 +627,62 @@ class NexusSessionTest {
     }
 
     @Test
+    void framesQueuedBeforeADisconnectGoOutBeforeTheDisconnectByte() throws Exception {
+        // K25, specification section 5.6: as the frames a C# sender wrote before its disconnect, every frame queued
+        // before the disconnect is written, then the byte. The writer may not have woken for them yet.
+        NexusSession session = connected();
+        List<CompletableFuture<Void>> sent = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            sent.add(session.send(Frame.of(MessageTypes.INVOCATION_CANCELLATION, GoldenFrames.hex("91cd0201"))));
+        }
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+
+        for (int i = 0; i < 5; i++) {
+            assertArrayEquals(GoldenFrames.get("invocation-cancellation"), transport.server().readFrame());
+        }
+        assertEquals(21, transport.server().readByte());
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        transport.server().expectEnd();
+        for (CompletableFuture<Void> future : sent) {
+            future.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
+    void framesQueuedBehindAWriteInProgressGoOutBeforeTheDisconnectByte() throws Exception {
+        // K25, specification section 5.6: the write in progress completes, then the frames queued behind it, then the
+        // disconnect byte. (C# drops sends still waiting for its write lock here; the clients with a write queue
+        // write them, see the specification.)
+        StuckTransport stuck = new StuckTransport(transport);
+        NexusSession session = connectedThrough(stuck, NexusSession.builder(stuck, HANDSHAKE).name("t")
+            .timers(timers).options(SessionOptions.defaults().withDisconnectDelayMillis(0)));
+        CompletableFuture<Void> inProgress = session.send(Frame.headerOnly(MessageTypes.PING));
+        assertTrue(stuck.awaitBlocked(), "the writer is blocked in the transport");
+        List<CompletableFuture<Void>> queued = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            queued.add(session.send(Frame.of(MessageTypes.INVOCATION_CANCELLATION, GoldenFrames.hex("91cd0201"))));
+        }
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+        stuck.unstick();
+
+        assertEquals(MessageTypes.PING, transport.server().readByte());
+        for (int i = 0; i < 3; i++) {
+            assertArrayEquals(GoldenFrames.get("invocation-cancellation"), transport.server().readFrame());
+        }
+        assertEquals(21, transport.server().readByte());
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        transport.server().expectEnd();
+        inProgress.get(5, TimeUnit.SECONDS);
+        for (CompletableFuture<Void> future : queued) {
+            future.get(5, TimeUnit.SECONDS);
+        }
+        // Refused once the disconnect started.
+        ExecutionException e = assertThrows(ExecutionException.class,
+            () -> session.send(Frame.headerOnly(MessageTypes.PING)).get(5, TimeUnit.SECONDS));
+        assertEquals(DisconnectReason.GRACEFUL, assertInstanceOf(SessionClosedException.class, e.getCause()).reason());
+    }
+
+    @Test
     void sendsFramesAndCoalescedControlMessages() throws Exception {
         NexusSession session = connected();
         session.send(Frame.of(MessageTypes.INVOCATION_CANCELLATION, GoldenFrames.hex("91cd0201")))

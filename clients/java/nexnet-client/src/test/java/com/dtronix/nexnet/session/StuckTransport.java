@@ -10,8 +10,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * A loopback transport whose outbound writes, once {@link #stick()} is called, block until the transport closes: a
- * peer that stopped reading, or a network path that stopped moving data.
+ * A loopback transport whose outbound writes, once {@link #stick()} is called, block until the transport closes or
+ * {@link #unstick()} is called: a peer that stopped reading, or a network path that stopped moving data.
  */
 final class StuckTransport implements Transport {
     private final LoopbackTransport inner;
@@ -59,6 +59,14 @@ final class StuckTransport implements Transport {
     void stick() {
         synchronized (gate) {
             stuck = true;
+        }
+    }
+
+    /** Lets blocked and later writes through again. */
+    void unstick() {
+        synchronized (gate) {
+            stuck = false;
+            gate.notifyAll();
         }
     }
 
