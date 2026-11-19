@@ -82,7 +82,7 @@ internal class TlsCertificateTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     // The HTTP transports always validate against the URL host (SocketsHttpHandler ignores TargetHost).
@@ -168,7 +168,7 @@ internal class TlsCertificateTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]

@@ -363,7 +363,7 @@ internal class RemoteExceptionDetailTests : BaseTests
 
         fail = false;
         await Assert.That(await client.Proxy.ServerTaskValue().Timeout(T(1))).IsEqualTo(9);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]

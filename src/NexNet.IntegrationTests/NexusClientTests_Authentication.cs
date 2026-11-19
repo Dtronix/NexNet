@@ -148,7 +148,7 @@ internal partial class NexusClientTests
         await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Exception);
         await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
         await Assert.That(result.Exception).IsTypeOf<InvalidDataException>();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
 
         await Assert.ThrowsExactlyAsync<InvalidDataException>(() => client.ConnectAsync().Timeout(T(TestTimeouts.Connect)));
 

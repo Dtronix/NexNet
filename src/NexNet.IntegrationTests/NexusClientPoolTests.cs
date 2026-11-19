@@ -35,7 +35,7 @@ internal class NexusClientPoolTests : BaseTests
 
             // Assert
             await Assert.That(rentedClient).IsNotNull();
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(rentedClient, ConnectionState.Connected);
             await Assert.That(rentedClient.Proxy).IsNotNull();
             await Assert.That(pool.AvailableConnections).IsEqualTo(0); // Client is rented out
         }
@@ -180,7 +180,7 @@ internal class NexusClientPoolTests : BaseTests
             // Act
             using var rentedClient = await pool.RentClientAsync().Timeout(T(1));
             
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(rentedClient, ConnectionState.Connected);
 
             // Simulate disconnection by stopping server
             await server.StopAsync().Timeout(T(TestTimeouts.Connect));
@@ -196,7 +196,7 @@ internal class NexusClientPoolTests : BaseTests
 
             // Assert
             await Assert.That(reconnected).IsTrue();
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(rentedClient, ConnectionState.Connected);
         }
         finally
         {
@@ -753,7 +753,7 @@ internal class NexusClientPoolTests : BaseTests
             // Rent and return a client
             using (var client = await pool.RentClientAsync().Timeout(T(1)))
             {
-                await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+                await WaitForState(client, ConnectionState.Connected);
             }
 
             await Assert.That(pool.AvailableConnections).IsEqualTo(1);
@@ -766,7 +766,7 @@ internal class NexusClientPoolTests : BaseTests
             await server.StartAsync().Timeout(T(TestTimeouts.Connect));
             using (var newClient = await pool.RentClientAsync().Timeout(T(1)))
             {
-                await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
+                await WaitForState(newClient, ConnectionState.Connected);
             }
         }
         finally
@@ -874,14 +874,14 @@ internal class NexusClientPoolTests : BaseTests
             
             // Verify working state
             await Assert.That(rentedClient.Proxy).IsNotNull();
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(rentedClient, ConnectionState.Connected);
 
             // Dispose the rented client
             rentedClient.Dispose();
 
             // Should throw ObjectDisposedException
             Assert.ThrowsExactly<ObjectDisposedException>(() => _ = rentedClient.Proxy);
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Disconnected);
+            await WaitForState(rentedClient, ConnectionState.Disconnected);
             await Assert.That(rentedClient.DisconnectedTask.IsCompleted).IsTrue();
 
             var result = await rentedClient.EnsureConnectedAsync();
@@ -942,7 +942,7 @@ internal class NexusClientPoolTests : BaseTests
         try
         {
             var rentedClient = await pool.RentClientAsync().Timeout(T(1));
-            await Assert.That(rentedClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(rentedClient, ConnectionState.Connected);
 
             // Disconnect server to make client unhealthy
             await server.StopAsync().Timeout(T(TestTimeouts.Connect));
@@ -957,7 +957,7 @@ internal class NexusClientPoolTests : BaseTests
             // Restart server and try again - should create new client
             await server.StartAsync().Timeout(T(TestTimeouts.Connect));
             using var newClient = await pool.RentClientAsync().Timeout(T(1));
-            await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(newClient, ConnectionState.Connected);
         }
         finally
         {
@@ -1148,7 +1148,7 @@ internal class NexusClientPoolTests : BaseTests
 
             // Rent should return a healthy client
             using var newClient = await pool.RentClientAsync().Timeout(T(1));
-            await Assert.That(newClient.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(newClient, ConnectionState.Connected);
         }
         finally
         {
@@ -1588,14 +1588,14 @@ internal class NexusClientPoolTests : BaseTests
             using var client = await pool.RentClientAsync().Timeout(T(1));
             
             // Initial state
-            await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+            await WaitForState(client, ConnectionState.Connected);
 
             // Disconnect server
             await server.StopAsync().Timeout(T(TestTimeouts.Connect));
             await Task.Delay(100);
             
             // State should reflect disconnection
-            await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+            await WaitForState(client, ConnectionState.Disconnected);
 
             // Reconnect server
             await server.StartAsync().Timeout(T(TestTimeouts.Connect));
@@ -1604,7 +1604,7 @@ internal class NexusClientPoolTests : BaseTests
             var reconnected = await client.EnsureConnectedAsync().Timeout(T(1));
             if (reconnected)
             {
-                await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+                await WaitForState(client, ConnectionState.Connected);
             }
         }
         finally

@@ -885,13 +885,24 @@ internal abstract class BaseTests
     /// asserts it. Use it instead of reading the state right after an action: a client in another process reports
     /// its state asynchronously.
     /// </summary>
-    protected static async Task WaitForState(INexusClient client, ConnectionState state, double seconds = 1)
+    protected static Task WaitForState(INexusClient client, ConnectionState state, string? because = null, double seconds = 1)
+        => WaitForState(() => client.State, state, because, seconds);
+
+    /// <inheritdoc cref="WaitForState(INexusClient, ConnectionState, string?, double)"/>
+    protected static Task WaitForState<TProxy>(IRentedNexusClient<TProxy> client, ConnectionState state, string? because = null, double seconds = 1)
+        where TProxy : ProxyInvocationBase, IProxyInvoker, IInvocationMethodHash
+        => WaitForState(() => client.State, state, because, seconds);
+
+    private static async Task WaitForState(Func<ConnectionState> getState, ConnectionState state, string? because, double seconds)
     {
         var deadline = Environment.TickCount64 + (long)(T(seconds) * 1000);
-        while (client.State != state && Environment.TickCount64 < deadline)
+        while (getState() != state && Environment.TickCount64 < deadline)
             await Task.Delay(5);
 
-        await Assert.That(client.State).IsEqualTo(state);
+        if (because == null)
+            await Assert.That(getState()).IsEqualTo(state);
+        else
+            await Assert.That(getState()).IsEqualTo(state).Because(because);
     }
 
     /// <summary>

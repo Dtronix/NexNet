@@ -54,7 +54,7 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
         await completeTask.Wait(2);
 
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
         await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(50);
         //Assert.Fail();
     }
@@ -109,6 +109,6 @@ internal class NexusCollectionChannelTests : NexusCollectionBaseTests
 
         // Client should be disconnected due to slow processing
         await Task.Delay(100);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }*/
 }

@@ -38,7 +38,7 @@ internal class InvocationCreditTests : BaseTests
 
         // Only the running call has been received; the server would disconnect a client that sent beyond its credit.
         await Assert.That(received).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
 
         release.SetResult();
         await Assert.That(await Task.WhenAll(calls).Timeout(T(1))).All(x => Equals(x, 1));
@@ -107,7 +107,7 @@ internal class InvocationCreditTests : BaseTests
         release.SetResult();
         await Task.WhenAll(first, second).Timeout(T(1));
         await Assert.That(received).IsEqualTo(2).Because("The canceled call was never sent");
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -165,7 +165,7 @@ internal class InvocationCreditTests : BaseTests
             client.Proxy.ServerVoidWithParam(i);
 
         await all.Task.Timeout(T(10));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]

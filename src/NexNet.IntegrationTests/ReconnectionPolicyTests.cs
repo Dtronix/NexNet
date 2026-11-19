@@ -128,7 +128,7 @@ internal class ReconnectionPolicyTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         await reconnected.Task.Timeout(T(2));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -170,6 +170,6 @@ internal class ReconnectionPolicyTests : BaseTests
         await Task.Delay(300);
         await Assert.That(reconnecting).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
         await Assert.That(reconnected).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
 }

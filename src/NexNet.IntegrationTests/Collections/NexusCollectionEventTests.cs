@@ -25,7 +25,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         await completeTask.Wait();
 
         await Assert.That(client.Proxy.IntListBi.Count).IsEqualTo(40);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -83,7 +83,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
         await Task.Delay(100);
 
         await Assert.That(goodEventCount).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -107,6 +107,6 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
 
         await Assert.That(client.Proxy.IntListSC.Count).IsEqualTo(1);
         await Assert.That(client.Proxy.IntListSC[0]).IsEqualTo(100);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 }

@@ -540,7 +540,7 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
 
     [Test]
@@ -561,7 +561,7 @@ internal partial class NexusClientTests : BaseTests
 
         await disconnectTask.Timeout(T(1));
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
 
     [Test]
@@ -581,7 +581,7 @@ internal partial class NexusClientTests : BaseTests
         await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
         await client.DisconnectedTask.Timeout(T(1));
 
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
     
     [Test]
@@ -601,7 +601,7 @@ internal partial class NexusClientTests : BaseTests
 
         // Assert: client.DisconnectedTask will complete promptly
         await client.DisconnectedTask.Timeout(T(1));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
     
     [Test]
@@ -676,7 +676,7 @@ internal partial class NexusClientTests : BaseTests
         
         // Should complete without throwing
         await Assert.That(async () => await client.DisconnectAsync().Timeout(T(1))).ThrowsNothing();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
     
     [Test]
@@ -706,13 +706,13 @@ internal partial class NexusClientTests : BaseTests
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
         // First disconnect
         await client.DisconnectAsync().Timeout(T(1));
         
         // Second disconnect should be a no-op
         await Assert.That(async () => await client.DisconnectAsync().Timeout(T(1))).ThrowsNothing();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
     
     [Test]

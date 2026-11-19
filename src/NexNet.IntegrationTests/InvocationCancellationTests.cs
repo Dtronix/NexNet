@@ -146,6 +146,6 @@ internal class InvocationCancellationTests : BaseTests
         using var context = server.ContextProvider.Rent();
         await context.Proxy.All.ClientTaskWithCancellation(canceled.Token).Timeout(T(1));
         await clientCalled.Task.Timeout(T(1));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 }

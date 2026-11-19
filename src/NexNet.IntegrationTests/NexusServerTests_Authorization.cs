@@ -410,7 +410,7 @@ internal class NexusServerTests_Authorization : BaseTests
         }
 
         await Assert.That(unprotectedInvoked).IsEqualTo(2);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -525,7 +525,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await client.Proxy.UnprotectedMethod().Timeout(T(1));
         await unprotectedInvoked.Task.Timeout(T(1));
         await Assert.That(await client.Proxy.UnprotectedList.EnableAsync().Timeout(T(1))).IsTrue();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -1064,7 +1064,7 @@ internal class NexusServerTests_Authorization : BaseTests
 
         // The session stays up and usable.
         await Assert.That(await client.Proxy.Ping(5).Timeout(T(1))).IsEqualTo(5);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
         await Assert.That(methodInvoked).IsFalse();
     }
 
@@ -1093,7 +1093,7 @@ internal class NexusServerTests_Authorization : BaseTests
         await AssertThrows<NexusBusyException>(channel.BasePipe!.ReadyTask.Timeout(T(1)));
 
         await Assert.That(await client.Proxy.Ping(7).Timeout(T(1))).IsEqualTo(7);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
         await Assert.That(methodInvoked).IsFalse();
     }
 
@@ -1148,7 +1148,7 @@ internal class NexusServerTests_Authorization : BaseTests
         }
 
         await client.DisconnectedTask.Timeout(T(2));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
+        await WaitForState(client, ConnectionState.Disconnected);
     }
 
     private static async Task AssertThrows<TException>(Task task)

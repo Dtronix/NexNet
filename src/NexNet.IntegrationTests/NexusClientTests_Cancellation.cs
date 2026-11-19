@@ -207,7 +207,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             await Task.Delay(10);
 
         await Assert.That(stateManager.IsOutstanding(1)).IsFalse();
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -283,7 +283,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await Assert.That(stateManager.IsOutstanding(1)).IsFalse();
         await Assert.That(await client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask().Timeout(T(1))).IsEqualTo(1);
         await Assert.That(received).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -309,7 +309,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await Assert.That(client.Session!.SessionInvocationStateManager.IsOutstanding(1)).IsFalse();
         await client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask().Timeout(T(1));
         await Assert.That(received).IsEqualTo(1);
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
     [Test]
@@ -324,7 +324,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValue().AsTask().Timeout(T(1)));
-        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await WaitForState(client, ConnectionState.Connected);
     }
 
 
