@@ -119,9 +119,16 @@ describe('client skeleton', () => {
     expect(client.nexus.context).toBe(nexus.context);
   });
 
-  it('proxy collection member throws not implemented (J09)', () => {
+  it('proxy collection member returns one list per collection ID (J09)', () => {
     const proxy = Object.create(ProxyBase.prototype);
-    expect(() => proxy._collection(0, null, null)).toThrow(notImplemented);
+    proxy._session = { client: { config: {} }, session: null };
+    const formatter = { read: () => 0, write: () => {} };
+    const list = proxy._collection(3, formatter);
+    expect(list).toBeInstanceOf(NexusList);
+    expect(proxy._collection(3, formatter)).toBe(list);
+    expect(proxy._collection(4, formatter)).not.toBe(list);
+    expect(list.count).toBe(0);
+    expect(() => new NexusList(/** @type {any} */ ({}), 0, formatter)).toThrow(TypeError);
   });
 
   it('proxy pipe and channel members reject when not connected (J08)', async () => {
@@ -139,7 +146,7 @@ describe('client skeleton', () => {
   });
 
   it('every skeleton prototype method throws not implemented', () => {
-    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry, NexusList];
+    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry];
     for (const cls of classes) {
       const proto = cls.prototype;
       const keys = [...Object.getOwnPropertyNames(proto), ...Object.getOwnPropertySymbols(proto)]

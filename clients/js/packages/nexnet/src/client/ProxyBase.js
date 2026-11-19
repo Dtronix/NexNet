@@ -4,10 +4,10 @@
  */
 
 import { NexusError, NexusTransportError, cancellationError } from '../contract/errors.js';
-import { notImplemented } from '../contract/internal.js';
 import { serialize, invocationCodec } from '../invocation/codec.js';
 import { getInvocationManager } from '../invocation/InvocationManager.js';
 import { invokePipe } from '../pipes/invoke.js';
+import { proxyCollection } from '../collections/index.js';
 
 /**
  * Opaque session handle the runtime passes to proxy constructors. Generated code never touches it.
@@ -140,16 +140,21 @@ export class ProxyBase {
 
   /**
    * Returns the synchronized collection behind a server nexus collection property. The same instance is returned
-   * for the lifetime of the client.
+   * for the lifetime of the client; it follows the client's current session.
    *
    * @template T
    * @protected
    * @param {number} methodId The collection's method ID.
    * @param {import('../contract/codec.js').Formatter<T>} formatter Item formatter.
-   * @param {{ equals?: (a: T, b: T) => boolean }} [options] Item equality for `remove`/`indexOf`; default `Object.is`.
+   * @param {import('../collections/NexusList.js').NexusListOptions<T>} [options] `mode` (the `[NexusCollection]`
+   *   mode, default ServerToClient), `equals` (item equality for `remove`/`indexOf`/`contains`; default: an
+   *   item's own `equals` method, else SameValueZero) and `valuesFormatter` (the C# `T[]` formatter, for primitive
+   *   arrays written as ext 78).
    * @returns {import('../contract/collections.js').NexusList<T>}
    */
-  _collection(methodId, formatter, options) { throw notImplemented('ProxyBase._collection'); }
+  _collection(methodId, formatter, options) {
+    return proxyCollection(this, /** @type {SessionHandle} */ (this._session), methodId, formatter, options);
+  }
 }
 
 /**
