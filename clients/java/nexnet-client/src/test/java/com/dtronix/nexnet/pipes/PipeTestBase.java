@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusRuntime;
+import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.serialization.MsgPackReader;
@@ -55,6 +56,8 @@ abstract class PipeTestBase {
     final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "test-invocations"));
     final TestNexus nexus = new TestNexus();
     final List<CountDownLatch> latches = new ArrayList<>();
+    /** Results of client methods that run until the test ends; completed in {@link #tearDown()}. */
+    final List<CompletableFuture<Void>> methodResults = new ArrayList<>();
     NexusSession session;
     InvocationRuntime runtime;
     PipeManager pipes;
@@ -96,6 +99,18 @@ abstract class PipeTestBase {
         return latch;
     }
 
+    /**
+     * A result for a client method that keeps running until the test completes it, or until the test ends. Without
+     * this the invocation stays running after the session is closed and the leak audit counts it.
+     */
+    CompletableFuture<Void> methodResult() {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        synchronized (methodResults) {
+            methodResults.add(result);
+        }
+        return result;
+    }
+
     @AfterEach
     void tearDown() throws Exception {
         for (CountDownLatch latch : latches) {
@@ -106,9 +121,16 @@ abstract class PipeTestBase {
             assertTrue(session.awaitThreads(), "threads ended");
             waitFor(() -> pipes.openPipes() == 0);
         }
+        synchronized (methodResults) {
+            for (CompletableFuture<Void> result : methodResults) {
+                result.complete(null);
+            }
+        }
         if (peer != null) {
             peer.close();
         }
+        // Leak audit (D23): every invocation has finished and every counter is back to 0.
+        TestClients.awaitIdle();
         callbacks.shutdownNow();
         invocations.shutdownNow();
     }

@@ -109,7 +109,7 @@ class PipeManagerTest extends PipeTestBase {
     @Test
     void theRegistrantSendsReadyAndGrantsCreditOnlyAsItReads() throws Exception {
         connect(SMALL);
-        PipeImpl pipe = registeredPipe(new CompletableFuture<>());
+        PipeImpl pipe = registeredPipe(methodResult());
         byte[] data = bytes(WINDOW, 5);
         peer.sendData(pipe.id(), data, 0, 400);
         peer.sendData(pipe.id(), data, 400, WINDOW - 400);
@@ -130,7 +130,7 @@ class PipeManagerTest extends PipeTestBase {
     @Test
     void dataBeyondTheCreditDisconnectsWithFlowControl() throws Exception {
         connect(SMALL);
-        PipeImpl pipe = registeredPipe(new CompletableFuture<>());
+        PipeImpl pipe = registeredPipe(methodResult());
         peer.sendData(pipe.id(), new byte[WINDOW + 1]);
         assertEquals(DisconnectReason.FLOW_CONTROL.code(), peer.awaitDisconnect());
     }
@@ -256,7 +256,7 @@ class PipeManagerTest extends PipeTestBase {
     void aPipeMethodsSlotIsFreedOnceItsPipeOpensAndThePipeClosesWhenItReturns() throws Exception {
         connect(SMALL, InvocationOptions.defaults().withMaxConcurrentInvocations(1), SessionTimers.system(),
             SessionOptions.defaults());
-        CompletableFuture<Void> pipeMethod = new CompletableFuture<>();
+        CompletableFuture<Void> pipeMethod = methodResult();
         PipeImpl pipe = registeredPipe(pipeMethod);
         // A normal invocation runs although the pipe method has not returned.
         nexus.methods.put(2, (args, ctx) -> ctx.result(CompletableFuture.completedFuture(null)));
@@ -353,7 +353,7 @@ class PipeManagerTest extends PipeTestBase {
     void forwardToCopiesUntilTheSourceEndsThenHalfClosesTheDestination() throws Exception {
         connect(SMALL);
         PipeImpl destination = openPipe(100);
-        PipeImpl source = registeredPipe(new CompletableFuture<>());
+        PipeImpl source = registeredPipe(methodResult());
         CompletableFuture<Void> forward = source.forwardTo(destination);
         byte[] data = bytes(400, 8);
         peer.sendData(source.id(), data, 0, 200);
@@ -376,7 +376,7 @@ class PipeManagerTest extends PipeTestBase {
     void bridgeRelaysBothWays() throws Exception {
         connect(SMALL);
         PipeImpl a = openPipe(1000);
-        PipeImpl b = registeredPipe(new CompletableFuture<>());
+        PipeImpl b = registeredPipe(methodResult());
         peer.sendWindow(b.id(), 1000);
         CompletableFuture<Void> bridge = NexusDuplexPipe.bridge(a, b);
         peer.sendData(a.id(), bytes(100, 1));
@@ -392,7 +392,7 @@ class PipeManagerTest extends PipeTestBase {
     void countersReturnToZero() throws Exception {
         int before = PipeCounters.openPipes();
         connect(SMALL);
-        PipeImpl pipe = registeredPipe(new CompletableFuture<>());
+        PipeImpl pipe = registeredPipe(methodResult());
         peer.sendData(pipe.id(), new byte[100]);
         waitFor(() -> PipeCounters.bufferedBytes() >= 100);
         assertEquals(before + 1, PipeCounters.openPipes());
