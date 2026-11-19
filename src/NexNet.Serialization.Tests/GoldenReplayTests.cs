@@ -1,6 +1,7 @@
 using System.Buffers;
 using MessagePack;
 using NexNet.GoldenVectors;
+using NexNet.Collections.Lists;
 using NexNet.Internals;
 using NexNet.Interop;
 using NexNet.Messages;
@@ -186,6 +187,7 @@ public class GoldenReplayTests
             ["InvocationCredit"] = new MessageNative<InvocationCreditMessage>(),
             ["DuplexPipeUpdateState"] = new MessageNative<DuplexPipeUpdateStateMessage>(),
             ["RemoteErrorDetail"] = new RemoteErrorDetailNative(),
+            [GoldenGenerator.CollectionListMessage] = new CollectionListMessageNative(),
         };
         return natives;
     }
@@ -244,6 +246,29 @@ public class GoldenReplayTests
             if (!RemoteErrorDetail.TryRead(new ReadOnlySequence<byte>(data), options, out var code, out var type, out var message))
                 throw new NexusSerializationException("Not a valid remote error detail.");
             return TestHelpers.Write((ref MsgPackWriter w) => RemoteErrorDetail.Write(ref w, code, type, message));
+        }
+    }
+
+    /// <summary>The collection-sync items (§4.11), read and written by the list message union formatter.</summary>
+    private sealed class CollectionListMessageNative : GoldenNative
+    {
+        public override Type ClrType => typeof(INexusCollectionListMessage);
+
+        public override byte[] Reencode(ReadOnlyMemory<byte> data, NexusSerializerOptions options)
+        {
+            var reader = new MsgPackReader(data, options);
+            INexusCollectionListMessage? message = null;
+            NexusCollectionListMessageFormatter.Instance.Deserialize(ref reader, ref message);
+            try
+            {
+                if (!reader.End)
+                    throw TrailingBytes(ClrType);
+                return TestHelpers.Write((ref MsgPackWriter w) => NexusCollectionListMessageFormatter.Instance.Serialize(ref w, message));
+            }
+            finally
+            {
+                message?.Return();
+            }
         }
     }
 

@@ -14,7 +14,7 @@ public static partial class GoldenGenerator
 {
     /// <summary>The vector files, in order. Each is <c>&lt;name&gt;.jsonl</c>.</summary>
     public static readonly IReadOnlyList<string> Files =
-        ["primitives", "containers", "ext78", "objects", "unions", "messages", "frames", GoldenBuilder.RejectFile];
+        ["primitives", "containers", "ext78", "objects", "unions", "messages", "frames", "collections", GoldenBuilder.RejectFile];
 
     /// <summary>The file of the declared types.</summary>
     public const string SchemaFile = "schemas.jsonl";
@@ -22,12 +22,16 @@ public static partial class GoldenGenerator
     /// <summary>The fuzz seed corpus file, relative to the repository root.</summary>
     public static readonly string CorpusPath = Path.Combine("src", "NexNet.Fuzz", "Corpus", "golden.hex");
 
-    /// <summary>The declared types: the interop zoo as the generator describes it, externals and message bodies.</summary>
+    /// <summary>
+    /// The declared types: the interop zoo as the generator describes it, externals, message bodies and the
+    /// collection-sync item union.
+    /// </summary>
     public static GoldenSchemas CreateSchemas()
         => GoldenSchemas.Create(
             TypedCodecs.Get<InteropAllTypes>().Schemas,
             [("InteropPoint", "User formatter InteropPointFormatter: [X: int, Y: int], two canonical integers.")],
-            Messages());
+            Messages().Concat(CollectionMessages()),
+            CollectionUnions());
 
     /// <summary>Builds every vector, checking each against the C# implementation.</summary>
     public static GoldenBuilder Build()
@@ -40,6 +44,7 @@ public static partial class GoldenGenerator
         Unions(b);
         MessageVectors(b);
         Frames(b);
+        CollectionVectors(b);
         return b;
     }
 

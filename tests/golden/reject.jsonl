@@ -103,3 +103,15 @@
 {"id":"msg.reject.pipe-state.count-2","type":"DuplexPipeUpdateState","mode":"reject","error":"count","hex":"92cd020102"}
 {"id":"msg.reject.error-detail.count-2","type":"RemoteErrorDetail","mode":"reject","error":"count","hex":"92c0c0"}
 {"id":"msg.reject.error-detail.type-too-long","type":"RemoteErrorDetail","mode":"reject","error":"value","note":"the type is at most 256 chars","hex":"93c0da01016161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161c0"}
+{"id":"collection.reject.unknown-tag","type":"CollectionListMessage","mode":"reject","error":"value","note":"tag 9 is not a collection item","hex":"92099100"}
+{"id":"collection.reject.tag-65536","type":"CollectionListMessage","mode":"reject","error":"range","note":"tags are uint16","hex":"92ce000100009100"}
+{"id":"collection.reject.union-count-3","type":"CollectionListMessage","mode":"reject","error":"count","note":"an item is [tag, body]","hex":"93089101c0"}
+{"id":"collection.reject.nil-body","type":"CollectionListMessage","mode":"reject","error":"type","hex":"9208c0"}
+{"id":"collection.reject.noop-count-2","type":"CollectionListMessage","mode":"reject","error":"count","note":"bodies have their exact element count","hex":"9208920100"}
+{"id":"collection.reject.reset-start-count-2","type":"CollectionListMessage","mode":"reject","error":"count","hex":"920092002a"}
+{"id":"collection.reject.insert-count-3","type":"CollectionListMessage","mode":"reject","error":"count","note":"Insert without its value","hex":"920493000000"}
+{"id":"collection.reject.flags-256","type":"CollectionListMessage","mode":"reject","error":"range","note":"flags are uint8","hex":"920891cd0100"}
+{"id":"collection.reject.flags-negative","type":"CollectionListMessage","mode":"reject","error":"range","hex":"920891ff"}
+{"id":"collection.reject.version-2147483648","type":"CollectionListMessage","mode":"reject","error":"range","note":"versions are int32","hex":"92039200ce80000000"}
+{"id":"collection.reject.insert-truncated","type":"CollectionListMessage","mode":"reject","error":"truncated","note":"the value is missing","hex":"920494000000"}
+{"id":"collection.reject.trailing","type":"CollectionListMessage","mode":"reject","error":"trailing","hex":"92089101c0"}
