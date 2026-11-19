@@ -13,6 +13,7 @@ src/
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
 ├── NexNet.IntegrationTests/  # Integration tests (TUnit, serial)
+├── NexNet.TestNexus/         # Shared test nexuses + interop type zoo (not packaged)
 ├── NexNet.Generator.Tests/   # Generator tests
 ├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
 ├── NexNet.Fuzz/              # SharpFuzz harnesses (libFuzzer), smoke runner, regression corpora
@@ -329,9 +330,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 ### 4.2 Test Infrastructure
 
 - `NexusServerFactory.cs` - Generic server wrapper tracking created nexuses in ConcurrentQueue
-- `TestInterfaces/BasicTestsInterfaces.cs` - IClientNexus, IServerNexus interfaces; ClientNexus, ServerNexus implementations with event callbacks
-- `TestInterfaces/VersionedTestsInterfaces.cs` - Version-specific test interfaces
-- `TestInterfaces/AuthorizationTestInterfaces.cs` - Authorization test nexuses with delegate handlers and cache invalidation helpers
+- Test nexus interfaces and classes live in `src/NexNet.TestNexus/TestInterfaces/` (see 4.5)
 - `Utilities.cs` - Dequeue<T>(), GetBytes<T>(), GetValue<T>(), InvokeAndNotifyAwait()
 - `TaskExtensions.cs` - Timeout() overloads, AssertTimeout()
 - `Collections/CollectionHelpers.cs` - WaitForEvent() extension, WaitForActionHandler
@@ -425,6 +424,34 @@ await client.ConnectAsync().Timeout(1);
 ```
 
 **Event Assertions:** Set delegates on test nexus before operations; capture values in the callbacks and assert after awaiting them
+
+### 4.5 Shared Test Nexuses (src/NexNet.TestNexus/)
+
+A library of the nexuses the tests use, referenced by IntegrationTests (and, through `InternalsVisibleTo`, by the interop
+harness, the golden vector tool and Serialization.Tests). Not packaged.
+
+**TestInterfaces/** (moved from IntegrationTests; namespace still `NexNet.IntegrationTests.TestInterfaces`):
+- `BasicTestsInterfaces.cs` - IClientNexus, IServerNexus interfaces; ClientNexus, ServerNexus implementations with event callbacks
+- `VersionedTestsInterfaces.cs` - Version-specific test interfaces
+- `AuthorizationTestInterfaces.cs` - Authorization test nexuses with delegate handlers and cache invalidation helpers
+- `SeparatePoolTestInterfaces.cs` - Nexuses for the separate-pool tests
+
+**Interop/** (namespace `NexNet.TestNexus.Interop`): the interop type zoo for the cross-language harness. Wire layouts
+are part of the interop contract: never change keys, tags or enum values; add members and types instead.
+- `IInteropServerNexus.cs` / `InteropServerNexus.cs` - Echo method for every zoo type (spec §10), plus pipes, channels,
+  collections, cancellation, authorization (`admin`/`reader` identities) and token validation via
+  `NexNet.InteropServer`. `Targets = Java | JavaScript`
+- `IInteropClientNexus.cs` / `InteropClientNexus.cs` - Callbacks the server invokes; echo by default, scripted per test
+- `InteropTypes.cs` - Zoo types: enums (int, flags, long beyond 2^53), objects, unions, nullable and collection shapes,
+  and `InteropPoint` with a user formatter mapped by `NexusTargetFormatter` to Java and JS
+- `InteropVersionedNexus.cs` - Versioned pair: V2 server class plus a V1 `NexusClientExport`
+
+The project imports the generator's `buildTransitive` props/targets and writes the Java and JS clients to
+`artifacts/interop/<lang>/generated` (gitignored).
+
+`IntegrationTests/Interop/InteropZooTests.cs` smoke-tests the zoo with the C# client over UDS, and the test-only raw
+frame injection hook `NexusSession.InternalSendRawAsync` (`Internals/NexusSession.Sending.cs`), which writes a
+pre-built frame to the session's transport.
 
 ---
 
