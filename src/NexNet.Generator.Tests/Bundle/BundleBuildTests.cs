@@ -115,6 +115,25 @@ public class BundleBuildTests
     }
 
     [Test]
+    public async Task ProjectFileImport_StampLandsInIntermediateOutputPath()
+    {
+        // The sample imports the props and targets in its project file, as NexNet.TestNexus does, where
+        // IntermediateOutputPath is still empty (G07).
+        using var sample = SampleProject.Create();
+        await sample.Build();
+
+        var stamp = Path.Combine(sample.ObjConfigDir, "nexnet-targets.stamp");
+        await Assert.That(File.Exists(stamp)).IsTrue().Because("the unpack stamp is in obj/<Configuration>/<TargetFramework>");
+        await Assert.That(System.IO.Directory.GetFiles(sample.Directory, "*.stamp")).IsEmpty().Because("nothing lands in the project folder");
+
+        // The stamp keeps an up-to-date build from running the unpack again.
+        var written = File.GetLastWriteTimeUtc(stamp);
+        await Task.Delay(1100);
+        await sample.Build();
+        await Assert.That(File.GetLastWriteTimeUtc(stamp)).IsEqualTo(written);
+    }
+
+    [Test]
     public async Task NoTargetConfigured_BuildIsUnchanged()
     {
         using var sample = SampleProject.Create();
