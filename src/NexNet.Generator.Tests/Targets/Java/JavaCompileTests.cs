@@ -45,6 +45,28 @@ public class JavaCompileTests
         await Compile(sdk, dir, JavaEmitterTests.Features, FeatureSupport());
     }
 
+    [Test]
+    public async Task ChatCompilesWithJavac()
+    {
+        var sdk = await JavaSdk.Get();
+        using var dir = new TempDir();
+        await Compile(sdk, dir, JavaProxyEmitterTests.Chat, FeatureSupport());
+    }
+
+    /// <summary>
+    /// K04 smoke test: the generated proxy, client nexus and factory run against the real runtime jar. The proxy's
+    /// argument bytes and the dispatch of C#-serialized arguments are compared with the C# serializer's bytes.
+    /// </summary>
+    [Test]
+    public async Task ChatProxyAndClientNexusRunAgainstTheRuntime()
+    {
+        var sdk = await JavaSdk.Get();
+        using var dir = new TempDir();
+        var output = await CompileAndRun(sdk, dir, JavaProxyEmitterTests.Chat, FeatureSupport(), ChatRunner(), "k04.runner.Runner");
+        await Assert.That(output).Contains("failed=0");
+        await Assert.That(output).Contains("checked=");
+    }
+
     // ------------------------------------------------------------------ runners
 
     [Test]
@@ -96,11 +118,11 @@ public class JavaCompileTests
         await Assert.That(result.Output.Trim()).IsEmpty().Because("javac printed:\n" + result.Output);
     }
 
-    private static async Task<string> CompileAndRun(JavaSdk sdk, TempDir dir, JavaRun run, Dictionary<string, string> support, string runner)
+    private static async Task<string> CompileAndRun(JavaSdk sdk, TempDir dir, JavaRun run, Dictionary<string, string> support, string runner, string mainClass = "k03.runner.Runner")
     {
-        support = new Dictionary<string, string>(support) { ["k03/runner/Runner.java"] = runner };
+        support = new Dictionary<string, string>(support) { [mainClass.Replace('.', '/') + ".java"] = runner };
         await Compile(sdk, dir, run, support);
-        var result = await sdk.RunMain(dir.Classes, "k03.runner.Runner");
+        var result = await sdk.RunMain(dir.Classes, mainClass);
         await Assert.That(result.Success).IsTrue().Because("The runner failed:\n" + result.Output);
         return result.Output;
     }
@@ -534,6 +556,325 @@ public class JavaCompileTests
 
         return Runner(calls);
     }
+
+    // ------------------------------------------------------------------ K04 smoke runner
+
+    /// <summary>
+    /// The argument payloads of the smoke runner as the C# serializer writes them (the fixture's
+    /// <c>Chat.ArgumentSamples</c>), substituted for the <c>"$NAME"</c> placeholders of the runner.
+    /// </summary>
+    private static string ChatRunner()
+    {
+        var assembly = JavaProxyEmitterTests.Chat.Load();
+        var all = (Dictionary<string, byte[]>)assembly.GetType("Chat.ArgumentSamples")!.GetMethod("All")!.Invoke(null, null)!;
+        var text = ChatRunnerSource;
+        foreach (var (key, value) in all)
+            text = text.Replace("\"$" + key + "\"", "\"" + Convert.ToHexStringLower(value) + "\"");
+        if (text.Contains("\"$", StringComparison.Ordinal))
+            throw new InvalidOperationException("A placeholder of the runner has no sample.");
+        return text;
+    }
+
+    private const string ChatRunnerSource = """
+        package k04.runner;
+
+        import com.acme.chat.ChatClient;
+        import com.acme.chat.ChatClientNexusBase;
+        import com.acme.chat.ChatHandshake;
+        import com.acme.chat.ChatServerProxy;
+        import com.acme.chat.Color;
+        import com.acme.chat.Item;
+        import com.dtronix.nexnet.CancellationToken;
+        import com.dtronix.nexnet.client.ClientConfig;
+        import com.dtronix.nexnet.client.NexusClient;
+        import com.dtronix.nexnet.collections.NexusCollectionMode;
+        import com.dtronix.nexnet.collections.NexusList;
+        import com.dtronix.nexnet.pipes.NexusDuplexChannel;
+        import com.dtronix.nexnet.pipes.NexusDuplexPipe;
+        import com.dtronix.nexnet.serialization.Formatter;
+        import com.dtronix.nexnet.serialization.Formatters;
+        import com.dtronix.nexnet.serialization.MsgPackReader;
+        import com.dtronix.nexnet.serialization.MsgPackWriter;
+        import com.dtronix.nexnet.spi.ArgumentWriter;
+        import com.dtronix.nexnet.spi.ClientNexusHooks;
+        import com.dtronix.nexnet.spi.InvocationContext;
+        import com.dtronix.nexnet.spi.PipeArgumentWriter;
+        import com.dtronix.nexnet.spi.ProxyInvoker;
+        import java.util.ArrayList;
+        import java.util.List;
+        import java.util.concurrent.CompletableFuture;
+
+        /** Runs the generated proxy and client nexus against the runtime. */
+        public final class Runner {
+            private static final List<String> LOG = new ArrayList<>();
+            private static final CancellationToken TOKEN = new com.dtronix.nexnet.CancellationTokenSource().token();
+            private static int checkedCount;
+            private static int failedCount;
+
+            private Runner() {
+            }
+
+            private static byte[] bytes(String hex) {
+                byte[] result = new byte[hex.length() / 2];
+                for (int i = 0; i < result.length; i++) {
+                    result[i] = (byte) Integer.parseInt(hex.substring(2 * i, 2 * i + 2), 16);
+                }
+                return result;
+            }
+
+            private static String hex(byte[] bytes) {
+                StringBuilder sb = new StringBuilder();
+                for (byte b : bytes) {
+                    sb.append(String.format("%02x", b & 0xFF));
+                }
+                return sb.toString();
+            }
+
+            private static String token(CancellationToken token) {
+                return token == null ? "null" : token == CancellationToken.NONE ? "none" : token == TOKEN ? "token" : "other";
+            }
+
+            private static String args(ArgumentWriter arguments) {
+                if (arguments == ArgumentWriter.NONE) {
+                    return "-";
+                }
+                MsgPackWriter writer = new MsgPackWriter();
+                arguments.write(writer);
+                return hex(writer.toByteArray());
+            }
+
+            private static String args(PipeArgumentWriter arguments) {
+                MsgPackWriter writer = new MsgPackWriter();
+                arguments.write(writer, 7);
+                return hex(writer.toByteArray());
+            }
+
+            private static void expect(String expected) {
+                checkedCount++;
+                String actual = LOG.isEmpty() ? "(nothing)" : String.join(" | ", LOG);
+                LOG.clear();
+                if (!expected.equals(actual)) {
+                    failedCount++;
+                    System.out.println("FAIL expected [" + expected + "] got [" + actual + "]");
+                }
+            }
+
+            private static final class Invoker implements ProxyInvoker {
+                @Override
+                public <R> CompletableFuture<R> invoke(int methodId, ArgumentWriter arguments, Formatter<R> result,
+                                                       CancellationToken cancellationToken) {
+                    LOG.add("invoke " + methodId + " " + args(arguments) + " " + token(cancellationToken));
+                    return new CompletableFuture<>();
+                }
+
+                @Override
+                public CompletableFuture<Void> invokeTask(int methodId, ArgumentWriter arguments,
+                                                          CancellationToken cancellationToken) {
+                    LOG.add("task " + methodId + " " + args(arguments) + " " + token(cancellationToken));
+                    return new CompletableFuture<>();
+                }
+
+                @Override
+                public void invokeVoid(int methodId, ArgumentWriter arguments) {
+                    LOG.add("void " + methodId + " " + args(arguments));
+                }
+
+                @Override
+                public CompletableFuture<Void> invokePipe(int methodId, NexusDuplexPipe pipe, PipeArgumentWriter arguments) {
+                    LOG.add("pipe " + methodId + " " + args(arguments));
+                    return new CompletableFuture<>();
+                }
+
+                @Override
+                public <T> CompletableFuture<Void> invokeChannel(int methodId, NexusDuplexChannel<T> channel,
+                                                                 PipeArgumentWriter arguments) {
+                    LOG.add("channel " + methodId + " " + args(arguments));
+                    return new CompletableFuture<>();
+                }
+
+                @Override
+                public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
+                    LOG.add("list " + collectionId + " " + mode);
+                    return null;
+                }
+            }
+
+            private static final class Nexus extends ChatClientNexusBase {
+                @Override
+                protected CompletableFuture<Integer> square(int value, CancellationToken cancellationToken) {
+                    LOG.add("square " + value + " " + token(cancellationToken));
+                    return CompletableFuture.completedFuture(value * value);
+                }
+
+                @Override
+                protected void message(String text, Object money) {
+                    LOG.add("message " + text + " " + money);
+                }
+
+                @Override
+                protected CompletableFuture<Void> receive(NexusDuplexPipe pipe) {
+                    LOG.add("receive");
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                protected CompletableFuture<Void> feed(int count, NexusDuplexChannel<Item> channel) {
+                    LOG.add("feed " + count);
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                protected CompletableFuture<Void> heavy() {
+                    LOG.add("heavy");
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                protected CompletableFuture<List<Item>> context_(com.acme.chat.Box<String> box, Item item) {
+                    LOG.add("context " + box.getValue() + " " + item);
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                protected CompletableFuture<Void> dispatch_(int arguments, int context, int methodId) {
+                    LOG.add("dispatch " + arguments + context + methodId);
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                protected CompletableFuture<Color> pick(List<Color> colors, java.util.Map<Integer, String> map) {
+                    LOG.add("pick " + colors + " " + map);
+                    return CompletableFuture.completedFuture(Color.Green);
+                }
+            }
+
+            private static final class Context implements InvocationContext {
+                @Override
+                public CancellationToken cancellationToken() {
+                    return TOKEN;
+                }
+
+                @Override
+                public NexusDuplexPipe pipe(int initialPipeId) {
+                    LOG.add("pipe " + initialPipeId);
+                    return null;
+                }
+
+                @Override
+                public <T> NexusDuplexChannel<T> channel(int initialPipeId, Formatter<T> itemFormatter) {
+                    LOG.add("channel " + initialPipeId);
+                    return null;
+                }
+
+                @Override
+                public <R> CompletableFuture<Void> result(CompletableFuture<R> result, Formatter<R> formatter) {
+                    LOG.add("result " + hex(Formatters.serialize(formatter, result.join())));
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                public CompletableFuture<Void> result(CompletableFuture<Void> result) {
+                    LOG.add("done " + result.isDone());
+                    return CompletableFuture.completedFuture(null);
+                }
+
+                @Override
+                public CompletableFuture<Void> noResult() {
+                    LOG.add("noResult");
+                    return CompletableFuture.completedFuture(null);
+                }
+            }
+
+            private static void dispatch(Nexus nexus, int methodId, String hex) {
+                ClientNexusHooks.dispatch(nexus, methodId, new MsgPackReader(bytes(hex)), new Context());
+            }
+
+            /**
+             * Runs the checks.
+             *
+             * @param args unused
+             */
+            public static void main(String[] args) {
+                ChatServerProxy proxy = new ChatServerProxy(new Invoker());
+                proxy.notify_("hi");
+                expect("void 0 " + "$NOTIFY");
+                proxy.ping();
+                expect("task 1 - null");
+                proxy.add(1, 2);
+                expect("invoke 2 " + "$ADD" + " none");
+                proxy.add(1, 2, TOKEN);
+                expect("invoke 2 " + "$ADD" + " token");
+                proxy.find(null, "x");
+                expect("invoke 3 " + "$FIND" + " null");
+                proxy.upload(null, "n");
+                expect("pipe 5 " + "$UPLOAD");
+                proxy.stream(null);
+                expect("channel 6 " + "$STREAM");
+                proxy.invoke_(3, 4);
+                expect("invoke 7 " + "$INVOKE" + " null");
+                proxy.hashCode_();
+                expect("task 8 - null");
+                proxy.wait_();
+                expect("invoke 9 - none");
+                proxy.names();
+                expect("list 10 BI_DIRECTIONAL");
+                proxy.list_();
+                expect("list 11 SERVER_TO_CLIENT");
+                proxy.boxes();
+                expect("list 12 RELAY");
+
+                Nexus nexus = new Nexus();
+                dispatch(nexus, 0, "$SQUARE");
+                expect("square 5 token | result " + "$SQUARED");
+                dispatch(nexus, 1, "$MESSAGE");
+                expect("message t 3 | noResult");
+                dispatch(nexus, 2, "$RECEIVE");
+                expect("pipe 9 | receive | done true");
+                dispatch(nexus, 3, "$FEED");
+                expect("channel 8 | feed 2 | done true");
+                dispatch(nexus, 4, "");
+                expect("heavy | done true");
+                dispatch(nexus, 5, "$CONTEXT");
+                expect("context b Item{id=1, name=n} | result c0");
+                dispatch(nexus, 6, "$DISPATCH");
+                expect("dispatch 123 | done true");
+                dispatch(nexus, 7, "$PICK");
+                expect("pick [Green] {1=x} | result " + "$GREEN");
+                checkedCount++;
+                try {
+                    dispatch(nexus, 99, "");
+                    failedCount++;
+                    System.out.println("FAIL an unknown method id was dispatched");
+                } catch (IllegalArgumentException expected) {
+                    LOG.clear();
+                }
+
+                checkedCount++;
+                if (!ClientNexusHooks.separatePool(nexus, 4) || !ClientNexusHooks.separatePool(nexus, 5)
+                    || ClientNexusHooks.separatePool(nexus, 0)) {
+                    failedCount++;
+                    System.out.println("FAIL separatePool");
+                }
+
+                checkedCount++;
+                if (!ChatHandshake.DESCRIPTOR.acceptsMethod(7) || ChatHandshake.DESCRIPTOR.acceptsMethod(8)) {
+                    failedCount++;
+                    System.out.println("FAIL acceptsMethod");
+                }
+
+                checkedCount++;
+                try (NexusClient<ChatServerProxy> client = ChatClient.create(ClientConfig.tcp("localhost", 1).build(), nexus)) {
+                    if (client.proxy() == null) {
+                        failedCount++;
+                        System.out.println("FAIL no proxy");
+                    }
+                }
+
+                System.out.println("checked=" + checkedCount + " failed=" + failedCount);
+                System.exit(failedCount == 0 ? 0 : 1);
+            }
+        }
+        """;
 
     private sealed class TempDir : IDisposable
     {

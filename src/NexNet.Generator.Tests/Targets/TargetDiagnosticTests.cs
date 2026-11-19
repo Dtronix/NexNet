@@ -314,7 +314,10 @@ public class TargetDiagnosticTests
 
         await Assert.That(run.Messages("NEXNET047")).IsEquivalentTo(new[]
         {
-            "Output file collision (Java): 'com/acme/Chat.java' would be written by export 'A.Chat' and export 'B.Chat'",
+            "Output file collision (Java): 'com/acme/ChatHandshake.java' would be written by export 'A.Chat' and export 'B.Chat'",
+            "Output file collision (Java): 'com/acme/ChatServerProxy.java' would be written by export 'A.Chat' and export 'B.Chat'",
+            "Output file collision (Java): 'com/acme/ChatClientNexusBase.java' would be written by export 'A.Chat' and export 'B.Chat'",
+            "Output file collision (Java): 'com/acme/ChatClient.java' would be written by export 'A.Chat' and export 'B.Chat'",
             "Output file collision (JavaScript): 'Chat.js' would be written by export 'A.Chat' and export 'B.Chat'",
             "Output file collision (JavaScript): 'Chat.d.ts' would be written by export 'A.Chat' and export 'B.Chat'",
         });

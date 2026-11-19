@@ -30,10 +30,10 @@ public class JavaEmitterTests
     public async Task FeaturesRunClean() => await AssertClean(Features);
 
     [Test]
-    public Task ZooSnapshot() => JavaSnapshots.Verify("zoo", Zoo.Concatenated());
+    public Task ZooSnapshot() => JavaSnapshots.Verify("zoo", JavaProxyEmitterTests.MaskRuntimeVersion(Zoo.Concatenated()));
 
     [Test]
-    public Task FeaturesSnapshot() => JavaSnapshots.Verify("features", Features.Concatenated());
+    public Task FeaturesSnapshot() => JavaSnapshots.Verify("features", JavaProxyEmitterTests.MaskRuntimeVersion(Features.Concatenated()));
 
     // ------------------------------------------------------------------ layout
 
@@ -45,6 +45,7 @@ public class JavaEmitterTests
             .SelectMany(t => JavaTarget.Instance.TypeFiles(t, options))
             .Append("com/acme/formatters/Formatters.java")
             .Append("com/acme/formatters/UserFormatters.java")
+            .Concat(JavaTarget.Instance.ExportFiles(Features.Ir.Exports.Single(), options))
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToArray();
 
@@ -62,7 +63,8 @@ public class JavaEmitterTests
     {
         var run = JavaTestRunner.Run("com.acme", Source("[NexusObject] public class Item { [NexusKey(0)] public int Id { get; set; } }", "Item"));
         await Assert.That(run.Diagnostics).IsEmpty();
-        await Assert.That(run.Files.Keys.OrderBy(p => p, StringComparer.Ordinal))
+        var exportFiles = JavaTarget.Instance.ExportFiles(run.Ir!.Exports.Single(), JavaTestRunner.TargetOptionsFor("com.acme"));
+        await Assert.That(run.Files.Keys.Except(exportFiles).OrderBy(p => p, StringComparer.Ordinal))
             .IsEquivalentTo(new[] { "com/acme/Item.java", "com/acme/formatters/Formatters.java" });
     }
 
