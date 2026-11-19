@@ -25,9 +25,11 @@ public sealed class RemoteClientDriver : IClientUnderTest
     private readonly ScriptFacade? _facade;
     private readonly RemoteInvoker _invoker;
     private readonly string _serverInterface;
+    // Token names are unique per runner process, so the tokens of several clients of one test scope never collide.
+    private static long _nextToken;
     private Exception? _postFailure;
-    private long _nextToken;
     private int _disposed;
+    private int _released;
 
     /// <summary>Creates the driver of client <paramref name="handle"/>; use <see cref="RemoteClientDriverFactory"/>.</summary>
     /// <param name="connection">The host's control connection.</param>
@@ -200,20 +202,17 @@ public sealed class RemoteClientDriver : IClientUnderTest
         return LeakReports.Parse(report);
     }
 
+    /// <summary>
+    /// True once the host released the handle while this driver lived on: a rental returned to its pool
+    /// (<see cref="Release"/>). Requests then throw <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    internal bool IsReleased => Volatile.Read(ref _released) != 0;
+
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (!Detach())
             return;
-
-        if (_facade != null)
-        {
-            foreach (var slot in _facade.Slots)
-                slot.Changed -= OnSlotChanged;
-        }
-
-        foreach (var forward in _forwards.Values)
-            forward.Cancel();
 
         try
         {
@@ -231,9 +230,44 @@ public sealed class RemoteClientDriver : IClientUnderTest
         }
     }
 
+    /// <summary>
+    /// The host released the handle (<c>pool.return</c>): stops following it without <c>client.dispose</c>; later
+    /// requests throw <see cref="ObjectDisposedException"/>.
+    /// </summary>
+    internal void Release()
+    {
+        Volatile.Write(ref _released, 1);
+        if (Detach())
+            _events.Dispose();
+    }
+
+    /// <summary>Stops following the script slots and forwarded calls; false when done already.</summary>
+    private bool Detach()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return false;
+
+        if (_facade != null)
+        {
+            foreach (var slot in _facade.Slots)
+                slot.Changed -= OnSlotChanged;
+        }
+
+        foreach (var forward in _forwards.Values)
+            forward.Cancel();
+        return true;
+    }
+
+    private void ThrowIfReleased()
+    {
+        if (IsReleased)
+            throw new ObjectDisposedException(nameof(IRentedClientUnderTest), $"{Target}: client {Handle} is returned to its pool.");
+    }
+
     /// <summary>Sends a request about this client (adds <c>h</c>).</summary>
     internal Task<JsonObject> CallAsync(string op, JsonObject? args, int timeoutMs)
     {
+        ThrowIfReleased();
         args ??= new JsonObject();
         args["h"] = Handle;
         return Connection.RequestAsync(Test, op, args, timeoutMs);
@@ -242,6 +276,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
     /// <summary>Sends a request without waiting for it; <see cref="BarrierAsync"/> waits for it and reports its failure.</summary>
     internal Task<JsonObject> Post(string op, JsonObject args, int timeoutMs = DefaultOpMs)
     {
+        ThrowIfReleased();
         var task = Connection.RequestAsync(Test, op, args, timeoutMs);
         Track(task);
         return task;
@@ -367,7 +402,7 @@ public sealed class RemoteClientDriver : IClientUnderTest
                 source.Dispose();
             }
 
-            if (!Connection.IsClosed)
+            if (!Connection.IsClosed && !IsReleased)
                 _ = Post("callback.reply", reply);
         });
     }
@@ -381,7 +416,7 @@ internal sealed class RemoteToken(RemoteClientDriver driver, string name, Cancel
     public void Dispose()
     {
         registration.Dispose();
-        if (!driver.Connection.IsClosed)
+        if (!driver.Connection.IsClosed && !driver.IsReleased)
             _ = driver.Post("token.dispose", new JsonObject { ["token"] = Name });
     }
 }
