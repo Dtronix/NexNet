@@ -4,6 +4,7 @@ import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
+import com.dtronix.nexnet.metrics.NexusInstrument;
 import com.dtronix.nexnet.spi.HandshakeDescriptor;
 import com.dtronix.nexnet.transport.Transport;
 import java.io.BufferedOutputStream;
@@ -13,6 +14,7 @@ import java.security.cert.X509Certificate;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -77,6 +79,8 @@ public final class NexusSession {
     private final SessionTimers timers;
     private final @Nullable NexusLogger logger;
     private final ControlSender controlSender;
+    private final @Nullable Object owner;
+    private final CopyOnWriteArrayList<SessionMetricsSink> metricsSinks = new CopyOnWriteArrayList<>();
 
     private final Object lock = new Object();
     private final ArrayDeque<Pending> queue = new ArrayDeque<>();
@@ -107,6 +111,17 @@ public final class NexusSession {
     private volatile boolean writing;
     /** The clock reading when the write in progress started; meaningful only while {@code writing}. */
     private volatile long writeStartedNanos;
+    private volatile boolean established;
+
+    // Diagnostics (snapshots and metrics). Each counter has one writer: the writer thread for the sent ones, the
+    // reader thread for the received ones.
+    private volatile long connectedNanos;
+    private volatile long framesSent;
+    private volatile long bytesSent;
+    private volatile long framesReceived;
+    private volatile long bytesReceived;
+    private volatile boolean anySent;
+    private volatile long lastSentNanos;
 
     private NexusSession(Builder b) {
         this.name = b.name;
@@ -123,6 +138,7 @@ public final class NexusSession {
         this.timers = b.timers;
         this.logger = b.logger;
         this.controlSender = new ControlSender(this::wakeWriter, options.invocationCredits());
+        this.owner = b.owner;
     }
 
     /**
@@ -165,8 +181,13 @@ public final class NexusSession {
             writerThread = writer;
             readerThread = reader;
         }
+        long now = timers.nanoTime();
+        connectedNanos = now;
+        lastReceivedNanos = now;
         SessionCounters.OPEN_SESSIONS.incrementAndGet();
         SessionCounters.LIVE_THREADS.addAndGet(2);
+        // Before any IO: a session that ends during the handshake is still seen.
+        SessionObservers.started(this);
         writer.start();
         reader.start();
         Registration timer = scheduleTimer(this::handshakeTimedOut, handshakeTimeoutMillis);
@@ -353,15 +374,27 @@ public final class NexusSession {
                 }
                 // Recorded for the progress check (specification section 9): a write that never completes is a
                 // stall of the outbound transport.
-                writeStartedNanos = timers.nanoTime();
+                long now = timers.nanoTime();
+                writeStartedNanos = now;
                 writing = true;
                 try {
+                    lastSentNanos = now;
+                    anySent = true;
+                    long frames = 0;
+                    long bytes = 0;
                     for (Pending pending : batch) {
                         out.write(pending.frame.bytes());
+                        // The preamble is raw bytes, not a frame (as C# counts it).
+                        frames += pending.frame.type() < 0 ? 0 : 1;
+                        bytes += pending.frame.length();
                     }
                     for (Frame frame : control) {
                         out.write(frame.bytes());
+                        frames++;
+                        bytes += frame.length();
                     }
+                    framesSent += frames;
+                    bytesSent += bytes;
                     out.flush();
                 } catch (IOException e) {
                     writing = false;
@@ -412,10 +445,17 @@ public final class NexusSession {
         }
         boolean sent = false;
         try {
+            long now = timers.nanoTime();
+            lastSentNanos = now;
+            anySent = true;
             for (Pending pending : queued) {
                 out.write(pending.frame.bytes());
+                framesSent += pending.frame.type() < 0 ? 0 : 1;
+                bytesSent += pending.frame.length();
             }
             out.write(reason.code());
+            framesSent++;
+            bytesSent++;
             out.flush();
             sent = true;
         } catch (IOException e) {
@@ -455,6 +495,7 @@ public final class NexusSession {
             FrameInput in = new FrameInput(transport.input());
             byte[] preamble = new byte[PREAMBLE.length];
             in.readFully(preamble, 0, preamble.length);
+            bytesReceived += preamble.length;
             for (int i = 0; i < PREAMBLE.length; i++) {
                 if (preamble[i] != PREAMBLE[i]) {
                     throw new SessionProtocolException(DisconnectReason.PROTOCOL_ERROR, "Bad preamble.");
@@ -468,6 +509,8 @@ public final class NexusSession {
                     return;
                 }
                 if (MessageTypes.isDisconnect(type)) {
+                    framesReceived++;
+                    bytesReceived++;
                     DisconnectReason reason = DisconnectReason.fromCode(type);
                     log(NexusLogLevel.INFORMATION, "The server disconnected: " + reason + " (" + type + ").", null);
                     close(reason, false);
@@ -478,6 +521,8 @@ public final class NexusSession {
                     if (!completed) {
                         throw protocolError("Ping before the connection completed.");
                     }
+                    framesReceived++;
+                    bytesReceived++;
                     lastReceivedNanos = timers.nanoTime();
                     continue;
                 }
@@ -501,6 +546,8 @@ public final class NexusSession {
                 int postHeader = in.readLittleEndian(postLength);
                 byte[] body = length == 0 ? empty : new byte[length];
                 in.readFully(body, 0, length);
+                framesReceived++;
+                bytesReceived += 3 + postLength + length;
                 if (phase().compareTo(Phase.CLOSING) >= 0) {
                     return;
                 }
@@ -585,6 +632,7 @@ public final class NexusSession {
                 return;
             }
             phase = Phase.CONNECTED;
+            established = true;
             handshakeTimeout = handshakeTimer;
             handshakeTimer = null;
             lastReceivedNanos = timers.nanoTime();
@@ -1013,6 +1061,163 @@ public final class NexusSession {
         return effectivePingIntervalMillis;
     }
 
+    /**
+     * Whether the handshake completed; stays true once the session closes.
+     *
+     * @return true once the server's greeting was accepted
+     */
+    public boolean isEstablished() {
+        return established;
+    }
+
+    /**
+     * The client this session belongs to, as given to {@link Builder#owner}.
+     *
+     * @return the owner, or null
+     */
+    public @Nullable Object owner() {
+        return owner;
+    }
+
+    /**
+     * The message handler attached with {@link #setMessageHandler} (the invocation runtime of a client session).
+     *
+     * @return the handler
+     */
+    public MessageHandler messageHandler() {
+        return handler;
+    }
+
+    /**
+     * The {@link #nanoTime()} reading when the session started, right after its transport connected.
+     *
+     * @return nanoseconds on the session clock; 0 before {@link #start()}
+     */
+    public long connectedNanos() {
+        return connectedNanos;
+    }
+
+    /**
+     * The {@link #nanoTime()} reading when a complete frame was last received (the start time until one is).
+     *
+     * @return nanoseconds on the session clock
+     */
+    public long lastReceivedNanos() {
+        return lastReceivedNanos;
+    }
+
+    /**
+     * Whether anything was written to the transport yet.
+     *
+     * @return true once a write started
+     */
+    public boolean hasSent() {
+        return anySent;
+    }
+
+    /**
+     * The {@link #nanoTime()} reading when the last write to the transport started; meaningful when {@link #hasSent()}.
+     *
+     * @return nanoseconds on the session clock
+     */
+    public long lastSentNanos() {
+        return lastSentNanos;
+    }
+
+    /**
+     * Whether a write to the transport (and its flush) is in progress.
+     *
+     * @return true while writing
+     */
+    public boolean isFlushing() {
+        return writing;
+    }
+
+    /**
+     * The {@link #nanoTime()} reading when the write in progress started; meaningful while {@link #isFlushing()}.
+     *
+     * @return nanoseconds on the session clock
+     */
+    public long flushStartedNanos() {
+        return writeStartedNanos;
+    }
+
+    /**
+     * Frames written to the transport (the preamble is not a frame; the disconnect byte is).
+     *
+     * @return the count
+     */
+    public long framesSent() {
+        return framesSent;
+    }
+
+    /**
+     * Bytes written to the transport, frame headers and the preamble included.
+     *
+     * @return the count
+     */
+    public long bytesSent() {
+        return bytesSent;
+    }
+
+    /**
+     * Frames read from the transport, pings and the disconnect byte included.
+     *
+     * @return the count
+     */
+    public long framesReceived() {
+        return framesReceived;
+    }
+
+    /**
+     * Bytes read from the transport, frame headers and the preamble included.
+     *
+     * @return the count
+     */
+    public long bytesReceived() {
+        return bytesReceived;
+    }
+
+    /**
+     * Attaches a sink for the session's event instruments (the metrics layer does, for sessions of tracked clients).
+     *
+     * @param sink the sink
+     * @return a registration that detaches it
+     */
+    public Registration addMetricsSink(SessionMetricsSink sink) {
+        if (sink == null) {
+            throw new NullPointerException("sink");
+        }
+        metricsSinks.add(sink);
+        return () -> metricsSinks.remove(sink);
+    }
+
+    /**
+     * Whether a metrics sink is attached; callers skip the work of a measurement otherwise.
+     *
+     * @return true when {@link #recordMetric} reaches a sink
+     */
+    public boolean hasMetricsSinks() {
+        return !metricsSinks.isEmpty();
+    }
+
+    /**
+     * Reports an event instrument measurement to the attached sinks. Does nothing when none is attached.
+     *
+     * @param instrument the instrument
+     * @param value the counter increment or histogram value
+     * @param tags the tags beyond the session's role and transport
+     */
+    public void recordMetric(NexusInstrument instrument, double value, Map<String, String> tags) {
+        for (SessionMetricsSink sink : metricsSinks) {
+            try {
+                sink.record(instrument, value, tags);
+            } catch (RuntimeException ignored) {
+                // Metrics must never break the session.
+            }
+        }
+    }
+
     private byte[] clientGreetingBody() {
         WireWriter w = new WireWriter(64 + authenticationToken.length);
         w.writeArrayHeader(6);
@@ -1051,6 +1256,7 @@ public final class NexusSession {
         private Executor callbackExecutor = NexusExecutors.shared();
         private SessionTimers timers = SessionTimers.system();
         private @Nullable NexusLogger logger;
+        private @Nullable Object owner;
 
         private Builder(Transport transport, HandshakeDescriptor handshake) {
             if (transport == null || handshake == null) {
@@ -1189,6 +1395,18 @@ public final class NexusSession {
          */
         public Builder logger(@Nullable NexusLogger logger) {
             this.logger = logger;
+            return this;
+        }
+
+        /**
+         * The client the session belongs to, for the metrics layer to find the sessions of the clients it tracks
+         * (handshake included).
+         *
+         * @param owner the owner, or null
+         * @return this builder
+         */
+        public Builder owner(@Nullable Object owner) {
+            this.owner = owner;
             return this;
         }
 
