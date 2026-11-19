@@ -13,8 +13,8 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Larger than the server's MaxMessageSize (4 MiB by default): refused before anything is sent.
         var data = new byte[4 * 1024 * 1024 + 1];
@@ -30,8 +30,8 @@ internal partial class NexusClientTests_InvalidInvocations : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Larger than the client accepts (4 MiB by default). It used to leave the session's send buffer dirty,
         // failing every later send while pings kept the session looking alive.

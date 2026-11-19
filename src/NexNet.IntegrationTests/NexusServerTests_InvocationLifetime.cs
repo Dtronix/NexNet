@@ -49,8 +49,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerTaskEvent = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var invocationTask = client.Proxy.ServerTaskValue().AsTask();
         await startedTcs.Task.Timeout(1);
@@ -94,8 +94,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerVoidEvent = _ => secondInvocationTcs.TrySetResult();
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var firstInvocationTask = client.Proxy.ServerTask().AsTask();
         await startedTcs.Task.Timeout(1);
@@ -176,8 +176,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             nexus.ServerVoidEvent = _ => queuedInvocationTcs.TrySetResult();
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         var invocationTask = client.Proxy.ServerTaskWithCancellation(cts.Token).AsTask();
@@ -251,8 +251,8 @@ internal class NexusServerTests_InvocationLifetime : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var invocationTask = withCancellationToken
             ? client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask()

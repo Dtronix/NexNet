@@ -28,7 +28,7 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
         for (var i = 0; i < joiners; i++)
         {
             (joinerClients[i], _) = CreateClient(CreateClientConfig(type));
-            await joinerClients[i].ConnectAsync().Timeout(1);
+            await joinerClients[i].ConnectAsync().Timeout(TestTimeouts.Connect);
         }
 
         using var start = new ManualResetEventSlim(false);
@@ -109,7 +109,7 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
         var (server, client1, _) = await ConnectServerAndClient(type);
         var serverList = server.NexusCreatedQueue.First().IntListBi;
         var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         for (var i = 0; i < rounds; i++)
             await serverList.AddAsync(i).Timeout(1);

@@ -15,7 +15,7 @@ internal class NexusCollectionNoopTests : NexusCollectionBaseTests
         var (server, client1, _) = await ConnectServerAndClient(type);
         var serverNexus = server.NexusCreatedQueue.First();
         var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await serverNexus.IntListBi.AddAsync(1).Timeout(1);
         await serverNexus.IntListBi.AddAsync(2).Timeout(1);

@@ -153,8 +153,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             return value * 10;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
@@ -184,8 +184,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             return value;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         var call = client.Proxy.ServerTaskValueWithValueAndCancellation(1, cts.Token).AsTask();
@@ -224,8 +224,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             return value;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var first = client.Proxy.ServerTaskValueWithValueAndCancellation(1, CancellationToken.None).AsTask();
         await started.Task.Timeout(1);
@@ -261,8 +261,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             return ValueTask.FromResult(1);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -289,8 +289,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -311,8 +311,8 @@ internal partial class NexusClientTests_Cancellation : BaseTests
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new OperationCanceledException();
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.ThrowsExactlyAsync<TaskCanceledException>(async () => await client.Proxy.ServerTaskValue().AsTask().Timeout(1));
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
@@ -334,7 +334,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
 
         server.OnNexusCreated = setup.Invoke;
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {
@@ -353,7 +353,7 @@ internal partial class NexusClientTests_Cancellation : BaseTests
             }
         };
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await action.Invoke(client);
 

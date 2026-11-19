@@ -32,9 +32,9 @@ internal class FlowControlTests : BaseTests
             };
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -69,9 +69,9 @@ internal class FlowControlTests : BaseTests
             };
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -96,9 +96,9 @@ internal class FlowControlTests : BaseTests
             await foreach (var value in await pipe.GetChannel<byte[]>().GetReaderAsync())
                 received.TrySetResult(value.Length);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -121,9 +121,9 @@ internal class FlowControlTests : BaseTests
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -153,9 +153,9 @@ internal class FlowControlTests : BaseTests
                 pipe.Input.AdvanceTo(read.Buffer.End);
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Reserved for the session's lifetime: the invocation queue (InvocationCredits x 64 KiB).
         var budget = client.Session!.Budget;
@@ -187,9 +187,9 @@ internal class FlowControlTests : BaseTests
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var pipes = new List<IRentedNexusDuplexPipe>();
         for (var i = 0; i < 2; i++)

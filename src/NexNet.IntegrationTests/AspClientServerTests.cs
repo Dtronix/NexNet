@@ -34,8 +34,8 @@ internal partial class AspClientServerTests : BaseAspTests
             AspAppAuthConfigure);
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await server.StartAsync().Timeout(1);
-        await Assert.That(() => client.ConnectAsync().Timeout(1)).ThrowsNothing();
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await Assert.That(() => client.ConnectAsync().Timeout(TestTimeouts.Connect)).ThrowsNothing();
         await tcs.Task.Timeout(1);
     }
     
@@ -64,9 +64,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
         
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         
-        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
@@ -90,9 +90,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
         
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         
-        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
     
@@ -120,9 +120,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
         
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
   
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
     }
     
     [Test]
@@ -150,9 +150,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
         
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         
-        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(actual!.Error).IsEqualTo(TransportError.InternalError);
     }
 
@@ -178,15 +178,15 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         if (succeeds)
         {
-            await Assert.That(() => client.ConnectAsync().Timeout(1)).ThrowsNothing();
+            await Assert.That(() => client.ConnectAsync().Timeout(TestTimeouts.Connect)).ThrowsNothing();
         }
         else
         {
-            var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+            var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
             await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
         }
     }
@@ -211,9 +211,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 
@@ -237,9 +237,9 @@ internal partial class AspClientServerTests : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(1));
+        var actual = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(actual!.Error).IsEqualTo(TransportError.AuthenticationError);
     }
 

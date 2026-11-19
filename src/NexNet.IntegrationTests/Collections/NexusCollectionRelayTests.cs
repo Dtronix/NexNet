@@ -68,11 +68,11 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await serverRelay.ReadyTask.Timeout(1);
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
 
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
         await relayList.ReadyTask.Timeout(1);
         var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 100);
 
@@ -106,9 +106,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await relayList.ReadyTask.Timeout(1);
         var addWait = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 1000);
@@ -127,14 +127,14 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     public async Task ParentItemsSentUponConnectionToRelayCollection()
     {
         var clSv = await CreateRelayCollectionClientServers();
-        await clSv.Server1.StartAsync().Timeout(1);
+        await clSv.Server1.StartAsync().Timeout(TestTimeouts.Connect);
         
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi; // First server
         
         for (int i = 0; i < 10; i++)
             await sourceList.AddAsync(1);
         
-        await clSv.Server2.StartAsync().Timeout(1);
+        await clSv.Server2.StartAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay; 
         await relayList.ReadyTask.Timeout(1);
         
@@ -224,7 +224,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         for (int i = 0; i < 10; i++)
             await sourceList.AddAsync(1);
 
-        await clSv.Server2.StartAsync().Timeout(1);
+        await clSv.Server2.StartAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await relayList.ReadyTask.Timeout(1);
 
@@ -368,9 +368,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Wait for 10 Add events (5 threads x 2 adds each)
         using var waitAdd = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 10);
@@ -607,10 +607,10 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var clSv = await CreateRelayCollectionClientServers(false);
 
         // Start only Server2 (relay)
-        await clSv.Server2.StartAsync().Timeout(1);
+        await clSv.Server2.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Connect client to Server2
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         await relayList.EnableAsync().Timeout(1);
 
@@ -621,7 +621,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var waitAdd = relayList.WaitForEvent(NexusCollectionChangedAction.Add, 5);
 
         // Now start Server1 (parent)
-        await clSv.Server1.StartAsync().Timeout(1);
+        await clSv.Server1.StartAsync().Timeout(TestTimeouts.Connect);
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
         // Wait for relay to connect
@@ -654,9 +654,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitServerRelay.Wait();
 
         // Connect client
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(relayList).IsEquivalentTo(sourceList);
 
@@ -671,9 +671,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitServerRelay2.Wait();
 
         // Reconnect
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         relayList = clSv.Client2.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Should have all data
         await Assert.That(relayList).IsEquivalentTo(sourceList);
@@ -716,9 +716,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await serverRelay.ReadyTask.Timeout(1);
 
         // Client connects
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var clientRelay = clSv.Client2.Proxy.IntListRelay;
-        await clientRelay.ConnectAsync().Timeout(1);
+        await clientRelay.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(clientRelay.Count).IsEqualTo(0);
         // Server relay state is Connected, client collection state depends on implementation
@@ -814,9 +814,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await waitServerRelay.Wait(10);
 
         // Now connect client after all operations complete on server relay
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Client should now have all items since it connected to a relay that has them
         await Assert.That(sourceList).IsEquivalentTo(relayList);
@@ -978,7 +978,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var server = CreateServerWithoutRelayConfiguration();
 
         // Should start without error
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var relayList = server.ContextProvider.Rent().Collections.IntListRelay;
 
@@ -994,7 +994,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         // Create server without configuring relay
         var server = CreateServerWithoutRelayConfiguration();
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var relayList = server.ContextProvider.Rent().Collections.IntListRelay;
 
@@ -1003,7 +1003,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             relayList.ConfigureRelay(null!);
         });
 
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
     }
 
     [Test]
@@ -1049,7 +1049,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
     {
         var clSv = await CreateRelayCollectionClientServers(false);
 
-        await clSv.Server1.StartAsync().Timeout(1);
+        await clSv.Server1.StartAsync().Timeout(TestTimeouts.Connect);
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
         // Add many items before relay connects
@@ -1058,7 +1058,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
             await sourceList.AddAsync(i);
 
         // Now start relay
-        await clSv.Server2.StartAsync().Timeout(1);
+        await clSv.Server2.StartAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
 
         await relayList.ReadyTask.Timeout(5);
@@ -1107,11 +1107,11 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await serverRelay.ReadyTask.Timeout(1);
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
         await relayList.ReadyTask.Timeout(1);
 
         // Add significantly more items than the broadcast channel capacity (50)
@@ -1157,11 +1157,11 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await serverRelay.ReadyTask.Timeout(1);
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var relayList = clSv.Client2.Proxy.IntListRelay;
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;
 
-        await relayList.ConnectAsync().Timeout(1);
+        await relayList.ConnectAsync().Timeout(TestTimeouts.Connect);
         await relayList.ReadyTask.Timeout(1);
 
         // Multiple concurrent tasks adding items rapidly
@@ -1240,7 +1240,7 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         await Task.Delay(50);
 
         // Stop the server while operations may be pending
-        await clSv.Server1.StopAsync().Timeout(1);
+        await clSv.Server1.StopAsync().Timeout(TestTimeouts.Connect);
 
         // The add task should complete within a reasonable time (not hang)
         var completedTask = await Task.WhenAny(addTask, Task.Delay(5000));
@@ -1263,9 +1263,9 @@ internal class NexusCollectionRelayTests : NexusCollectionBaseTests
         var serverRelay = clSv.Server2.ContextProvider.Rent().Collections.IntListRelay;
         await serverRelay.ReadyTask.Timeout(1);
 
-        await clSv.Client2.ConnectAsync().Timeout(1);
+        await clSv.Client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         var clientRelay = clSv.Client2.Proxy.IntListRelay;
-        await clientRelay.ConnectAsync().Timeout(1);
+        await clientRelay.ConnectAsync().Timeout(TestTimeouts.Connect);
         await clientRelay.ReadyTask.Timeout(1);
 
         var sourceList = clSv.Server1.ContextProvider.Rent().Collections.IntListBi;

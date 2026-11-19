@@ -29,9 +29,9 @@ internal class InvocationCreditTests : BaseTests
             await release.Task;
             return 1;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var calls = Enumerable.Range(0, 4).Select(_ => client.Proxy.ServerTaskValue().AsTask()).ToArray();
         await Task.Delay(200);
@@ -60,9 +60,9 @@ internal class InvocationCreditTests : BaseTests
             await release.Task;
             return 1;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // The first runs; the second takes the returned credit and waits in the queue; the third waits for credit.
         var first = client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
@@ -93,9 +93,9 @@ internal class InvocationCreditTests : BaseTests
             Interlocked.Increment(ref received);
             await release.Task;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var first = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
         var second = client.Proxy.ServerTaskWithCancellation(CancellationToken.None).AsTask();
@@ -123,9 +123,9 @@ internal class InvocationCreditTests : BaseTests
             nexus.ServerVoidEvent = _ => voidCalled.TrySetResult();
             nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();
@@ -157,9 +157,9 @@ internal class InvocationCreditTests : BaseTests
             if (Interlocked.Increment(ref received) == count)
                 all.TrySetResult();
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         for (var i = 0; i < count; i++)
             client.Proxy.ServerVoidWithParam(i);
@@ -220,7 +220,7 @@ internal class InvocationCreditTests : BaseTests
                     tcs.TrySetResult();
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             received.Add(tcs.Task);
         }
 
@@ -265,7 +265,7 @@ internal class InvocationCreditTests : BaseTests
                 tcs.TrySetResult(data.Length);
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             received.Add(tcs.Task);
         }
 
@@ -290,7 +290,7 @@ internal class InvocationCreditTests : BaseTests
         // order they arrive.
         const int count = 500;
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var orders = new List<List<int>>();
         var done = new List<Task>();
@@ -313,7 +313,7 @@ internal class InvocationCreditTests : BaseTests
 
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             orders.Add(order);
             done.Add(all.Task);
         }
@@ -340,7 +340,7 @@ internal class InvocationCreditTests : BaseTests
                     frames.Add(bytes);
         };
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var received = new List<Task<int>>();
         for (var i = 0; i < 3; i++)
@@ -352,7 +352,7 @@ internal class InvocationCreditTests : BaseTests
                 tcs.TrySetResult(data);
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             received.Add(tcs.Task);
         }
 

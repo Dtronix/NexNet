@@ -21,7 +21,7 @@ internal partial class NexusClientTests
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         clientConfig.AuthenticateAsync = async ct =>
         {
@@ -36,7 +36,7 @@ internal partial class NexusClientTests
             else
                 tcs.TrySetException(new Exception("Client didn't send token"));
         });
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -54,10 +54,10 @@ internal partial class NexusClientTests
         };
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(Volatile.Read(ref calls)).IsEqualTo(2);
     }
@@ -86,11 +86,11 @@ internal partial class NexusClientTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await server.StopAsync();
         await Task.Delay(100);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         await reconnected.Task.Timeout(1);
         await Assert.That(Volatile.Read(ref calls)).IsGreaterThanOrEqualTo(2);
@@ -112,12 +112,12 @@ internal partial class NexusClientTests
     {
         var clientConfig = CreateClientConfig(type);
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         clientConfig.Authenticate = () => new byte[] { 1 };
         clientConfig.AuthenticateAsync = _ => ValueTask.FromResult<Memory<byte>>(new byte[] { 1 });
 
-        var result = await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(result.Success).IsFalse();
         await Assert.That(result.Exception).IsTypeOf<InvalidOperationException>();
     }
@@ -135,9 +135,9 @@ internal partial class NexusClientTests
             throw new InvalidDataException("token provider failed");
         };
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        var result = await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(result.Success).IsFalse();
         await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Exception);
@@ -146,7 +146,7 @@ internal partial class NexusClientTests
         await Assert.That(transportConnected).IsFalse();
         await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
 
-        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => client.ConnectAsync().Timeout(1));
+        await Assert.ThrowsExactlyAsync<InvalidDataException>(() => client.ConnectAsync().Timeout(TestTimeouts.Connect));
     }
 
     [Test]
@@ -164,9 +164,9 @@ internal partial class NexusClientTests
             return Memory<byte>.Empty;
         };
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        var result = await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(result.State).IsEqualTo(ConnectionResult.StateValue.Exception);
         await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.Authentication);
@@ -188,7 +188,7 @@ internal partial class NexusClientTests
             return Memory<byte>.Empty;
         };
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         var connect = client.TryConnectAsync(cts.Token);
@@ -214,8 +214,8 @@ internal partial class NexusClientTests
         await Assert.That(client.IsSecure).IsEqualTo(expected);
         await Assert.That(((INexusClient)client).IsSecure).IsEqualTo(expected);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var snapshot = client.GetSnapshot();
         await Assert.That(snapshot).IsNotNull();
@@ -250,11 +250,11 @@ internal partial class NexusClientTests
         var logger = new CapturingLogger();
         var clientConfig = CreateClientConfigWithLog(type, logger);
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
         await Assert.That(warnings).Count().IsEqualTo(1);
@@ -268,10 +268,10 @@ internal partial class NexusClientTests
         var logger = new CapturingLogger();
         var (server, client1, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfigWithLog(type, logger));
         var client2 = ClientNexus.CreateClient(CreateClientConfigWithLog(type, logger), new ClientNexus());
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client2.DisposeAsync();
 
         await Assert.That(logger.Warnings.Count(w => w.Contains("unencrypted transport"))).IsEqualTo(2);
@@ -285,7 +285,7 @@ internal partial class NexusClientTests
 
         await Assert.That(client.IsSecure).IsFalse();
 
-        var result = await client.TryConnectAsync().Timeout(1);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(result.Success).IsFalse();
 
         var warnings = logger.Warnings.Where(w => w.Contains("unencrypted transport")).ToList();
@@ -303,7 +303,7 @@ internal partial class NexusClientTests
 
         await Assert.That(client.IsSecure).IsTrue();
 
-        await client.TryConnectAsync().Timeout(1);
+        await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport"))).IsFalse();
     }
@@ -326,9 +326,9 @@ internal partial class NexusClientTests
     {
         var logger = new CapturingLogger();
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfigWithLog(type, logger));
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(logger.Warnings.Any(w => w.Contains("unencrypted transport"))).IsFalse();
     }

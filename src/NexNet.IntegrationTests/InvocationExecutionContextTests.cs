@@ -26,9 +26,9 @@ internal class InvocationExecutionContextTests : BaseTests
         };
         clientNexus.ClientVoidEvent = _ => observed.TrySetResult(Local.Value);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         Local.Value = "connect";
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
@@ -51,9 +51,9 @@ internal class InvocationExecutionContextTests : BaseTests
             observed.TrySetResult(Local.Value);
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         Local.Value = "connect";
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(await observed.Task.Timeout(1)).IsEqualTo("connect");
     }
@@ -78,9 +78,9 @@ internal class InvocationExecutionContextTests : BaseTests
             }
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         Local.Value = "connect";
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using (var owner = server.Server.ContextProvider.Rent())
             owner.Proxy.All.ClientVoidWithParam(1);
@@ -103,11 +103,11 @@ internal class InvocationExecutionContextTests : BaseTests
             observed = Local.Value;
             return ValueTask.FromResult(1);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         Local.Value = null;
 
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
         await Assert.That(observed).IsEqualTo("start");
@@ -126,10 +126,10 @@ internal class InvocationExecutionContextTests : BaseTests
                 return ValueTask.FromResult(1);
             },
             onAspCreateServices: builder => builder.Services.AddHttpContextAccessor());
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
         await Assert.That(path).IsNotEqualTo("none");

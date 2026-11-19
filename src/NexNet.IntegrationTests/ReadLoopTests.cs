@@ -23,9 +23,9 @@ internal class ReadLoopTests : BaseTests
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) => await pipe.CompleteTask;
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(42);
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var pipes = new List<NexNet.Pipes.IRentedNexusDuplexPipe>();
         for (var i = 0; i < 3; i++)

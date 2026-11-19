@@ -335,14 +335,14 @@ internal class PipeForwardingTests : BaseTests
         serverConfig.SessionBudget = 64 * 1024 * 1024;
         var server = CreateServer(serverConfig, nexus =>
             nexus.ServerTaskValueWithDuplexPipeEvent = (_, pipe) => relay.OnPipe(pipe));
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (a, _) = CreateClient(CreateClientConfig(type));
-        await a.ConnectAsync().Timeout(1);
+        await a.ConnectAsync().Timeout(TestTimeouts.Connect);
         var bConfig = CreateClientConfig(type);
         configureB?.Invoke(bConfig);
         var (b, _) = CreateClient(bConfig);
-        await b.ConnectAsync().Timeout(1);
+        await b.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // A's pipe reaches the server first and is the source; B's is the destination.
         var aPipe = a.CreatePipe();

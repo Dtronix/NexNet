@@ -23,9 +23,9 @@ internal class LargeValueTests : BaseTests
     public async Task LargeArgumentAndResult_RoundTrip(Type type, int size)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var data = new byte[size];
         Random.Shared.NextBytes(data);
@@ -47,9 +47,9 @@ internal class LargeValueTests : BaseTests
             received.TrySetResult(data.Length);
             return default;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(5);
         await Assert.That(await received.Task.Timeout(5)).IsEqualTo(1024 * 1024);
@@ -60,7 +60,7 @@ internal class LargeValueTests : BaseTests
     public async Task BroadcastLargeArgument_ReachesEveryClient(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var received = new[]
         {
@@ -75,7 +75,7 @@ internal class LargeValueTests : BaseTests
                 tcs.TrySetResult(data.Length);
                 return default;
             };
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         }
 
         using var context = server.ContextProvider.Rent();
@@ -108,9 +108,9 @@ internal class LargeValueTests : BaseTests
 
             return data;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(5);

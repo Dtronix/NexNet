@@ -49,9 +49,9 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
             var index = Interlocked.Increment(ref started);
             await released[index].Task;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (time, server, client, released);
     }
 
@@ -229,9 +229,9 @@ internal class InvocationQueueDiagnosticsTests : BaseTests
                     break;
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);

@@ -16,7 +16,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
 
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", AllowedOrigin);
-        await socket.ConnectAsync(url, CancellationToken.None).Timeout(1);
+        await socket.ConnectAsync(url, CancellationToken.None).Timeout(TestTimeouts.Connect);
 
         await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
@@ -29,7 +29,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
 
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", AllowedOrigin.ToUpperInvariant());
-        await socket.ConnectAsync(url, CancellationToken.None).Timeout(1);
+        await socket.ConnectAsync(url, CancellationToken.None).Timeout(TestTimeouts.Connect);
 
         await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
@@ -44,7 +44,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         socket.Options.CollectHttpResponseDetails = true;
         socket.Options.SetRequestHeader("Origin", "https://evil.example");
 
-        await Assert.ThrowsExactlyAsync<WebSocketException>(() => socket.ConnectAsync(url, CancellationToken.None).Timeout(1));
+        await Assert.ThrowsExactlyAsync<WebSocketException>(() => socket.ConnectAsync(url, CancellationToken.None).Timeout(TestTimeouts.Connect));
         await Assert.That(socket.HttpStatusCode).IsEqualTo(HttpStatusCode.Forbidden);
     }
 
@@ -57,9 +57,9 @@ internal class AspWebSocketOriginTests : BaseAspTests
 
         var (client, _) = CreateClient(clientConfig);
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
     }
 
     [Test]
@@ -70,11 +70,11 @@ internal class AspWebSocketOriginTests : BaseAspTests
         await Assert.That(serverConfig.AllowedOrigins).IsEmpty();
 
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         using var socket = new ClientWebSocket();
         socket.Options.SetRequestHeader("Origin", "https://any.example");
-        await socket.ConnectAsync(clientConfig.Url, CancellationToken.None).Timeout(1);
+        await socket.ConnectAsync(clientConfig.Url, CancellationToken.None).Timeout(TestTimeouts.Connect);
 
         await Assert.That(socket.State).IsEqualTo(WebSocketState.Open);
         socket.Abort();
@@ -87,7 +87,7 @@ internal class AspWebSocketOriginTests : BaseAspTests
         serverConfig.AllowedOrigins.Add(AllowedOrigin);
 
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         return clientConfig.Url;
     }
 }

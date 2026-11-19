@@ -18,8 +18,8 @@ internal partial class NexusClientTests
         var clientConfig = CreateClientConfig(type);
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(clientConfig.PingInterval).IsNull();
         await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(2));
@@ -34,8 +34,8 @@ internal partial class NexusClientTests
         var clientConfig = CreateClientConfig(type);
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(1));
     }
@@ -53,13 +53,13 @@ internal partial class NexusClientTests
 
         var pingCount = 0;
         var pinged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         FireOnSend(clientConfig, (_, bytes) =>
         {
             if (bytes.Length == 1 && bytes[0] == (int)MessageType.Ping && Interlocked.Increment(ref pingCount) == 1)
                 pinged.TrySetResult();
         });
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
         await Task.Delay(50);
@@ -81,8 +81,8 @@ internal partial class NexusClientTests
         clientConfig.PingInterval = 500;
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(500));
         await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval"))).IsFalse();
@@ -100,8 +100,8 @@ internal partial class NexusClientTests
         clientConfig.PingInterval = 6000;
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(6000));
         await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval (6000 ms)") && w.Contains("(6000 ms)"))).IsTrue();

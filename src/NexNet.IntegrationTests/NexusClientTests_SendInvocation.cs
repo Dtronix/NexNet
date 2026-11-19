@@ -154,7 +154,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         clientConfig.InternalOnSend = (_, bytes) =>
         {
@@ -188,7 +188,7 @@ internal partial class NexusClientTests_SendInvocation : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
 
         await tcs.Task.Timeout(1);

@@ -54,8 +54,8 @@ internal class MetricsSessionTests : BaseTests
     {
         var (serverConfig, clientConfig) = CreateConfigs(type);
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var transport = TransportName(type);
         await Assert.That(_recorder.ObserveSum("nexnet.session.active",
@@ -75,8 +75,8 @@ internal class MetricsSessionTests : BaseTests
     {
         var (serverConfig, clientConfig) = CreateConfigs(Type.Uds);
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.DisconnectAsync().Timeout(1);
         await WaitFor(() => _recorder.Events("nexnet.session.disconnects").Count == 2).Timeout(2);
@@ -101,7 +101,7 @@ internal class MetricsSessionTests : BaseTests
         serverConfig.MeterFactory = _recorder;
         serverConfig.HandshakeTimeout = 200;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         using var client = new RawTcpClient(serverConfig, false, CurrentTcpPort!.Value, Logger);
         await client.ConnectAsync();
@@ -123,10 +123,10 @@ internal class MetricsSessionTests : BaseTests
         var (serverConfig, clientConfig) = CreateConfigs(Type.Tcp);
         serverConfig.RateLimiting = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 };
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (client1, _) = CreateClient(clientConfig);
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var (client2, _) = CreateClient(clientConfig);
         _ = client2.TryConnectAsync();
@@ -142,7 +142,7 @@ internal class MetricsSessionTests : BaseTests
     {
         var (serverConfig, clientConfig) = CreateConfigs(Type.Uds);
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         const int rounds = 5;
         const int clients = 20;
@@ -152,7 +152,7 @@ internal class MetricsSessionTests : BaseTests
             for (var i = 0; i < clients; i++)
             {
                 var (client, _) = CreateClient(clientConfig);
-                await client.ConnectAsync().Timeout(1);
+                await client.ConnectAsync().Timeout(TestTimeouts.Connect);
                 connected.Add(client);
             }
 

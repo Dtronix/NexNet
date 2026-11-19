@@ -84,8 +84,8 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             CreateServerConfigWithLog(Type.Uds, serverLogger),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var serverNexus = server.NexusCreatedQueue.First();
         var list = client.Proxy.IntListBi;
 
@@ -119,8 +119,8 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfigWithLog(Type.Uds, clientLogger));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var serverNexus = server.NexusCreatedQueue.First();
         var list = client.Proxy.IntListBi;
 
@@ -152,8 +152,8 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfigWithLog(Type.Uds, clientLogger));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var serverNexus = server.NexusCreatedQueue.First();
         await serverNexus.IntListBi.AddAsync(7).Timeout(1);
         var list = client.Proxy.IntListBi;
