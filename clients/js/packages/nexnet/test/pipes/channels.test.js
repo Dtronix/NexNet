@@ -248,6 +248,127 @@ describe('channel reader', () => {
   });
 });
 
+describe('channel forwardTo', () => {
+  const writerDone = PipeState.Ready | PipeState.ClientWriterServerReaderComplete;
+  const serverWriterDone = PipeState.Ready | PipeState.ClientReaderServerWriterComplete;
+  /** @param {ServerPeer} peer @param {number} id */
+  const statesOf = (peer, id) => peer.states().filter((s) => s.pipeId === id);
+
+  it('forwards items as they arrive at the destination\'s pace, then half-closes the destination', async () => {
+    const h = await connectedHarness({ config: { pipeWindow: 4 * KiB } });
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, binFormatter);
+    const b = await openChannel(h, peer, binFormatter, 1000);
+    // Small items, an item larger than both windows, and a zero-length item.
+    const items = [bin(10, 1), bin(200, 2), bin(10 * KiB, 3), bin(0), bin(300, 4)];
+    const stream = frameItems(items);
+    let sent = a.sim.send(stream.subarray(0, 1)); // A split prefix first.
+    const forward = a.channel.forwardTo(b.channel);
+    await tick();
+    await until(() => {
+      peer.poll();
+      b.sim.consume(b.sim.buffered);
+      sent += a.sim.send(stream.subarray(sent), 777);
+      return sent === stream.length && b.sim.received.length === stream.length;
+    }, 2000);
+    expect(b.sim.received).toEqual(stream);
+    expect(b.sim.violations).toEqual([]);
+    expect(a.sim.violations).toEqual([]);
+    peer.sendState(a.id, serverWriterDone);
+    await forward;
+    await tick();
+    expect(statesOf(peer, b.id).at(-1)?.state).toBe(writerDone);
+    // The source is not completed.
+    expect(statesOf(peer, a.id)).toEqual([]);
+    await finish(h);
+  });
+
+  it('an item larger than the destination accepts rejects; the items before it were sent and it stays readable', async () => {
+    const h = await connectedHarness({ greeting: { maxMessageSize: 65526 }, config: { pipeWindow: 256 * KiB } });
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, binFormatter, 256 * KiB);
+    const b = await openChannel(h, peer, binFormatter, 256 * KiB);
+    a.sim.send(frameItems([bin(10, 1), bin(70000, 2), bin(5, 3)]));
+    await expect(a.channel.forwardTo(b.channel)).rejects.toBeInstanceOf(NexusMessageTooLargeError);
+    peer.poll();
+    expect(b.sim.takeItems()).toEqual([bin(10, 1)]);
+    expect(peer.states()).toEqual([]);
+    expect((await a.reader.read()).value).toEqual(new Uint8Array(70000).fill(2));
+    expect((await a.reader.read()).value).toEqual(new Uint8Array(5).fill(3));
+    await finish(h);
+  });
+
+  it('passes an incomplete item at the end of the source on as it is', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, binFormatter);
+    const b = await openChannel(h, peer, binFormatter);
+    const partial = frameItems([bin(4, 1), bin(100, 2)]).subarray(0, 50);
+    a.sim.send(partial);
+    peer.sendState(a.id, serverWriterDone);
+    await a.channel.forwardTo(b.channel);
+    await tick();
+    peer.poll();
+    expect(b.sim.consume(b.sim.buffered)).toEqual(partial);
+    expect(statesOf(peer, b.id).at(-1)?.state).toBe(writerDone);
+    await finish(h);
+  });
+
+  it('resolves at the next data once the destination\'s output was completed by its peer', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, intFormatter);
+    const b = await openChannel(h, peer, intFormatter);
+    const forward = a.channel.forwardTo(b.channel);
+    a.sim.send(frameItems([int(1)]));
+    await until(() => { peer.poll(); return b.sim.buffered > 0; });
+    peer.sendState(b.id, writerDone);
+    await tick();
+    a.sim.send(frameItems([int(2)]));
+    await forward;
+    peer.poll();
+    expect(b.sim.takeItems()).toEqual([int(1)]);
+    expect(await a.reader.read()).toEqual({ value: 2, done: false });
+    expect(statesOf(peer, a.id)).toEqual([]);
+    await finish(h);
+  });
+
+  it('a malformed prefix rejects without completing either channel', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, intFormatter);
+    const b = await openChannel(h, peer, intFormatter);
+    a.sim.send(Uint8Array.of(0x80, 0x80, 0x80, 0x80, 0x80, 0x01));
+    await expect(a.channel.forwardTo(b.channel)).rejects.toThrow(NexusError);
+    expect(peer.states()).toEqual([]);
+    await finish(h);
+  });
+
+  it('stops on abort without completing either channel; rejects itself and non-channels', async () => {
+    const h = await connectedHarness();
+    const peer = new ServerPeer(h);
+    const a = await openChannel(h, peer, intFormatter);
+    const b = await openChannel(h, peer, intFormatter, 2);
+    a.sim.send(frameItems([int(1), int(2), int(3)]));
+    const controller = new AbortController();
+    const forward = a.channel.forwardTo(b.channel, { signal: controller.signal });
+    // The destination's 2 bytes of credit take the first item only; the forward waits for more.
+    await until(() => { peer.poll(); return b.sim.buffered === 2; });
+    controller.abort();
+    await expect(forward).rejects.toSatisfy(isCancellationError);
+    expect(peer.states()).toEqual([]);
+    expect(b.sim.takeItems()).toEqual([int(1)]);
+    // The source's input is positioned after what was forwarded.
+    expect(await a.reader.readBatch(5)).toEqual([2, 3]);
+    await expect(a.channel.forwardTo(a.channel)).rejects.toThrow(/itself/);
+    await expect(a.channel.forwardTo(/** @type {any} */ (b.channel.pipe))).rejects.toThrow(TypeError);
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(a.channel.forwardTo(b.channel, { signal: aborted.signal })).rejects.toSatisfy(isCancellationError);
+    await finish(h);
+  });
+});
+
 describe('channels the server opens', () => {
   it('ctx.channel registers the pipe; reading and writing work', async () => {
     const h = await connectedHarness();

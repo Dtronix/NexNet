@@ -330,6 +330,79 @@ export class NexusChannelWriter {
 }
 
 /**
+ * The channel forward's copy loop (C# `NexusPipeForwardingExtensions.CopyAsync` with a maximum item size): copies
+ * the source's input to the destination's output, parsing each item's length prefix as it passes and checking it
+ * against the largest item the destination's peer accepts. Item bodies are copied as they arrive.
+ *
+ * @param {import('./PipeCore.js').PipeCore} source
+ * @param {import('./PipeCore.js').PipeCore} destination
+ * @param {AbortSignal | undefined} signal Stops the forward; neither pipe is completed.
+ * @returns {Promise<void>}
+ */
+async function forwardItems(source, destination, signal) {
+  const max = destination.host.sendMaxMessageSize();
+  // Bytes of the current item (its prefix included) still to pass through.
+  let itemRemaining = 0;
+  for (;;) {
+    if (signal?.aborted) throw cancellationError(signal);
+    if (destination.outputDone) return;
+
+    if (source.buffered > 0 && itemRemaining === 0) {
+      /** @type {{ length: number, size: number } | null} */
+      let prefix;
+      try {
+        prefix = readLength(source.peek(MAX_PREFIX_LENGTH));
+      } catch (error) {
+        throw new NexusError(/** @type {Error} */ (error).message, { cause: error });
+      }
+      if (prefix === null) {
+        if (source.inputDone) {
+          // The source ended inside a prefix: pass the rest on as it is.
+          itemRemaining = source.buffered;
+        } else {
+          // A split prefix: make sure the writer has the credit to send the rest of it, then wait for it.
+          const version = source.inputVersion;
+          source.ensureCredit(MAX_PREFIX_LENGTH);
+          await source.waitInput(signal, version);
+          continue;
+        }
+      } else {
+        if (prefix.length > max) {
+          throw new NexusMessageTooLargeError(`The channel item of ${prefix.length} bytes exceeds the negotiated maximum of ${max} bytes.`);
+        }
+        itemRemaining = prefix.size + prefix.length;
+      }
+    }
+
+    if (source.buffered > 0) {
+      if (destination.sendCredit <= 0) {
+        await destination.waitCredit(signal);
+        continue;
+      }
+      const chunk = source.peekChunk();
+      const n = Math.min(chunk.length, itemRemaining, destination.sendCredit);
+      // Sends without waiting (the credit is there); the bytes are copied into frames before it returns.
+      const sent = destination.writeBytes(chunk.subarray(0, n));
+      source.consume(n);
+      itemRemaining -= n;
+      try {
+        await sent;
+      } catch (error) {
+        if (destination.outputDone && destination.failure === null) return;
+        throw error;
+      }
+      continue;
+    }
+
+    if (source.inputDone) {
+      await destination.completeWriting();
+      return;
+    }
+    await source.waitInput(signal);
+  }
+}
+
+/**
  * A typed channel over a duplex pipe. Mirrors C# `INexusDuplexChannel<T>`. Created by
  * `client.createChannel(formatter)` (passed to a channel method of the server proxy), by the runtime for a channel
  * parameter of a client nexus method, or over any pipe with `new NexusDuplexChannel(pipe, formatter)`.
@@ -381,6 +454,37 @@ export class NexusDuplexChannel {
   /** Completes both directions of the pipe. @returns {Promise<void>} */
   complete() {
     return this.#pipe.complete();
+  }
+
+  /**
+   * Forwards the items this channel receives to `destination` as raw bytes, without decoding or encoding them, until
+   * this channel's input completes; then half-closes `destination` (completes its writing direction). Mirrors C#
+   * `ForwardToAsync` for channels.
+   *
+   * Items stream through as they arrive, so an item larger than the pipe window is not buffered whole. The forward
+   * reads one buffer at a time and sends only what the destination's credit allows before consuming it, so a slow
+   * destination stalls this channel's writer instead of buffering. Each item's length prefix is checked against what
+   * the destination's peer accepts as it passes. At the end of the input an incomplete item is passed on as it is.
+   * This channel is never completed. Do not read this channel or write `destination` while the forward runs.
+   *
+   * @param {NexusDuplexChannel<T>} destination
+   * @param {{ signal?: AbortSignal }} [options] Stops the forward; neither channel is completed. Items already
+   *   forwarded stay delivered, and this channel's input is positioned after them.
+   * @returns {Promise<void>} Resolves when this channel's input completed or `destination`'s output was completed.
+   *   Rejects with `NexusMessageTooLargeError` when an item is larger than the destination's peer accepts: none of
+   *   it was sent, the items before it were, neither channel is completed and the item stays first in this channel's
+   *   input. Rejects with a `NexusError` on a malformed item prefix, with the destination's error when its pipe
+   *   failed, and with the abort reason when aborted.
+   */
+  async forwardTo(destination, options) {
+    if (!(destination instanceof NexusDuplexChannel)) throw new TypeError('The destination must be a NexusDuplexChannel.');
+    if (destination.pipe === this.#pipe) throw new NexusError('A channel can not be forwarded to itself.');
+    const signal = options?.signal;
+    if (signal?.aborted) throw cancellationError(signal);
+    const source = pipeCore(this.#pipe);
+    const target = pipeCore(destination.pipe);
+    await Promise.all([source.ready, target.ready]);
+    await forwardItems(source, target, signal);
   }
 
   /** Releases the pipe. @returns {Promise<void>} */
