@@ -78,12 +78,20 @@ abstract class Driven {
     CompletableFuture<Map<String, Object>> awaitDisconnected() {
         NexusClient<?> client = client();
         NexusSession current = client.session();
-        if (current == null && lastFailure() != null) {
-            String failure = lastFailure();
-            return client.disconnected().thenApply(v -> Protocol.map("reason", failure));
+        if (current != null) {
+            // The end of this session, whether or not the client then reconnects (§6.4).
+            return current.closed().handle((reason, error) -> Protocol.map("reason", reasonName(current)));
         }
-        NexusSession session = current != null ? current : lastSession();
-        return client.disconnected().thenApply(v -> Protocol.map("reason", reasonName(session)));
+        if (client.state() == ConnectionState.CONNECTING) {
+            return client.disconnected().thenApply(v -> Protocol.map("reason", lastReason()));
+        }
+        return CompletableFuture.completedFuture(Protocol.map("reason", lastReason()));
+    }
+
+    /** The reason the last session or connection attempt ended. */
+    private String lastReason() {
+        String failure = lastFailure();
+        return failure != null ? failure : reasonName(lastSession());
     }
 
     static String reasonName(NexusSession session) {

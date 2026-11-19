@@ -5,6 +5,7 @@ import com.dtronix.nexnet.CancellationTokenSource;
 import com.dtronix.nexnet.NexusRuntime;
 import com.dtronix.nexnet.client.ConnectionState;
 import com.dtronix.nexnet.logging.NexusLogLevel;
+import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.testnexus.scaffolding.Scaffolding;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
 import java.io.IOException;
@@ -29,10 +30,11 @@ import java.util.function.BooleanSupplier;
  * The JVM language host (control protocol, docs/internals/interop-control-protocol.md): reads requests, runs them
  * against real Java clients, and sends responses and events.
  *
- * <p>Threads: the control reader thread answers the host-level ops ({@code ping}, {@code host.dumpThreads},
- * {@code log.level}, {@code host.shutdown}) itself, so a ping is answered while other ops run; every other request
- * starts, in arrival order, on the single dispatcher thread, which applies its synchronous effect and hands the rest
- * to futures (§6.1). Blocking work (closing clients and pools) runs on worker threads.
+ * <p>Threads: the control reader thread is dedicated to the control connection. It answers the host-level ops
+ * ({@code ping}, {@code host.dumpThreads}, {@code log.level}, {@code host.shutdown}) and starts every other request in
+ * arrival order: it applies the request's synchronous effect and hands the rest to futures (§6.1), so it never waits
+ * for a client and a ping is answered while other ops run. Blocking work (closing clients and pools) runs on worker
+ * threads; responses and events are written by whichever thread completes them, one whole frame at a time.
  */
 final class InteropHost {
     /** How many tests the host runs at once (hello {@code maxConcurrency}). */
@@ -46,7 +48,6 @@ final class InteropHost {
         "Tcp", "TcpTls", "HttpSocket", "HttpSocketTls", "WebSocket", "WebSocketTls");
 
     private final ControlChannel channel;
-    private final ExecutorService dispatcher = Executors.newSingleThreadExecutor(daemon("nexnet-host-dispatch"));
     final ExecutorService workers = Executors.newCachedThreadPool(daemon("nexnet-host-worker"));
     final ScheduledExecutorService timer;
     private final Map<String, Scope> scopes = new ConcurrentHashMap<>();
@@ -213,7 +214,10 @@ final class InteropHost {
             default:
                 String scope = test instanceof String ? (String) test : null;
                 long bound = timeoutMs == null ? 0 : timeoutMs;
-                dispatcher.execute(() -> dispatch(id, scope, op, args, bound));
+                // Started on this thread, in arrival order, with no queue hop: a script set right before the server
+                // calls the client is in place when the call arrives (§6.1). Every op's synchronous part is short and
+                // never blocks; blocking work runs on the workers.
+                dispatch(id, scope, op, args, bound);
                 return true;
         }
     }
@@ -376,7 +380,7 @@ final class InteropHost {
             case "pipe.create":
                 return done(Protocol.map("pipe", clientOnly(scope, args).createPipe().handle));
             case "pipe.ready":
-                return pipe(scope, args).pipe.ready().thenApply(v -> Protocol.empty());
+                return canceledOnSessionEnd(pipe(scope, args).pipe.ready());
             case "pipe.write":
                 return pipe(scope, args).write(args);
             case "pipe.read":
@@ -385,8 +389,11 @@ final class InteropHost {
                 return pipe(scope, args).drain();
             case "pipe.complete":
                 return pipe(scope, args).pipe.completeOutput().thenApply(v -> Protocol.empty());
-            case "pipe.whenComplete":
-                return pipe(scope, args).pipe.completed().thenApply(v -> Protocol.empty());
+            case "pipe.whenComplete": {
+                PipeEntry pipe = pipe(scope, args);
+                // A pipe the session's end tore down before it was ready never completed: C# cancels its CompleteTask.
+                return canceledOnSessionEnd(pipe.pipe.completed().thenCompose(v -> pipe.pipe.ready()));
+            }
             case "pipe.dispose": {
                 Object value = scope.find(args.str("pipe"));
                 if (value instanceof PipeEntry) {
@@ -458,6 +465,27 @@ final class InteropHost {
             default:
                 throw HostError.badRequest("Unknown op '" + op + "'.");
         }
+    }
+
+    /**
+     * The Java pipe fails {@code ready()} and {@code completed()} with a {@link SessionClosedException} when the session
+     * ends; the C# pipe cancels its ReadyTask and CompleteTask: the kind is {@code Canceled} (§6.7).
+     */
+    private static CompletableFuture<Map<String, Object>> canceledOnSessionEnd(CompletableFuture<Void> future) {
+        CompletableFuture<Map<String, Object>> result = new CompletableFuture<>();
+        future.whenComplete((v, error) -> {
+            Throwable e = error == null ? null : Errors.unwrap(error);
+            if (e == null) {
+                result.complete(Protocol.empty());
+            } else if (e instanceof SessionClosedException) {
+                CancellationException canceled = new CancellationException("The session ended: " + e.getMessage());
+                canceled.initCause(e);
+                result.completeExceptionally(canceled);
+            } else {
+                result.completeExceptionally(e);
+            }
+        });
+        return result;
     }
 
     private static ScaffoldingExport<?> export(Args args) {
