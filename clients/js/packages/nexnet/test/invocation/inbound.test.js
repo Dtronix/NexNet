@@ -343,7 +343,7 @@ describe('server-to-client invocations', () => {
     expect(getInvocationCounters()).toEqual(zeroCounters());
   });
 
-  it('pipe and channel parameters need the pipe layer (J08); releaseInvocationSlot frees the slot early', async () => {
+  it('a pipe parameter registers through the pipe layer (J08); releaseInvocationSlot frees the slot early', async () => {
     const h = await connectedHarness({ config: { maxConcurrentConnectionInvocations: 1 } });
     const gate = deferred();
     /** @type {unknown} */
@@ -359,7 +359,7 @@ describe('server-to-client invocations', () => {
     h.sendInvocation(2, 1, 0, null);
     await until(() => results(h).length === 1);
     expect(results(h)[0].invocationId).toBe(2);
-    expect(String(pipeError)).toMatch(/not implemented: DispatchContext.pipe/);
+    expect(pipeError).toBeNull();
     gate.resolve();
     await until(() => results(h).length === 2);
     await finish(h);

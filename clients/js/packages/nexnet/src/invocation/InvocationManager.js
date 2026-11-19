@@ -69,6 +69,8 @@ const QUEUE_WARNING_INTERVAL = 30_000;
  * @typedef {object} PipeHooks
  * @property {(pipeId: number, ctx: import('../contract/nexus.js').DispatchContext) => import('../contract/pipes.js').NexusDuplexPipe} pipe
  * @property {(pipeId: number, formatter: import('../contract/codec.js').Formatter<any>, ctx: import('../contract/nexus.js').DispatchContext) => import('../contract/pipes.js').NexusDuplexChannel<any>} channel
+ * @property {(ctx: import('../contract/nexus.js').DispatchContext) => void} [release] Called when a dispatched
+ *   invocation returns or throws: the registering side closes the pipes it registered for it (§7.6).
  */
 
 /**
@@ -733,6 +735,7 @@ export class InvocationManager {
       await this.#onExecuteError(message, controller, error, expectResult);
     } finally {
       if (expectResult && this.#tracked.get(message.invocationId) === controller) this.#tracked.delete(message.invocationId);
+      this.pipeHooks?.release?.(ctx);
       releaseSlot();
       if (item.reserved > 0 && !this.#closed) this.budget.release(item.reserved);
       countInvocation('inboundInvocations', -1);

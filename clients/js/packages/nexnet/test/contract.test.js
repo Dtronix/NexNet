@@ -84,15 +84,15 @@ describe('client skeleton', () => {
     expect(client.nexus).toBe(nexus);
   });
 
-  it('session members are implemented (J05); pipe members throw not implemented (J08)', async () => {
+  it('session and pipe members are implemented (J05, J08)', async () => {
     const client = NexusClient.create({ webSocket: { url: 'ws://localhost:1' } }, new TestNexus(), binding);
     expect(client.state).toBe(ConnectionState.Disconnected);
     expect(() => client.proxy).toThrow(/not connected/);
     expect(client.isSecure).toBe(false);
     expect(client.getSnapshot()).toBeNull();
     await expect(client.disconnect()).resolves.toBeUndefined();
-    expect(() => client.createPipe()).toThrow(notImplemented);
-    expect(() => client.createChannel(/** @type {any} */ ({}))).toThrow(notImplemented);
+    expect(() => client.createPipe()).toThrow(NexusTransportError);
+    expect(() => client.createChannel(/** @type {any} */ ({}))).toThrow(/not connected/);
   });
 
   it('nexus lifecycle hooks default to no-ops; _dispatch throws', () => {
@@ -108,22 +108,31 @@ describe('client skeleton', () => {
     const client = NexusClient.create({ webSocket: { url: 'ws://localhost:1' } }, nexus, binding);
     expect(nexus.context.sessionId).toBeNull();
     expect(() => nexus.context.proxy).toThrow(/not connected/);
-    expect(() => nexus.context.createPipe()).toThrow(notImplemented);
+    expect(() => nexus.context.createPipe()).toThrow(/not connected/);
     expect(client.nexus.context).toBe(nexus.context);
   });
 
-  it('proxy pipe, channel and collection members throw not implemented (J08, J09)', () => {
+  it('proxy collection member throws not implemented (J09)', () => {
     const proxy = Object.create(ProxyBase.prototype);
-    for (const key of ['_invokePipe', '_invokeChannel', '_collection']) {
-      expect(() => proxy[key](0, null, null), key).toThrow(notImplemented);
-    }
+    expect(() => proxy._collection(0, null, null)).toThrow(notImplemented);
+  });
+
+  it('proxy pipe and channel members reject when not connected (J08)', async () => {
+    const proxy = Object.create(ProxyBase.prototype);
+    proxy._session = { client: { config: {} }, session: null };
+    await expect(proxy._invokePipe(0, null, () => {})).rejects.toThrow(NexusTransportError);
+    await expect(proxy._invokeChannel(0, { pipe: null }, () => {})).rejects.toThrow(NexusTransportError);
+  });
+
+  it('pipes are created by the runtime only (J08)', () => {
+    expect(() => new NexusDuplexPipe(/** @type {any} */ (undefined))).toThrow(TypeError);
+    expect(() => new NexusDuplexChannel(/** @type {any} */ ({}), /** @type {any} */ ({}))).toThrow(TypeError);
+    expect(() => new NexusChannelReader(/** @type {any} */ ({}), /** @type {any} */ ({}))).toThrow(TypeError);
+    expect(() => new NexusChannelWriter(/** @type {any} */ ({}), /** @type {any} */ ({}))).toThrow(TypeError);
   });
 
   it('every skeleton prototype method throws not implemented', () => {
-    const classes = [
-      MsgPackWriter, MsgPackReader, FormatterRegistry, NexusDuplexPipe, NexusChannelReader, NexusChannelWriter,
-      NexusDuplexChannel, NexusList, NexusClientPool,
-    ];
+    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry, NexusList, NexusClientPool];
     for (const cls of classes) {
       const proto = cls.prototype;
       const keys = [...Object.getOwnPropertyNames(proto), ...Object.getOwnPropertySymbols(proto)]

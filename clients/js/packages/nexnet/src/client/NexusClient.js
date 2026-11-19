@@ -1,18 +1,18 @@
 /**
  * The client (J05): connect, handshake, state machine, events, plaintext warning and disconnect.
- * Reconnection, pooling and full snapshots are J10; pipes and channels J08. Invocations (J07) attach to each session
- * before it starts (`attachSessionLayers`).
+ * Reconnection, pooling and full snapshots are J10. Invocations (J07) and pipes (J08) attach to each session before it
+ * starts (`attachSessionLayers`).
  * @module
  */
 
 import { ConnectionResultState, ConnectionState, DisconnectReason } from '../contract/enums.js';
 import { NexusTransportError, cancellationError } from '../contract/errors.js';
-import { notImplemented } from '../contract/internal.js';
 import { webSocketTransport } from '../transport/WebSocketTransport.js';
 import { NexusSession } from '../session/NexusSession.js';
 import { resolveClientOptions } from '../session/options.js';
 import { MAX_VERSION_LENGTH } from '../session/protocol.js';
 import { attachInvocations } from '../invocation/InvocationManager.js';
+import { attachPipes, createChannel, createPipe } from '../pipes/PipeManager.js';
 import { bindNexusClient } from './ClientNexusBase.js';
 
 /**
@@ -210,8 +210,15 @@ export class NexusClient extends EventTarget {
     await this.#disconnected;
   }
 
-  /** Creates a pipe to pass to a pipe method. @returns {import('../contract/pipes.js').NexusDuplexPipe} */
-  createPipe() { throw notImplemented('NexusClient.createPipe'); }
+  /**
+   * Creates a pipe to pass to a pipe method. It reserves a pipe slot and receive window until it is disposed.
+   * Throws `NexusTransportError` when not connected and `NexusBusyError` when `maxPipes` or the session budget is
+   * reached.
+   * @returns {import('../contract/pipes.js').NexusDuplexPipe}
+   */
+  createPipe() {
+    return createPipe(this.#session);
+  }
 
   /**
    * Creates a channel to pass to a channel method.
@@ -219,7 +226,9 @@ export class NexusClient extends EventTarget {
    * @param {import('../contract/codec.js').Formatter<T>} formatter
    * @returns {import('../contract/pipes.js').NexusDuplexChannel<T>}
    */
-  createChannel(formatter) { throw notImplemented('NexusClient.createChannel'); }
+  createChannel(formatter) {
+    return createChannel(this.#session, formatter);
+  }
 
   /**
    * Diagnostic snapshot, field names as C# `NexusClientSnapshot` camelCased; null when not connected.
@@ -350,11 +359,13 @@ export class NexusClient extends EventTarget {
 
   /**
    * Attaches the per-session layers before the session starts, so frames that arrive in the same read as the
-   * ServerGreeting find their handlers. The invocation layer (J07) fails its pending calls when the session closes.
+   * ServerGreeting find their handlers. The invocation layer (J07) fails its pending calls when the session closes; the
+   * pipe layer (J08) resolves pipe parameters of dispatched invocations and ends its pipes with the session.
    * @param {NexusSession} session
    */
   #attachSessionLayers(session) {
-    attachInvocations(session, { nexus: this.nexus, handshake: this._binding.handshake });
+    const invocations = attachInvocations(session, { nexus: this.nexus, handshake: this._binding.handshake });
+    attachPipes(session, invocations);
   }
 
   /**
