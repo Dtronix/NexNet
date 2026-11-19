@@ -50,7 +50,8 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 
 The value types and tuples live in the root package because the generator's type mapper (G03, `JavaTarget`) emits
 `com.dtronix.nexnet.NexusDateTime`, `com.dtronix.nexnet.Tuple2` and so on. C# `decimal` maps to
-`java.math.BigDecimal`; `NexusDecimal` is the codec's four-integer form.
+`java.math.BigDecimal`; `NexusDecimal` is the codec's four-integer form. `BigDecimal` loses the sign of a negative
+zero (section 5).
 
 Skeleton bodies throw `UnsupportedOperationException("not implemented")`. Pure data types (exceptions, enums,
 tuples, value-type storage and equality, `HandshakeDescriptor`, `ClientConfig`, `TlsOptions`), cancellation and
@@ -336,6 +337,13 @@ server `INexusList<T>` (protocol specification section 12):
 - **Version check.** `NexusClient.create` refuses a `HandshakeDescriptor.runtimeVersion()` whose major.minor differs
   from `NexusRuntime.VERSION`.
 - **Flow control.** Pipe and channel credit is granted only when the consumer reads.
+- **Decimal negative zero (K31, known parity loss).** C# `decimal` maps to `java.math.BigDecimal`, which has no sign
+  of zero. A `-0m` from a .NET peer (flags `0x80000000`, magnitude 0) reads as `BigDecimal` zero and is written
+  back as `0m`. The two compare equal in .NET (`-0m == 0m`), so only the sign bit is lost; every other decimal,
+  scale included, round-trips exactly. Code that needs the exact four-integer form uses `NexusDecimal` and
+  `Formatters.NEXUS_DECIMAL`, which keep the sign. The golden vector `decimal.m0` passes through
+  `NEXUS_DECIMAL` in the runtime's golden tests, and the K11 scaffolding runner (which uses the generated
+  `BigDecimal` mapping) skips it for this reason.
 
 ## 6. Runtime internals and extension points
 
