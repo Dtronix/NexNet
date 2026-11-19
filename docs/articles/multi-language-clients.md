@@ -49,7 +49,7 @@ version, or when the server class lives in another assembly:
   `[Nexus<IChatClientNexus, IChatServerNexusV1>(NexusType = NexusType.Client)]`, so it connects to a server that
   implements a later version of the API (see [Versioning](versioning.md)).
 - With no server class, the export does not know which methods require authorization.
-- Interfaces with duplicate method names are reported as NEXNET042 and not exported.
+- Interfaces with duplicate method names are reported as NEXNET042 and not exported (the same error any nexus gets).
 
 ## Configuring output
 
@@ -127,8 +127,14 @@ same type and language.
 
 | ID | Severity | Meaning |
 |---|---|---|
-| NEXNET042 | Error | A `NexusClientExport` interface declares two methods with the same name |
+| NEXNET040 | Error | A type used by an export cannot be represented in an opted-in language |
+| NEXNET041 | Error | A name collides in an opted-in language, or two exports have the same namespace and name (give each `NexusClientExport` a distinct `Name`) |
+| NEXNET042 | Error | A nexus interface declares two methods with the same name, including one inherited from another interface. Applies to every nexus, exported or not; a `NexusClientExport` with duplicate names is skipped |
 | NEXNET043 | Error | `Targets` is set on a client nexus |
+| NEXNET044 | Warning | A nexus opts in to a language that has no output directory (`NexNet<Lang>OutputDir` or a `NexNetTarget` with `OutputDir`); nothing is generated for it |
+| NEXNET045 | Error | Invalid target configuration: an unknown target, a missing or invalid option (such as `NexNetJavaPackage`), or an unknown `NexusTargets` value |
+| NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language, so a lookup with an equal value does not find the entry |
+| NEXNET047 | Error | Two exports or types would write the same output file (paths compared ignoring case) |
 | NEXNET048 | Error | Invalid `NexusTargetFormatter` |
 
 The unpack target reports these build messages:

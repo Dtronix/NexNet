@@ -411,6 +411,7 @@ server.AddListener(udsConfig, "uds");                       // listener configs 
 IAcceptsExternalTransport ext = server.AddExternalEndpoint(cfg, "custom"); // fed by the app / NexNet.Asp
 // Both only after configuration and while Stopped. Duplicate names, TCP ports, UDS paths, ASP paths are rejected.
 IReadOnlyList<NexusEndpointInfo> eps = server.Endpoints;   // record (Name, Transport, IsSecure, Path); primary first
+EndPoint? bound = eps[0].BoundEndPoint;  // TCP/TLS/UDS/QUIC: end point actually bound (port 0 -> picked port) while running
 await server.StartAsync();  // binds all; one bind failure closes the others and leaves Stopped
 ```
 
@@ -670,6 +671,15 @@ foreach (var item in list) { }  // read local copy
 await list.DisableAsync();
 ```
 
+- `ReadyTask` is fresh per `EnableAsync()`. It **faults** (`InvalidOperationException`) when the enable fails or the
+  collection disconnects before its first sync, so `ConnectAsync()` throws then instead of returning.
+- `list.State` (`NexusCollectionState`): `Connected` after the initial sync, `Disconnected` before it and after the pipe closes.
+- Server-side processor failure: the processor restarts (backoff from 100 ms, doubling; at most 5 restarts per minute,
+  then the collection stops and refuses connects until the server restarts) and that collection's clients are
+  disconnected from it (their collection pipes close; the sessions stay up).
+- Client-side processor failure: the collection is disabled (`State` = `Disconnected`, `ReadyTask` faults, a pending
+  `EnableAsync` throws). Plain client lists must call `EnableAsync`/`ConnectAsync` again; relays re-enable themselves.
+
 ### Relay mode
 
 ```csharp
@@ -709,8 +719,9 @@ Attribute options: `[NexusMethod(Ignore = true)]`, `[NexusCollection(Id = 1)]`, 
 
 ## Multi-language Clients (opt-in)
 
-Java and JavaScript client generation is being added. Today the attributes below only select what is exported; no
-Java or JavaScript files are written yet. Without them, the generator's output is unchanged.
+Java and JavaScript client generation is being added. The attributes below select what is exported, and the build
+configuration below says where files go; the build writes `nexnet-ir.json`, but the Java and JavaScript emitters write
+no files yet. Without any of it, the generator's output and the build are unchanged.
 
 | Attribute | Target | Meaning |
 |---|---|---|
@@ -719,6 +730,32 @@ Java or JavaScript files are written yet. Without them, the generator's output i
 | `[assembly: NexusTargetFormatter<T>(NexusTargets target, "fq.native.Formatter")]` (`NexNet.Serialization`) | assembly (multiple) | Native formatter for a `[NexusFormatter]` type `T` in one language (combined flags apply to each). One per (T, language) |
 
 `NexusTargets` (`NexNet`, flags): `None = 0`, `Java = 1`, `JavaScript = 2`.
+
+Output (MSBuild, in the project that holds the exported nexus):
+
+```xml
+<PropertyGroup>
+  <NexNetJavaOutputDir>../clients/java/src/main/java</NexNetJavaOutputDir>  <!-- enables Java -->
+  <NexNetJavaPackage>com.example.chat</NexNetJavaPackage>                     <!-- required for Java (NEXNET045) -->
+  <NexNetJavaScriptOutputDir>../clients/js/src/generated</NexNetJavaScriptOutputDir> <!-- enables JavaScript -->
+  <NexNetJavaScriptModuleName>chat-client</NexNetJavaScriptModuleName>        <!-- optional -->
+  <NexNetIrOutputPath>obj/nexnet-ir.json</NexNetIrOutputPath>                 <!-- default -->
+</PropertyGroup>
+<!-- Same as the properties; metadata other than OutputDir becomes a generator option of that target: -->
+<ItemGroup><NexNetTarget Include="java" OutputDir="../clients/java/src/main/java" Package="com.example.chat" /></ItemGroup>
+```
+
+- The generator does no file IO: it adds `NexNet.Targets.g.cs`, comments only, carrying every file (base64 + sha256) and
+  `nexnet-ir.json`. After `CoreCompile`, the `NexNetUnpackTargets` target (package `build/` + `buildTransitive/`)
+  verifies and writes them, rewriting only changed files (atomically). Output is deterministic.
+- Files no longer generated are deleted (list in `obj/nexnet-targets.manifest`; `dotnet clean` deletes them all).
+  Treat output directories as generated; do not edit them.
+- The build turns on `EmitCompilerGeneratedFiles`. Multi-targeting writes from the first TFM only. Design-time builds
+  report diagnostics but write nothing. Without any `NexNetTarget`, none of this runs.
+- Build messages: NEXNETB001 (warning) target configured but no bundle (generator not referenced as an analyzer);
+  B002 (error) corrupt or mismatched bundle, or an invalid path; B003 (error) bundle has files for a target with no
+  `OutputDir`; B004 (error) a file cannot be read or written (warning when a stale file cannot be deleted);
+  B005 (warning) `NexNetTarget` declared twice, first wins.
 
 | ID | Severity | Meaning |
 |---|---|---|
