@@ -1,6 +1,5 @@
 using NexNet.IntegrationTests.Metrics;
 using NexNet.Messages;
-using NUnit.Framework;
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
@@ -10,9 +9,8 @@ namespace NexNet.IntegrationTests;
 /// </summary>
 internal partial class NexusClientTests
 {
-    [TestCase(Type.Uds)]
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.WebSocket)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp, Type.WebSocket)]
     public async Task PingInterval_DerivedFromServerIdleTimeout(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -23,11 +21,12 @@ internal partial class NexusClientTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(clientConfig.PingInterval, Is.Null);
-        Assert.That(client.GetSnapshot()!.PingInterval, Is.EqualTo(TimeSpan.FromSeconds(2)));
+        await Assert.That(clientConfig.PingInterval).IsNull();
+        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(2));
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task PingInterval_DerivedIntervalIsAtLeastOneSecond(Type type)
     {
         var serverConfig = CreateServerConfig(type);
@@ -38,10 +37,11 @@ internal partial class NexusClientTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(client.GetSnapshot()!.PingInterval, Is.EqualTo(TimeSpan.FromSeconds(1)));
+        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromSeconds(1));
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task PingInterval_DerivedInterval_DrivesThePingTimer(Type type)
     {
         var fakeTime = new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UtcNow);
@@ -63,13 +63,14 @@ internal partial class NexusClientTests
 
         fakeTime.Advance(TimeSpan.FromMilliseconds(1999));
         await Task.Delay(50);
-        Assert.That(Volatile.Read(ref pingCount), Is.EqualTo(0), "No ping before a third of the server's idle timeout.");
+        await Assert.That(Volatile.Read(ref pingCount)).IsEqualTo(0).Because("No ping before a third of the server's idle timeout.");
 
         fakeTime.Advance(TimeSpan.FromMilliseconds(1));
         await pinged.Task.Timeout(1);
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task PingInterval_ExplicitIntervalIsRespected(Type type)
     {
         var logger = new CapturingLogger();
@@ -83,11 +84,12 @@ internal partial class NexusClientTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(client.GetSnapshot()!.PingInterval, Is.EqualTo(TimeSpan.FromMilliseconds(500)));
-        Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval")), Is.False);
+        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(500));
+        await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval"))).IsFalse();
     }
 
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds)]
     public async Task PingInterval_ExplicitIntervalNotBelowServerIdleTimeout_LogsWarning(Type type)
     {
         var logger = new CapturingLogger();
@@ -101,29 +103,29 @@ internal partial class NexusClientTests
         await server.StartAsync().Timeout(1);
         await client.ConnectAsync().Timeout(1);
 
-        Assert.That(client.GetSnapshot()!.PingInterval, Is.EqualTo(TimeSpan.FromMilliseconds(6000)));
-        Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval (6000 ms)") && w.Contains("(6000 ms)")), Is.True);
+        await Assert.That(client.GetSnapshot()!.PingInterval).IsEqualTo(TimeSpan.FromMilliseconds(6000));
+        await Assert.That(logger.Warnings.Any(w => w.Contains("PingInterval (6000 ms)") && w.Contains("(6000 ms)"))).IsTrue();
     }
 
     [Test]
-    public void PingInterval_RejectsZeroAndNegative()
+    public async Task PingInterval_RejectsZeroAndNegative()
     {
         var config = CreateClientConfig(Type.Uds);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.PingInterval = 0);
-        Assert.Throws<ArgumentOutOfRangeException>(() => config.PingInterval = -1);
+        await Assert.That(() => config.PingInterval = 0).ThrowsExactly<ArgumentOutOfRangeException>();
+        await Assert.That(() => config.PingInterval = -1).ThrowsExactly<ArgumentOutOfRangeException>();
         config.PingInterval = null;
-        Assert.That(config.PingInterval, Is.Null);
+        await Assert.That(config.PingInterval).IsNull();
     }
 
     [Test]
-    public void PingInterval_WithoutAdvertisedTimeout_DefaultsToTenSeconds()
+    public async Task PingInterval_WithoutAdvertisedTimeout_DefaultsToTenSeconds()
     {
         // A server that predates the idle timeout field advertises 0.
         var config = CreateClientConfig(Type.Uds);
-        Assert.That(config.GetEffectivePingInterval(0), Is.EqualTo(10_000));
-        Assert.That(config.GetEffectivePingInterval(30_000), Is.EqualTo(10_000));
-        Assert.That(config.GetEffectivePingInterval(300_000), Is.EqualTo(100_000));
+        await Assert.That(config.GetEffectivePingInterval(0)).IsEqualTo(10_000);
+        await Assert.That(config.GetEffectivePingInterval(30_000)).IsEqualTo(10_000);
+        await Assert.That(config.GetEffectivePingInterval(300_000)).IsEqualTo(100_000);
         config.PingInterval = 250;
-        Assert.That(config.GetEffectivePingInterval(0), Is.EqualTo(250));
+        await Assert.That(config.GetEffectivePingInterval(0)).IsEqualTo(250);
     }
 }
