@@ -3,7 +3,7 @@ artifacts
 
 # Multi-language clients (Java / JavaScript)
 artifacts/interop/
-clients/js/node_modules/
+clients/js/**/node_modules/
 clients/js/**/dist/
 clients/java/**/build/
 clients/java/.gradle/
