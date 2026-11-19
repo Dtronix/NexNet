@@ -4,6 +4,7 @@ import com.dtronix.nexnet.CancellationToken;
 import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.collections.NexusListClient;
+import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.serialization.Formatter;
@@ -24,19 +25,31 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ClientProxyInvoker implements ProxyInvoker {
     private final Executor callbackExecutor;
+    private final @Nullable NexusLogger logger;
     private volatile @Nullable InvocationRuntime runtime;
     private final Map<Integer, NexusList<?>> lists = new HashMap<>();
+
+    /**
+     * Creates the invoker without a logger.
+     *
+     * @param callbackExecutor the executor that completes failed futures
+     */
+    public ClientProxyInvoker(Executor callbackExecutor) {
+        this(callbackExecutor, null);
+    }
 
     /**
      * Creates the invoker.
      *
      * @param callbackExecutor the executor that completes failed futures
+     * @param logger the client's logger, given to the collections the invoker creates, or null
      */
-    public ClientProxyInvoker(Executor callbackExecutor) {
+    public ClientProxyInvoker(Executor callbackExecutor, @Nullable NexusLogger logger) {
         if (callbackExecutor == null) {
             throw new NullPointerException("callbackExecutor");
         }
         this.callbackExecutor = callbackExecutor;
+        this.logger = logger;
     }
 
     /**
@@ -122,7 +135,7 @@ public final class ClientProxyInvoker implements ProxyInvoker {
             @SuppressWarnings("unchecked")
             NexusList<T> list = (NexusList<T>) lists.get(collectionId);
             if (list == null) {
-                list = new NexusListClient<>(collectionId, mode, itemFormatter, this::current, callbackExecutor, null);
+                list = new NexusListClient<>(collectionId, mode, itemFormatter, this::current, callbackExecutor, logger);
                 lists.put(collectionId, list);
             }
             return list;
