@@ -48,7 +48,7 @@ browser download.
 | File | Role |
 |---|---|
 | `src/index.js` | Platform-neutral API: everything generated code and applications use |
-| `src/browser.js` | Browser entry. Re-exports `index.js`; the place for browser-only additions (Worker pings, lifecycle reconnect) |
+| `src/browser.js` | Browser entry. Re-exports `index.js`; the place for browser-only additions (lifecycle reconnect). The Worker keepalive (§3.3) is feature-detected in platform-neutral code, not added here |
 | `src/node.js` | Node entry. Re-exports `index.js`, adds `NodeNexusClient` and exports it **as** `NexusClient` |
 
 So `import { NexusClient } from '@dtronix/nexnet'` gives the Node-capable client under Node and the WebSocket-only client
@@ -128,7 +128,11 @@ Fields are public and `readonly`. Each type has `equals(other)` and conversions 
   `disconnect()`, `[Symbol.asyncDispose]()`.
 - `state` (`ConnectionState`), `proxy`, `isSecure`, `disconnected` (a promise), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
-- Events: `statechange` and `disconnected`.
+- Events (`CustomEvent`, dispatched from a microtask, never re-entrantly from a transport callback):
+  - `statechange`, `detail: { state, previous }` (both `ConnectionState` values), on every change of `state`;
+  - `disconnected`, `detail: { reason }` (a `DisconnectReason`), once per session that completed its handshake, just
+    before the nexus's `onDisconnected(reason)` hook. A connect that fails before the handshake completes is reported
+    only through the `connect`/`tryConnect` result, not through this event.
 - `static transports`: the transport factories the entry supports, keyed by transport kind. `NexusClient` (core and
   browser) has `webSocket`; `NodeNexusClient` adds `httpSocket`, `tcp`, `tcpTls` and `uds`.
 
@@ -137,6 +141,20 @@ plus the common options, named as the C# `ClientConfig`/`ConfigBase` properties 
 milliseconds. `authenticate({signal})` may return the token synchronously or as a promise. It runs before the transport
 connects, on every connect and reconnect, bounded by the handshake timeout; if it throws, the connect fails with
 `DisconnectReason.Authentication` and no connection is opened (F05 semantics).
+
+The optional `clock` property (C# `ConfigBase.Time`) is the time source of every client and session timer: the
+connection, handshake and authenticate timeouts, the keepalive, the idle and progress timeouts and the disconnect delay.
+It is a `Clock` (`src/session/clock.js`): `now()` in milliseconds on a monotonic clock, plus `setTimeout`,
+`clearTimeout`, `setInterval` and `clearInterval` with opaque handles. The default, `systemClock`, is
+`performance.now()` and the global timers. Tests inject a manual clock (`test/session/support/ManualClock.js`).
+
+**Keepalive.** Only the client pings (spec §5.5). The interval is `pingInterval` when set, else a third of the
+server's advertised `idleTimeoutMs` (S04), else 10,000 ms. Each tick first checks the receive timeout (`timeout`) and
+the progress timeout (`progressTimeout`, §9), then sends a `Ping`. In a browser, with the default clock, the keepalive
+runs in a dedicated Worker created from a `blob:` URL, because main-thread timers in background tabs are throttled to
+about once a minute or frozen, which would let the server's idle timeout expire. If no Worker can be created (no
+`Worker`, or a Content-Security-Policy without `worker-src blob:`) it falls back to `setInterval`. Node has no global
+`Worker` and always uses `setInterval`; an injected clock always uses `clock.setInterval`.
 
 `isSecure` is true only for transports that declare themselves secure: TLS, WSS, HTTPS and (Node) UDS. Over any other
 transport a client logs `NexNet: unencrypted transport (<transport>); credentials and data are visible on the network.`
@@ -171,6 +189,16 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
   `DispatchContext`: `invocationId`, `signal` (the C# `CancellationToken`), `writeResult`, `pipe(pipeId)` and
   `channel(pipeId, formatter)`. Unknown IDs fall through to `super._dispatch`, which throws. The runtime checks
   `methodId` against `acceptedIds` before dispatching.
+- `onInvocationException(error, methodId)` (C# `OnInvocationException`): called when a method that returns a result
+  throws, before the failure is sent. Return a `NexusRemoteError` (`{ code?: number | null, message?: string | null }`)
+  to send that in place of the exception's detail, whatever `remoteExceptionDetail` says; return null or undefined to
+  send what that setting selects (type and message for `TypeAndMessage`, otherwise nothing). A `code` that is not an
+  int32 is sent as null; the remote type is never sent with a returned error. Not called for canceled or
+  fire-and-forget invocations. A throw from the hook is logged and treated as null.
+- `_separatePool(methodId)` (protected): true for `[NexusMethod(SeparatePool = true)]` methods. Such invocations run in
+  a second execution pool limited by `maxSeparatePoolInvocations`; all others share the pool limited by
+  `maxConcurrentConnectionInvocations`. The base returns false; generated code overrides it only when the nexus has
+  such methods.
 
 ### 3.5 Pipes, channels, collections, pool
 
@@ -205,6 +233,9 @@ Cancellation (D17) is not a NexNet error class: operations reject with `cancella
 or waiting for its result) completes as canceled, as in C# (`TaskCanceledException`) and protocol spec §4.5: it
 rejects with a `DOMException` named `AbortError` whose `cause` is a `NexusTransportError` carrying the disconnect
 `reason`. A call made while not connected still rejects with `NexusTransportError` directly.
+`cause` is set as an own, non-enumerable property, because not every platform's `DOMException` constructor accepts a
+`cause` option; read it as `error.cause`. When the session ends, server-to-client invocations that are queued are
+dropped and those running see `ctx.signal` abort.
 
 `ConnectionState`, `ConnectionResultState`, `DisconnectReason` (wire codes 20–38), `RemoteExceptionDetail`,
 `NexusCollectionState` and `DateTimeKind` are frozen objects with the C# values.
