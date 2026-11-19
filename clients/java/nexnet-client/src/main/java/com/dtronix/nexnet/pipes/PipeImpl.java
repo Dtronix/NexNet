@@ -169,11 +169,11 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
         if (sessionClosed) {
             return new SessionClosedException(manager.closeReason());
         }
-        if (outputCompleteRequested || outputClosed || sentClose) {
-            return outputFailure != null ? outputFailure : new IllegalStateException("The pipe's output is complete.");
-        }
         if (refused) {
             return new NexusBusyException("The peer refused the pipe.");
+        }
+        if (outputCompleteRequested || outputClosed || sentClose) {
+            return outputFailure != null ? outputFailure : new IllegalStateException("The pipe's output is complete.");
         }
         return null;
     }
