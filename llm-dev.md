@@ -51,7 +51,7 @@ and carries the TUnit properties `Lang` (`csharp`, `node`, `java`, `browser-chro
 - `NEXNET_TEST_TRANSPORTS` picks the transports of tests that name none of their own. Unset: HttpSocketTls and
   WebSocketTls. `all`: every transport the language supports. A comma list of `ClientTransport` names
   (case-insensitive) is used for every language; a transport a language lacks is a visible skip on its row, and an
-  unknown name fails discovery.
+  unknown name is an error that lists the valid names.
 - A filter that selects no test exits with code 8; add `--ignore-exit-code 8` when an empty selection is expected.
 
 ---
