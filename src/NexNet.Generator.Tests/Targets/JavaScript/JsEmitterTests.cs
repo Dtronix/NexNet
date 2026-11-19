@@ -44,6 +44,7 @@ public class JsEmitterTests
         var expected = Features.Ir!.Types
             .SelectMany(t => JavaScriptTarget.Instance.TypeFiles(t, options))
             .Concat(new[] { "formatters.js", "formatters.d.ts", "nexnet-support.js", "nexnet-support.d.ts", "user-formatters.d.ts" })
+            .Concat(JavaScriptTarget.Instance.ExportFiles(Features.Ir.Exports.Single(), options))
             .OrderBy(p => p, StringComparer.Ordinal)
             .ToArray();
 
@@ -65,7 +66,8 @@ public class JsEmitterTests
     {
         var run = JsTestRunner.Run(Source("[NexusObject] public class Item { [NexusKey(0)] public int Id { get; set; } }", "Item"));
         await Assert.That(run.Diagnostics).IsEmpty();
-        await Assert.That(run.Files.Keys.OrderBy(p => p, StringComparer.Ordinal))
+        var exportFiles = JavaScriptTarget.Instance.ExportFiles(run.Ir!.Exports.Single(), JsTestRunner.TargetOptionsFor());
+        await Assert.That(run.Files.Keys.Except(exportFiles).OrderBy(p => p, StringComparer.Ordinal))
             .IsEquivalentTo(new[] { "Item.d.ts", "Item.js", "formatters.d.ts", "formatters.js", "nexnet-support.d.ts", "nexnet-support.js" });
     }
 

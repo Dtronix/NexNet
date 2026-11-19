@@ -5,8 +5,8 @@ namespace NexNet.Generator.Targets.JavaScript;
 
 /// <summary>
 /// The JavaScript client target (<c>@dtronix/nexnet</c>, ESM + <c>.d.ts</c>). Type names are TypeScript declaration
-/// syntax. J03 emits a module and declarations per declared type, <c>formatters.js</c> and the support module
-/// (see <see cref="Emit"/>); the proxies and client nexus bases arrive with J04.
+/// syntax. J03 emits a module and declarations per declared type, <c>formatters.js</c> and the support module; J04 emits
+/// a module per export with its handshake, server proxy, client nexus base and factory (see <see cref="Emit"/>).
 /// </summary>
 internal sealed class JavaScriptTarget : TargetLanguageBase
 {
@@ -58,7 +58,10 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
 
     protected override IReadOnlyList<string> OptionNames => Options;
 
-    /// <summary>One module and its declarations per export: <c>ChatServer.js</c>, <c>ChatServer.d.ts</c>.</summary>
+    /// <summary>
+    /// One module and its declarations per export: <c>ChatServerNexus.js</c>, <c>ChatServerNexus.d.ts</c>
+    /// (<see cref="JsProxyEmitter"/>).
+    /// </summary>
     public override IEnumerable<string> ExportFiles(ExportIr export, TargetOptions options)
     {
         var name = Names.Type(export.Name);
@@ -86,6 +89,21 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
                     DiagnosticDescriptors.TargetNameCollision.Id,
                     DisplayName,
                     what + " maps to '" + name + "', which the generated " + name.ToLowerInvariant() + " module uses",
+                    export.Location));
+            }
+        }
+
+        // The export module's declarations import the types its methods use by name, beside its own exports.
+        var exported = new HashSet<string>(JsExportNames.Of(export).All, StringComparer.Ordinal);
+        foreach (var decl in TargetIrWalker.OwnedDecls(ir, export, Flag))
+        {
+            var name = TypeName(decl);
+            if (exported.Contains(name))
+            {
+                diagnostics.Add(new TargetDiagnostic(
+                    DiagnosticDescriptors.TargetNameCollision.Id,
+                    DisplayName,
+                    "type '" + decl.Id + "' maps to '" + name + "', which the module of export '" + export.Name + "' exports",
                     export.Location));
             }
         }
@@ -137,8 +155,8 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
 
     /// <summary>
     /// Emits, in the output directory: <c>&lt;Type&gt;.js</c> and <c>&lt;Type&gt;.d.ts</c> per declared type,
-    /// <c>formatters.js</c>/<c>.d.ts</c>, <c>nexnet-support.js</c>/<c>.d.ts</c> and, with user formatters,
-    /// <c>user-formatters.d.ts</c>. Nothing when no export opts in.
+    /// <c>formatters.js</c>/<c>.d.ts</c>, <c>nexnet-support.js</c>/<c>.d.ts</c>, with user formatters
+    /// <c>user-formatters.d.ts</c>, and per export <c>&lt;ExportName&gt;.js</c>/<c>.d.ts</c>. Nothing when no export opts in.
     /// </summary>
     public override IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode)
     {
@@ -150,8 +168,11 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         var files = new List<GeneratedFile>();
         foreach (var decl in decls)
             files.AddRange(JsTypeEmitter.Emit(context, decl));
-        files.AddRange(JsFormatterEmitter.Emit(context, JsFormatterEmitter.UserFormatters(ir, decls)));
+        var users = JsFormatterEmitter.UserFormatters(ir, decls);
+        files.AddRange(JsFormatterEmitter.Emit(context, users));
         files.AddRange(JsSupportEmitter.Emit(context));
+        foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
+            files.AddRange(JsProxyEmitter.Emit(context, export, users));
         return files;
     }
 
