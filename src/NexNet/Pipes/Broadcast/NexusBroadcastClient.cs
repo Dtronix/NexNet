@@ -50,7 +50,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     public Task DisabledTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
     /// <summary>
-    /// Gets a task that completes when the collection is ready (connected and synchronized).
+    /// Gets a task that completes when the collection is ready (connected and synchronized). Each
+    /// <see cref="EnableAsync"/> starts a fresh task. It faults with an <see cref="InvalidOperationException"/> when
+    /// the enable fails or the collection disconnects before its first synchronization completes, and keeps its
+    /// outcome after a later disconnect. Completed when the collection was never enabled.
     /// </summary>
     public Task ReadyTask => _readyTcs?.Task ?? Task.CompletedTask;
 
@@ -85,6 +88,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if(_session == null)
             throw new InvalidOperationException("Session not connected");
 
+        // A fresh ReadyTask for this enable, visible before the first await so callers can wait on it while the
+        // enable is in flight. Every path that ends the enable without a synchronization fails it.
+        var readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _readyTcs = readyTcs;
+
         // Rent first: a local refusal (pipe limit or budget) then has nothing to undo.
         var pipe = _session!.PipeManager.RentPipe();
 
@@ -114,27 +122,28 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
             await pipe.ReadyTask.ConfigureAwait(false);
         }
-        catch
+        catch (Exception e)
         {
             // The server refused the pipe (pipe limit or authorization), or the session ended before it opened.
             await AbortEnableAsync(pipe, stopCts).ConfigureAwait(false);
+            FailReady(readyTcs, new InvalidOperationException(
+                $"The collection could not be enabled: {e.Message}", e));
             throw;
         }
 
         _pipeId = pipe.Id;
 
-        // Not tied to the enable token: the cleanup must run whenever the pipe closes, even after that token is
-        // canceled.
-        _ = pipe.CompleteTask.ContinueWith((s, state) =>
-            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, CancellationToken.None);
-
         var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) : null;
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
-        
+
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        
+
+        // Registered once the enable's state is in place, so a pipe that is already closed still runs the full
+        // disconnect path against it. Not tied to the enable token: the cleanup must run whenever the pipe closes,
+        // even after that token is canceled.
+        _ = pipe.CompleteTask.ContinueWith((s, state) =>
+            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, CancellationToken.None);
 
         // Long-running task listening for changes.
         // The reader feeds this run only: messages still buffered in this pipe after it closes must not reach the
@@ -239,8 +248,8 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
 
         Logger?.LogError(failure.Message);
 
-        if (_readyTcs is { } readyTcs && readyTcs.TrySetException(failure))
-            _ = readyTcs.Task.Exception; // Observed here; callers awaiting ReadyTask still see the fault.
+        if (_readyTcs is { } readyTcs)
+            FailReady(readyTcs, failure);
 
         State = NexusCollectionState.Disconnected;
 
@@ -293,8 +302,22 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         State = NexusCollectionState.Disconnected;
     }
 
+    /// <summary>
+    /// Faults a <see cref="ReadyTask"/> that has not completed yet. The fault is observed here, so an unawaited
+    /// ReadyTask raises no unobserved-task exception; callers awaiting it still see it.
+    /// </summary>
+    private static void FailReady(TaskCompletionSource readyTcs, Exception failure)
+    {
+        if (readyTcs.TrySetException(failure))
+            _ = readyTcs.Task.Exception;
+    }
+
     private void Disconnected()
     {
+        // Captured first: once _client is cleared a new enable may install its own completion sources.
+        var readyTcs = _readyTcs;
+        var disconnectTcs = _disconnectTcs;
+
         State = NexusCollectionState.Disconnected;
 
         // Stop the run and reset the state together, between two messages: a message of the closed pipe that the
@@ -325,9 +348,14 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         _client = null;
         StopCts = null;
 
-        _disconnectTcs?.TrySetResult();
-        _disconnectTcs = null;
-        _readyTcs = null;
+        // A disconnect before the first synchronization fails ReadyTask instead of leaving it pending forever. A
+        // processor failure (OnProcessorStopped) has already faulted it with its own reason.
+        if (readyTcs != null)
+            FailReady(readyTcs, new InvalidOperationException(
+                "The collection disconnected before its initial synchronization completed. Enable it again to resynchronize."));
+
+        disconnectTcs?.TrySetResult();
+        Interlocked.CompareExchange(ref _disconnectTcs, null, disconnectTcs);
     }
     protected abstract void OnDisconnected();
 
@@ -337,6 +365,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     {
         // Outside the protocol-error handling below, so an injected failure reaches the processor itself.
         ProcessTestHook?.Invoke(message);
+
+        // The run was stopped (the collection disconnected) while this message waited: it belongs to a closed pipe,
+        // and applying it would leak stale state into the next enable.
+        if (ct.IsCancellationRequested)
+            return new BroadcastMessageProcessResult(false, false);
 
         BroadcastMessageProcessResult result;
         try
@@ -373,6 +406,10 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     
     protected void InitializationCompleted()
     {
+        // A synchronization that finishes after the collection disconnected must not report it as connected.
+        if (_client == null || _processorToken.IsCancellationRequested)
+            return;
+
         State = NexusCollectionState.Connected;
         using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Ready))
         {
