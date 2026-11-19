@@ -31,6 +31,9 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     private CancellationToken _processorToken;
     private InvalidOperationException? _processorFailure;
 
+    // Serializes message processing with the reset that runs when the pipe closes.
+    private readonly object _processLock = new();
+
     protected NexusBroadcastSession<TUnion>? Client => _client;
 
     /// <summary>
@@ -294,13 +297,21 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     {
         State = NexusCollectionState.Disconnected;
 
-        try
+        // Stop the run and reset the state together, between two messages: a message of the closed pipe that the
+        // processor still holds is then dropped (see OnProcessCore), and cannot reach the reset state.
+        lock (_processLock)
         {
-            OnDisconnected();
-        }
-        catch (Exception e)
-        {
-            Logger?.LogError(e, "Error while disconnecting client.");
+            // ReSharper disable once MethodHasAsyncOverload
+            StopCts?.Cancel();
+
+            try
+            {
+                OnDisconnected();
+            }
+            catch (Exception e)
+            {
+                Logger?.LogError(e, "Error while disconnecting client.");
+            }
         }
 
         OperationSemaphore?.Dispose();
@@ -312,9 +323,6 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         }
 
         _client = null;
-
-        // ReSharper disable once MethodHasAsyncOverload
-        StopCts?.Cancel();
         StopCts = null;
 
         _disconnectTcs?.TrySetResult();
@@ -333,7 +341,14 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         BroadcastMessageProcessResult result;
         try
         {
-            result = OnProcess(message, sourceClient, ct);
+            lock (_processLock)
+            {
+                // The pipe closed: its remaining messages are dropped. The state was reset for the next pipe.
+                if (ct.IsCancellationRequested)
+                    return new BroadcastMessageProcessResult(false, false);
+
+                result = OnProcess(message, sourceClient, ct);
+            }
         }
         catch (Exception e)
         {
