@@ -20,7 +20,10 @@ import { MIN_PEER_MAX_MESSAGE_SIZE, MessageType } from './protocol.js';
 import { WriteQueue } from './WriteQueue.js';
 import { decodeServerGreeting, encodeClientGreeting } from './wire.js';
 
-/** How long a disconnect waits for its disconnect byte to be written before closing anyway (C#: 5 s write-lock wait). */
+/**
+ * Longest a disconnect waits for its disconnect byte to be written before closing anyway (C#: 5 s write-lock wait).
+ * The wait is also cut short by the progress timeout (§9): see `#disconnectWriteLimit`.
+ */
 const DISCONNECT_WRITE_TIMEOUT = 5000;
 
 /**
@@ -460,7 +463,11 @@ export class NexusSession {
     this.controlSender.clear();
 
     if (sendByte && this.#started) {
-      const written = await this.#within(this.#writer.finish(encodeHeaderOnly(reason)), DISCONNECT_WRITE_TIMEOUT);
+      // The byte queues behind any write in flight. A transport write that never settles (a stuck socket) must not
+      // hold the close: past the limit the session closes without the byte (J20).
+      const limit = this.#disconnectWriteLimit();
+      const finished = this.#writer.finish(encodeHeaderOnly(reason));
+      const written = limit > 0 ? await this.#within(finished, limit) : false;
       const delayMs = this.#options.disconnectDelay;
       // Real-time wait in C#, so the byte reaches the wire before the transport closes (§5.6).
       if (written && delayMs > 0) await new Promise((resolve) => { this.#timer(delayMs, () => resolve(undefined)); });
@@ -486,6 +493,19 @@ export class NexusSession {
       }
     }
     this.#resolveClosed(reason);
+  }
+
+  /**
+   * How long a disconnect starting now waits for its disconnect byte (§5.6): {@link DISCONNECT_WRITE_TIMEOUT}, cut to
+   * what is left of `progressTimeout` (§9) for the transport write in flight, if any. A write running past
+   * `progressTimeout` is a stall and will not carry the byte, so the wait is then 0: a graceful close, idle timeout or
+   * stall over a transport whose write never resolves ends within `progressTimeout` (plus `disconnectDelay` once the
+   * byte is written) of that write's start.
+   * @returns {number} Milliseconds; 0 when the byte can't be written in time.
+   */
+  #disconnectWriteLimit() {
+    const elapsed = this.#writer.inFlight ? this.#clock.now() - this.#writer.flushStartedAt : 0;
+    return Math.max(0, Math.min(DISCONNECT_WRITE_TIMEOUT, this.#options.progressTimeout - elapsed));
   }
 
   /**
