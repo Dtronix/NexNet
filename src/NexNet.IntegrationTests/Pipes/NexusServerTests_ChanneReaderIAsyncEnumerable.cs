@@ -13,7 +13,7 @@ namespace NexNet.IntegrationTests.Pipes;
 internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : PipeMatrixTests(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task IAsyncEnumerable(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -47,7 +47,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task StopsOnCompletion(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -73,7 +73,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CancelsRead(ClientTarget target)
     {
         await using var server = await StartServerAsync();
@@ -102,7 +102,7 @@ internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool ho
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task CancelsAndResumesRead(ClientTarget target)
     {
         await using var server = await StartServerAsync();

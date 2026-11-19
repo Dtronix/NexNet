@@ -5,6 +5,7 @@ using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Invocation;
 using NexNet.Logging;
 using NexNet.Pipes;
+using NexNet.Quic;
 using NexNet.TestNexus.Interop;
 using NexNet.Transports;
 using NexNet.Transports.Uds;
@@ -23,7 +24,7 @@ namespace NexNet.IntegrationTests;
 /// client under test comes from <see cref="Harness"/> for each <see cref="ClientTarget"/> row.
 /// </summary>
 /// <remarks>
-/// The QUIC rows of the C# suite run on WebSocketTls: the client matrix has no QUIC transport yet (H16).
+/// The QUIC rows of the C# suite are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTests
@@ -68,7 +69,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedMethod_Allowed_InvokesMethod(ClientTarget target)
     {
         var methodInvoked = Signal();
@@ -88,7 +89,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedMethod_Unauthorized_ThrowsOnClient(ClientTarget target)
     {
         await using var client = await ConnectAuthAsync(target, nexus =>
@@ -100,7 +101,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedMethod_Disconnect_DisconnectsSession(ClientTarget target)
     {
         await using var client = await ConnectAuthAsync(target, nexus =>
@@ -121,7 +122,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task UnprotectedMethod_NoAuthCheck(ClientTarget target)
     {
         var authCalled = false;
@@ -147,7 +148,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task MarkerOnly_CallsOnAuthorizeWithEmptyPermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -170,7 +171,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OnAuthorize_ReceivesCorrectMethodName(ClientTarget target)
     {
         string? capturedName = null;
@@ -193,7 +194,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OnAuthorize_ReceivesCorrectPermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -217,7 +218,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OnAuthorize_ReceivesMultiplePermissions(ClientTarget target)
     {
         ReadOnlyMemory<int> capturedPermissions = default;
@@ -242,7 +243,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Authorized_WithReturnValue_ReturnsResult(ClientTarget target)
     {
         await using var client = await ConnectAuthAsync(target, nexus =>
@@ -257,7 +258,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Unauthorized_WithReturnValue_ThrowsNotReturns(ClientTarget target)
     {
         await using var client = await ConnectAuthAsync(target, nexus =>
@@ -270,12 +271,12 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
     // One test per cache setting: a ClientMatrix row cannot be combined with [Arguments].
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task Unauthorized_SessionRemainsUsable(ClientTarget target)
         => UnauthorizedSessionRemainsUsable(target, cacheEnabled: false);
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task Unauthorized_SessionRemainsUsable_CacheEnabled(ClientTarget target)
         => UnauthorizedSessionRemainsUsable(target, cacheEnabled: true);
 
@@ -319,7 +320,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task Unauthorized_MethodBodyNeverExecutes(ClientTarget target)
     {
         var bodyExecuted = false;
@@ -344,7 +345,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedCollection_Allowed_ClientReceivesData(ClientTarget target)
     {
         AuthServerNexus? serverNexus = null;
@@ -367,7 +368,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedCollection_Unauthorized_ClientDisconnected(ClientTarget target)
     {
         // Disconnect for collection auth failures: the session ends instead of the connect failing.
@@ -388,7 +389,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedCollection_Unauthorized_EnableFailsFastAndSessionStaysUp(ClientTarget target)
     {
         var unprotectedInvoked = Signal();
@@ -416,7 +417,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task UnprotectedCollection_NoAuthCheck(ClientTarget target)
     {
         var authCalled = false;
@@ -436,7 +437,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OnAuthorize_ThrowsException_TreatedAsDisconnect(ClientTarget target)
     {
         await using var client = await ConnectAuthAsync(target, nexus =>
@@ -878,7 +879,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedPipeMethod_Unauthorized_RefusesPipe(ClientTarget target)
     {
         var methodInvoked = false;
@@ -909,7 +910,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedChannelMethod_Unauthorized_RefusesChannel(ClientTarget target)
     {
         var methodInvoked = false;
@@ -937,7 +938,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedPipeMethod_Allowed_PipeBecomesReady(ClientTarget target)
     {
         var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -962,7 +963,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task AuthorizedPipeMethod_Disconnect_DisconnectsSession(ClientTarget target)
     {
         await using var client = await ConnectAuthPipeAsync(target, nexus =>
@@ -1012,7 +1013,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task GreetingToken_IdentityReachesServerAndAuthorizes(ClientTarget target)
     {
         var spec = await StartGreetingTokenServerAsync(target, InteropServerNexus.ReaderIdentity);
@@ -1026,7 +1027,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task GreetingToken_Missing_ConnectFailsWithAuthenticationError(ClientTarget target)
     {
         var spec = await StartGreetingTokenServerAsync(target, token: null);
@@ -1077,6 +1078,7 @@ internal static class AuthTlsMatrix
         ClientTransport.HttpSocketTls => BaseTests.Type.HttpSocketTls,
         ClientTransport.WebSocket => BaseTests.Type.WebSocket,
         ClientTransport.WebSocketTls => BaseTests.Type.WebSocketTls,
+        ClientTransport.Quic => BaseTests.Type.Quic,
         _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
     };
 
@@ -1090,6 +1092,7 @@ internal static class AuthTlsMatrix
         TcpClientConfig tcp => "tcp://" + tcp.EndPoint,
         UdsClientConfig uds => "uds:" + uds.EndPoint,
         HttpClientConfig http => http.Url.ToString(),
+        QuicClientConfig quic => "quic://" + quic.EndPoint,
         _ => throw new ArgumentOutOfRangeException(nameof(config), config.GetType(), null),
     };
 

@@ -16,7 +16,7 @@ namespace NexNet.IntegrationTests.Pipes;
 internal class FlowControlTests(LanguageHostPool hosts) : PipeMatrixTests(hosts)
 {
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task BurstOfItemsWithASlowReader_ThenACall(ClientTarget target)
     {
         // The application's reproduction: 40 items of 40 KiB, read slowly, then a call on the same session. The
@@ -61,7 +61,7 @@ internal class FlowControlTests(LanguageHostPool hosts) : PipeMatrixTests(hosts)
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task OneItemLargerThanTheWindow_IsDelivered(ClientTarget target)
     {
         // The application's reproduction: a single 300 KiB item against a 256 KiB window. The reader gets an extra
