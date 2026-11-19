@@ -9,6 +9,7 @@ import com.dtronix.nexnet.NexusMessageTooLargeException;
 import com.dtronix.nexnet.NexusRemoteInvocationException;
 import com.dtronix.nexnet.NexusUnauthorizedException;
 import com.dtronix.nexnet.Registration;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
@@ -373,7 +374,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     @Override
-    public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
+    public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
         throw new UnsupportedOperationException("not implemented");
     }
 

@@ -38,7 +38,7 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 | `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` | K01 (bases); K07 (`ProxyInvoker`, `InvocationContext` implementations) |
 | `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` | K05 (session), K06 (transports) |
 | `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` | K08 |
-| `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState` | K09 |
+| `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState`, `NexusCollectionMode` (C-4), `NexusListClient<T>` (the runtime implementation) | K09 |
 | `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) | K01 (done); K10 wires it |
 | `com.dtronix.nexnet.pool` | `NexusClientPool`, `NexusClientPoolConfig`, `RentedNexusClient` | K10 |
 
@@ -120,8 +120,8 @@ public final class ChatServerProxy extends ProxyBase {
         return invokeChannel(4, channel, (w, pipeId) -> { w.writeArrayHeader(1); w.writeInt(pipeId); });
     }
 
-    // C# INexusList<string> Names { get; }
-    public NexusList<String> names() { return list(5, Formatters.STRING); }
+    // C# [NexusCollection(NexusCollectionMode.BiDirectional)] INexusList<string> Names { get; }
+    public NexusList<String> names() { return list(5, NexusCollectionMode.BI_DIRECTIONAL, Formatters.STRING); }
 }
 ```
 
@@ -132,6 +132,7 @@ public final class ChatServerProxy extends ProxyBase {
 | `ValueTask<T>` | `CompletableFuture<T>` (boxed) | `invoke(id, args, formatter, token)` |
 | pipe parameter | `CompletableFuture<Void>` (sent) | `invokePipe(id, pipe, args)` |
 | channel parameter | `CompletableFuture<Void>` (sent) | `invokeChannel(id, channel, args)` |
+| `INexusList<T>` property | `NexusList<T>` | `list(id, mode, itemFormatter)` |
 
 - `ArgumentWriter` writes the array header (`serializedCount`) and the arguments in `wireIndex` order;
   `ArgumentWriter.NONE` sends an empty argument payload (no serialized arguments).
@@ -139,6 +140,10 @@ public final class ChatServerProxy extends ProxyBase {
   wire position. Pipe and channel methods are sent with `IgnoreReturn | DuplexPipe`.
 - The token argument is null or `CancellationToken.NONE` when the method takes no token.
 - Returned futures complete on the callback executor. `future.cancel(true)` sends `InvocationCancellation`.
+- **Collections (amendment C-4).** `list(collectionId, mode, itemFormatter)` takes the collection's mode from the IR
+  (`CollectionIr`, from the server nexus's `[NexusCollection(mode)]`): `UNSET`, `SERVER_TO_CLIENT`, `BI_DIRECTIONAL`
+  or `RELAY`. The mode is not sent on the wire (specification section 12.2). The runtime returns the same instance
+  for a collection id on every call, for the life of the client. See section 3.6.
 
 ### 3.4 Client nexus
 
@@ -189,6 +194,35 @@ public final class ChatClient {
     }
 }
 ```
+
+### 3.6 Collections
+
+`NexusList<T>` (`com.dtronix.nexnet.collections`), implemented by `NexusListClient<T>`, is the client replica of a
+server `INexusList<T>` (protocol specification section 12):
+
+- `enable()` returns `CompletableFuture<Boolean>`. It opens a collection pipe on the current session, and completes
+  true after the initial reset, false if the pipe closes first. It fails with `NexusBusyException` when the server
+  refuses (limit or authorization) and with `IllegalStateException` when not connected. `disable()`, `ready()`
+  (a new future per enable, failed if that enable ends before its reset), `disabled()` and `state()`
+  (`NexusCollectionState`).
+- The `java.util.List` view is read-only. It reads an immutable snapshot (iterators keep theirs), and its mutators
+  throw `UnsupportedOperationException`.
+- Mutations return `CompletableFuture<Boolean>`: `addAsync`, `insertAsync`, `removeAsync(item)` (first item
+  `equals` to it; false and nothing sent when none), `removeAtAsync`, `replaceAsync`, `moveAsync`, `clearAsync`.
+  - Each completes true on the server's Ack, and false on Noop, on an Ack change that fails validation, or when the
+    pipe closes.
+  - One request is in flight at a time. A request is built from the snapshot current when its turn comes, and
+    waits for the reset.
+  - The future fails locally with `IllegalStateException` in a read-only mode or when not enabled, and with
+    `IndexOutOfBoundsException` for a negative index.
+- `addChangeListener(Consumer<NexusListChange<T>>)` returns a `Registration`. Changes are delivered in order on
+  the callback executor:
+  - ADD for Insert, REMOVE for Remove, REPLACE for Replace, MOVE for Move, and RESET for Clear;
+  - RESET then READY after a reset;
+  - RESET when the pipe closes.
+- After a reconnect, collections are not resumed: the application calls `enable()` again and receives a full reset.
+- Generated item formatters run with the session's payload codec. `ResetValues` arrays (array, `bin`, ext 78) are
+  split by the runtime, which hands each element to the item formatter as one value.
 
 ## 4. User-facing API
 

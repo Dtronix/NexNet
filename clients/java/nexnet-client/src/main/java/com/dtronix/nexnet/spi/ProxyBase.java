@@ -1,6 +1,7 @@
 package com.dtronix.nexnet.spi;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
@@ -109,11 +110,13 @@ public abstract class ProxyBase {
      * returned on every call.
      *
      * @param collectionId the collection id
+     * @param mode the collection's mode, from its {@code [NexusCollection]} attribute; mutations fail locally unless
+     *     it is {@link NexusCollectionMode#BI_DIRECTIONAL}
      * @param itemFormatter the item formatter
      * @param <T> the item type
      * @return the list
      */
-    protected final <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
-        return invoker.list(collectionId, itemFormatter);
+    protected final <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
+        return invoker.list(collectionId, mode, itemFormatter);
     }
 }

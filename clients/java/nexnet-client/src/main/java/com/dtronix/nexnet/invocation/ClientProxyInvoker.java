@@ -1,6 +1,7 @@
 package com.dtronix.nexnet.invocation;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
@@ -111,7 +112,7 @@ public final class ClientProxyInvoker implements ProxyInvoker {
     }
 
     @Override
-    public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
+    public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
         throw new UnsupportedOperationException("not implemented");
     }
 }

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
@@ -82,7 +83,7 @@ class GeneratedCodeShapeTest {
         }
 
         NexusList<Integer> numbers() {
-            return list(5, INT);
+            return list(5, NexusCollectionMode.BI_DIRECTIONAL, INT);
         }
     }
 
@@ -129,7 +130,7 @@ class GeneratedCodeShapeTest {
         proxy.stream(null);
         proxy.numbers();
 
-        assertEquals(List.of("void:0", "task:1", "invoke:2", "pipe:3", "channel:4", "list:5"), invoker.calls);
+        assertEquals(List.of("void:0", "task:1", "invoke:2", "pipe:3", "channel:4", "list:5:BI_DIRECTIONAL"), invoker.calls);
     }
 
     @Test
@@ -188,8 +189,8 @@ class GeneratedCodeShapeTest {
         }
 
         @Override
-        public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
-            calls.add("list:" + collectionId);
+        public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
+            calls.add("list:" + collectionId + ":" + mode);
             return null;
         }
     }
