@@ -31,6 +31,9 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     private CancellationToken _processorToken;
     private InvalidOperationException? _processorFailure;
 
+    // Serializes message processing with the reset that runs when the pipe closes.
+    private readonly object _processLock = new();
+
     protected NexusBroadcastSession<TUnion>? Client => _client;
 
     /// <summary>
@@ -92,7 +95,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         var stopCts = StopCts = new CancellationTokenSource();
         Volatile.Write(ref _processorFailure, null);
         _processorToken = stopCts.Token;
-        Processor.Run(stopCts.Token);
+        var runGeneration = Processor.Run(stopCts.Token);
         _ = SuperviseProcessorAsync(Processor.LoopTask, stopCts.Token);
 
         try
@@ -134,9 +137,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         
 
         // Long-running task listening for changes.
+        // The reader feeds this run only: messages still buffered in this pipe after it closes must not reach the
+        // processor of a later pipe, ahead of that pipe's reset.
         _ = Task.Factory.StartNew(async static state =>
         {
-            var broadcaster = Unsafe.As<NexusBroadcastClient<TUnion>>(state)!;
+            var (broadcaster, runGeneration) = ((NexusBroadcastClient<TUnion>, int))state!;
             var clientState = broadcaster._client;
             var logger = broadcaster.Logger;
 
@@ -154,7 +159,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
                     logger?.LogTrace($"Received {message.GetType()} message.");
-                    await broadcaster.Processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
+                    await broadcaster.Processor.EnqueueWaitForResult(message, null, runGeneration).ConfigureAwait(false);
                 }
             }
             catch (ChannelClosedException) when (!processorToken.IsCancellationRequested)
@@ -175,7 +180,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             if (clientState.Pipe is IRentedNexusDuplexPipe rentedPipe)
                 await rentedPipe.DisposeAsync().ConfigureAwait(false);
 
-        }, this, TaskCreationOptions.DenyChildAttach);
+        }, (this, runGeneration), TaskCreationOptions.DenyChildAttach);
         
         // Capture locally to avoid race with Disconnected() nulling _client.
         var client = _client!;
@@ -292,13 +297,21 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     {
         State = NexusCollectionState.Disconnected;
 
-        try
+        // Stop the run and reset the state together, between two messages: a message of the closed pipe that the
+        // processor still holds is then dropped (see OnProcessCore), and cannot reach the reset state.
+        lock (_processLock)
         {
-            OnDisconnected();
-        }
-        catch (Exception e)
-        {
-            Logger?.LogError(e, "Error while disconnecting client.");
+            // ReSharper disable once MethodHasAsyncOverload
+            StopCts?.Cancel();
+
+            try
+            {
+                OnDisconnected();
+            }
+            catch (Exception e)
+            {
+                Logger?.LogError(e, "Error while disconnecting client.");
+            }
         }
 
         OperationSemaphore?.Dispose();
@@ -310,9 +323,6 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         }
 
         _client = null;
-
-        // ReSharper disable once MethodHasAsyncOverload
-        StopCts?.Cancel();
         StopCts = null;
 
         _disconnectTcs?.TrySetResult();
@@ -331,7 +341,14 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         BroadcastMessageProcessResult result;
         try
         {
-            result = OnProcess(message, sourceClient, ct);
+            lock (_processLock)
+            {
+                // The pipe closed: its remaining messages are dropped. The state was reset for the next pipe.
+                if (ct.IsCancellationRequested)
+                    return new BroadcastMessageProcessResult(false, false);
+
+                result = OnProcess(message, sourceClient, ct);
+            }
         }
         catch (Exception e)
         {

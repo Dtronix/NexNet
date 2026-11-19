@@ -65,17 +65,12 @@ internal class NexusListServer<T> : NexusBroadcastServer<INexusCollectionListMes
 
             // The request was made obsolete by a concurrent change: answer the originator only, with Ack set, so
             // its pending request completes with false. Nothing changed, so nothing is broadcast.
+            // The answer goes through the broadcast channel, so the originator sees the winning change first.
             if (sourceClient != null)
             {
                 var noop = NexusCollectionListNoopMessage.Rent();
                 noop.Flags = NexusCollectionMessageFlags.Ack;
-                var wrapper = noop.Wrap();
-                if (!sourceClient.BufferTryWrite(wrapper))
-                {
-                    // The client's queue is full: it is not keeping up, so close its pipe as a broadcast would.
-                    wrapper.SignalSent();
-                    return new ProcessResult(null, true);
-                }
+                return new ProcessResult(null, false, noop);
             }
 
             return new ProcessResult(null, false);

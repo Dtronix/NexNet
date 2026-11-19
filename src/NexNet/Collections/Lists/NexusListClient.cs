@@ -23,6 +23,12 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
 
     // True once the first reset of this pipe has completed. Changes that arrive before it are buffered.
     private bool _synchronized;
+
+    /// <summary>
+    /// Testing only. Counts the changes received before or during a reset. The server orders a new client's
+    /// snapshot before any change, so this stays zero against a NexNet server.
+    /// </summary>
+    internal int TestChangesReceivedBeforeSnapshot;
     private PooledResettableValueTaskCompletionSource<bool> _operationCompletionSource;
     
     public int Count => _itemList.Count;
@@ -133,6 +139,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
         {
             // Resetting, or the reset has not started yet. Buffer changes and replay them after the reset completes,
             // where the stale rule drops the ones the snapshot already holds.
+            Interlocked.Increment(ref TestChangesReceivedBeforeSnapshot);
             (_resettingMessageBuffer ??= new List<INexusCollectionListMessage>()).Add(message);
             return new BroadcastMessageProcessResult(true, false);
         }
