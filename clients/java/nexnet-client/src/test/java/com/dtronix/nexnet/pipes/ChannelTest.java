@@ -33,7 +33,7 @@ class ChannelTest extends PipeTestBase {
         CompletableFuture<NexusDuplexChannel<byte[]>> opened = new CompletableFuture<>();
         nexus.methods.put(1, (args, ctx) -> {
             opened.complete(ctx.channel(args[1], TestCodec.BYTES));
-            return ctx.result(new CompletableFuture<>());
+            return ctx.result(methodResult());
         });
         invokePipeMethod(1, serverId);
         NexusDuplexChannel<byte[]> channel = await(opened);
