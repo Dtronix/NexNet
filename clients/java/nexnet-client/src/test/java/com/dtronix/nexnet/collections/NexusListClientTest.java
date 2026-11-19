@@ -17,6 +17,7 @@ import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.invocation.ClientProxyInvoker;
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.InvocationRuntime;
+import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.serialization.MsgPackReader;
@@ -38,6 +39,7 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -699,6 +701,22 @@ class NexusListClientTest {
         assertSame(direct, runtime.list(4, NexusCollectionMode.SERVER_TO_CLIENT, TestFormat.STRING));
         assertNotSame(list, runtime.list(COLLECTION_ID, NexusCollectionMode.BI_DIRECTIONAL, TestFormat.LONG));
         assertSame(NexusCollectionMode.SERVER_TO_CLIENT, ((NexusListClient<String>) direct).mode());
+    }
+
+    @Test
+    void theInvokersListsLogThroughTheClientsLogger() throws Exception {
+        connect();
+        List<String> messages = new CopyOnWriteArrayList<>();
+        ClientProxyInvoker invoker = new ClientProxyInvoker(callbacks,
+            (level, category, exception, message) -> messages.add(level + " " + category + ": " + message));
+        invoker.attach(runtime);
+        NexusList<Long> list = invoker.list(COLLECTION_ID, NexusCollectionMode.BI_DIRECTIONAL, TestFormat.LONG);
+        CompletableFuture<Boolean> enabled = list.enable();
+        int pipeId = acceptEnable();
+        peer.sendItems(pipeId, item("reset-start"), item("reset-values-int"), item("reset-complete"));
+        assertTrue(await(enabled));
+        assertTrue(messages.contains(NexusLogLevel.DEBUG + " Collection" + COLLECTION_ID + ": Connecting collection "
+            + COLLECTION_ID + "."), messages.toString());
     }
 
     // ------------------------------------------------------------------ the List view

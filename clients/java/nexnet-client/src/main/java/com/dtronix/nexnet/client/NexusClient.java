@@ -124,7 +124,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         this.listenerExecutor = new SerialExecutor(callbackExecutor);
         NexusLogger root = config.logger();
         this.logger = root == null ? null : root.createLogger("CL" + id);
-        this.invoker = new ClientProxyInvoker(callbackExecutor);
+        this.invoker = new ClientProxyInvoker(callbackExecutor, logger);
         this.proxy = proxyFactory.apply(invoker);
         ReconnectionPolicy policy = config.reconnectionPolicy();
         this.reconnection = policy == null ? null
