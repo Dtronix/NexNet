@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using NexNet.Diagnostics;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
@@ -123,6 +124,40 @@ internal class NexusServerTests_Lifecycle : BaseTests
         await Assert.That(stopwatch.Elapsed).IsLessThan(TimeSpan.FromSeconds(5));
 
         await Task.WhenAll(clients.Select(c => c.DisconnectedTask)).Timeout(5);
+    }
+
+    /// <summary>
+    /// The accept loop of a stopped run can see its closed listener fail only after the next start has finished.
+    /// That late failure belongs to the old run: it must not fault the endpoint of the new run or stop the restarted
+    /// server (S16; seen on Linux, where the cancelled accept surfaces late).
+    /// </summary>
+    [Test]
+    [Transports(Type.Tcp, Type.Uds)]
+    public async Task FastStopStartCycles_ServerKeepsRunningAfterLastStart(Type type)
+    {
+        const int cycles = 200;
+        var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.None),
+            nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42));
+
+        await server.StartAsync().Timeout(1);
+        for (var i = 0; i < cycles; i++)
+        {
+            await server.StopAsync().Timeout(1);
+            await server.StartAsync().Timeout(1);
+        }
+
+        var (client, _) = CreateClient(CreateClientConfig(type));
+        await client.ConnectAsync().Timeout(1);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(42);
+
+        // Late failures of the stopped runs' accept loops would stop the server in this window.
+        await Task.Delay(200);
+
+        await Assert.That(server.State).IsEqualTo(NexusServerState.Running);
+        foreach (var endpoint in server.GetSnapshot().Endpoints)
+            await Assert.That(endpoint.State).IsEqualTo(NexusEndpointState.Running);
+        await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
+        await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(42);
     }
 
     [Test]
