@@ -30,7 +30,7 @@ public partial interface IAuthServerNexus
 
 public partial interface IAuthClientNexus { }
 
-[Nexus<IAuthServerNexus, IAuthClientNexus>(NexusType = NexusType.Server)]
+[Nexus<IAuthServerNexus, IAuthClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
 public partial class AuthServerNexus
 {
     public Func<ServerSessionContext<AuthServerNexus.ClientProxy>, int, string, ReadOnlyMemory<int>, ValueTask<AuthorizeResult>>? OnAuthorizeHandler;
