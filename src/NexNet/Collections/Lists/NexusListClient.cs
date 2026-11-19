@@ -109,7 +109,7 @@ internal class NexusListClient<T> : NexusBroadcastClient<INexusCollectionListMes
                     CoreChangedEvent.Raise(args.Value);
                 }
 
-                InitializationCompleted();
+                InitializationCompleted(ct);
                 return new BroadcastMessageProcessResult(true, false);
 
             case NexusCollectionListResetValuesMessage valuesMessage:
