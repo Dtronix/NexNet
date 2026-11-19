@@ -22,7 +22,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     protected override bool CompleteServerMethodsByDefault => true;
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerVoid(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerVoidEvent = _ => tcs.TrySetResult(),
@@ -34,7 +34,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerVoidWithParam(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerVoidWithParamEvent = (_, param) =>
@@ -50,7 +50,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTask(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskEvent = _ =>
@@ -62,7 +62,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskWithParam(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskWithParamEvent = (_, param) =>
@@ -75,7 +75,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskValue(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskValueEvent = _ =>
@@ -87,7 +87,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskValue_ReturnedValue(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) =>
@@ -99,7 +99,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskValueWithParamEvent = (_, param) =>
@@ -112,7 +112,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskValueWithParam_ReturnedValue(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) =>
@@ -124,7 +124,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskWithCancellation(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskWithCancellationEvent = (_, _) =>
@@ -136,7 +136,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ServerTaskWithValueAndCancellation(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskWithValueAndCancellationEvent = (_, param, _) =>
@@ -149,7 +149,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskValueWithCancellationEvent = (_, _) =>
@@ -161,7 +161,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) =>
@@ -173,7 +173,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) => sNexus.ServerTaskValueWithValueAndCancellationEvent = (_, param, _) =>
@@ -186,7 +186,7 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
     }
 
     [Test]
-    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls])]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue(ClientTarget target)
     {
         return ServerReceivesInvocation(target, (sNexus, tcs) =>
@@ -232,249 +232,6 @@ internal class NexusServerTests_ReceiveInvocation(LanguageHostPool hosts) : Matr
         await invoke(Proxy(client)).AsTask().Timeout(T(1));
         await tcs.Task.Timeout(T(1));
         await EndAsync(client);
-    }
-
-    // ----- C#-only QUIC companions: the interop server has no QUIC endpoint yet, so the C# client keeps its QUIC
-    // coverage of these tests here until the client matrix gains C#-only rows (H16). -----
-
-    
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerVoid_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = (nexus, _) =>
-            {
-                nexus.Context.Proxy.ServerVoid();
-                return ValueTask.CompletedTask;
-            };
-            sNexus.ServerVoidEvent = nexus => tcs.SetResult();
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerVoidWithParam_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = (nexus, _) =>
-            {
-                nexus.Context.Proxy.ServerVoidWithParam(12345);
-                return ValueTask.CompletedTask;
-            };
-            sNexus.ServerVoidWithParamEvent = (nexus, param) =>
-            {
-                if (param == 12345)
-                    tcs.SetResult();
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTask_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = (nexus, _) => nexus.Context.Proxy.ServerTask();
-            sNexus.ServerTaskEvent = nexus =>
-            {
-                tcs.SetResult();
-                return ValueTask.CompletedTask;
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTaskWithParam_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = (nexus, _) => nexus.Context.Proxy.ServerTaskWithParam(12345);
-            sNexus.ServerTaskWithParamEvent = (nexus, param) =>
-            {
-                if (param == 12345)
-                    tcs.SetResult();
-                return ValueTask.CompletedTask;
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTaskValue_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValue();
-            sNexus.ServerTaskValueEvent = nexus =>
-            {
-                tcs.SetResult();
-                return ValueTask.FromResult(54321);
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public async Task ServerReceivesInvocation_ServerTaskValue_ReturnedValue_Quic(Type type)
-    {
-        await ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) =>
-            {
-                var value = await nexus.Context.Proxy.ServerTaskValue();
-                await Assert.That(value).IsEqualTo(54321);
-                tcs.SetResult();
-            };
-            sNexus.ServerTaskValueEvent = nexus => ValueTask.FromResult(54321);
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTaskValueWithParam_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithParam(12345);
-            sNexus.ServerTaskValueWithParamEvent = (nexus, param) =>
-            {
-                if (param == 12345)
-                    tcs.SetResult();
-
-                return ValueTask.FromResult(54321);
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public async Task ServerReceivesInvocation_ServerTaskValueWithParam_ReturnedValue_Quic(Type type)
-    {
-        await ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) =>
-            {
-                var value = await nexus.Context.Proxy.ServerTaskValueWithParam(12345);
-                await Assert.That(value).IsEqualTo(54321);
-                tcs.SetResult();
-            };
-            sNexus.ServerTaskValueWithParamEvent = (nexus, param) => ValueTask.FromResult(54321);
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTaskWithCancellation_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskWithCancellation(CancellationToken.None);
-            sNexus.ServerTaskWithCancellationEvent = (nexus, ct) =>
-            {
-                tcs.SetResult();
-                return ValueTask.CompletedTask;
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ServerTaskWithValueAndCancellation_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskWithValueAndCancellation(12345, CancellationToken.None);
-            sNexus.ServerTaskWithValueAndCancellationEvent = (nexus, param, ct) =>
-            {
-                if (param == 12345)
-                    tcs.SetResult();
-                return ValueTask.CompletedTask;
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ClientTaskValueWithCancellation_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-            sNexus.ServerTaskValueWithCancellationEvent = (nexus, ct) =>
-            {
-                tcs.SetResult();
-                return ValueTask.FromResult(54321);
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public async Task ServerReceivesInvocation_ClientTaskValueWithCancellation_ReturnedValue_Quic(Type type)
-    {
-        await ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) =>
-            {
-                var value = await nexus.Context.Proxy.ServerTaskValueWithCancellation(CancellationToken.None);
-                await Assert.That(value).IsEqualTo(54321);
-                tcs.SetResult();
-            };
-            sNexus.ServerTaskValueWithCancellationEvent = (nexus, ct) => ValueTask.FromResult(54321);
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_Quic(Type type)
-    {
-        return ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) => await nexus.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-            sNexus.ServerTaskValueWithValueAndCancellationEvent = (nexus, param, ct) =>
-            {
-                if (param == 12345)
-                    tcs.SetResult();
-
-                return ValueTask.FromResult(54321);
-            };
-        });
-    }
-
-    [Test]
-    [Transports(Type.Quic)]
-    public async Task ServerReceivesInvocation_ClientTaskValueWithValueAndCancellation_ReturnedValue_Quic(Type type)
-    {
-        await ServerReceivesInvocation(type, (sNexus, cNexus, tcs) =>
-        {
-            cNexus.OnConnectedEvent = async (nexus, _) =>
-            {
-                var value = await nexus.Context.Proxy.ServerTaskValueWithValueAndCancellation(12345, CancellationToken.None);
-                await Assert.That(value).IsEqualTo(54321);
-                tcs.SetResult();
-            };
-            sNexus.ServerTaskValueWithValueAndCancellationEvent = (nexus, param, ct) => ValueTask.FromResult(54321);
-        });
-    }
-
-    private async Task ServerReceivesInvocation(Type type, Action<ServerNexus, ClientNexus, TaskCompletionSource> action)
-    {
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var (server, client, clientNexus) = CreateServerClient(
-            CreateServerConfig(type),
-            CreateClientConfig(type));
-        
-        server.OnNexusCreated = nexus => action(nexus, clientNexus, tcs);
-        
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        await tcs.Task.Timeout(T(1));
     }
 }
 

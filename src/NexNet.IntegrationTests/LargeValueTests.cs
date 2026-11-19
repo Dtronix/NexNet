@@ -22,7 +22,7 @@ internal class LargeValueTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
     private static string Digest(ReadOnlySpan<byte> data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
     [Test]
-    [ClientMatrix<int>(nameof(Sizes), Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket])]
+    [ClientMatrix<int>(nameof(Sizes), Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket], CSharpTransports = [ClientTransport.Quic])]
     public async Task LargeArgumentAndResult_RoundTrip(ClientTarget target, int size)
     {
         await using var server = await StartServerAsync();
@@ -36,24 +36,6 @@ internal class LargeValueTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
         // The session is still usable, and nothing stays reserved for the streams.
         await Assert.That(await Proxy(client).ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
         await EndAsync(client);
-    }
-
-    /// <summary>C#-only QUIC companion of <see cref="LargeArgumentAndResult_RoundTrip"/> (no QUIC interop endpoint yet; H16).</summary>
-    [Test]
-    [Arguments(128 * 1024)]
-    [Arguments(1024 * 1024)]
-    [Arguments(4 * 1024 * 1024 - 1024)]
-    public async Task LargeArgumentAndResult_RoundTrip_Quic(int size)
-    {
-        var server = CreateServer(CreateServerConfig(Type.Quic), null);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        var (client, _) = CreateClient(CreateClientConfig(Type.Quic));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        var data = PipePattern.Create(size, size);
-        var echoed = await client.Proxy.ServerEcho(data).Timeout(T(10));
-        await Assert.That(Digest(echoed)).IsEqualTo(Digest(data));
-        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
     }
 
     [Test]
