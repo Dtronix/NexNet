@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using NexNet.Invocation;
 
 namespace NexNet.Interop.Remote;
 
@@ -29,11 +30,20 @@ public static class ControlErrors
     {
         var obj = error as JsonObject;
         var kind = obj?["kind"]?.GetValue<string>() ?? Internal;
-        var message = obj?["message"]?.GetValue<string>() ?? "";
+        var rawMessage = obj?["message"]?.GetValue<string>();
+        var message = rawMessage ?? "";
         var detail = obj?["detail"] as JsonObject;
 
         if (Enum.TryParse<ErrorKind>(kind, ignoreCase: false, out var errorKind) && Enum.IsDefined(errorKind))
         {
+            // The remote message of a remote invocation error: null (or absent) when the server sent none, so
+            // RemoteMessage is null on every row alike.
+            if (errorKind == ErrorKind.RemoteInvocation && rawMessage == null)
+            {
+                return new ProxyRemoteInvocationException(
+                    (int?)Number(detail?["code"]), detail?["type"]?.GetValue<string>(), null);
+            }
+
             var info = new RemoteErrorInfo(errorKind, message)
             {
                 Type = detail?["type"]?.GetValue<string>(),
@@ -105,7 +115,9 @@ public static class ControlErrors
             detail["limit"] = info.Limit;
         if (info.Param != null)
             detail["param"] = info.Param;
-        return Create(info.Kind.ToString(), info.Message, detail);
+        // A remote invocation error carries the remote message, null when the server sent none (§8).
+        var message = exception is ProxyRemoteInvocationException { RemoteMessage: null } ? null : info.Message;
+        return Create(info.Kind.ToString(), message, detail);
     }
 
     /// <summary>An integer member, whether parsed from the wire or built in memory.</summary>
@@ -120,8 +132,8 @@ public static class ControlErrors
         return long.Parse(value.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Creates an error object.</summary>
-    public static JsonObject Create(string kind, string message, JsonObject? detail = null)
+    /// <summary>Creates an error object; a null <paramref name="message"/> is sent as JSON null (§8: a remote invocation error without a remote message).</summary>
+    public static JsonObject Create(string kind, string? message, JsonObject? detail = null)
     {
         var error = new JsonObject { ["kind"] = kind, ["message"] = message };
         if (detail is { Count: > 0 })

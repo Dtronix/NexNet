@@ -17,9 +17,9 @@ namespace NexNet.IntegrationTests;
 /// <summary>
 /// Remote exception detail: the opt-in type and message, the application error hook, and the optional third element
 /// of an Exception invocation result. End-to-end tests of a client calling the server run on the client matrix (P01b);
-/// so does the parsing of every detail shape, through frames the server injects. The C# parser and exception
-/// constructor tests, the server-calling-client tests (client options <see cref="ClientSpec"/> cannot express) and the
-/// client pool test stay C#-only.
+/// so do the server-calling-client tests (client options of <see cref="ClientSpec"/>) and the parsing of every detail
+/// shape, through frames the server injects. The C# parser and exception constructor tests and the client pool test
+/// stay C#-only.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
 internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
@@ -457,63 +457,51 @@ internal class RemoteExceptionDetailTests(LanguageHostPool hosts) : InvocationMa
         await DisconnectAndAudit(client);
     }
 
-    /// <summary>
-    /// C#-only for now: it sets the client's <c>RemoteExceptionDetail</c>, which <see cref="ClientSpec"/> cannot
-    /// express.
-    /// </summary>
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task TypeAndMessage_ServerCallingClient_CarriesTypeAndMessage(ClientTarget target)
     {
-        var clientConfig = CreateClientConfig(type);
-        clientConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
-        var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), clientConfig);
-        clientNexus.ClientTaskValueEvent = _ => throw new InvalidOperationException("client boom");
+        await using var server = await StartServer();
+        await using var client = await Connect(target, server, spec => spec.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage);
+        Script(client).ClientTaskValue.Throws(ErrorKind.InvalidOperation, "client boom");
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        ProxyRemoteInvocationException exception;
+        using (var context = server.Server.ContextProvider.Rent())
+        {
+            exception = await Throws(
+                async () => await context.Proxy.Client(FirstSessionId(server)).ClientTaskValue().Timeout(T(1)));
+        }
 
-        using var context = server.Server.ContextProvider.Rent();
-        var exception = await Throws(
-            async () => await context.Proxy.Client(context.Proxy.GetIds().First()).ClientTaskValue().Timeout(T(1)));
-        await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        // The type name is the client language's own (System.InvalidOperationException in C#).
+        if (target.Language == ClientLanguages.CSharp)
+            await Assert.That(exception.RemoteExceptionType).IsEqualTo("System.InvalidOperationException");
+        else
+            await Assert.That(string.IsNullOrEmpty(exception.RemoteExceptionType)).IsFalse();
+        await Assert.That(exception.RemoteErrorCode).IsNull();
         await Assert.That(exception.RemoteMessage).IsEqualTo("client boom");
+        await DisconnectAndAudit(client);
     }
 
-    /// <summary>
-    /// C#-only for now: it uses the client nexus's <c>OnInvocationException</c> hook, which client scripts cannot
-    /// express.
-    /// </summary>
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task Hook_ServerCallingClient_CarriesApplicationError(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task Hook_ServerCallingClient_CarriesApplicationError(ClientTarget target)
     {
-        var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
-        clientNexus.ClientTaskValueEvent = _ => throw new InvalidOperationException("client secret");
-        clientNexus.OnInvocationExceptionEvent = (_, _, _) => new NexusRemoteError(7, null);
+        await using var server = await StartServer();
+        await using var client = await Connect(target, server, spec => spec.OnInvocationException = new NexusRemoteError(7, null));
+        Script(client).ClientTaskValue.Throws(ErrorKind.InvalidOperation, "client secret");
 
-        var tcs = new TaskCompletionSource<ProxyRemoteInvocationException>(TaskCreationOptions.RunContinuationsAsynchronously);
-        server.OnNexusCreated = nexus => nexus.OnConnectedEvent = async n =>
+        ProxyRemoteInvocationException exception;
+        using (var context = server.Server.ContextProvider.Rent())
         {
-            try
-            {
-                await n.Context.Clients.Caller.ClientTaskValue();
-                tcs.TrySetException(new InvalidOperationException("The call did not fail."));
-            }
-            catch (ProxyRemoteInvocationException e)
-            {
-                tcs.TrySetResult(e);
-            }
-        };
+            exception = await Throws(
+                async () => await context.Proxy.Client(FirstSessionId(server)).ClientTaskValue().Timeout(T(1)));
+        }
 
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-
-        var exception = await tcs.Task.Timeout(T(1));
         await Assert.That(exception.RemoteErrorCode).IsEqualTo(7);
         await Assert.That(exception.RemoteExceptionType).IsNull();
         await Assert.That(exception.RemoteMessage).IsNull();
         await Assert.That(exception.Message).DoesNotContain("client secret");
+        await DisconnectAndAudit(client);
     }
 
     /// <summary>C#-only: the C# client pool (client pools are ported by P01g).</summary>

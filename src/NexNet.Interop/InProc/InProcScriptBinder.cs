@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using NexNet.Interop.Reflection;
 using NexNet.Interop.Scripting;
+using NexNet.Invocation;
 using NexNet.Pipes;
 
 namespace NexNet.Interop.InProc;
@@ -63,6 +64,30 @@ internal sealed class InProcScriptBinder
         }
 
         return unbound;
+    }
+
+    /// <summary>
+    /// Makes the <c>OnInvocationException</c> hook of <paramref name="nexus"/> (a public delegate field or property named
+    /// <c>OnInvocationExceptionEvent</c> or <c>OnInvocationExceptionHandler</c> returning <see cref="NexusRemoteError"/>)
+    /// return <paramref name="error"/> (<see cref="ClientSpec.OnInvocationException"/>).
+    /// </summary>
+    /// <exception cref="NotSupportedException">The nexus has no such hook.</exception>
+    public static void SetInvocationExceptionHook(object nexus, NexusRemoteError error)
+    {
+        ArgumentNullException.ThrowIfNull(nexus);
+        ArgumentNullException.ThrowIfNull(error);
+        var hook = FindHook(nexus.GetType(), "OnInvocationException");
+        var invoke = hook?.DelegateType.GetMethod("Invoke");
+        if (hook == null || invoke == null || invoke.ReturnType != typeof(NexusRemoteError))
+        {
+            throw new NotSupportedException(
+                $"{nexus.GetType()} has no OnInvocationExceptionEvent or OnInvocationExceptionHandler hook returning NexusRemoteError, "
+                + "so the C# client cannot set ClientSpec.OnInvocationException.");
+        }
+
+        var parameters = invoke.GetParameters().Select(p => Expression.Parameter(p.ParameterType, p.Name)).ToArray();
+        var body = Expression.Constant(error, typeof(NexusRemoteError));
+        hook.SetValue(nexus, Expression.Lambda(hook.DelegateType, body, parameters).Compile());
     }
 
     /// <summary>Runs a lifecycle slot that has no hook (fire and forget).</summary>

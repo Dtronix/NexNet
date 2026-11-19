@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using NexNet.InteropServer;
+using NexNet.Invocation;
 using NexNet.Logging;
+using NexNet.Transports;
 
 namespace NexNet.Interop;
 
@@ -76,6 +78,24 @@ public sealed class ClientSpec
 
     /// <summary>Invocation credits the client grants the server.</summary>
     public int? InvocationCredits { get; set; }
+
+    /// <summary>
+    /// How many invocations from the server the client runs at once (<c>MaxConcurrentConnectionInvocations</c>, 1 – 1000);
+    /// further ones queue.
+    /// </summary>
+    public int? MaxConcurrentConnectionInvocations { get; set; }
+
+    /// <summary>
+    /// What the client sends the server when a client nexus method it runs fails (<c>RemoteExceptionDetail</c>); null is
+    /// the client's default (<see cref="NexNet.Transports.RemoteExceptionDetail.None"/>).
+    /// </summary>
+    public RemoteExceptionDetail? RemoteExceptionDetail { get; set; }
+
+    /// <summary>
+    /// The application error the client nexus's <c>OnInvocationException</c> hook returns for every failed client nexus
+    /// method, whatever <see cref="RemoteExceptionDetail"/> says; null leaves the hook unset (it returns null).
+    /// </summary>
+    public NexusRemoteError? OnInvocationException { get; set; }
 
     /// <summary>Runs the client's timers on a test clock moved by <see cref="IClientUnderTest.AdvanceTimeAsync"/> (<see cref="ClientCapabilities.FakeTime"/>).</summary>
     public bool FakeTime { get; set; }

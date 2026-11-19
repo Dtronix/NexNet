@@ -131,6 +131,31 @@ public class ControlConnectionTests
     }
 
     [Test]
+    public async Task RemoteInvocation_NullOrMissingMessage_IsANullRemoteMessage()
+    {
+        var withMessage = (ProxyRemoteInvocationException)ControlErrors.ToException(ControlErrors.Create("RemoteInvocation", "boom"));
+        await Assert.That(withMessage.RemoteMessage).IsEqualTo("boom");
+
+        var nullMessage = (ProxyRemoteInvocationException)ControlErrors.ToException(
+            ControlErrors.Create("RemoteInvocation", null, new JsonObject { ["code"] = 7 }));
+        await Assert.That(nullMessage.RemoteMessage).IsNull();
+        await Assert.That(nullMessage.RemoteErrorCode).IsEqualTo(7);
+
+        var missing = (ProxyRemoteInvocationException)ControlErrors.ToException(
+            new JsonObject { ["kind"] = "RemoteInvocation", ["detail"] = new JsonObject { ["type"] = "X" } });
+        await Assert.That(missing.RemoteMessage).IsNull();
+        await Assert.That(missing.RemoteExceptionType).IsEqualTo("X");
+
+        // A C# host sends null when the server sent no message, and the remote message otherwise.
+        var none = ControlErrors.FromException(new ProxyRemoteInvocationException(7, null, null));
+        await Assert.That(none.ContainsKey("message")).IsTrue();
+        await Assert.That(none["message"]).IsNull();
+        await Assert.That(((ProxyRemoteInvocationException)ControlErrors.ToException(none)).RemoteMessage).IsNull();
+        var some = ControlErrors.FromException(new ProxyRemoteInvocationException(null, "T", "m"));
+        await Assert.That(some["message"]!.GetValue<string>()).IsEqualTo("m");
+    }
+
+    [Test]
     public async Task ErrorObjects_RoundTripCSharpExceptions()
     {
         var error = ControlErrors.FromException(new NexusMessageTooLargeException(100, 50));
