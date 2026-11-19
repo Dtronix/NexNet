@@ -162,7 +162,7 @@ class PipeDiagnosticsTest extends PipeTestBase {
         CompletableFuture<NexusDuplexChannel<byte[]>> opened = new CompletableFuture<>();
         nexus.methods.put(1, (args, ctx) -> {
             opened.complete(ctx.channel(args[1], TestCodec.BYTES));
-            return ctx.result(new CompletableFuture<>());
+            return ctx.result(methodResult());
         });
         invokePipeMethod(1, serverId);
         NexusDuplexChannel<byte[]> channel = await(opened);
@@ -203,7 +203,7 @@ class PipeDiagnosticsTest extends PipeTestBase {
     @Test
     void theInvocationSnapshotCountsQueuesAndRecordsTheQueueWait() throws Exception {
         connectMetered(SMALL, InvocationOptions.defaults().withMaxConcurrentInvocations(1));
-        CompletableFuture<Void> release = new CompletableFuture<>();
+        CompletableFuture<Void> release = methodResult();
         nexus.methods.put(2, (args, ctx) -> release);
         invoke(1, 2, 0, (byte) 0x90);
         invoke(2, 2, 0, (byte) 0x90);

@@ -173,7 +173,7 @@ class DiagnosticsTest {
             assertFalse(pipe.isReady());
             assertEquals(PipeOptions.defaults().pipeWindow(), pipe.window());
             assertEquals(budget.reserved() + PipeOptions.defaults().pipeWindow(), withPipe.budget().reserved());
-            assertEquals(baseline.pipes() + 1, Diagnostics.counters().pipes());
+            assertEquals(1, Diagnostics.counters().pipes());
             assertFalse(Diagnostics.isIdle());
             assertEquals(1, Diagnostics.counters().sessions());
             client.disconnect().get(5, TimeUnit.SECONDS);
