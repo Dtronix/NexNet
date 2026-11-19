@@ -75,10 +75,10 @@ internal class TransportBufferIsolationStressTests : BaseTests
         ConcurrentQueue<string> errors)
     {
         var output = TestContext.Current?.Output.StandardOutput;
-        output?.WriteLine($"{iterations} iterations: {failures.Count} corruption(s), {errors.Count} tolerated error(s).");
+        output?.WriteLine($"{iterations} iterations: {failures.Count} failure(s), {errors.Count} tolerated error(s).");
         foreach (var error in errors.Take(20))
             output?.WriteLine(error);
-        await Assert.That(failures.Count).IsEqualTo(0).Because(Describe("corruption", failures));
+        await Assert.That(failures.Count).IsEqualTo(0).Because(Describe("failure", failures));
         await Assert.That(errors.Count).IsLessThanOrEqualTo(Math.Max(2, iterations / 100))
             .Because(Describe("error", errors));
     }
@@ -220,7 +220,7 @@ internal class TransportBufferIsolationStressTests : BaseTests
                 var flood = client.Proxy.ServerTask().AsTask();
                 await flooded.Task.WaitAsync(StepTimeout).ConfigureAwait(false);
                 await client.DisconnectAsync().WaitAsync(StepTimeout).ConfigureAwait(false);
-                await WaitFlood(flood).ConfigureAwait(false);
+                await WaitFlood(flood, $"{type} client iteration {iteration} (client close)", failures).ConfigureAwait(false);
             }
             else
             {
@@ -230,7 +230,7 @@ internal class TransportBufferIsolationStressTests : BaseTests
                 proxy.ServerVoid();
                 var flood = Flood(() => proxy.ServerData(FloodPayload));
                 await client.DisconnectedTask.WaitAsync(StepTimeout).ConfigureAwait(false);
-                await WaitFlood(flood).ConfigureAwait(false);
+                await WaitFlood(flood, $"{type} client iteration {iteration} (server close)", failures).ConfigureAwait(false);
             }
         }
         catch (Exception e)
@@ -292,14 +292,17 @@ internal class TransportBufferIsolationStressTests : BaseTests
     }
 
     /// <summary>
-    /// Gives the flood a moment to end with the session (its calls fail then). Not awaited to the end: a call made
-    /// while the session is closing can stay pending (rarely, about 1 in 3000 server closes), which is not what this
-    /// test is about.
+    /// Waits for every call of the flood: they all end with the session. A call still pending after the session has
+    /// disconnected never completes, which is a failure (S30: a call registered while the session was closing stayed
+    /// pending forever, about 1 in 3000 server closes).
     /// </summary>
-    private static async Task WaitFlood(Task flood)
+    private static async Task WaitFlood(Task flood, string name, ConcurrentQueue<string> failures)
     {
-        await Task.WhenAny(flood, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false);
-        _ = flood.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        if (await Task.WhenAny(flood, Task.Delay(StepTimeout)).ConfigureAwait(false) != flood)
+        {
+            failures.Enqueue($"{name}: a call was still pending {StepTimeout.TotalSeconds:0} s after the disconnect.");
+            _ = flood.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        }
     }
 
     private static byte[] CreateFloodPayload()
