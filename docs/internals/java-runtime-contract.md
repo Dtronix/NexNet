@@ -19,7 +19,7 @@ describes the API that generated code compiles against and the rules both sides 
 | Tests | JUnit 5 (5.14.x, which still runs on Java 11). Test JVM: `-Pnexnet.testJava=11` or `21` (default 21); Gradle provisions a missing JDK through the Foojay resolver |
 | Version | Read from `<Version>` in `src/NexNet/NexNet.csproj` (lockstep with NuGet and npm); exposed as `NexusRuntime.VERSION` |
 | Jar | `Automatic-Module-Name: com.dtronix.nexnet`; sources and javadoc jars |
-| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is compile-only |
+| Dependencies | None at run time. JSpecify (`org.jspecify:jspecify`) is a `compileOnlyApi` dependency (K28): it reaches consumers' compile classpath, so generated code and user code that see its `@Nullable` compile without declaring it, but it is not needed at run time |
 
 The convention plugin `nexnet.java-library` (`clients/java/build-logic`) applies all of the above to every library.
 Animal Sniffer is called through the `org.codehaus.mojo:animal-sniffer` library by the `AnimalSnifferCheck` task
@@ -227,8 +227,24 @@ public final class ChatClient {
     public static NexusClient<ChatServerProxy> create(ClientConfig config, ChatClientNexusBase nexus) {
         return NexusClient.create(config, ChatHandshake.DESCRIPTOR, nexus, ChatServerProxy::new);
     }
+
+    // A custom transport, or the default one with extra upgrade headers (NexusConnector.builder()).
+    public static NexusClient<ChatServerProxy> create(ClientConfig config, ChatClientNexusBase nexus,
+                                                      Transport.Connector connector) {
+        return NexusClient.create(config, ChatHandshake.DESCRIPTOR, nexus, ChatServerProxy::new, connector);
+    }
 }
 ```
+
+- **Class names (K04).** Each export's classes share a stem: the export name without a trailing `ServerNexus`, or
+  else without a trailing `Nexus` (`ChatServerNexus` and `ChatNexus` both give `Chat`; a name that is only the
+  suffix is kept whole). The files are `<Stem>Handshake`, `<Stem>ServerProxy`, `<Stem>ClientNexusBase` and
+  `<Stem>Client`. Two exports with the same stem in one package are NEXNET047.
+- **Base-member clashes (K04).** A method or collection accessor whose Java name equals a member of the generated
+  class's base gets a trailing `_`: on the proxy, `ProxyBase`'s `invoke`, `invokeTask`, `invokeVoid`,
+  `invokePipe`, `invokeChannel` and `list`; on the client nexus base, `ClientNexusBase`'s `context`,
+  `onConnected`, `onDisconnected`, `onReconnecting`, `dispatch`, `separatePool`, `onInvocationException`
+  and `bind`. So a C# `Invoke` method is `invoke_()` in Java.
 
 ### 3.6 Collections
 
@@ -558,7 +574,7 @@ Public types:
 | `PayloadCodec` | Turns argument writers and result formatters into bytes and back. `PayloadCodec.MSGPACK` is the default; tests substitute their own through `InvocationRuntime.Builder.codec`. The runtime writes the message envelopes itself |
 | `InvocationCounters` | Diagnostic counters (section 6.5) |
 | `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe (K08) and collection (K09) runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()`. Diagnostics (section 6.10): `snapshot(nowNanos)`, `budgetSnapshot()`, `largeMessageSnapshots(nowNanos)`, `queued(separate)`, `executing(separate)`, `creditWaits()`, `largeMessagesInbound()` and `largeMessagesOutbound()`. A progress probe (section 6.9) watches the large arguments and results being received |
-| `ClientProxyInvoker` | The proxy's invoker, described above |
+| `ClientProxyInvoker` | The proxy's invoker, described above. Constructors `ClientProxyInvoker(Executor callbackExecutor)` and `ClientProxyInvoker(Executor callbackExecutor, @Nullable NexusLogger logger)` (K24). `NexusClient` passes its logger, and the `NexusList` instances the invoker creates for `list(...)` log through it; without one they do not log |
 
 **Failed client nexus methods.** When a method that returns a result fails, the runtime calls
 `ClientNexusBase.onInvocationException(Throwable exception, int methodId)`, through
