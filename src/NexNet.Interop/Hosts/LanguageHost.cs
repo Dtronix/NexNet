@@ -262,11 +262,7 @@ public sealed class LanguageHost : IAsyncDisposable
 
                 if (ended == connection.Completion)
                 {
-                    // A process that dies closes its connection first; prefer the exit as the reason when it follows.
-                    await Task.WhenAny(process.Exited, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
-                    reason = process.Exited.IsCompleted
-                        ? $"the process exited (code {process.ExitCode})"
-                        : "the control connection closed: " + connection.Failure?.Message;
+                    reason = await PreferExitAsync(process, "the control connection closed: " + connection.Failure?.Message).ConfigureAwait(false);
                     break;
                 }
 
@@ -285,7 +281,8 @@ public sealed class LanguageHost : IAsyncDisposable
                 }
                 catch (Exception e)
                 {
-                    reason = "ping failed: " + e.Message;
+                    // The ping can be the first to see the closed connection of a process that is dying.
+                    reason = await PreferExitAsync(process, "ping failed: " + e.Message).ConfigureAwait(false);
                     break;
                 }
             }
@@ -296,6 +293,16 @@ public sealed class LanguageHost : IAsyncDisposable
         }
 
         await HandleCrashAsync(generation, connection, process, reason).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A process that dies closes its connection before its exit is observed; when the exit follows within a moment it
+    /// is the reason, otherwise <paramref name="otherwise"/> is.
+    /// </summary>
+    private static async Task<string> PreferExitAsync(IHostProcess process, string otherwise)
+    {
+        await Task.WhenAny(process.Exited, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+        return process.Exited.IsCompleted ? $"the process exited (code {process.ExitCode})" : otherwise;
     }
 
     private async Task HandleCrashAsync(int generation, ControlConnection connection, IHostProcess process, string reason)
