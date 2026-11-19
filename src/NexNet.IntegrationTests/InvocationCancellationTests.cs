@@ -64,6 +64,7 @@ internal class InvocationCancellationTests : BaseTests
 
         release.SetResult();
         await Assert.That(await second.Timeout(T(1))).IsEqualTo(1);
+        await Task.WhenAny(first, Task.Delay(TimeSpan.FromSeconds(T(1))));
         await Assert.That(first.IsCanceled || first.IsCompleted).IsTrue();
     }
 
