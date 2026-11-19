@@ -139,7 +139,9 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  * @property {number} [invocationCredits]
  * @property {number} [progressTimeout]
  * @property {import('./enums.js').RemoteExceptionDetailValue} [remoteExceptionDetail]
- * @property {import('./codec.js').SerializerOptions} [serializerOptions]
+ * @property {import('./codec.js').SerializerOptions} [serializerOptions] Reader limits for everything the session
+ *   decodes (C# `ConfigBase.SerializerOptions`). An unset `maxElements` (absent, null or 0, meaning "use the default")
+ *   becomes `max(65536, maxMessageSize / 16)`; an explicit positive value is used as is.
  * @property {import('../session/clock.js').Clock} [clock] Time source of the client's timers (C# `ConfigBase.Time`).
  *   Default: `performance.now()` and the platform timers. Tests inject a manual clock.
  */

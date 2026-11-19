@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using NexNet.Collections;
 using NexNet.Interop.Reflection;
 using NexNet.Invocation;
 
@@ -43,6 +44,17 @@ public static class ControlJson
         return json;
     }
 
+    /// <summary>The pool options JSON of control protocol §6.11.1; null members are omitted.</summary>
+    public static JsonObject ToJson(ClientPoolSpec pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        var json = new JsonObject();
+        Add(json, "maxConnections", pool.MaxConnections);
+        Add(json, "maxIdleTimeMs", pool.MaxIdleTimeMs);
+        Add(json, "minIdleConnections", pool.MinIdleConnections);
+        return json;
+    }
+
     /// <summary>A method reference: <c>{nexus, name, id}</c>.</summary>
     public static JsonObject ToJson(RemoteMethod method)
     {
@@ -55,6 +67,54 @@ public static class ControlJson
     {
         ArgumentNullException.ThrowIfNull(collection);
         return new JsonObject { ["nexus"] = collection.InterfaceName, ["name"] = collection.Name, ["id"] = collection.Id };
+    }
+
+    /// <summary>
+    /// The data of a <c>list.changed</c> event (control protocol §7.6): unreported members are omitted, and the time
+    /// travels as the event's <c>hostNs</c>.
+    /// </summary>
+    public static JsonObject ToJson<T>(string watch, RemoteListChange<T> change, TypedCodec<T> codec)
+    {
+        ArgumentNullException.ThrowIfNull(watch);
+        ArgumentNullException.ThrowIfNull(change);
+        ArgumentNullException.ThrowIfNull(codec);
+        var json = new JsonObject
+        {
+            ["watch"] = watch,
+            ["action"] = change.Action.ToString(),
+        };
+        if (change.Index is { } index)
+            json["index"] = index;
+        if (change.OldIndex is { } oldIndex)
+            json["oldIndex"] = oldIndex;
+        if (change.Items.Count > 0)
+            json["items"] = new JsonArray(change.Items.Select(i => codec.Encode(i)).ToArray());
+        if (change.OldItems.Count > 0)
+            json["oldItems"] = new JsonArray(change.OldItems.Select(i => codec.Encode(i)).ToArray());
+        return json;
+    }
+
+    /// <summary>The change of a <c>list.changed</c> event (control protocol §7.6); its time is the event's <c>hostNs</c>.</summary>
+    /// <exception cref="ControlProtocolException">The action is missing or unknown.</exception>
+    public static RemoteListChange<T> ToListChange<T>(ControlEvent evt, TypedCodec<T> codec)
+    {
+        ArgumentNullException.ThrowIfNull(evt);
+        var data = evt.Data;
+        ArgumentNullException.ThrowIfNull(codec);
+        var actionName = data["action"]?.GetValue<string>();
+        if (!Enum.TryParse<NexusCollectionChangedAction>(actionName, ignoreCase: false, out var action)
+            || !Enum.IsDefined(action) || action == NexusCollectionChangedAction.Unset)
+            throw new ControlProtocolException($"list.changed has an unknown action '{actionName}'.");
+
+        IReadOnlyList<T> Items(string name)
+            => data[name] is JsonArray array ? array.Select(n => codec.Decode(n)!).ToArray() : Array.Empty<T>();
+        return new RemoteListChange<T>(action, TimeSpan.FromTicks(evt.HostNs / 100))
+        {
+            Index = (int?)ControlErrors.Number(data["index"]),
+            OldIndex = (int?)ControlErrors.Number(data["oldIndex"]),
+            Items = Items("items"),
+            OldItems = Items("oldItems"),
+        };
     }
 
     /// <summary>A cancellation: <c>{afterMs}</c> or <c>{token}</c>; null for <see cref="RemoteCancelKind.None"/> and token kinds.</summary>

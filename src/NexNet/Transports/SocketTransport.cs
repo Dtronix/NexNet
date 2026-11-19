@@ -45,6 +45,10 @@ internal sealed class SocketTransport : ITransport
         _receiveLoop = Task.Run(ReceiveLoopAsync);
     }
 
+    /// <remarks>
+    /// Never completes the receive pipe: only the receive loop completes its writer (after its receive has returned)
+    /// and only the session completes its reader, so no pooled segment is returned while a receive writes into it.
+    /// </remarks>
     public async ValueTask CloseAsync(bool linger)
     {
         if (Interlocked.Exchange(ref _closed, 1) != 0)

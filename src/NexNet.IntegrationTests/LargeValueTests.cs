@@ -1,129 +1,155 @@
+using System.Security.Cryptography;
 using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
 
 #pragma warning disable VSTHRD200
 
 namespace NexNet.IntegrationTests;
 
 /// <summary>
-/// Arguments and results larger than one frame (docs/internals/flow-control.md, section 4.3).
+/// Arguments and results larger than one frame (docs/internals/flow-control.md, section 4.3), sent and received by
+/// a client under test (P01b). Values are seeded patterns compared by digest.
 /// </summary>
-internal class LargeValueTests : BaseTests
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class LargeValueTests(LanguageHostPool hosts) : InvocationMatrixTests(hosts)
 {
-    public static IEnumerable<Func<(Type, int)>> TransportsAndSizes()
+    private static readonly int[] Sizes = [128 * 1024, 1024 * 1024, 4 * 1024 * 1024 - 1024];
+
+    /// <summary>The client matrix rows of every transport, times every size of <see cref="Sizes"/>.</summary>
+    public static IEnumerable<Func<(ClientTarget, int)>> TargetsAndSizes()
     {
-        foreach (var type in new[] { Type.Quic, Type.Uds, Type.Tcp, Type.TcpTls, Type.WebSocket, Type.HttpSocket })
+        var matrix = new ClientMatrixAttribute
         {
-            foreach (var size in new[] { 128 * 1024, 1024 * 1024, 4 * 1024 * 1024 - 1024 })
-                yield return () => (type, size);
+            Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket],
+        };
+        foreach (var target in matrix.GetTargets())
+        {
+            foreach (var size in Sizes)
+                yield return () => (target, size);
         }
     }
 
+    private static string Digest(ReadOnlySpan<byte> data) => Convert.ToHexStringLower(SHA256.HashData(data));
+
     [Test]
-    [MethodDataSource(nameof(TransportsAndSizes))]
-    public async Task LargeArgumentAndResult_RoundTrip(Type type, int size)
+    [MethodDataSource(nameof(TargetsAndSizes))]
+    public async Task LargeArgumentAndResult_RoundTrip(ClientTarget target, int size)
     {
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var client = await Connect(target, server);
 
-        var data = new byte[size];
-        Random.Shared.NextBytes(data);
-
-        var echoed = await client.Proxy.ServerEcho(data).Timeout(T(10));
-        await Assert.That(echoed).IsEquivalentTo(data, CollectionOrdering.Matching);
+        var data = PipePattern.Create(size, size);
+        var echoed = await Proxy(client).ServerEcho(data).Timeout(T(10));
+        await Assert.That(echoed.Length).IsEqualTo(size);
+        await Assert.That(Digest(echoed)).IsEqualTo(Digest(data));
 
         // The session is still usable, and nothing stays reserved for the streams.
+        await Assert.That(await Proxy(client).ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
+        await DisconnectAndAudit(client);
+    }
+
+    /// <summary>C#-only QUIC companion of <see cref="LargeArgumentAndResult_RoundTrip"/> (no QUIC interop endpoint yet; H16).</summary>
+    [Test]
+    [Arguments(128 * 1024)]
+    [Arguments(1024 * 1024)]
+    [Arguments(4 * 1024 * 1024 - 1024)]
+    public async Task LargeArgumentAndResult_RoundTrip_Quic(int size)
+    {
+        var server = CreateServer(CreateServerConfig(Type.Quic), null);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var (client, _) = CreateClient(CreateClientConfig(Type.Quic));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        var data = PipePattern.Create(size, size);
+        var echoed = await client.Proxy.ServerEcho(data).Timeout(T(10));
+        await Assert.That(Digest(echoed)).IsEqualTo(Digest(data));
         await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task FireAndForgetLargeArgument_IsDelivered(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task FireAndForgetLargeArgument_IsDelivered(ClientTarget target)
     {
-        var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(CreateServerConfig(type), nexus => nexus.ServerDataEvent = (_, data) =>
+        var received = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = await StartServer(nexus => nexus.ServerDataEvent = (_, data) =>
         {
-            received.TrySetResult(data.Length);
+            received.TrySetResult(Digest(data));
             return default;
         });
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await using var client = await Connect(target, server);
 
-        await client.Proxy.ServerData(new byte[1024 * 1024]).Timeout(T(5));
-        await Assert.That(await received.Task.Timeout(T(5))).IsEqualTo(1024 * 1024);
+        var data = PipePattern.Create(1024 * 1024, 7);
+        await Proxy(client).ServerData(data).Timeout(T(5));
+        await Assert.That(await received.Task.Timeout(T(5))).IsEqualTo(Digest(data));
+        await DisconnectAndAudit(client);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task BroadcastLargeArgument_ReachesEveryClient(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task BroadcastLargeArgument_ReachesEveryClient(ClientTarget target)
     {
-        var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await using var server = await StartServer();
+        await using var first = await Connect(target, server);
+        await using var second = await Connect(target, server);
 
-        var received = new[]
+        var data = PipePattern.Create(300 * 1024, 11);
+        using (var context = server.Server.ContextProvider.Rent())
+            await context.Proxy.All.ClientData(data).Timeout(T(5));
+
+        foreach (var client in new[] { first, second })
         {
-            new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously),
-            new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously),
-        };
-        foreach (var tcs in received)
-        {
-            var (client, clientNexus) = CreateClient(CreateClientConfig(type));
-            clientNexus.ClientDataEvent = (_, data) =>
-            {
-                tcs.TrySetResult(data.Length);
-                return default;
-            };
-            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+            var call = await Script(client).ClientData.NextCallAsync().AsTask().Timeout(T(5));
+            await Assert.That(Digest(call.data)).IsEqualTo(Digest(data));
         }
 
-        using var context = server.ContextProvider.Rent();
-        await context.Proxy.All.ClientData(new byte[300 * 1024]).Timeout(T(5));
-
-        foreach (var tcs in received)
-            await Assert.That(await tcs.Task.Timeout(T(5))).IsEqualTo(300 * 1024);
+        await DisconnectAndAudit(first);
+        await DisconnectAndAudit(second);
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task LargeArgumentWithoutBudget_ThrowsBusyAndTheSessionStaysUp(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task LargeArgumentWithoutBudget_ThrowsBusyAndTheSessionStaysUp(ClientTarget target)
     {
         // 1.5 MiB budget; 4 credits reserve 256 KiB of it. A held 900 KiB argument leaves no room for a second.
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.MaxMessageSize = 1024 * 1024;
-        serverConfig.InvocationCredits = 4;
-        serverConfig.MaxPipes = 1;
-        serverConfig.PipeWindow = 64 * 1024;
-        serverConfig.SessionBudget = 1536 * 1024;
         var hold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var holding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, nexus => nexus.ServerEchoEvent = async (_, data) =>
-        {
-            if (data.Length > 1024)
+        await using var server = await StartServer(
+            nexus => nexus.ServerEchoEvent = async (_, data) =>
             {
-                holding.TrySetResult();
-                await hold.Task;
-            }
+                if (data.Length > 1024)
+                {
+                    holding.TrySetResult();
+                    await hold.Task;
+                }
 
-            return data;
-        });
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+                return data;
+            },
+            config =>
+            {
+                config.MaxMessageSize = 1024 * 1024;
+                config.InvocationCredits = 4;
+                config.MaxPipes = 1;
+                config.PipeWindow = 64 * 1024;
+                config.SessionBudget = 1536 * 1024;
+            });
+        await using var client = await Connect(target, server);
+        var proxy = Proxy(client);
 
-        var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
+        var first = proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(T(5));
 
-        await Assert.ThrowsAsync<NexusBusyException>(async () => await client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(T(5)));
+        await Assert.ThrowsAsync<NexusBusyException>(async () => await proxy.ServerEcho(new byte[900 * 1024]).AsTask().Timeout(T(5)));
 
         // The session is fine; once the first call ends its reservation is released.
-        await Assert.That(await client.Proxy.ServerEcho(new byte[10]).Timeout(T(5))).Count().IsEqualTo(10);
+        await Assert.That(await proxy.ServerEcho(new byte[10]).Timeout(T(5))).Count().IsEqualTo(10);
         hold.SetResult();
         await Assert.That(await first.Timeout(T(5))).Count().IsEqualTo(900 * 1024);
-        await Assert.That(await client.Proxy.ServerEcho(new byte[900 * 1024]).Timeout(T(5))).Count().IsEqualTo(900 * 1024);
+        await Assert.That(await proxy.ServerEcho(new byte[900 * 1024]).Timeout(T(5))).Count().IsEqualTo(900 * 1024);
+        await DisconnectAndAudit(client);
     }
 
+    /// <summary>C#-only: the server configuration's element limit; no client is involved.</summary>
     [Test]
     public async Task ConfigResolvesTheElementLimitFromMaxMessageSize()
     {

@@ -27,6 +27,9 @@ public sealed record RemoteErrorInfo(ErrorKind Kind, string Message)
     /// <summary><see cref="ErrorKind.TooLarge"/>: the largest size allowed in bytes.</summary>
     public long? Limit { get; init; }
 
+    /// <summary><see cref="ErrorKind.ArgumentOutOfRange"/>: the parameter name, when the client reports one.</summary>
+    public string? Param { get; init; }
+
     /// <summary>The C# exception of this error (<see cref="ErrorKinds.ToException(RemoteErrorInfo)"/>).</summary>
     public Exception ToException() => ErrorKinds.ToException(this);
 }
@@ -47,6 +50,7 @@ public sealed record RemoteErrorInfo(ErrorKind Kind, string Message)
 /// <item><term><see cref="ErrorKind.Busy"/></term><description><see cref="NexusBusyException"/></description></item>
 /// <item><term><see cref="ErrorKind.TooLarge"/></term><description><see cref="NexusMessageTooLargeException"/></description></item>
 /// <item><term><see cref="ErrorKind.InvalidOperation"/></term><description><see cref="InvalidOperationException"/></description></item>
+/// <item><term><see cref="ErrorKind.ArgumentOutOfRange"/></term><description><see cref="ArgumentOutOfRangeException"/></description></item>
 /// </list>
 /// </remarks>
 public static class ErrorKinds
@@ -73,6 +77,7 @@ public static class ErrorKinds
             ErrorKind.Busy => new NexusBusyException(error.Message),
             ErrorKind.TooLarge => new NexusMessageTooLargeException(error.Size ?? 0, error.Limit ?? 0),
             ErrorKind.InvalidOperation => new InvalidOperationException(error.Message),
+            ErrorKind.ArgumentOutOfRange => new ArgumentOutOfRangeException(error.Param, error.Message),
             _ => throw new ArgumentOutOfRangeException(nameof(error), error.Kind, "Unknown error kind."),
         };
     }
@@ -100,9 +105,24 @@ public static class ErrorKinds
             NexusSerializationException s => new RemoteErrorInfo(ErrorKind.Serialization, s.Message),
             NexusBusyException b => new RemoteErrorInfo(ErrorKind.Busy, b.Message),
             NexusMessageTooLargeException l => new RemoteErrorInfo(ErrorKind.TooLarge, l.Message) { Size = l.Size, Limit = l.Limit },
+            ArgumentOutOfRangeException a => new RemoteErrorInfo(ErrorKind.ArgumentOutOfRange, MessageOf(a)) { Param = a.ParamName },
             InvalidOperationException i when i.Message == NotConnectedMessage => new RemoteErrorInfo(ErrorKind.Disconnected, i.Message),
             InvalidOperationException i => new RemoteErrorInfo(ErrorKind.InvalidOperation, i.Message),
             _ => new RemoteErrorInfo(ErrorKind.InvalidOperation, exception.Message) { Type = exception.GetType().FullName },
         };
+    }
+
+    /// <summary>The message of <paramref name="exception"/> without the " (Parameter 'x')" suffix .NET appends.</summary>
+    private static string MessageOf(ArgumentException exception)
+    {
+        var message = exception.Message;
+        if (exception.ParamName is { } param)
+        {
+            var suffix = " (Parameter '" + param + "')";
+            if (message.EndsWith(suffix, StringComparison.Ordinal))
+                return message[..^suffix.Length];
+        }
+
+        return message;
     }
 }

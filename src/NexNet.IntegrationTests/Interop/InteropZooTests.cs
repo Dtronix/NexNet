@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Numerics;
 using System.Text;
+using NexNet.Interop;
 using NexNet.Internals;
 using NexNet.Invocation;
 using NexNet.Messages;
@@ -266,11 +267,18 @@ internal class InteropZooTests : BaseTests
         await Assert.That(echoed).IsEquivalentTo(items);
 
         await Assert.That(await proxy.CallClientEchoString("back").AsTask().Timeout(1)).IsEqualTo("back");
+
+        // Both notifications are fire-and-forget and invocations run concurrently, so no later call on the session
+        // guarantees they have been handled: wait for them instead.
+        var clientNotified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        clientNexus.ClientNotifyHandler = _ => clientNotified.TrySetResult();
         await proxy.CallClientNotify("hello").Timeout(1);
+        await clientNotified.Task.Timeout(5);
+        await Assert.That(clientNexus.Notifications.ToArray()).IsEquivalentTo(new[] { "hello" });
+
         proxy.Notify("one");
         await proxy.Ping().Timeout(1);
-        await Assert.That(await proxy.TakeNotifications().AsTask().Timeout(1)).IsEquivalentTo(new[] { "one" });
-        await Assert.That(clientNexus.Notifications.ToArray()).IsEquivalentTo(new[] { "hello" });
+        await Assert.That(await proxy.WaitNotificationsAsync(1, TimeSpan.FromSeconds(5))).IsEquivalentTo(new[] { "one" });
         await Assert.That(await proxy.SlowEcho(4, 10).AsTask().Timeout(1)).IsEqualTo(4);
     }
 

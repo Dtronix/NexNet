@@ -107,4 +107,10 @@ public interface IRemoteList<T>
 
     /// <summary>Waits until a snapshot satisfies <paramref name="predicate"/> and returns it.</summary>
     ValueTask<IReadOnlyList<T>> WaitForAsync(Func<IReadOnlyList<T>, bool> predicate, TimeSpan timeout);
+
+    /// <summary>
+    /// Starts recording the change events the client raises for this collection (control protocol §6.10
+    /// <c>list.watch</c>). Changes raised after this completes are recorded; dispose the watch to stop.
+    /// </summary>
+    ValueTask<IRemoteListWatch<T>> WatchAsync();
 }

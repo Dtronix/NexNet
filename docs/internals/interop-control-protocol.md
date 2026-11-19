@@ -184,7 +184,7 @@ Rebuild it: <build command>
 | `openPipes` | Pipes that are neither complete in both directions nor disposed. |
 | `timers` | Timers of the client runtime still scheduled for clients of the scope (ping, reconnect, `afterMs` cancellations, delays of scripts). A disconnected client MUST have none. |
 | `pendingInvocations` | Invocations started and not completed (a fire-and-forget invocation until it is sent). |
-| `subscriptions` | Collections still enabled on a client that is not `Disconnected`, and listeners the host attached for the scope and did not detach. |
+| `subscriptions` | Collections still enabled on a client that is not `Disconnected`, and listeners the host attached for the scope and did not detach (including collection watches, §6.10, not ended by `list.unwatch`). |
 | `details` | One human-readable line per leak. |
 
 Before counting, a host waits up to 1 s for pending invocations to settle. Any non-zero count fails the test.
@@ -199,7 +199,7 @@ not listed under "host-level" requires `req.test`. Unless an op says otherwise, 
 A host reads requests in order and MUST **start** them in arrival order. Before it starts the next request it MUST have
 applied the synchronous effect of each of these ops: `test.begin`, `client.create`, `script.set`, `script.clear`,
 `signal`, `token.create`, `token.cancel`, `callback.reply`, `pipe.create`, `list.op` (the change is handed to the
-client runtime), and `invoke` (the invocation is handed to the client runtime: its message queued for sending, in
+client runtime), `list.watch` and `list.unwatch` (the listener is attached or detached), and `invoke` (the invocation is handed to the client runtime: its message queued for sending, in
 order). Other ops MAY run concurrently. So a script set before an invocation applies to the calls it causes, and
 fire-and-forget invocations are sent in request order.
 
@@ -373,18 +373,77 @@ id). Items are typed JSON.
 | `list.disable` | `{h, collection}` | `{}` |
 | `list.op` | `{h, collection, op, item?, index?, from?, to?}` | `{ok}`. `op`: `add` (item), `insert` (index, item), `remove` (item), `removeAt` (index), `replace` (index, item), `move` (from, to), `clear`. |
 | `list.snapshot` | `{h, collection}` | `{items}`: the items the client has now. |
+| `list.watch` | `{h, collection, watch}` | `{}`. Attaches a listener to the collection's change events; from the moment it responds, every change event the client raises for the collection is sent as a `list.changed` event (§7.6) carrying `watch`. `watch` is a runner-chosen name, unique per client (so events that arrive before the response can be routed); a name already in use fails with `BadRequest`. Works whether or not the collection is enabled. |
+| `list.unwatch` | `{h, collection?, watch}` | `{}`. Detaches the listener; no `list.changed` of `watch` follows the response. An unknown watch fails with `UnknownHandle`. A watch not ended by `list.unwatch` counts in `subscriptions` (§5.1). |
+
+A list op with an index out of range (a negative index, for example) fails with the client error kind
+`ArgumentOutOfRange` (§8) when the client runtime rejects it before sending.
 
 ### 6.11 Client pools (capability `ClientPool`)
 
+A pool is the client pool of the runtime (C# `NexusClientPool`, Java/JS `NexusClientPool`), created in a test scope.
+Its clients all use the pool's `spec`. `pool` is a pool handle; a **rental handle** `h` names one rental of a
+pooled client.
+
 | Op | Args | Result |
 |---|---|---|
-| `pool.create` | `{spec, nexus, size?}` | `{pool}`: a client pool of at most `size` clients (the runtime's default when absent). |
-| `pool.rent` | `{pool}` | `{h}`: a connected client of the pool (a client handle usable with every client op except `client.dispose`). Bounded by `timeoutMs`. |
-| `pool.return` | `{pool, h}` | `{}`: returns the client; its handle is released. |
-| `pool.state` | `{pool}` | `{size, idle, rented}` |
-| `pool.dispose` | `{pool}` | `{}`: disposes the pool and every client it holds. |
+| `pool.create` | `{spec, nexus:{client, server}, options}` | `{pool}`: a pool holding no client yet. `spec` and `nexus` as in `client.create` (§6.4); `options` is §6.11.1. |
+| `pool.rent` | `{pool, cancel?}` | `{h, client}` on success, `{failed}` when the new client could not connect (below). Bounded by `timeoutMs`. |
+| `pool.return` | `{pool, h}` | `{}`: returns the rental; its handle is released. |
+| `pool.ensureConnected` | `{h}` | `{ok}`: true when the rented client is connected; otherwise it tries to connect once and `ok` says whether it did. |
+| `pool.state` | `{pool}` | `{maxConnections, idle, rented}`: the maximum, the clients idle in the pool, the rentals not returned. |
+| `pool.advanceTime` | `{pool, ms}` | `{}`. Moves the test clock of a pool created with `spec.fakeTime` (the health check and every client of the pool share it); timers due run before the response. `InvalidOperation` otherwise. |
+| `pool.dispose` | `{pool}` | `{}`: disposes the pool and its idle clients. Rentals not returned stay connected until they are returned (the pool then disposes them). Disposing twice is not an error. |
 
-A pool not disposed at `test.end` counts each of its connected clients as an open client.
+`test.audit` also takes `{pool}`: the leak report of the pool and its clients.
+
+**Rent** (`pool.rent`):
+
+- It takes the oldest idle client that is connected, disposing the idle clients that are not on the way. With none, it
+  creates a client and connects it before it responds. While `maxConnections` rentals are out it waits for a return.
+- `client` identifies the pooled client: two rentals of the same client have the same `client` (the pool reused it).
+  It is opaque (`pc1`, …). Every rent allocates a new `h`, so a stale rental handle never drives a re-rented client.
+- `cancel` is `{token}` (§6.5): the token cancels the wait for a free slot, which fails with kind `Canceled`. A cancel
+  during the connection attempt ends it as a connection failure.
+- **Connection failure is a result, not an error:** `{failed:{state, reason, message, error?}}`, the client's connection
+  result. `state` is a `ConnectionResult.StateValue` name (`Exception`, `Disconnected`, `Canceled`, …), `reason` a
+  `DisconnectReason` name (`Authentication` when the server refused the greeting token, `None` when it never answered),
+  `error` the error object (§8) of the connection exception, if any. The slot is released; the runner throws
+  `ClientPoolConnectionException` with this `ConnectionResult`.
+- A disposed pool fails with kind `InvalidOperation` (the runner throws `ObjectDisposedException` without asking).
+
+**Return** (`pool.return`): a connected client goes back to the pool, idle; a client that is not connected, or of a
+disposed pool, is disposed.
+
+**Rental handles** accept `client.state`, `client.awaitState`, `client.awaitReady`, `client.awaitDisconnected` and
+`invoke` (with `future.*` and `token.*`), as for a client handle. Every other client op (`client.connect`,
+`client.tryConnect`, `client.disconnect`, `client.dispose`, `time.advance`, `pipe.*`, `channel.*`, `list.*`,
+`script.*`, `signal`) fails with `NotSupported`: the pool owns the connection, and the client nexus of pooled clients
+is not scripted (the server's calls to it complete with their default result, and no `script.call` events are sent). A
+released rental handle fails with `UnknownHandle`. The runner answers for a returned rental without asking: state
+`Disconnected`, `awaitDisconnected` at once with reason `None`, `ensureConnected` false, and invocations throw
+`ObjectDisposedException`.
+
+**Leaks.** For `test.audit` and `test.end`, every client of a pool that is not `Disconnected` (idle or rented) counts as
+an open client, and a pool not disposed counts one timer (its health check). `test.end` returns every rental, then
+disposes every pool of the scope.
+
+#### 6.11.1 Pool options
+
+The members of `NexNet.Interop.ClientPoolSpec`, camelCase; absent members take the runtime default:
+
+| Member | Type | Default | |
+|---|---|---|---|
+| `maxConnections` | int | 10 | At least 1. Idle and rented clients together. |
+| `maxIdleTimeMs` | int | 120000 | At least 0. |
+| `minIdleConnections` | int | 1 | At least 0; may exceed `maxConnections`. |
+
+An out-of-range value fails with `BadRequest` (the runner throws `ArgumentOutOfRangeException` without asking). An
+unknown member fails with `NotSupported`.
+
+**Health check** (not configurable): every `clamp(maxIdleTimeMs / 4, 100 ms, 30 s)` on the pool's clock, a pass over the
+idle clients, oldest first, disposes those that are not connected, keeps the first `minIdleConnections` connected ones,
+and disposes the others idle for at least `maxIdleTimeMs`. It never creates clients.
 
 ## 7. Events
 
@@ -414,6 +473,23 @@ test's transcript.
 `{message, detail?}`: an error the host could not attribute to a request (an unhandled rejection, a crashed worker).
 The runner fails the test of the scope (or the next test, for a host-level error).
 
+### 7.6 list.changed
+
+`{watch, action, index?, oldIndex?, items?, oldItems?}` with `h` set: the client raised a change event for the
+collection of watch `watch` (`list.watch`, §6.10). Events of one watch are sent in the order the client raised them, and
+the event's `hostNs` (§4.4) is its host timestamp, so a host SHOULD send each event when it is raised.
+
+| Member | Type | Meaning |
+|---|---|---|
+| `action` | string | A C# `NexusCollectionChangedAction` name: `Add`, `Remove`, `Replace`, `Move`, `Reset` (a clear or a completed reset) or `Ready` (the collection is synchronized). Never `Unset`. |
+| `index` | int? | The index of the item after the change: `Add`, `Replace`, `Move`. |
+| `oldIndex` | int? | The index of the item before the change: `Remove`, `Move`. |
+| `items` | array? | The new items, typed JSON: `Add` and `Replace` (the new item), `Move` (the moved item). |
+| `oldItems` | array? | The old items, typed JSON: `Remove` (the removed item), `Replace` (the replaced item). |
+
+`index`, `oldIndex`, `items` and `oldItems` are omitted when the client runtime does not report them. The C# client
+reports only `action`, so tests that run on every row assert on actions (and counts) only.
+
 ## 8. Errors
 
 `error` is `{kind, message, detail?}`.
@@ -431,6 +507,7 @@ The runner fails the test of the scope (or the next test, for a host-level error
 | `Busy` | | `NexusBusyException` |
 | `TooLarge` | `size`, `limit` | `NexusMessageTooLargeException` |
 | `InvalidOperation` | `type`? | `InvalidOperationException` |
+| `ArgumentOutOfRange` | `param`?: the parameter name | `ArgumentOutOfRangeException` (`message` without .NET's " (Parameter 'x')" suffix) |
 
 **Harness error kinds** (failures of the control layer, not of the client):
 
@@ -438,7 +515,7 @@ The runner fails the test of the scope (or the next test, for a host-level error
 |---|---|---|
 | `Timeout` | `timeoutMs` passed. | `TimeoutException` |
 | `NotSupported` | The host or its client cannot do this (an option, a handler, a nexus pair). | `NotSupportedException` |
-| `BadRequest` | Malformed arguments, an unknown op, a scope that is not open. | `ArgumentException` |
+| `BadRequest` | Malformed arguments, an unknown op, a scope that is not open. A C# host reports any `ArgumentException` as `BadRequest` except `ArgumentOutOfRangeException`, which is the client kind `ArgumentOutOfRange`. | `ArgumentException` |
 | `UnknownHandle` | §5. | `InvalidOperationException` |
 | `Internal` | A bug in the host. `detail.stack` SHOULD hold the stack. | `RemoteHostException` |
 

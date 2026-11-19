@@ -22,7 +22,7 @@ internal sealed record FakeHostOptions
 
     public int MaxConcurrency { get; init; } = 4;
 
-    public string[] Capabilities { get; init; } = ["Tcp", "Uds", "HttpSocket", "CustomCa", "FakeTime"];
+    public string[] Capabilities { get; init; } = ["Tcp", "Uds", "HttpSocket", "CustomCa", "FakeTime", "ClientPool"];
 
     public string[] Transports { get; init; } = ClientTransports.All.Select(t => t.ToString()).ToArray();
 
@@ -34,7 +34,7 @@ internal sealed class UnknownHandleException(string message) : Exception(message
 
 /// <summary>
 /// A language host written in C#, for the protocol tests: it speaks the control protocol (hello, requests, events) and
-/// drives the C# client in process (<see cref="FakeClient"/>). Extra ops for the tests: <c>fake.hang</c> never answers,
+/// drives the C# client and client pool in process (<see cref="FakeClient"/>, <see cref="FakePool"/>). Extra ops for the tests: <c>fake.hang</c> never answers,
 /// <c>fake.sleep{ms}</c> answers late.
 /// </summary>
 internal sealed class FakeHost : IAsyncDisposable
@@ -248,7 +248,7 @@ internal sealed class FakeHost : IAsyncDisposable
                 _scopes.TryAdd(Require(test), new FakeScope(this, test!));
                 return Task.FromResult(new JsonObject());
             case "test.audit":
-                return Scope(test).AuditAsync(args["h"]?.GetValue<string>());
+                return Scope(test).AuditAsync(args["h"]?.GetValue<string>(), args["pool"]?.GetValue<string>());
             case "test.end":
                 if (!_scopes.TryRemove(Require(test), out var ended))
                     throw new ArgumentException("The test scope '" + test + "' is not open.");

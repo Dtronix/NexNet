@@ -1,3 +1,4 @@
+using NexNet.Collections;
 using NexNet.Interop.Hosts;
 using NexNet.Interop.Remote;
 using NexNet.Interop.Tests.Fake;
@@ -180,6 +181,60 @@ public class RemoteDriverTests
         await Assert.That(await a.RemoveAtAsync(0)).IsTrue();
         await Assert.That(await b.WaitForAsync(l => l.Count == 1 && l[0].Id == 1, TimeSpan.FromSeconds(Wait))).Count().IsEqualTo(1);
         await Assert.That(await a.SnapshotAsync()).IsEquivalentTo(new[] { new InteropItem(1, "one") });
+
+        await a.DisableAsync();
+        await b.DisableAsync();
+        await first.DisconnectAsync();
+        await second.DisconnectAsync();
+        await AssertNoLeaks(first);
+        await AssertNoLeaks(second);
+    }
+
+    [Test]
+    public async Task Collection_WatchReportsChangeEvents_AndArgumentErrors()
+    {
+        await using var server = await StartServer();
+        await using var host = await StartHost();
+        await using var first = await Connect(host, server.Endpoints);
+        await using var second = await Connect(host, server.Endpoints);
+
+        var a = first.List<InteropItem>("Items");
+        var b = second.Proxy<Remote_IInteropServerNexus>().Items;
+        await Assert.That(await a.EnableAsync()).IsTrue();
+        await Assert.That(await b.EnableAsync()).IsTrue();
+
+        var watch = await b.WatchAsync();
+        await Assert.That(await a.AddAsync(new InteropItem(1, "one"))).IsTrue();
+        await Assert.That(await a.AddAsync(new InteropItem(2, "two"))).IsTrue();
+        await watch.WaitForAsync(NexusCollectionChangedAction.Add, 2, TimeSpan.FromSeconds(Wait));
+        await Assert.That(await a.MoveAsync(0, 1)).IsTrue();
+        await watch.WaitForAsync(NexusCollectionChangedAction.Move, 1, TimeSpan.FromSeconds(Wait));
+        await Assert.That(await a.ReplaceAsync(0, new InteropItem(3, "three"))).IsTrue();
+        await watch.WaitForAsync(NexusCollectionChangedAction.Replace, 1, TimeSpan.FromSeconds(Wait));
+        await Assert.That(await a.RemoveAtAsync(0)).IsTrue();
+        await watch.WaitForAsync(NexusCollectionChangedAction.Remove, 1, TimeSpan.FromSeconds(Wait));
+        await Assert.That(await a.ClearAsync()).IsTrue();
+        var changes = await watch.WaitForAsync(NexusCollectionChangedAction.Reset, 1, TimeSpan.FromSeconds(Wait));
+
+        await Assert.That(changes.Select(c => c.Action)).IsEquivalentTo(
+            new[]
+            {
+                NexusCollectionChangedAction.Add, NexusCollectionChangedAction.Add, NexusCollectionChangedAction.Move,
+                NexusCollectionChangedAction.Replace, NexusCollectionChangedAction.Remove, NexusCollectionChangedAction.Reset,
+            },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        for (var i = 1; i < changes.Count; i++)
+            await Assert.That(changes[i].HostTime).IsGreaterThanOrEqualTo(changes[i - 1].HostTime);
+
+        // A watch still attached is a leaked subscription.
+        var leaked = await second.EndTestAuditAsync();
+        await Assert.That(leaked.Subscriptions).IsEqualTo(1);
+        await watch.DisposeAsync();
+        await Assert.That(await b.WaitForAsync(l => l.Count == 0, TimeSpan.FromSeconds(Wait))).Count().IsEqualTo(0);
+
+        // Out-of-range indexes are argument errors on every row.
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () => await a.InsertAsync(-1, new InteropItem(4, "four")));
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(async () => await a.RemoveAtAsync(-1));
 
         await a.DisableAsync();
         await b.DisableAsync();

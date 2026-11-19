@@ -36,6 +36,9 @@ public enum ErrorKind : byte
 
     /// <summary>The operation is invalid in the current state.</summary>
     InvalidOperation,
+
+    /// <summary>An argument is out of its valid range (e.g. a negative list index).</summary>
+    ArgumentOutOfRange,
 }
 
 /// <summary>One step of a script slot, run by the language host when the server invokes the method.</summary>

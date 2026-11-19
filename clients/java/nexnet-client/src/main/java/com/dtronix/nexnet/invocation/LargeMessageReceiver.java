@@ -1,6 +1,9 @@
 package com.dtronix.nexnet.invocation;
 
 import com.dtronix.nexnet.DisconnectReason;
+import com.dtronix.nexnet.diagnostics.NexusDirection;
+import com.dtronix.nexnet.diagnostics.NexusLargeMessageKind;
+import com.dtronix.nexnet.diagnostics.NexusLargeMessageSnapshot;
 import com.dtronix.nexnet.session.SessionProtocolException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -205,6 +208,20 @@ final class LargeMessageReceiver {
             }
         }
         return null;
+    }
+
+    /** Adds a snapshot of every stream being received. */
+    void addSnapshots(List<NexusLargeMessageSnapshot> snapshots, long nowNanos) {
+        synchronized (streams) {
+            for (Map.Entry<Integer, Stream> entry : streams.entrySet()) {
+                Stream stream = entry.getValue();
+                snapshots.add(new NexusLargeMessageSnapshot(NexusDirection.INBOUND,
+                    stream.kind == InvocationRuntime.KIND_ARGUMENT ? NexusLargeMessageKind.ARGUMENT
+                        : NexusLargeMessageKind.RESULT,
+                    entry.getKey() & 0xFFFF, stream.total, stream.received,
+                    InvocationRuntime.since(nowNanos, stream.lastProgress), stream.aborting));
+            }
+        }
     }
 
     /** The streams being received. */

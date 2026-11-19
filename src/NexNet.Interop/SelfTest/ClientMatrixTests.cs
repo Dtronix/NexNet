@@ -17,7 +17,7 @@ public class ClientMatrixTests
     [Test]
     public async Task Default_IsCSharpOverTheTlsHttpTransports()
     {
-        var rows = new ClientMatrixAttribute { Languages = ["csharp"] }.GetTargets();
+        var rows = new ClientMatrixAttribute { Languages = ["csharp"] }.GetTargets(transportOverride: null);
         await Assert.That(rows).IsEquivalentTo(
             new[] { ClientTarget.CSharp(ClientTransport.HttpSocketTls), ClientTarget.CSharp(ClientTransport.WebSocketTls) },
             TUnit.Assertions.Enums.CollectionOrdering.Matching);
@@ -32,6 +32,66 @@ public class ClientMatrixTests
         var rows = new ClientMatrixAttribute { Transports = [ClientTransport.Tcp, ClientTransport.Uds] }.GetTargets();
         await Assert.That(rows.Select(r => r.Language).Distinct()).IsEquivalentTo(new[] { "csharp" });
         await Assert.That(rows.Count).IsEqualTo(2);
+    }
+
+    [Test]
+    public async Task TransportOverride_All_IsEveryTransportOfEachLanguage()
+    {
+        var rows = new ClientMatrixAttribute { Languages = ["csharp", "browser-chromium", "java"] }.GetTargets("ALL");
+
+        ClientTransport[] Of(string language) => rows.Where(r => r.Language == language).Select(r => r.Transport).ToArray();
+
+        await Assert.That(Of("csharp")).IsEquivalentTo(ClientTransports.All, TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(Of("browser-chromium")).IsEquivalentTo(
+            new[] { ClientTransport.WebSocket, ClientTransport.WebSocketTls }, TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(Of("java")).DoesNotContain(ClientTransport.Uds);
+        await Assert.That(Of("java").Length).IsEqualTo(ClientTransports.All.Count - 1);
+        await Assert.That(rows.All(r => r.SkipReason == null)).IsTrue();
+    }
+
+    [Test]
+    public async Task TransportOverride_List_IsUsedForEveryLanguage()
+    {
+        var rows = new ClientMatrixAttribute { Languages = ["csharp", "browser-chromium"] }.GetTargets(" tcp, WebSocket ,Tcp");
+
+        await Assert.That(rows.Select(r => r.ToString())).IsEquivalentTo(
+            new[] { "csharp/Tcp", "csharp/WebSocket", "browser-chromium/Tcp", "browser-chromium/WebSocket" },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(rows.Single(r => r.ToString() == "browser-chromium/Tcp").SkipReason).Contains("no Tcp transport");
+    }
+
+    [Test]
+    public async Task TransportOverride_DoesNotReplaceExplicitTransports()
+    {
+        var rows = new ClientMatrixAttribute { Languages = ["csharp"], Transports = [ClientTransport.Uds] }.GetTargets("all");
+        await Assert.That(rows).IsEquivalentTo(new[] { ClientTarget.CSharp(ClientTransport.Uds) });
+    }
+
+    [Test]
+    public async Task TransportOverride_UnsetOrBlank_IsTheDefault()
+    {
+        var csharp = ClientLanguages.Get("csharp");
+        await Assert.That(ClientTransports.Select(csharp, null)).IsEquivalentTo(ClientTransports.Default);
+        await Assert.That(ClientTransports.Select(csharp, " ")).IsEquivalentTo(ClientTransports.Default);
+        await Assert.That(ClientTransports.Select(csharp, ",")).IsEquivalentTo(ClientTransports.Default);
+    }
+
+    [Test]
+    public async Task TransportOverride_UnknownTransport_Throws()
+    {
+        var error = await Assert.That(() => ClientTransports.Select(ClientLanguages.Get("csharp"), "Tcp,Quic"))
+            .ThrowsExactly<ArgumentException>();
+        await Assert.That(error!.Message).Contains("Quic").And.Contains(ClientTransports.EnvironmentVariable);
+        await Assert.That(() => ClientTransports.Select(ClientLanguages.Get("csharp"), "2")).ThrowsExactly<ArgumentException>();
+    }
+
+    [Test]
+    [ClientMatrix(Languages = ["csharp", "browser-chromium"], Transports = [ClientTransport.Tcp])]
+    public async Task Rows_CarryTheLangAndTransportProperties(ClientTarget target)
+    {
+        var properties = TestContext.Current!.Metadata.TestDetails.CustomProperties;
+        await Assert.That(properties[ClientMatrixAttribute.LanguageProperty]).IsEquivalentTo(new[] { target.Language });
+        await Assert.That(properties[ClientMatrixAttribute.TransportProperty]).IsEquivalentTo(new[] { target.Transport.ToString() });
     }
 
     [Test]

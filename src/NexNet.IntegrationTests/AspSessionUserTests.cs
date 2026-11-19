@@ -3,15 +3,30 @@ using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.TestNexus.Interop;
 using NexNet.Transports;
+using NexNet.Transports.Uds;
 
 namespace NexNet.IntegrationTests;
 
 /// <summary>
 /// The ASP.NET principal (<c>HttpContext.User</c>) reaches the session as <c>Context.User</c>.
 /// </summary>
-internal class AspSessionUserTests : BaseAspTests
+/// <remarks>
+/// The client-facing tests (the client's <c>Authorization</c> header reaches the ASP.NET authentication; the server's
+/// refusal reaches the client; a non-ASP transport carries no principal) run on every row of the client matrix against
+/// the interop nexus (<see cref="InteropServerNexus"/>) hosted in this suite's ASP.NET app. The tests of the server's
+/// pipeline choices (which scheme fills the principal, what <c>OnConnected</c> and invocations see) have the same
+/// client part and stay on the C# client.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class AspSessionUserTests(LanguageHostPool hosts) : BaseAspTests
 {
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
+
     private const string Scheme = "ClaimsToken";
     private const string UserName = "alice";
     private const string OtherScheme = "OtherDefault";
@@ -88,24 +103,70 @@ internal class AspSessionUserTests : BaseAspTests
         return (serverConfig, clientConfig);
     }
 
-    [Test]
-    [Transports(Type.WebSocket, Type.HttpSocket)]
-    public async Task OnAuthenticate_SeesAspPrincipalClaims(Type type)
+    /// <summary>The suite transport of a client-matrix transport.</summary>
+    private static Type ToType(ClientTransport transport) => transport switch
     {
-        var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
+        ClientTransport.Uds => Type.Uds,
+        ClientTransport.Tcp => Type.Tcp,
+        ClientTransport.TcpTls => Type.TcpTls,
+        ClientTransport.HttpSocket => Type.HttpSocket,
+        ClientTransport.HttpSocketTls => Type.HttpSocketTls,
+        ClientTransport.WebSocket => Type.WebSocket,
+        ClientTransport.WebSocketTls => Type.WebSocketTls,
+        _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
+    };
+
+    /// <summary>
+    /// The client spec of the server this test created for <paramref name="type"/> (same address as
+    /// <see cref="BaseTests.CreateClientConfig"/>), sending the bearer token the claims scheme accepts.
+    /// </summary>
+    private ClientSpec CreateClientSpec(Type type)
+    {
+        return CreateClientConfig(type) switch
+        {
+            UdsClientConfig uds => new ClientSpec { Address = "uds:" + uds.EndPoint },
+            // The suite's TLS server certificate is not the interop test CA's.
+            TcpTlsClientConfig tls => new ClientSpec { Address = "tls://" + tls.EndPoint, InsecureSkipVerify = true },
+            TcpClientConfig tcp => new ClientSpec { Address = "tcp://" + tcp.EndPoint },
+            HttpClientConfig http => new ClientSpec { Address = http.Url.ToString(), AuthorizationHeader = "Bearer Token123" },
+            var other => throw new NotSupportedException(other.GetType().Name),
+        };
+    }
+
+    /// <summary>A server configuration that requires authentication, with ASP.NET authentication on or off.</summary>
+    private ServerConfig CreateAuthServerConfig(Type type, bool aspAuthentication)
+    {
+        var serverConfig = CreateServerConfig(type);
+        serverConfig.Authenticate = true;
+        if (serverConfig is AspServerConfig aspServerConfig)
+        {
+            aspServerConfig.AspEnableAuthentication = aspAuthentication;
+            aspServerConfig.AspAuthenticationScheme = aspAuthentication ? Scheme : null;
+        }
+
+        return serverConfig;
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task OnAuthenticate_SeesAspPrincipalClaims(ClientTarget target)
+    {
+        target.SkipIfUnsupported();
+        var type = ToType(target.Transport);
+        var serverConfig = CreateAuthServerConfig(type, aspAuthentication: true);
 
         var seen = new TaskCompletionSource<ClaimsPrincipal?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, nexus => nexus.OnAuthenticateEvent = n =>
+        var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(serverConfig, nexus => nexus.TokenValidator = (_, _) =>
         {
-            seen.TrySetResult(n.Context.User);
+            seen.TrySetResult(nexus.Context.User);
             return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
         }, ClaimsServices(defaultScheme: false), AspAppAuthConfigure);
-        var (client, _) = CreateClient(clientConfig);
+        await using var client = await Harness.CreateClientAsync(target, CreateClientSpec(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        var user = await seen.Task.Timeout(1);
+        var user = await seen.Task.Timeout(T(1));
         await Assert.That(user).IsNotNull();
         await Assert.That(user!.Identity?.IsAuthenticated).IsTrue();
         await Assert.That(user.FindFirst(ClaimTypes.Name)?.Value).IsEqualTo(UserName);
@@ -196,56 +257,55 @@ internal class AspSessionUserTests : BaseAspTests
     /// The principal is extra input: OnAuthenticate still decides, and refusing it refuses the connection.
     /// </summary>
     [Test]
-    [Transports(Type.WebSocket, Type.HttpSocket)]
-    public async Task NexusAuthenticationStillDecides_WithAspPrincipal(Type type)
+    [ClientMatrix(Transports = [ClientTransport.WebSocket, ClientTransport.HttpSocket], Requires = ClientCapabilities.AuthorizationHeader)]
+    public async Task NexusAuthenticationStillDecides_WithAspPrincipal(ClientTarget target)
     {
-        var (serverConfig, clientConfig) = CreateConfigs(type, aspAuthentication: true);
+        target.SkipIfUnsupported();
+        var type = ToType(target.Transport);
+        var serverConfig = CreateAuthServerConfig(type, aspAuthentication: true);
 
         var seen = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, nexus => nexus.OnAuthenticateEvent = n =>
+        var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(serverConfig, nexus => nexus.TokenValidator = (_, _) =>
         {
-            seen.TrySetResult(n.Context.User?.Identity?.Name);
+            seen.TrySetResult(nexus.Context.User?.Identity?.Name);
             return ValueTask.FromResult<IIdentity?>(null);
         }, ClaimsServices(defaultScheme: false), AspAppAuthConfigure);
-        var (client, _) = CreateClient(clientConfig);
+        await using var client = await Harness.CreateClientAsync(target, CreateClientSpec(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        var result = await client.TryConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var connected = await client.TryConnectAsync().Timeout(T(2));
 
-        await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
-        await Assert.That(result.Success).IsFalse();
+        await Assert.That(await seen.Task.Timeout(T(1))).IsEqualTo(UserName);
+        await Assert.That(connected).IsFalse();
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp, Type.TcpTls)]
-    public async Task NonAspTransport_SessionUserIsNull(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls])]
+    public async Task NonAspTransport_SessionUserIsNull(ClientTarget target)
     {
-        var serverConfig = CreateServerConfig(type);
-        serverConfig.Authenticate = true;
-        var clientConfig = CreateClientConfig(type);
+        target.SkipIfUnsupported();
+        var type = ToType(target.Transport);
+        var serverConfig = CreateAuthServerConfig(type, aspAuthentication: false);
 
         var authenticated = new TaskCompletionSource<ClaimsPrincipal?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var connected = new TaskCompletionSource<ClaimsPrincipal?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var server = CreateServer(serverConfig, nexus =>
+        var sessionNexus = new TaskCompletionSource<InteropServerNexus>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(serverConfig, nexus =>
         {
-            nexus.OnAuthenticateEvent = n =>
+            sessionNexus.TrySetResult(nexus);
+            nexus.TokenValidator = (_, _) =>
             {
-                authenticated.TrySetResult(n.Context.User);
+                authenticated.TrySetResult(nexus.Context.User);
                 return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
             };
-            nexus.OnConnectedEvent = n =>
-            {
-                connected.TrySetResult(n.Context.User);
-                return ValueTask.CompletedTask;
-            };
         });
-        var (client, _) = CreateClient(clientConfig);
+        await using var client = await Harness.CreateClientAsync(target, CreateClientSpec(type));
 
-        await server.StartAsync().Timeout(TestTimeouts.Connect);
-        await client.ConnectAsync().Timeout(2);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(2));
 
-        await Assert.That(await authenticated.Task.Timeout(1)).IsNull();
-        await Assert.That(await connected.Task.Timeout(1)).IsNull();
+        // During authentication and once connected.
+        await Assert.That(await authenticated.Task.Timeout(T(1))).IsNull();
+        await Assert.That((await sessionNexus.Task.Timeout(T(1))).Context.User).IsNull();
     }
 
     [Test]

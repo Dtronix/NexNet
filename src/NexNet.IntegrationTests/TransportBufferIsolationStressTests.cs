@@ -1,8 +1,11 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using NexNet.IntegrationTests.Pipes;
 using NexNet.IntegrationTests.TestInterfaces;
 using NexNet.Logging;
+using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.WebSocket;
@@ -16,6 +19,13 @@ namespace NexNet.IntegrationTests;
 /// buffer and payload is checked for bytes that belong to another session, and no session may end with a protocol
 /// error.
 /// </summary>
+/// <remarks>
+/// A buffer leaked that way is reused by any other user of the shared pool, not only by sessions of the transport that
+/// leaked it (S29): TCP, UDS and TLS sessions waited forever for frames whose bytes were overwritten (5 s collection
+/// enable timeouts with no protocol error), and loading a PKCS#12 certificate failed with a
+/// <see cref="CryptographicException"/> because its file data was overwritten in its rented buffer. Every transport
+/// therefore runs here, alone and mixed, with certificate loads alongside.
+/// </remarks>
 /// <remarks>
 /// The iteration count per transport is bounded for the regular suite; set NEXNET_STRESS_ITERATIONS for a long local
 /// run (the fix was verified with 20000 per transport).
@@ -42,12 +52,16 @@ internal class TransportBufferIsolationStressTests : BaseTests
     [Test]
     [Arguments(Type.HttpSocket)]
     [Arguments(Type.WebSocket)]
+    [Arguments(Type.Tcp)]
+    [Arguments(Type.TcpTls)]
+    [Arguments(Type.Uds)]
+    [Arguments(Type.Quic)]
     public async Task ClosingSessionsNeverLeakReceiveBuffers(Type type)
     {
         var failures = new ConcurrentQueue<string>();
-        var url = await StartServer(type, failures);
+        var createClientConfig = await StartServer(type, failures);
 
-        var errors = await RunWorkers(Iterations, _ => (type, url), failures);
+        var errors = await RunWorkers(Iterations, Workers, _ => (type, createClientConfig), failures);
 
         await AssertNoCorruption(Iterations, failures, errors);
     }
@@ -56,14 +70,71 @@ internal class TransportBufferIsolationStressTests : BaseTests
     public async Task ClosingSessionsNeverLeakReceiveBuffers_MixedTransports()
     {
         var failures = new ConcurrentQueue<string>();
-        var httpSocketUrl = await StartServer(Type.HttpSocket, failures);
-        var webSocketUrl = await StartServer(Type.WebSocket, failures);
+        var httpSocket = await StartServer(Type.HttpSocket, failures);
+        var webSocket = await StartServer(Type.WebSocket, failures);
 
-        var errors = await RunWorkers(Iterations * 2,
-            worker => worker % 2 == 0 ? (Type.HttpSocket, httpSocketUrl) : (Type.WebSocket, webSocketUrl),
+        var errors = await RunWorkers(Iterations * 2, Workers,
+            worker => worker % 2 == 0 ? (Type.HttpSocket, httpSocket) : (Type.WebSocket, webSocket),
             failures);
 
         await AssertNoCorruption(Iterations * 2, failures, errors);
+    }
+
+    /// <summary>
+    /// All transports in one process, while certificates are loaded from disk: a buffer one transport leaks must not
+    /// show up in another transport's sessions (S29: TCP/UDS/TLS enable timeouts) or in an unrelated user of the
+    /// shared pool (S29: PKCS#12 loads failing with "the password may be incorrect").
+    /// </summary>
+    [Test]
+    public async Task ClosingSessionsNeverCorruptOtherTransportsOrPoolUsers()
+    {
+        Type[] types = [Type.HttpSocket, Type.WebSocket, Type.Tcp, Type.TcpTls, Type.Uds];
+        var failures = new ConcurrentQueue<string>();
+        var targets = new (Type Type, Func<ClientConfig> CreateConfig)[types.Length];
+        for (var i = 0; i < types.Length; i++)
+            targets[i] = (types[i], await StartServer(types[i], failures));
+
+        using var stopLoads = new CancellationTokenSource();
+        var certificateLoads = LoadCertificatesUntil(stopLoads.Token, failures);
+
+        var iterations = Iterations * 2;
+        var errors = await RunWorkers(iterations, types.Length * 2, worker => targets[worker % targets.Length],
+            failures);
+
+        await stopLoads.CancelAsync();
+        var loads = await certificateLoads;
+        TestContext.Current?.Output.StandardOutput.WriteLine($"{loads} certificate load(s) alongside.");
+
+        await AssertNoCorruption(iterations, failures, errors);
+    }
+
+    /// <summary>
+    /// Loads the test server certificate in a loop until canceled. The loader reads the file into a buffer rented from
+    /// the shared array pool, so bytes written into a leaked buffer corrupt the PKCS#12 data and the load fails.
+    /// </summary>
+    private static Task<int> LoadCertificatesUntil(CancellationToken cancellationToken,
+        ConcurrentQueue<string> failures)
+    {
+        return Task.Run(() =>
+        {
+            var loads = 0;
+            var path = Path.Combine("certs", "server.pfx");
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    using var certificate = X509CertificateLoader.LoadPkcs12FromFile(path, "certPass");
+                    loads++;
+                }
+                catch (CryptographicException e)
+                {
+                    failures.Enqueue($"Certificate load failed: {e.Message}");
+                    break;
+                }
+            }
+
+            return loads;
+        });
     }
 
     /// <summary>
@@ -75,20 +146,23 @@ internal class TransportBufferIsolationStressTests : BaseTests
         ConcurrentQueue<string> errors)
     {
         var output = TestContext.Current?.Output.StandardOutput;
-        output?.WriteLine($"{iterations} iterations: {failures.Count} corruption(s), {errors.Count} tolerated error(s).");
+        output?.WriteLine($"{iterations} iterations: {failures.Count} failure(s), {errors.Count} tolerated error(s).");
         foreach (var error in errors.Take(20))
             output?.WriteLine(error);
-        await Assert.That(failures.Count).IsEqualTo(0).Because(Describe("corruption", failures));
+        await Assert.That(failures.Count).IsEqualTo(0).Because(Describe("failure", failures));
         await Assert.That(errors.Count).IsLessThanOrEqualTo(Math.Max(2, iterations / 100))
             .Because(Describe("error", errors));
     }
 
-    private async Task<Uri> StartServer(Type type, ConcurrentQueue<string> failures)
+    /// <summary>
+    /// Starts a server of <paramref name="type"/> and returns a factory of client configs that connect to it.
+    /// </summary>
+    private async Task<Func<ClientConfig>> StartServer(Type type, ConcurrentQueue<string> failures)
     {
         // A new port for each server.
         CurrentTcpPort = null;
         var config = CreateServerConfig(type, BasePipeTests.LogMode.None);
-        var port = CurrentTcpPort!.Value;
+        var createClientConfig = ClientConfigFactory(CreateClientConfig(type, BasePipeTests.LogMode.None));
 
         var streams = new ConcurrentDictionary<long, StreamCheck>();
         config.InternalOnReceive = (session, buffer) =>
@@ -129,21 +203,40 @@ internal class TransportBufferIsolationStressTests : BaseTests
         });
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        return type == Type.HttpSocket
-            ? new Uri($"http://127.0.0.1:{port}/httpsocket-test")
-            : new Uri($"ws://127.0.0.1:{port}/websocket-test");
+        return createClientConfig;
     }
 
-    private static async Task<ConcurrentQueue<string>> RunWorkers(int iterations,
-        Func<int, (Type Type, Uri Url)> target, ConcurrentQueue<string> failures)
+    /// <summary>
+    /// A new client config per iteration, with the endpoint (and TLS options) of <paramref name="prototype"/> and no
+    /// logger: the tests set their own logger and receive hook on each.
+    /// </summary>
+    private static Func<ClientConfig> ClientConfigFactory(ClientConfig prototype) => prototype switch
+    {
+        HttpSocketClientConfig http => () => new HttpSocketClientConfig { Url = http.Url },
+        WebSocketClientConfig ws => () => new WebSocketClientConfig { Url = ws.Url },
+        TcpTlsClientConfig tls => () => new TcpTlsClientConfig
+        {
+            EndPoint = tls.EndPoint, SslClientAuthenticationOptions = tls.SslClientAuthenticationOptions,
+        },
+        TcpClientConfig tcp => () => new TcpClientConfig { EndPoint = tcp.EndPoint },
+        UdsClientConfig uds => () => new UdsClientConfig { EndPoint = uds.EndPoint },
+        QuicClientConfig quic => () => new QuicClientConfig
+        {
+            EndPoint = quic.EndPoint, SslClientAuthenticationOptions = quic.SslClientAuthenticationOptions,
+        },
+        _ => throw new ArgumentOutOfRangeException(nameof(prototype), prototype.GetType().Name, null),
+    };
+
+    private static async Task<ConcurrentQueue<string>> RunWorkers(int iterations, int workerCount,
+        Func<int, (Type Type, Func<ClientConfig> CreateConfig)> target, ConcurrentQueue<string> failures)
     {
         var errors = new ConcurrentQueue<string>();
         var maxErrors = Math.Max(2, iterations / 100);
         var next = -1;
-        var workers = new Task[Workers];
-        for (var worker = 0; worker < Workers; worker++)
+        var workers = new Task[workerCount];
+        for (var worker = 0; worker < workerCount; worker++)
         {
-            var (type, url) = target(worker);
+            var (type, createConfig) = target(worker);
             workers[worker] = Task.Run(async () =>
             {
                 int iteration;
@@ -153,7 +246,7 @@ internal class TransportBufferIsolationStressTests : BaseTests
                 {
                     try
                     {
-                        await RunIteration(type, url, iteration, failures).ConfigureAwait(false);
+                        await RunIteration(type, createConfig, iteration, failures).ConfigureAwait(false);
                     }
                     catch (Exception e)
                     {
@@ -167,11 +260,10 @@ internal class TransportBufferIsolationStressTests : BaseTests
         return errors;
     }
 
-    private static async Task RunIteration(Type type, Uri url, int iteration, ConcurrentQueue<string> failures)
+    private static async Task RunIteration(Type type, Func<ClientConfig> createConfig, int iteration,
+        ConcurrentQueue<string> failures)
     {
-        ClientConfig config = type == Type.HttpSocket
-            ? new HttpSocketClientConfig { Url = url }
-            : new WebSocketClientConfig { Url = url };
+        var config = createConfig();
 
         var stream = new StreamCheck();
         config.InternalOnReceive = (_, buffer) =>
@@ -220,7 +312,7 @@ internal class TransportBufferIsolationStressTests : BaseTests
                 var flood = client.Proxy.ServerTask().AsTask();
                 await flooded.Task.WaitAsync(StepTimeout).ConfigureAwait(false);
                 await client.DisconnectAsync().WaitAsync(StepTimeout).ConfigureAwait(false);
-                await WaitFlood(flood).ConfigureAwait(false);
+                await WaitFlood(flood, $"{type} client iteration {iteration} (client close)", failures).ConfigureAwait(false);
             }
             else
             {
@@ -230,7 +322,7 @@ internal class TransportBufferIsolationStressTests : BaseTests
                 proxy.ServerVoid();
                 var flood = Flood(() => proxy.ServerData(FloodPayload));
                 await client.DisconnectedTask.WaitAsync(StepTimeout).ConfigureAwait(false);
-                await WaitFlood(flood).ConfigureAwait(false);
+                await WaitFlood(flood, $"{type} client iteration {iteration} (server close)", failures).ConfigureAwait(false);
             }
         }
         catch (Exception e)
@@ -292,14 +384,17 @@ internal class TransportBufferIsolationStressTests : BaseTests
     }
 
     /// <summary>
-    /// Gives the flood a moment to end with the session (its calls fail then). Not awaited to the end: a call made
-    /// while the session is closing can stay pending (rarely, about 1 in 3000 server closes), which is not what this
-    /// test is about.
+    /// Waits for every call of the flood: they all end with the session. A call still pending after the session has
+    /// disconnected never completes, which is a failure (S30: a call registered while the session was closing stayed
+    /// pending forever, about 1 in 3000 server closes).
     /// </summary>
-    private static async Task WaitFlood(Task flood)
+    private static async Task WaitFlood(Task flood, string name, ConcurrentQueue<string> failures)
     {
-        await Task.WhenAny(flood, Task.Delay(TimeSpan.FromSeconds(1))).ConfigureAwait(false);
-        _ = flood.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        if (await Task.WhenAny(flood, Task.Delay(StepTimeout)).ConfigureAwait(false) != flood)
+        {
+            failures.Enqueue($"{name}: a call was still pending {StepTimeout.TotalSeconds:0} s after the disconnect.");
+            _ = flood.ContinueWith(static t => _ = t.Exception, TaskScheduler.Default);
+        }
     }
 
     private static byte[] CreateFloodPayload()

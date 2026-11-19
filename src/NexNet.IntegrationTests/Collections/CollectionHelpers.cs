@@ -23,7 +23,7 @@ public class WaitForActionHandler : IDisposable
     {
         _collection = collection;
         _targetCount = targetCount;
-        _tcs = new TaskCompletionSource();
+        _tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         
         _eventDisposable = collection.Changed.Subscribe(e =>
         {

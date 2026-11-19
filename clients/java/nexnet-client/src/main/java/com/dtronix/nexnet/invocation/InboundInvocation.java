@@ -28,6 +28,8 @@ final class InboundInvocation implements InvocationContext {
     private final AtomicBoolean resultClaimed = new AtomicBoolean();
     /** Set once a pipe argument opened and the invocation stopped counting against its pool; guarded by the runtime. */
     boolean slotReleased;
+    /** When it was queued, on the session clock; set before it is queued. */
+    long queuedNanos;
     private final List<NexusDuplexPipe> pipes = new ArrayList<>();
 
     InboundInvocation(InvocationRuntime runtime, int invocationId, int methodId, int flags, byte[] body,

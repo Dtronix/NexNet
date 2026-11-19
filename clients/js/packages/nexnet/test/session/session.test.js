@@ -302,6 +302,25 @@ describe('disconnect (§5.6)', () => {
     expect(afterHello(h)).toEqual([DisconnectReason.Graceful]);
   });
 
+  it('frames queued before the disconnect go out before the byte, also behind a write in flight (K25)', async () => {
+    const h = harness({ config: { disconnectDelay: 0 } });
+    await connected(h);
+    const s = /** @type {import('../../src/session/NexusSession.js').NexusSession} */ (h.client._session);
+    h.transport.holdWrites = true;
+    const inFlight = s.send(encodeHeaderOnly(MessageType.Ping));
+    await tick(); // its write is held
+    const credit = encodeFrame(MessageType.InvocationCredit, Uint8Array.of(0x91, 0x01));
+    const queued = [s.send(credit), s.send(credit)];
+    const done = s.disconnect();
+    h.transport.holdWrites = false;
+    h.transport.releaseWrites();
+    await done;
+    expect(await inFlight).toBe(true);
+    expect(await Promise.all(queued)).toEqual([true, true]);
+    expect(afterHello(h)).toEqual([MessageType.Ping, ...credit, ...credit, DisconnectReason.Graceful]);
+    expect(await s.send(credit)).toBe(false);
+  });
+
   it('a transport that ends is SocketError, without a byte', async () => {
     const h = harness();
     await connected(h);

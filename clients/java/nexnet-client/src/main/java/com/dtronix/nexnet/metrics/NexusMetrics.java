@@ -2,9 +2,11 @@ package com.dtronix.nexnet.metrics;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.Registration;
-import com.dtronix.nexnet.client.ConnectionState;
 import com.dtronix.nexnet.client.NexusClient;
+import com.dtronix.nexnet.invocation.InvocationRuntime;
+import com.dtronix.nexnet.pipes.PipeManager;
 import com.dtronix.nexnet.session.NexusSession;
+import com.dtronix.nexnet.session.SessionObservers;
 import com.dtronix.nexnet.session.SessionTimers;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -17,32 +19,40 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Client metrics with the C# instrument names and tags ({@link NexusInstruments}). Track clients with
- * {@link #track}; listeners ({@link NexusMetricsListener}) receive {@code nexnet.session.disconnects} and
- * {@code nexnet.session.duration} as sessions end, and {@link #collect} reads the observable instruments.
+ * {@link #track}; listeners ({@link NexusMetricsListener}) receive the event instruments (counters and histograms) as
+ * they happen, and {@link #collect} reads the observable instruments from the live sessions, as the C# observable
+ * instruments do: the send and receive paths pay nothing for metrics.
  *
- * <p>Reported from the client's public state: {@code nexnet.session.duration} starts when the session is seen
- * established (C# starts at the transport connection), and {@code nexnet.session.handshaking} counts clients that
- * are connecting. The transport, budget, invocation, pipe and large-message instruments are cataloged but not
- * reported until the session and invocation layers expose their counters.
+ * <p>A tracked client's sessions are counted from the moment their transport connects (the session starts) until
+ * they end, the handshake included: {@code nexnet.session.duration} runs from the transport connection, and a session
+ * that ends during the handshake is reported to {@code nexnet.session.disconnects} with
+ * {@code nexnet.session.phase=handshake}. The session, invocation and pipe layers report the other event instruments
+ * (pipe resets and refusals, invocation queue waits, pipe credit waits, large-message aborts) through the session's
+ * metrics hook. {@code nexnet.connection.rejections} and {@code nexnet.invocation.busy} are server-only, and a client
+ * never records {@code nexnet.invocation.credit_drops} (only a server's multi-session invocations drop calls for lack
+ * of credit). {@code nexnet.io.frames} and {@code nexnet.io.bytes} stay monotonic: the totals of ended sessions, and
+ * of clients no longer tracked, are kept.
  *
- * <p>Thread-safe.
+ * <p>Listeners are called synchronously where the event happens, which may be a connection's reader thread: keep them
+ * cheap. A listener that throws is ignored. Thread-safe.
  */
 public final class NexusMetrics implements AutoCloseable {
     private static final Object SHARED_LOCK = new Object();
     private static @Nullable NexusMetrics shared;
 
-    private final SessionTimers clock;
     private final CopyOnWriteArrayList<NexusMetricsListener> listeners = new CopyOnWriteArrayList<>();
     private final Map<NexusClient<?>, Tracked> clients = new IdentityHashMap<>();
+    /** Transport totals of ended sessions, by tag set; kept after untrack so the counters stay monotonic. */
+    private final Map<Map<String, String>, long[]> retired = new LinkedHashMap<>();
+    private @Nullable Registration observer;
 
     /** One tracked client. */
-    private final class Tracked {
+    private static final class Tracked {
         final NexusClient<?> client;
         final Map<String, String> tags;
-        @Nullable Registration stateRegistration;
+        /** The session being counted, from its start until it ends. */
         @Nullable NexusSession session;
-        long establishedNanos;
-        boolean detached;
+        @Nullable Registration sink;
 
         Tracked(NexusClient<?> client) {
             this.client = client;
@@ -53,21 +63,20 @@ public final class NexusMetrics implements AutoCloseable {
         }
     }
 
-    /** Creates an instance on the system clock. */
+    /** Creates an instance. */
     public NexusMetrics() {
-        this(SessionTimers.system());
     }
 
     /**
-     * Creates an instance.
+     * Creates an instance. Durations are measured on each session's own clock, so the clock given here is not used;
+     * the constructor is kept for compatibility.
      *
-     * @param clock the clock durations are measured on
+     * @param clock unused
      */
     public NexusMetrics(SessionTimers clock) {
         if (clock == null) {
             throw new NullPointerException("clock");
         }
-        this.clock = clock;
     }
 
     /**
@@ -99,7 +108,8 @@ public final class NexusMetrics implements AutoCloseable {
     }
 
     /**
-     * Starts reporting a client. Tracking a client twice is a no-op.
+     * Starts reporting a client. Tracking a client twice is a no-op. A session the client already has is counted from
+     * now on; its duration still runs from its transport connection.
      *
      * @param client the client
      * @return a registration that stops reporting it (same as {@link #untrack})
@@ -115,37 +125,40 @@ public final class NexusMetrics implements AutoCloseable {
             }
             tracked = new Tracked(client);
             clients.put(client, tracked);
-        }
-        MetricsCounters.SUBSCRIPTIONS.incrementAndGet();
-        tracked.stateRegistration = client.addStateListener(state -> {
-            if (state == ConnectionState.CONNECTED) {
-                onEstablished(tracked);
+            if (observer == null) {
+                observer = SessionObservers.add(this::onSessionStarted);
+                MetricsCounters.SUBSCRIPTIONS.incrementAndGet();
             }
-        });
-        onEstablished(tracked);
+        }
+        NexusSession current = client.session();
+        if (current != null) {
+            attach(tracked, current);
+        }
         return () -> untrack(client);
     }
 
     /**
-     * Stops reporting a client.
+     * Stops reporting a client. The transport totals of its sessions stay in {@code nexnet.io.*}.
      *
      * @param client the client
      */
     public void untrack(NexusClient<?> client) {
-        Tracked tracked;
+        Registration removeObserver = null;
         synchronized (clients) {
-            tracked = clients.remove(client);
+            Tracked tracked = clients.remove(client);
             if (tracked == null) {
                 return;
             }
-            tracked.detached = true;
-            tracked.session = null;
+            retireLocked(tracked);
+            if (clients.isEmpty() && observer != null) {
+                removeObserver = observer;
+                observer = null;
+            }
         }
-        Registration registration = tracked.stateRegistration;
-        if (registration != null) {
-            registration.close();
+        if (removeObserver != null) {
+            removeObserver.close();
+            MetricsCounters.SUBSCRIPTIONS.decrementAndGet();
         }
-        MetricsCounters.SUBSCRIPTIONS.decrementAndGet();
     }
 
     /**
@@ -160,7 +173,8 @@ public final class NexusMetrics implements AutoCloseable {
     }
 
     /**
-     * Reads the observable instruments: one measurement per instrument and tag set.
+     * Reads the observable instruments: one measurement per instrument and tag set (two for the instruments with a
+     * direction or an invocation pool).
      *
      * @param observer receives the measurements
      */
@@ -168,30 +182,117 @@ public final class NexusMetrics implements AutoCloseable {
         Map<Map<String, String>, long[]> sums = new LinkedHashMap<>();
         List<Tracked> snapshot;
         synchronized (clients) {
+            for (Map.Entry<Map<String, String>, long[]> entry : retired.entrySet()) {
+                long[] sum = sumFor(sums, entry.getKey());
+                for (int i = 0; i < 4; i++) {
+                    sum[IO_FRAMES_SENT + i] += entry.getValue()[i];
+                }
+            }
             snapshot = new ArrayList<>(clients.values());
+            for (Tracked tracked : snapshot) {
+                sumFor(sums, tracked.tags);
+            }
         }
         for (Tracked tracked : snapshot) {
-            long[] sum = sums.get(tracked.tags);
-            if (sum == null) {
-                sum = new long[2];
-                sums.put(tracked.tags, sum);
-            }
-            ConnectionState state = tracked.client.state();
             NexusSession session;
             synchronized (clients) {
                 session = tracked.session;
             }
-            if (session != null && !session.isClosing()) {
-                sum[0]++;
-            } else if (state == ConnectionState.CONNECTING || state == ConnectionState.RECONNECTING) {
-                sum[0]++;
-                sum[1]++;
+            if (session == null) {
+                continue;
+            }
+            long[] sum = sums.get(tracked.tags);
+            sum[IO_FRAMES_SENT] += session.framesSent();
+            sum[IO_BYTES_SENT] += session.bytesSent();
+            sum[IO_FRAMES_RECEIVED] += session.framesReceived();
+            sum[IO_BYTES_RECEIVED] += session.bytesReceived();
+            if (session.isClosing()) {
+                continue;
+            }
+            sum[ACTIVE]++;
+            if (!session.isEstablished()) {
+                sum[HANDSHAKING]++;
+            }
+            if (session.messageHandler() instanceof InvocationRuntime) {
+                InvocationRuntime runtime = (InvocationRuntime) session.messageHandler();
+                sum[BUDGET_RESERVED] += runtime.budget().reserved();
+                sum[BUDGET_LIMIT] += runtime.budget().limit();
+                sum[QUEUED] += runtime.queued(false);
+                sum[SEPARATE_QUEUED] += runtime.queued(true);
+                sum[EXECUTING] += runtime.executing(false);
+                sum[SEPARATE_EXECUTING] += runtime.executing(true);
+                sum[CREDIT_WAITS] += runtime.creditWaits();
+                sum[LARGE_INBOUND] += runtime.largeMessagesInbound();
+                sum[LARGE_OUTBOUND] += runtime.largeMessagesOutbound();
+                PipeManager pipes = runtime.pipes();
+                if (pipes != null) {
+                    int open = pipes.openPipes();
+                    sum[PIPES_OPEN] += open;
+                    sum[PIPE_WINDOW] += (long) open * pipes.options().pipeWindow();
+                }
             }
         }
         for (Map.Entry<Map<String, String>, long[]> entry : sums.entrySet()) {
-            observer.observe(NexusInstruments.SESSION_ACTIVE, entry.getValue()[0], entry.getKey());
-            observer.observe(NexusInstruments.SESSION_HANDSHAKING, entry.getValue()[1], entry.getKey());
+            Map<String, String> tags = entry.getKey();
+            long[] sum = entry.getValue();
+            Map<String, String> sent = with(tags, MetricTags.DIRECTION, "sent");
+            Map<String, String> received = with(tags, MetricTags.DIRECTION, "received");
+            Map<String, String> normal = with(tags, MetricTags.INVOCATION_POOL, "normal");
+            Map<String, String> separate = with(tags, MetricTags.INVOCATION_POOL, "separate");
+            observer.observe(NexusInstruments.SESSION_ACTIVE, sum[ACTIVE], tags);
+            observer.observe(NexusInstruments.SESSION_HANDSHAKING, sum[HANDSHAKING], tags);
+            observer.observe(NexusInstruments.IO_FRAMES, sum[IO_FRAMES_SENT], sent);
+            observer.observe(NexusInstruments.IO_FRAMES, sum[IO_FRAMES_RECEIVED], received);
+            observer.observe(NexusInstruments.IO_BYTES, sum[IO_BYTES_SENT], sent);
+            observer.observe(NexusInstruments.IO_BYTES, sum[IO_BYTES_RECEIVED], received);
+            observer.observe(NexusInstruments.BUDGET_RESERVED, sum[BUDGET_RESERVED], tags);
+            observer.observe(NexusInstruments.BUDGET_LIMIT, sum[BUDGET_LIMIT], tags);
+            observer.observe(NexusInstruments.PIPE_OPEN, sum[PIPES_OPEN], tags);
+            observer.observe(NexusInstruments.PIPE_WINDOW, sum[PIPE_WINDOW], tags);
+            observer.observe(NexusInstruments.INVOCATION_QUEUED, sum[QUEUED], normal);
+            observer.observe(NexusInstruments.INVOCATION_QUEUED, sum[SEPARATE_QUEUED], separate);
+            observer.observe(NexusInstruments.INVOCATION_EXECUTING, sum[EXECUTING], normal);
+            observer.observe(NexusInstruments.INVOCATION_EXECUTING, sum[SEPARATE_EXECUTING], separate);
+            observer.observe(NexusInstruments.INVOCATION_CREDIT_WAITS, sum[CREDIT_WAITS], tags);
+            observer.observe(NexusInstruments.LARGE_MESSAGE_IN_FLIGHT, sum[LARGE_INBOUND],
+                with(tags, MetricTags.DIRECTION, "inbound"));
+            observer.observe(NexusInstruments.LARGE_MESSAGE_IN_FLIGHT, sum[LARGE_OUTBOUND],
+                with(tags, MetricTags.DIRECTION, "outbound"));
         }
+    }
+
+    private static final int IO_FRAMES_SENT = 0;
+    private static final int IO_BYTES_SENT = 1;
+    private static final int IO_FRAMES_RECEIVED = 2;
+    private static final int IO_BYTES_RECEIVED = 3;
+    private static final int ACTIVE = 4;
+    private static final int HANDSHAKING = 5;
+    private static final int BUDGET_RESERVED = 6;
+    private static final int BUDGET_LIMIT = 7;
+    private static final int PIPES_OPEN = 8;
+    private static final int PIPE_WINDOW = 9;
+    private static final int QUEUED = 10;
+    private static final int SEPARATE_QUEUED = 11;
+    private static final int EXECUTING = 12;
+    private static final int SEPARATE_EXECUTING = 13;
+    private static final int CREDIT_WAITS = 14;
+    private static final int LARGE_INBOUND = 15;
+    private static final int LARGE_OUTBOUND = 16;
+    private static final int SUMS = 17;
+
+    private static long[] sumFor(Map<Map<String, String>, long[]> sums, Map<String, String> tags) {
+        long[] sum = sums.get(tags);
+        if (sum == null) {
+            sum = new long[SUMS];
+            sums.put(tags, sum);
+        }
+        return sum;
+    }
+
+    private static Map<String, String> with(Map<String, String> tags, String key, String value) {
+        Map<String, String> result = new LinkedHashMap<>(tags);
+        result.put(key, value);
+        return Collections.unmodifiableMap(result);
     }
 
     /** Stops tracking every client and removes every listener. */
@@ -207,41 +308,92 @@ public final class NexusMetrics implements AutoCloseable {
         listeners.clear();
     }
 
-    private void onEstablished(Tracked tracked) {
-        NexusSession session = tracked.client.session();
-        if (session == null) {
+    /** A session started (its transport connected): counted when it belongs to a tracked client. */
+    private void onSessionStarted(NexusSession session) {
+        Object owner = session.owner();
+        if (owner == null) {
             return;
         }
+        Tracked tracked;
         synchronized (clients) {
-            if (tracked.detached || tracked.session == session) {
+            tracked = clients.get(owner);
+        }
+        if (tracked != null) {
+            attach(tracked, session);
+        }
+    }
+
+    private void attach(Tracked tracked, NexusSession session) {
+        synchronized (clients) {
+            if (clients.get(tracked.client) != tracked || tracked.session == session) {
                 return;
             }
+            retireLocked(tracked);
             tracked.session = session;
-            tracked.establishedNanos = clock.nanoTime();
+            tracked.sink = session.addMetricsSink((instrument, value, extra) -> emit(instrument, value,
+                extra.isEmpty() ? tracked.tags : merge(tracked.tags, extra)));
+            MetricsCounters.SUBSCRIPTIONS.incrementAndGet();
         }
-        session.closed().whenComplete((reason, error) ->
+        session.closedInternal().whenComplete((reason, error) ->
             onEnded(tracked, session, reason == null ? DisconnectReason.SOCKET_ERROR : reason));
     }
 
+    /** The session ended: records its duration (from the transport connection) and its disconnect, in C# order. */
     private void onEnded(Tracked tracked, NexusSession session, DisconnectReason reason) {
-        double seconds;
         synchronized (clients) {
-            if (tracked.detached || tracked.session != session) {
+            if (tracked.session != session) {
                 return;
             }
-            tracked.session = null;
-            seconds = Math.max(0, clock.nanoTime() - tracked.establishedNanos) / 1_000_000_000.0;
+            retireLocked(tracked);
         }
+        double seconds = Math.max(0, session.nanoTime() - session.connectedNanos()) / 1_000_000_000.0;
         String reasonTag = MetricTags.disconnectReasonTag(reason);
-        Map<String, String> disconnectTags = new LinkedHashMap<>(tracked.tags);
-        disconnectTags.put(MetricTags.DISCONNECT_REASON, reasonTag);
-        Map<String, String> durationTags = Collections.unmodifiableMap(new LinkedHashMap<>(disconnectTags));
-        disconnectTags.put(MetricTags.PHASE, "established");
-        Map<String, String> countTags = Collections.unmodifiableMap(disconnectTags);
+        Map<String, String> durationTags = with(tracked.tags, MetricTags.DISCONNECT_REASON, reasonTag);
+        Map<String, String> countTags = with(durationTags, MetricTags.PHASE,
+            session.isEstablished() ? "established" : "handshake");
+        emit(NexusInstruments.SESSION_DURATION, seconds, durationTags);
+        emit(NexusInstruments.SESSION_DISCONNECTS, 1, countTags);
+    }
+
+    /** Stops counting the tracked session: detaches its sink and keeps its transport totals. */
+    private void retireLocked(Tracked tracked) {
+        NexusSession session = tracked.session;
+        if (session == null) {
+            return;
+        }
+        tracked.session = null;
+        Registration sink = tracked.sink;
+        tracked.sink = null;
+        if (sink != null) {
+            sink.close();
+            MetricsCounters.SUBSCRIPTIONS.decrementAndGet();
+        }
+        long[] totals = retired.get(tracked.tags);
+        if (totals == null) {
+            totals = new long[4];
+            retired.put(tracked.tags, totals);
+        }
+        totals[IO_FRAMES_SENT] += session.framesSent();
+        totals[IO_BYTES_SENT] += session.bytesSent();
+        totals[IO_FRAMES_RECEIVED] += session.framesReceived();
+        totals[IO_BYTES_RECEIVED] += session.bytesReceived();
+    }
+
+    private static Map<String, String> merge(Map<String, String> tags, Map<String, String> extra) {
+        Map<String, String> result = new LinkedHashMap<>(tags);
+        result.putAll(extra);
+        return Collections.unmodifiableMap(result);
+    }
+
+    private void emit(NexusInstrument instrument, double value, Map<String, String> tags) {
+        boolean counter = instrument.kind() == InstrumentKind.COUNTER;
         for (NexusMetricsListener listener : listeners) {
             try {
-                listener.add(NexusInstruments.SESSION_DISCONNECTS, 1, countTags);
-                listener.record(NexusInstruments.SESSION_DURATION, seconds, durationTags);
+                if (counter) {
+                    listener.add(instrument, (long) value, tags);
+                } else {
+                    listener.record(instrument, value, tags);
+                }
             } catch (RuntimeException ignored) {
                 // A listener must never break the client.
             }

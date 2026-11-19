@@ -1,10 +1,13 @@
+using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
 
 namespace NexNet.Generator.Targets.Java;
 
 /// <summary>
-/// The Java client target (<c>com.dtronix:nexnet-client</c>, Java 11 / Android API 24). Type and name mapping only;
-/// the emitters arrive with K03/K04/K11.
+/// The Java client target (<c>com.dtronix:nexnet-client</c>, Java 11 / Android API 24). Client emission writes one file
+/// per declared type into the configured package (<see cref="TypeEmitter"/>) and the formatter classes into its
+/// <c>formatters</c> sub-package (<see cref="FormatterEmitter"/>); proxies and client nexus bases arrive with K04,
+/// test scaffolding with K11.
 /// </summary>
 internal sealed class JavaTarget : TargetLanguageBase
 {
@@ -39,7 +42,7 @@ internal sealed class JavaTarget : TargetLanguageBase
     private JavaTarget()
     {
         Names = new NameMapper(Keywords, ObjectMethods);
-        Types = new JavaTypeMapper(this);
+        Types = new JavaTypeMapper(this, "");
     }
 
     public override string Id => "java";
@@ -93,6 +96,107 @@ internal sealed class JavaTarget : TargetLanguageBase
     public override IEnumerable<string> TypeFiles(TypeDeclIr type, TargetOptions options)
         => new[] { PackagePath(options) + TypeName(type) + ".java" };
 
+    /// <summary>The path of the formatter classes: <c>com/acme/formatters/</c>.</summary>
+    internal static string FormattersPath(TargetOptions options) => PackagePath(options) + FormatterEmitter.SubPackage + "/";
+
+    /// <summary>A type mapper that writes generated types fully qualified (<c>com.acme.Item</c>), for code outside the package.</summary>
+    internal ITypeMapper QualifiedTypes(string package) => new JavaTypeMapper(this, package + ".");
+
+    public override IEnumerable<TargetDiagnostic> Validate(NexusIr ir, ExportIr export, TargetOptions options)
+    {
+        var diagnostics = base.Validate(ir, export, options).ToList();
+
+        // The formatter classes refer to the type constants by simple name; a type with their name would shadow them.
+        foreach (var decl in TargetIrWalker.OwnedDecls(ir, export, Flag))
+        {
+            var name = TypeName(decl);
+            if (Array.IndexOf(FormatterEmitter.ReservedTypeNames, name) >= 0)
+            {
+                diagnostics.Add(new TargetDiagnostic(
+                    DiagnosticDescriptors.TargetNameCollision.Id,
+                    DisplayName,
+                    "type '" + decl.Id + "' maps to '" + name + "', which the generated formatter classes use",
+                    export.Location));
+            }
+        }
+
+        return diagnostics;
+    }
+
+    public override IEnumerable<GeneratedFile> Emit(NexusIr ir, TargetOptions options, EmitMode mode)
+    {
+        if (mode != EmitMode.Client)
+            return Array.Empty<GeneratedFile>();
+
+        var package = options.Get(PackageOption) ?? throw new InvalidOperationException("The java target requires a package (NEXNET045).");
+        var context = new JavaContext(this, ir, package);
+        var decls = TargetIrWalker.TargetDecls(ir, Flag).Select(d => d.Decl).ToArray();
+
+        var unionsOfCase = new Dictionary<string, List<UnionDeclIr>>(StringComparer.Ordinal);
+        foreach (var union in decls.OfType<UnionDeclIr>())
+        {
+            foreach (var unionCase in union.Cases)
+            {
+                if (!unionsOfCase.TryGetValue(unionCase.CaseDeclId, out var list))
+                    unionsOfCase[unionCase.CaseDeclId] = list = new List<UnionDeclIr>();
+                list.Add(union);
+            }
+        }
+
+        var files = new List<GeneratedFile>();
+        foreach (var decl in decls)
+            files.Add(new GeneratedFile(TypeFiles(decl, options).Single(), TypeEmitter.Emit(context, decl, unionsOfCase)));
+
+        files.AddRange(FormatterEmitter.Emit(context, decls, UserFormatters(ir, decls), FormattersPath(options)));
+        return files;
+    }
+
+    /// <summary>The native formatters (D12) of every external type the Java code serializes, by formatter class.</summary>
+    private IReadOnlyList<FormatterEmitter.UserFormatterRef> UserFormatters(NexusIr ir, IReadOnlyList<TypeDeclIr> decls)
+    {
+        var found = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
+        void Visit(TypeRef? type)
+        {
+            if (type == null)
+                return;
+            if (type.Kind == TypeRefKind.External && NativeFormatter(type) is { } formatter)
+            {
+                if (!found.TryGetValue(formatter, out var clrTypes))
+                    found[formatter] = clrTypes = new SortedSet<string>(StringComparer.Ordinal);
+                clrTypes.Add(type.Clr ?? "?");
+            }
+
+            foreach (var arg in type.Args)
+                Visit(arg);
+        }
+
+        foreach (var decl in decls.OfType<ObjectDeclIr>())
+        {
+            foreach (var member in decl.Members)
+                Visit(member.Type);
+        }
+
+        foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
+        {
+            foreach (var api in new[] { export.ServerApi, export.ClientApi })
+            {
+                foreach (var method in api.Methods)
+                {
+                    Visit(method.ReturnType);
+                    Visit(method.PipeType);
+                    foreach (var param in method.Params)
+                        Visit(param.Type);
+                }
+
+                foreach (var collection in api.Collections)
+                    Visit(collection.Item);
+            }
+        }
+
+        return found.Select(f => new FormatterEmitter.UserFormatterRef(f.Key, f.Value.ToArray())).ToArray();
+    }
+
     private static string PackagePath(TargetOptions options)
     {
         var package = options.Get(PackageOption);
@@ -118,8 +222,15 @@ internal sealed class JavaTarget : TargetLanguageBase
     {
         private const string Rt = RuntimePackage + ".";
         private readonly JavaTarget _target;
+        private readonly string _declPrefix;
 
-        public JavaTypeMapper(JavaTarget target) => _target = target;
+        /// <param name="target">The target.</param>
+        /// <param name="declPrefix">Written before the names of generated types: "" or <c>com.acme.</c>.</param>
+        public JavaTypeMapper(JavaTarget target, string declPrefix)
+        {
+            _target = target;
+            _declPrefix = declPrefix;
+        }
 
         public TargetType Map(TypeRef type, TypeScope scope)
         {
@@ -167,7 +278,7 @@ internal sealed class JavaTarget : TargetLanguageBase
                     if (decl == null)
                         return TargetType.NotSupported("the declared type '" + type.DeclId + "' is not in the IR");
                     // Generated classes (objects, unions, open enum classes) have value equals/hashCode.
-                    var name = _target.TypeName(decl);
+                    var name = _declPrefix + _target.TypeName(decl);
                     return new TargetType(args.Length == 0 ? name : Generic(name), true);
                 }
                 case TypeRefKind.TypeParam:
