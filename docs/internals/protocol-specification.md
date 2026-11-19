@@ -1175,6 +1175,9 @@ QUIC is a C# transport only; no other client language implements it. It is descr
   unset or an IP address.
 - The client opens **one bidirectional stream**, and the server accepts the first inbound stream. That stream is
   the NexNet stream; no other stream is used.
+- **Connect errors** follow §13.1, including a failure to open the stream: the C# client closes the connection and
+  throws `TransportException` (`ConnectionTimeout` when the open exceeds `ConnectionTimeout`, otherwise the
+  error mapped from the `QuicError`).
 - Closing: the connection is closed with application error code 0. Aborted streams and connections use error codes
   `0x0A` (stream) and `0x0B` (connection).
 
@@ -1224,7 +1227,7 @@ Connection: Upgrade
 Upgrade: nexnet-httpsockets
 ```
 
-The server may add other headers (for example `Date` and `Server`); a client must ignore them. A client should
+The server may add other headers (for example `Date` and `Server`); a client must ignore them. A client must
 check that the status is `101`, and may check that `Upgrade` is `nexnet-httpsockets`.
 
 **Bytes after the response headers belong to the NexNet session.** The response headers end with the first
@@ -1242,9 +1245,11 @@ Any status other than `101` means the upgrade failed. The server checks, in orde
 | `401` | `AspEnableAuthentication` is on and ASP.NET authentication failed | `AuthenticationError` |
 | `500` | Server error | `InternalError` |
 | other, typically `404` | Path not mapped, the request is not an HttpSocket request, or the NexNet server is not running; the request falls through to the rest of the ASP.NET pipeline | a connect failure (`InternalError` in the C# client) |
+| a `2xx` | Not an upgrade (for example a proxy or another application answering `200`); the body is not a NexNet stream | `ProtocolError` |
 
 Clients in other languages must map `401` and `403` to their authentication error, and `500` to their internal
-error. The C# client does not reject a `2xx` status other than `101`; other clients must.
+error. Every client must reject a non-error status other than `101` (a `2xx` included) and never read its body as
+the session stream.
 
 #### Origin check
 
@@ -1253,7 +1258,7 @@ the allowed `Origin` values, for example `https://app.example.com`.
 
 - Empty (the default) or a `*` entry allows every origin.
 - A request without `Origin` is always allowed.
-- The comparison is ordinal against the entries lower-cased, so the request's `Origin` must be lower case to match.
+- The comparison is case-insensitive against the whole value, as in §13.7.
 - A rejected request is answered `403` before authentication runs.
 
 #### Query-string token
@@ -1330,8 +1335,9 @@ tell an authentication failure from any other.
 #### Data
 
 - **Binary messages only.** Each side sends NexNet bytes in binary messages (opcode `0x2`, with continuation frames
-  as RFC 6455 allows). A side must not send text messages. The C# receiver does not check the opcode, so a text
-  message would be read as stream bytes.
+  as RFC 6455 allows). A side must not send text messages. A receiver that gets a text message drops its payload
+  (it is never part of the NexNet stream), starts the close handshake with code **1003** (Unsupported Data) and ends
+  the session.
 - **Message boundaries carry no meaning.** The receiver appends the payload of every data message, in order, to the
   NexNet stream. A NexNet frame may span several messages, and a message may hold several frames or parts of them.
   The C# sender writes each batch of flushed bytes as one message, of whatever size the batch has.
