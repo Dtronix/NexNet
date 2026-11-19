@@ -5,6 +5,16 @@ junit = "5.14.4"
 jspecify = "1.0.1"
 animalsniffer = "1.28"
 android-signature = "7.0_r2"
+# Optional modules (K13).
+kotlin = "2.4.21"
+kotlinx-coroutines = "1.11.0"
+okhttp = "5.5.1"
+micrometer = "1.17.2"
+agp = "9.5.0"
+androidx-lifecycle = "2.11.0"
+androidx-annotation = "1.11.0"
+androidx-test-runner = "1.7.0"
+androidx-test-ext-junit = "1.3.0"
 
 [libraries]
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -15,3 +25,24 @@ android-api24-signature = { module = "net.sf.androidscents.signature:android-api
 
 # Build-logic dependency: the Animal Sniffer signature checker (used by the AnimalSnifferCheck task).
 animalsniffer = { module = "org.codehaus.mojo:animal-sniffer", version.ref = "animalsniffer" }
+
+# nexnet-client-kotlin
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
+
+# nexnet-client-okhttp
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version.ref = "okhttp" }
+
+# nexnet-client-micrometer
+micrometer-core = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
+
+# nexnet-client-android
+androidx-lifecycle-process = { module = "androidx.lifecycle:lifecycle-process", version.ref = "androidx-lifecycle" }
+androidx-annotation = { module = "androidx.annotation:annotation", version.ref = "androidx-annotation" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidx-test-runner" }
+androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-ext-junit" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+android-library = { id = "com.android.library", version.ref = "agp" }
