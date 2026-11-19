@@ -95,9 +95,14 @@ internal class HttpSocketTransport : ITransport
                 .ConfigureAwait(false);
 
             // Only 101 Switching Protocols opens the session. An error status maps by its code; any other status
-            // (a 2xx or 3xx) did not upgrade the connection, so its body is not a NexNet stream.
+            // (a 2xx or 3xx) did not upgrade the connection, so its body is not a NexNet stream. Redirects are
+            // never followed (the handler has AllowAutoRedirect off).
             if (response.StatusCode != HttpStatusCode.SwitchingProtocols)
             {
+                if ((int)response.StatusCode is >= 300 and < 400)
+                    throw new TransportException(TransportError.ProtocolError,
+                        $"HttpSocket upgrade failed: the server answered with redirect {(int)response.StatusCode}; redirects are not followed.", null);
+
                 response.EnsureSuccessStatusCode();
                 throw new TransportException(TransportError.ProtocolError,
                     $"HttpSocket upgrade failed: the server answered {(int)response.StatusCode} instead of 101 Switching Protocols.", null);
