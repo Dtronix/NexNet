@@ -78,6 +78,18 @@ internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
 
     public long Id => Session.Id;
 
+    /// <summary>
+    /// Most messages a client's buffer holds. A client that falls this far behind is closed.
+    /// </summary>
+    internal const int BufferCapacity = 1000;
+
+    private volatile bool _bufferOverflowed;
+
+    /// <summary>
+    /// True once a write to the buffer failed because it was full: the client missed a message.
+    /// </summary>
+    public bool BufferOverflowed => _bufferOverflowed;
+
     public NexusBroadcastSession(INexusDuplexPipe pipe, 
         INexusChannelWriter<TUnion>? writer,
         INexusSession session)
@@ -89,7 +101,7 @@ internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
         Session = session;
         // Use bounded channel to prevent memory exhaustion from slow consumers
         MessageBuffer = Channel.CreateBounded<INexusCollectionBroadcasterMessageWrapper<TUnion>>(
-            new BoundedChannelOptions(1000)
+            new BoundedChannelOptions(BufferCapacity)
             {
                 SingleReader = true,
                 SingleWriter = false, // May have multiple writers in broadcast scenarios
@@ -109,13 +121,19 @@ internal class NexusBroadcastSession<TUnion> : INexusBroadcastSession<TUnion>
 
     public bool BufferTryWrite(INexusCollectionBroadcasterMessageWrapper<TUnion> message)
     {
-        return MessageBuffer.Writer.TryWrite(message);
+        if (MessageBuffer.Writer.TryWrite(message))
+            return true;
+
+        _bufferOverflowed = true;
+        return false;
     }
 
     public IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TUnion>> BufferRead(CancellationToken ct = default)
     {
         return MessageBuffer.Reader.ReadAllAsync(ct);
-    }    public ValueTask CompletePipe() => Pipe.CompleteAsync();
+    }
+
+    public ValueTask CompletePipe() => Pipe.CompleteAsync();
 
     public ValueTask<bool> SendAsync(TUnion message, CancellationToken ct = default)
     {
