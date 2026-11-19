@@ -196,7 +196,7 @@ describe('client snapshot', () => {
     h.sendInvocation(2, 0, 0, null);
     h.sendInvocation(10, 1, 0, null);
     h.sendInvocation(11, 1, 0, null);
-    const body = encodeInvocation(30, 0, 0, pack(bigArgs(100_000)));
+    const body = encodeInvocation(30, 0, 0, pack(/** @type {any} */ (bigArgs(100_000))));
     h.sendStart({ invocationId: 30, kind: LargeMessageKind.Argument, innerType: MessageType.Invocation, totalLength: body.length });
     h.sendChunk(30, LargeMessageKind.Argument, body.subarray(0, 50_000));
     await tick();
@@ -403,7 +403,7 @@ describe('metrics hooks', () => {
     const h = await connectedHarness({ config: { sessionBudget: 20 * 1024 * 1024 } });
     const { m, of } = meter();
     m.track(h.client);
-    const body = encodeInvocation(9, 0, 0, pack(bigArgs(100_000)));
+    const body = encodeInvocation(9, 0, 0, pack(/** @type {any} */ (bigArgs(100_000))));
 
     // Inbound, cancelled by the sender.
     h.sendStart({ invocationId: 9, kind: LargeMessageKind.Argument, innerType: MessageType.Invocation, totalLength: body.length });
