@@ -51,7 +51,15 @@ public sealed class GoldenSchemas
     /// Builds the schemas from a generated schema set (full metadata names), renamed to short ids: the type name without
     /// namespace or generic arity.
     /// </summary>
-    public static GoldenSchemas Create(SchemaSet generated, IEnumerable<(string Name, string Note)> externals, IEnumerable<MessageSchema> messages)
+    /// <param name="generated">The interop zoo, as the generator describes it.</param>
+    /// <param name="externals">The types with a custom formatter, with a note on their layout.</param>
+    /// <param name="messages">The protocol message bodies.</param>
+    /// <param name="unions">Protocol unions whose cases are message bodies (the collection-sync items).</param>
+    public static GoldenSchemas Create(
+        SchemaSet generated,
+        IEnumerable<(string Name, string Note)> externals,
+        IEnumerable<MessageSchema> messages,
+        IEnumerable<(string Id, IReadOnlyList<(ushort Tag, string CaseId)> Cases)>? unions = null)
     {
         var schemas = new GoldenSchemas();
         foreach (var (name, note) in externals)
@@ -71,6 +79,9 @@ public sealed class GoldenSchemas
             };
             schemas._decls.Add(id, renamed);
         }
+
+        foreach (var (id, cases) in unions ?? [])
+            schemas._decls.Add(id, new UnionSchema(id, 0, cases.Select(c => new UnionCaseSchema(c.Tag, c.CaseId)).OrderBy(c => c.Tag).ToArray()));
 
         schemas.AddMessages(messages);
         return schemas;
