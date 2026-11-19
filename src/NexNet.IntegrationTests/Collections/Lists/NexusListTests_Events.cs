@@ -419,9 +419,13 @@ internal class NexusListTests_Events : NexusCollectionBaseTests
         var (_, client, _) = await ConnectServerAndClient(type);
         using var eventReg = client.Proxy.IntListBi.WaitForEvent(NexusCollectionChangedAction.Reset, 3);
 
-        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
-        await client.Proxy.IntListBi.DisableAsync().Timeout(1);
-        await client.Proxy.IntListBi.EnableAsync().Timeout(1);
+        // Each step is a pipe opened or closed in round trips. With 1 s bounds this test failed on QUIC in parallel
+        // gates, where the load, not the code, sets how long a step takes. The re-enable must succeed (not be refused while the first pipe is still being freed), or
+        // only two resets arrive and the wait below times out without saying why.
+        await Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(TestTimeouts.CollectionEnable)).IsTrue();
+        await client.Proxy.IntListBi.DisableAsync().Timeout(TestTimeouts.CollectionEnable);
+        await Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(TestTimeouts.CollectionEnable)).IsTrue()
+            .Because("The re-enable was refused.");
 
         await eventReg.Wait();
 
