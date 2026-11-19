@@ -5,6 +5,7 @@ import { NexusClient } from '../../src/client/NexusClient.js';
 import { NodeNexusClient } from '../../src/contract/node.js';
 import { getSessionCounters } from '../../src/session/diagnostics.js';
 import { decodeClientGreeting } from '../../src/session/wire.js';
+import { encodePreamble } from '../../src/session/frames.js';
 import { LoopbackTransport } from './support/LoopbackTransport.js';
 import { TestNexus, TestProxy, connected, createHarness, serverHello, tick } from './support/harness.js';
 
@@ -154,8 +155,36 @@ describe('authenticate (F05)', () => {
     expect(r.state).toBe(ConnectionResultState.Exception);
     expect(r.disconnectReason).toBe(DisconnectReason.Authentication);
     expect(r.error).toBeInstanceOf(NexusTransportError);
+    expect(r.error).toMatchObject({ reason: DisconnectReason.Authentication, transportError: 'AuthenticationError' });
     expect(/** @type {AbortSignal} */ (/** @type {unknown} */ (seen)).aborted).toBe(true);
     expect(h.factoryCalls.length).toBe(0);
+  });
+
+  it('a server that refuses the token fails connect() with AuthenticationError (C# TransportException parity)', async () => {
+    const h = harness({ config: { authenticate: () => undefined } });
+    const result = h.client.tryConnect();
+    await tick();
+    h.transport.serverSend(Uint8Array.of(...encodePreamble(), DisconnectReason.Authentication));
+    expect(await result).toEqual({ success: false, state: ConnectionResultState.Disconnected, disconnectReason: DisconnectReason.Authentication });
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+
+    const rejected = h.client.connect();
+    await tick();
+    h.transport.serverSend(Uint8Array.of(...encodePreamble(), DisconnectReason.Authentication));
+    await expect(rejected).rejects.toMatchObject({
+      name: 'NexusTransportError', message: 'Authentication failed.', reason: DisconnectReason.Authentication, transportError: 'AuthenticationError',
+    });
+  });
+
+  it('another handshake refusal is not an AuthenticationError', async () => {
+    const h = harness();
+    const rejected = h.client.connect();
+    await tick();
+    h.transport.serverSend(Uint8Array.of(...encodePreamble(), DisconnectReason.RateLimited));
+    const error = await rejected.then(() => null, (e) => e);
+    expect(error).toBeInstanceOf(NexusTransportError);
+    expect(error.reason).toBe(DisconnectReason.RateLimited);
+    expect(error.transportError).toBeUndefined();
   });
 
   it('a non-Uint8Array token is an error', async () => {
