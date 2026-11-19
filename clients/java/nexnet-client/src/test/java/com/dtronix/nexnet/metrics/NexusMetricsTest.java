@@ -8,8 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.client.NexusClient;
-import com.dtronix.nexnet.diagnostics.Diagnostics;
-import com.dtronix.nexnet.diagnostics.NexusCounters;
 import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
 import com.dtronix.nexnet.session.ManualTimers;
@@ -34,7 +32,6 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(30)
 class NexusMetricsTest {
-    private final NexusCounters baseline = Diagnostics.counters();
     private final List<NexusClient<TestProxy>> clients = new ArrayList<>();
     private final NexusMetrics metrics = new NexusMetrics(new ManualTimers());
 
@@ -44,7 +41,7 @@ class NexusMetricsTest {
         for (NexusClient<TestProxy> client : clients) {
             client.close();
         }
-        TestClients.awaitBaseline(baseline);
+        TestClients.awaitIdle();
     }
 
     static String metricsDoc() throws IOException {

@@ -33,7 +33,6 @@ import org.junit.jupiter.api.Timeout;
 
 @Timeout(30)
 class DiagnosticsTest {
-    private final NexusCounters baseline = Diagnostics.counters();
     /** The records of tests/golden/snapshot-fields.json, in file order. */
     static Map<String, List<String>> goldenFields() throws IOException {
         String json = new String(Files.readAllBytes(Paths.get(System.getProperty("nexnet.golden"),
@@ -130,18 +129,18 @@ class DiagnosticsTest {
             assertTrue(snapshot.isEstablished());
             assertTrue(snapshot.pipes().isEmpty());
             assertFalse(Diagnostics.isIdle());
-            assertEquals(baseline.sessions() + 1, Diagnostics.counters().sessions());
+            assertEquals(1, Diagnostics.counters().sessions());
             client.disconnect().get(5, TimeUnit.SECONDS);
             assertNull(Diagnostics.snapshot(client));
         } finally {
             client.close();
         }
-        TestClients.awaitBaseline(baseline);
+        TestClients.awaitIdle();
     }
 
     @Test
     void registeredSourcesAddToTheCounters() throws Exception {
-        TestClients.awaitBaseline(baseline);
+        TestClients.awaitIdle();
         Registration registration = Diagnostics.registerCounterSource(new CounterSource() {
             @Override
             public int pipes() {
@@ -159,13 +158,13 @@ class DiagnosticsTest {
             }
         });
         NexusCounters counters = Diagnostics.counters();
-        assertEquals(baseline.pipes() + 2, counters.pipes());
-        assertEquals(baseline.timers() + 3, counters.timers());
-        assertEquals(baseline.subscriptions() + 4, counters.subscriptions());
+        assertEquals(2, counters.pipes());
+        assertEquals(3, counters.timers());
+        assertEquals(4, counters.subscriptions());
         assertFalse(counters.isIdle());
-        assertTrue(counters.toString().contains("pipes=" + (baseline.pipes() + 2)));
+        assertTrue(counters.toString().contains("pipes=2"));
         registration.close();
-        assertEquals(baseline.toString(), Diagnostics.counters().toString());
+        assertTrue(Diagnostics.isIdle());
         assertThrows(NullPointerException.class, () -> Diagnostics.registerCounterSource(null));
     }
 }
