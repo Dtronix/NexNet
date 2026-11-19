@@ -38,13 +38,15 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 | `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` | K01 (bases); K07 (`ProxyInvoker`, `InvocationContext` implementations) |
 | `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` | K05 (session), K06 (transports) |
 | `com.dtronix.nexnet.logging` | `NexusLogger`, `NexusLogLevel` (section 6.2) | K05 |
-| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`. Runtime-internal (section 6.5) | K05 |
+| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`, `ProgressProbe` (K17), `SessionObserver`, `SessionObservers`, `SessionMetricsSink` (K20). Runtime-internal (sections 6.5, 6.9 and 6.10) | K05 |
 | `com.dtronix.nexnet.transport` | `Transport`, `Transport.Connector`, `NexusConnector`, `TlsTrust` (sections 6.3, 6.4, 6.8) | K06 |
 | `com.dtronix.nexnet.invocation` | `InvocationRuntime`, `ClientProxyInvoker`, `InvocationOptions`, `NexusRemoteError`, `RemoteExceptionDetail`, `InvocationCounters`, `SessionBudget`, `PayloadCodec` (section 6.7) | K07 |
 | `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` | K08 |
 | `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState`, `NexusCollectionMode` (C-4), `NexusListClient<T>` (the runtime implementation) | K09 |
 | `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) | K01 (done); K10 wires it |
 | `com.dtronix.nexnet.pool` | `NexusClientPool`, `NexusClientPoolConfig`, `RentedNexusClient` | K10 |
+| `com.dtronix.nexnet.diagnostics` | `Diagnostics` (leak-audit counters, `snapshot(client)`), `NexusSessionSnapshot`, `NexusInvocationSnapshot`, `NexusBudgetSnapshot`, `NexusPipeSnapshot`, `NexusLargeMessageSnapshot` and the other snapshot types (section 6.10) | K10, K20 |
+| `com.dtronix.nexnet.metrics` | `NexusMetrics`, `NexusMetricsListener`, `MeasurementObserver`, `NexusInstruments`, `NexusInstrument`, `InstrumentKind`, `MetricTags` (section 6.10) | K10, K20 |
 
 The value types and tuples live in the root package because the generator's type mapper (G03, `JavaTarget`) emits
 `com.dtronix.nexnet.NexusDateTime`, `com.dtronix.nexnet.Tuple2` and so on. C# `decimal` maps to
@@ -68,8 +70,8 @@ public interface Formatter<T> {
 }
 ```
 
-- K03 emits `public static final Formatter<X>` constants (`<package>/Formatters.java` or per-type); K02 provides the
-  built-ins. Formatters are stateless and thread-safe. Generic types get factories (`BoxFormatter.of(Formatter<T>)`).
+- K02 provides the built-ins (`com.dtronix.nexnet.serialization.Formatters`). Formatters are stateless and
+  thread-safe. The generated formatters are described in section 3.1.1.
 - `MsgPackWriter`: `writeNil`, `writeBoolean`, `writeInt(long)`, `writeUInt64(long bits)`, `writeFloat`,
   `writeDouble`, `writeString`, `writeBinary`, `writeArrayHeader`, `writeMapHeader`, `writeExtHeader(type, length)`,
   `writeRaw`, `size`, `toByteArray`.
@@ -77,6 +79,35 @@ public interface Formatter<T> {
   `readUInt64`, `readFloat`, `readDouble`, `readString`, `readBinary`, `readArrayHeader`, `readMapHeader`,
   `readExtHeader`, `lastExtType`, `readRaw`, `skip`, `remaining`. Malformed input throws `MsgPackException`.
 - K02 finalizes this API (it owns the formatter contract) and may add methods.
+
+### 3.1.1 Generated types and formatters (K03)
+
+The Java emitter writes one file per declared .NET type, and the formatters in a sub-package:
+
+| File | Contents |
+|---|---|
+| `<package>/<Type>.java` | One flat package (`NexNetJavaPackage`). Nested .NET types are flattened to `Outer_Inner` |
+| `<package>/formatters/Formatters.java` | A `public static final Formatter<X>` constant per non-generic type, named as the type (`Formatters.InteropItem`), and a factory per generic type (`Formatters.InteropBox(Formatter<T>)`). Abstract objects have none |
+| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists (D12): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
+
+`Formatters`, `UserFormatters` and `formatters` are reserved type names (NEXNET041).
+
+Type shapes:
+
+- **Objects** (`[NexusObject]` classes, structs and records) are mutable classes: private fields, a no-argument
+  constructor, an all-members constructor in key order, and `getX`/`setX` accessors. Every object has value
+  `equals`, `hashCode` and `toString`, so it works in a `Set`, as a `Map` key and with a list's `remove`.
+  Structs are `final`. A non-generic `[NexusObject]` base class is extended; a generic one has its members copied.
+- **Members** that may be null are annotated JSpecify `@Nullable`. A field starts at its C# initializer when the IR
+  records a literal one, otherwise at C# `default(T)`.
+- **Wire form.** An object is a MessagePack array with nil in the key gaps. Reading accepts fewer elements (an older
+  peer: the missing members are `default(T)`) and more (a newer peer: skipped). Struct types refuse null both ways.
+- **Enums** are open value classes, not Java `enum`s: a constant per member, `value()`, and `of(v)` for any value
+  of the underlying type. `[Flags]` enums add `or`, `and` and `has`.
+- **Unions** over an abstract class are an abstract class, and unions over an interface are an interface. Case
+  classes extend or implement them. A union is written as `[tag, value]`.
+- **User-formatter types.** Members whose .NET type has a custom `[NexusFormatter]` are typed `Object`. They are
+  read and written through `UserFormatters`.
 
 ### 3.2 Handshake
 
