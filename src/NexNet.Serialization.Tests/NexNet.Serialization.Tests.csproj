@@ -20,6 +20,8 @@
   <ItemGroup>
     <ProjectReference Include="..\NexNet\NexNet.csproj" />
     <ProjectReference Include="..\NexNet.Fuzz\NexNet.Fuzz.csproj" />
+    <!-- Golden vectors (H03): GoldenReplayTests replays tests/golden and checks the files are current. -->
+    <ProjectReference Include="..\NexNet.GoldenVectors\NexNet.GoldenVectors.csproj" />
     <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
   </ItemGroup>
 

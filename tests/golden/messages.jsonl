@@ -1,0 +1,31 @@
+{"id":"msg.client-greeting","type":"ClientGreeting","mode":"both","note":"maxMessageSize 4 MiB and invocationCredits 32 are the defaults","value":["v1",300,-5,"AQI=",4194304,32],"hex":"96a27631cd012cfbc4020102ce0040000020"}
+{"id":"msg.client-greeting.no-version","type":"ClientGreeting","mode":"both","note":"an unversioned server and no token: nil and an empty bin","value":[null,0,0,"",4194304,32],"hex":"96c00000c400ce0040000020"}
+{"id":"msg.client-greeting-reconnection","type":"ClientGreetingReconnection","mode":"both","value":["v1",300,-5,"AQI=",65536,1],"hex":"96a27631cd012cfbc4020102ce0001000001"}
+{"id":"msg.client-greeting.nil-token","type":"ClientGreeting","mode":"decode","note":"a nil token is no token","value":["v1",300,-5,"",4194304,32],"hex":"96a27631cd012cfbc0ce0040000020"}
+{"id":"msg.server-greeting","type":"ServerGreeting","mode":"both","value":[1,4294967296,65536,128,30000],"hex":"9501cf0000000100000000ce00010000cc80cd7530"}
+{"id":"msg.server-greeting.idle-max","type":"ServerGreeting","mode":"both","value":[1,1,65536,1,4294967295],"hex":"950101ce0001000001ceffffffff"}
+{"id":"msg.server-greeting.older-server","type":"ServerGreeting","mode":"decode","note":"no idleTimeoutMs: not advertised (0)","value":[1,1,65536,128,0],"hex":"940101ce00010000cc80"}
+{"id":"msg.server-greeting.newer-server","type":"ServerGreeting","mode":"decode","note":"fields after idleTimeoutMs are skipped","value":[1,1,65536,128,6000],"hex":"970101ce00010000cc80cd1770a361626392c0c3"}
+{"id":"msg.invocation","type":"Invocation","mode":"both","note":"arguments [5, \"x\"]","value":[7,300,0,"kgWheA=="],"hex":"9407cd012c009205a178"}
+{"id":"msg.invocation.no-arguments","type":"Invocation","mode":"both","note":"no serialized parameters: an empty array (0x90)","value":[1,2,0,"kA=="],"hex":"9401020090"}
+{"id":"msg.invocation.ignore-return","type":"Invocation","mode":"both","note":"IgnoreReturn: the id has no meaning and is 0","value":[0,65535,1,"kaFh"],"hex":"9400cdffff0191a161"}
+{"id":"msg.invocation.duplex-pipe","type":"Invocation","mode":"both","note":"IgnoreReturn | DuplexPipe; the pipe parameter is its initial pipe id","value":[0,4,3,"kQE="],"hex":"940004039101"}
+{"id":"msg.result.none","type":"InvocationResult","mode":"both","note":"CompletedResult without a result (a void method)","value":[3,1],"hex":"920301"}
+{"id":"msg.result.nil","type":"InvocationResult","mode":"both","note":"a nil result: null, as nil is everywhere in the value model","value":[3,1,null],"hex":"930301c0"}
+{"id":"msg.result.value","type":"InvocationResult","mode":"both","note":"the result 1000","value":[65535,1,"zQPo"],"hex":"93cdffff01cd03e8"}
+{"id":"msg.result.exception","type":"InvocationResult","mode":"both","note":"Exception with a RemoteErrorDetail [500, \"Foo\", \"bar\"]","value":[3,2,"k80B9KNGb2+jYmFy"],"hex":"93030293cd01f4a3466f6fa3626172"}
+{"id":"msg.result.unauthorized","type":"InvocationResult","mode":"both","value":[3,3],"hex":"920303"}
+{"id":"msg.result.canceled","type":"InvocationResult","mode":"both","value":[3,4],"hex":"920304"}
+{"id":"msg.cancellation","type":"InvocationCancellation","mode":"both","value":[1000],"hex":"91cd03e8"}
+{"id":"msg.cancellation.max","type":"InvocationCancellation","mode":"both","value":[65535],"hex":"91cdffff"}
+{"id":"msg.credit","type":"InvocationCredit","mode":"both","value":[1],"hex":"9101"}
+{"id":"msg.credit.max","type":"InvocationCredit","mode":"both","value":[65535],"hex":"91cdffff"}
+{"id":"msg.message-start.argument","type":"MessageStart","mode":"both","note":"a large argument: the inner Invocation body is 70000 bytes","value":[5,0,110,70000],"hex":"9405006ece00011170"}
+{"id":"msg.message-start.result","type":"MessageStart","mode":"both","value":[6,1,112,65536],"hex":"94060170ce00010000"}
+{"id":"msg.message-abort.cancelled","type":"MessageAbort","mode":"both","value":[5,0,2],"hex":"93050002"}
+{"id":"msg.message-abort.ack","type":"MessageAbort","mode":"both","value":[5,1,3],"hex":"93050103"}
+{"id":"msg.pipe-state.ready","type":"DuplexPipeUpdateState","mode":"both","note":"pipe id client 1, server 2: 1 | 2 << 8; Ready grants a 256 KiB window","value":[513,2,262144],"hex":"93cd020102ce00040000"}
+{"id":"msg.pipe-state.refused","type":"DuplexPipeUpdateState","mode":"both","value":[1,3,0],"hex":"93010300"}
+{"id":"msg.pipe-state.complete","type":"DuplexPipeUpdateState","mode":"both","value":[513,0,0],"hex":"93cd02010000"}
+{"id":"msg.error-detail","type":"RemoteErrorDetail","mode":"both","value":[500,"System.InvalidOperationException","boom"],"hex":"93cd01f4d92053797374656d2e496e76616c69644f7065726174696f6e457863657074696f6ea4626f6f6d"}
+{"id":"msg.error-detail.empty","type":"RemoteErrorDetail","mode":"both","value":[null,null,null],"hex":"93c0c0c0"}

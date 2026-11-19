@@ -1,0 +1,26 @@
+{"id":"ext78.sbyte.empty","type":"sbyte[]","mode":"both","note":"an empty array is fixext1: d4 4e <kind>","value":[],"hex":"d44e01"}
+{"id":"ext78.sbyte.fixext2","type":"sbyte[]","mode":"both","value":[-1],"hex":"d54e01ff"}
+{"id":"ext78.sbyte.ext8","type":"sbyte[]","mode":"both","note":"3 data bytes: no fixext fits","value":[-128,127],"hex":"c7034e01807f"}
+{"id":"ext78.sbyte.fixext4","type":"sbyte[]","mode":"both","value":[-128,0,127],"hex":"d64e0180007f"}
+{"id":"ext78.sbyte.fixext8","type":"sbyte[]","mode":"both","value":[1,2,3,4,5,6,7],"hex":"d74e0101020304050607"}
+{"id":"ext78.sbyte.fixext16","type":"sbyte[]","mode":"both","value":[-1,-2,-3,-4,-5,-6,-7,-8,-9,-10,-11,-12,-13,-14,-15],"hex":"d84e01fffefdfcfbfaf9f8f7f6f5f4f3f2f1"}
+{"id":"ext78.short","type":"short[]","mode":"both","value":[-1,32767,-32768],"hex":"c7074e02ffffff7f0080"}
+{"id":"ext78.ushort","type":"ushort[]","mode":"both","value":[1,65535],"hex":"c7054e030100ffff"}
+{"id":"ext78.int.empty","type":"int[]","mode":"both","value":[],"hex":"d44e04"}
+{"id":"ext78.int","type":"int[]","mode":"both","value":[-2147483648,0,2147483647],"hex":"c70d4e040000008000000000ffffff7f"}
+{"id":"ext78.int.ext16","type":"int[]","mode":"both","note":"257 data bytes: ext16","value":[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63],"hex":"c801014e04000000000100000002000000030000000400000005000000060000000700000008000000090000000a0000000b0000000c0000000d0000000e0000000f000000100000001100000012000000130000001400000015000000160000001700000018000000190000001a0000001b0000001c0000001d0000001e0000001f000000200000002100000022000000230000002400000025000000260000002700000028000000290000002a0000002b0000002c0000002d0000002e0000002f000000300000003100000032000000330000003400000035000000360000003700000038000000390000003a0000003b0000003c0000003d0000003e0000003f000000"}
+{"id":"ext78.int.nil","type":"int[]","mode":"both","value":null,"hex":"c0"}
+{"id":"ext78.uint","type":"uint[]","mode":"both","value":[1,4294967295],"hex":"c7094e0501000000ffffffff"}
+{"id":"ext78.long","type":"long[]","mode":"both","value":["-9223372036854775808",-1,"9223372036854775807"],"hex":"c7194e060000000000000080ffffffffffffffffffffffffffffff7f"}
+{"id":"ext78.ulong","type":"ulong[]","mode":"both","value":[0,"9223372036854775808","18446744073709551615"],"hex":"c7194e0700000000000000000000000000000080ffffffffffffffff"}
+{"id":"ext78.float","type":"float[]","mode":"both","value":["f32:0x3FC00000","f32:0x80000000","f32:0xFFC00000","f32:0xFF800000","f32:0x00000001"],"hex":"c7154e080000c03f000000800000c0ff000080ff01000000"}
+{"id":"ext78.double","type":"double[]","mode":"both","value":["f64:0x3FF8000000000000","f64:0x8000000000000000","f64:0xFFF8000000000000","f64:0x7FF0000000000000","f64:0x0000000000000001"],"hex":"c7294e09000000000000f83f0000000000000080000000000000f8ff000000000000f07f0100000000000000"}
+{"id":"ext78.char","type":"char[]","mode":"both","note":"any UTF-16 code unit, including a lone surrogate","value":[97,23383,55296,65535],"hex":"c7094e0a6100575b00d8ffff"}
+{"id":"ext78.half","type":"half[]","mode":"both","note":"raw binary16 bits","value":["f16:0x3C00","f16:0xC100","f16:0xFE00","f16:0x7C00","f16:0x0001"],"hex":"c70b4e0b003c00c100fe007c0100"}
+{"id":"ext78.int-list","type":"List<int>","mode":"both","note":"List<T> of an ext 78 element is ext 78 too","value":[1,-2,3],"hex":"c70d4e0401000000feffffff03000000"}
+{"id":"ext78.long-memory","type":"Memory<long>","mode":"both","value":[1,"-9223372036854775808"],"hex":"c7114e0601000000000000000000000000000080"}
+{"id":"ext78.double-read-only-memory","type":"ReadOnlyMemory<double>","mode":"both","value":["f64:0x3FD0000000000000","f64:0xC020000000000000"],"hex":"c7114e09000000000000d03f00000000000020c0"}
+{"id":"ext78.int.empty.from-ext8","type":"int[]","mode":"decode","value":[],"hex":"c7014e04"}
+{"id":"ext78.int.from-ext16","type":"int[]","mode":"decode","value":[1],"hex":"c800054e0401000000"}
+{"id":"ext78.int.from-ext32","type":"int[]","mode":"decode","value":[1],"hex":"c9000000054e0401000000"}
+{"id":"ext78.sbyte.from-ext8","type":"sbyte[]","mode":"decode","note":"fixext2 data in an ext8 header","value":[-1],"hex":"c7024e01ff"}
