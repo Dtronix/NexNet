@@ -128,7 +128,8 @@ export const TransportKinds = Object.freeze(['webSocket', 'httpSocket', 'tcp', '
  * @property {number} [pingInterval] Milliseconds between pings; must be a positive integer. Default: a third of the
  *   server's advertised `idleTimeoutMs`, at least 1,000, or 10,000 when the server advertises none. A value set here
  *   is used as is; if it is not below the advertised idle timeout, the client logs a warning on connect.
- * @property {number} [disconnectDelay]
+ * @property {number} [disconnectDelay] Milliseconds between writing the disconnect byte and closing the transport.
+ *   Default: 200. Waited in real time whatever `clock` is (C# and Java do the same).
  * @property {number} [maxConcurrentConnectionInvocations]
  * @property {number} [maxSeparatePoolInvocations]
  * @property {number} [invocationQueueWarningThreshold]

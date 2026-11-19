@@ -320,7 +320,9 @@ connects, on every connect and reconnect, bounded by the handshake timeout; if i
 `DisconnectReason.Authentication` and no connection is opened (F05 semantics).
 
 The optional `clock` property (C# `ConfigBase.Time`) is the time source of every client and session timer: the
-connection, handshake and authenticate timeouts, the keepalive, the idle and progress timeouts and the disconnect delay.
+connection, handshake and authenticate timeouts, the keepalive, and the idle and progress timeouts. The disconnect delay
+and the wait for the disconnect byte run on real time whatever the clock (as C# and Java), so a fake clock never holds a
+disconnect (J26).
 It is a `Clock` (`src/session/clock.js`): `now()` in milliseconds on a monotonic clock, plus `setTimeout`,
 `clearTimeout`, `setInterval` and `clearInterval` with opaque handles. The default, `systemClock`, is
 `performance.now()` and the global timers. Tests inject a manual clock (`test/session/support/ManualClock.js`).
