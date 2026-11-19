@@ -13,8 +13,17 @@ namespace NexNet.Interop.Hosts;
 /// creates remote clients for its rows.
 /// </summary>
 /// <remarks>
+/// <para>
+/// The pool is an <see cref="IAsyncDiscoveryInitializer"/>: TUnit initializes it while it discovers the tests, before it
+/// builds the <see cref="ClientMatrixAttribute"/> rows of the class that takes it. So the transports and capabilities each
+/// host reports in its hello (<see cref="ClientLanguages.Register"/>) decide which rows are skipped. Every test class with
+/// remote rows takes the pool, so its rows are built after the hosts are probed.
+/// </para>
+/// <para>
 /// A language whose host cannot start (not built, stale schema, crashed at launch) gets a driver that fails every row
-/// with the reason and the command that rebuilds it.
+/// with the reason and the command that rebuilds it; its rows keep the built-in capabilities of
+/// <see cref="ClientLanguages"/>.
+/// </para>
 /// </remarks>
 /// <example>
 /// <code>
@@ -22,8 +31,10 @@ namespace NexNet.Interop.Hosts;
 /// public class InvocationTests(LanguageHostPool hosts) { … }
 /// </code>
 /// </example>
-public sealed class LanguageHostPool : IAsyncInitializer, IAsyncDisposable
+public sealed class LanguageHostPool : IAsyncDiscoveryInitializer, IAsyncDisposable
 {
+    private readonly object _initializeGate = new();
+    private Task? _initialization;
     private readonly ConcurrentDictionary<string, LanguageHost> _hosts = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Exception> _failures = new(StringComparer.Ordinal);
     private readonly IReadOnlyList<string> _languages;
@@ -67,8 +78,17 @@ public sealed class LanguageHostPool : IAsyncInitializer, IAsyncDisposable
     /// <summary>Why a language's host could not start, by language.</summary>
     public IReadOnlyDictionary<string, Exception> Failures => _failures;
 
-    /// <summary>Launches every host; failures are recorded and surface on the rows of their language.</summary>
-    public async Task InitializeAsync()
+    /// <summary>
+    /// Launches every host and registers what each reports; failures are recorded and surface on the rows of their
+    /// language. Runs once: later calls return the first call's task.
+    /// </summary>
+    public Task InitializeAsync()
+    {
+        lock (_initializeGate)
+            return _initialization ??= InitializeCoreAsync();
+    }
+
+    private async Task InitializeCoreAsync()
     {
         Current = this;
         if (_languages.Count == 0)
