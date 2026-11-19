@@ -82,7 +82,10 @@ public sealed class ClientMatrixAttribute : DataSourceGeneratorAttribute<ClientT
 
     /// <summary>Tags the discovered row with its <see cref="LanguageProperty"/> and <see cref="TransportProperty"/>.</summary>
     /// <param name="context">The discovered test.</param>
-    public ValueTask OnTestDiscovered(DiscoveredTestContext context)
+    public ValueTask OnTestDiscovered(DiscoveredTestContext context) => TagDiscoveredRow(context);
+
+    /// <summary>Adds the <see cref="LanguageProperty"/> and <see cref="TransportProperty"/> of the row's target.</summary>
+    internal static ValueTask TagDiscoveredRow(DiscoveredTestContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         var target = FindTarget(context.TestDetails.TestMethodArguments) ?? FindTarget(context.TestDetails.TestClassArguments);
