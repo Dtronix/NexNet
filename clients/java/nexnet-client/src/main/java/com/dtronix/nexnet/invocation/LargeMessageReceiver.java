@@ -7,10 +7,13 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reassembles the large arguments and results the server streams to this client (protocol specification section 6).
- * Called on the reader thread only, except {@link #clear()}. A stream is keyed by (invocation id, kind); its total
+ * Called on the reader thread only, except {@link #clear()} and {@link #findStalled(long, long)}. A stream is keyed by (invocation id, kind); its total
  * length is reserved from the session budget at {@code MessageStart} and memory is allocated as chunks arrive. A
  * stream that does not fit the budget is refused with {@code MessageAbort(Busy)} and its chunks are discarded.
  */
@@ -38,14 +41,16 @@ final class LargeMessageReceiver {
     private static final class Stream {
         final int total;
         final int kind;
-        int received;
+        volatile int received;
+        volatile long lastProgress;
         boolean aborting;
         boolean reserved;
         byte[] data = new byte[0];
 
-        Stream(int total, int kind) {
+        Stream(int total, int kind, long now) {
             this.total = total;
             this.kind = kind;
+            this.lastProgress = now;
         }
 
         void append(byte[] payload) {
@@ -61,12 +66,14 @@ final class LargeMessageReceiver {
     private final Owner owner;
     private final SessionBudget budget;
     private final int maxMessageSize;
+    private final LongSupplier clock;
     private final Map<Integer, Stream> streams = new HashMap<>();
 
-    LargeMessageReceiver(Owner owner, SessionBudget budget, int maxMessageSize) {
+    LargeMessageReceiver(Owner owner, SessionBudget budget, int maxMessageSize, LongSupplier clock) {
         this.owner = owner;
         this.budget = budget;
         this.maxMessageSize = maxMessageSize;
+        this.clock = clock;
     }
 
     private static int key(int invocationId, int kind) {
@@ -103,7 +110,7 @@ final class LargeMessageReceiver {
             throw new SessionProtocolException(DisconnectReason.FLOW_CONTROL,
                 "A large argument received without invocation credit.");
         }
-        stream = new Stream((int) totalLength, kind);
+        stream = new Stream((int) totalLength, kind, clock.getAsLong());
         if (budget.tryReserve(totalLength)) {
             stream.reserved = true;
         } else {
@@ -133,6 +140,7 @@ final class LargeMessageReceiver {
         if ((long) stream.received + payload.length > stream.total) {
             throw protocolError("A chunk past the end of the stream of invocation " + invocationId + ".");
         }
+        stream.lastProgress = clock.getAsLong();
         if (stream.aborting) {
             // Discarded, up to the total length; then the key closes.
             stream.received += payload.length;
@@ -174,6 +182,29 @@ final class LargeMessageReceiver {
             owner.returnInvocationCredit();
         }
         close(stream);
+    }
+
+    /**
+     * Describes a stream that received nothing for longer than the timeout (specification section 9), in the words
+     * of the C# {@code FindStalledStream}; null when none did. Called on the timer thread.
+     *
+     * @param nowNanos the session clock
+     * @param timeoutNanos the progress timeout
+     * @return the description, or null
+     */
+    @Nullable String findStalled(long nowNanos, long timeoutNanos) {
+        synchronized (streams) {
+            for (Map.Entry<Integer, Stream> entry : streams.entrySet()) {
+                Stream stream = entry.getValue();
+                long idle = nowNanos - stream.lastProgress;
+                if (idle > timeoutNanos) {
+                    return "inbound large " + (stream.kind == InvocationRuntime.KIND_ARGUMENT ? "argument" : "result")
+                        + " of invocation " + (entry.getKey() & 0xFFFF) + ", " + stream.received + " of "
+                        + stream.total + " bytes, no data for " + TimeUnit.NANOSECONDS.toMillis(idle) + " ms";
+                }
+            }
+        }
+        return null;
     }
 
     /** The streams being received. */

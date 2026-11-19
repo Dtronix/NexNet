@@ -139,6 +139,38 @@ class NexusSessionTest {
     }
 
     @Test
+    void aProgressProbeReportingAStallDisconnectsWithStalled() throws Exception {
+        NexusSession session = start(builder().progressTimeoutMillis(1_000));
+        AtomicReference<long[]> asked = new AtomicReference<>();
+        session.addProgressProbe((now, timeout) -> {
+            asked.set(new long[] {now, timeout});
+            return now - session.nanoTime() == 0 && timeout == TimeUnit.SECONDS.toNanos(1) ? "test stall" : null;
+        });
+        transport.server().readHandshake();
+        transport.server().write(FakeServer.PREAMBLE);
+        transport.server().write(GoldenFrames.get("server-greeting"));
+        session.ready().get(5, TimeUnit.SECONDS);
+        assertEquals(1_000, session.progressTimeoutMillis());
+
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED, closedWith(session));
+        assertEquals(TimeUnit.SECONDS.toNanos(1), asked.get()[1]);
+        assertEquals(37, transport.server().readByte());
+    }
+
+    @Test
+    void probesReportingNothingLetTheSessionPing() throws Exception {
+        NexusSession session = connected();
+        session.addProgressProbe((now, timeout) -> null);
+        session.addProgressProbe((now, timeout) -> {
+            throw new IllegalStateException("a failing probe is logged and skipped");
+        });
+        timers.advance(10_000);
+        assertEquals(MessageTypes.PING, transport.server().readByte());
+        assertTrue(session.isConnected());
+    }
+
+    @Test
     void anExplicitIntervalIsUsedAsIs() throws Exception {
         List<String> warnings = new CopyOnWriteArrayList<>();
         NexusSession session = connectedWithIdle(builder().pingIntervalMillis(1_000).logger(warningsInto(warnings)),

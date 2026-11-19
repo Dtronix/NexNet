@@ -52,7 +52,12 @@ final class OutboundCall<R> extends CompletableFuture<R> {
 
     /** Completes the call canceled without running the cancellation logic (the session ended, or nothing was sent). */
     void completeCanceled(String message) {
-        super.completeExceptionally(new CancellationException(message));
+        completeCanceled(new CancellationException(message));
+    }
+
+    /** Completes the call with this cancellation, which may carry a cause (amendment C-2). */
+    void completeCanceled(CancellationException canceled) {
+        super.completeExceptionally(canceled);
     }
 
     /**

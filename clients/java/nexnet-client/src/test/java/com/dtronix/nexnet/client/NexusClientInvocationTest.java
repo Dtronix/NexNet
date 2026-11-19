@@ -9,6 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusRuntime;
+import com.dtronix.nexnet.invocation.InvocationCounters;
+import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import com.dtronix.nexnet.session.FakeServer;
 import com.dtronix.nexnet.session.Frame;
@@ -80,13 +83,19 @@ class NexusClientInvocationTest {
     private final List<LoopbackTransport> transports = new CopyOnWriteArrayList<>();
     private final List<NexusClient<TestProxy>> clients = new ArrayList<>();
 
+    private final ManualTimers timers = new ManualTimers();
+
     private NexusClient<TestProxy> client() {
-        NexusClient<TestProxy> client = NexusClient.create(ClientConfig.tcp("h", 1).build(), HANDSHAKE, nexus,
+        return client(ClientConfig.tcp("h", 1).build());
+    }
+
+    private NexusClient<TestProxy> client(ClientConfig clientConfig) {
+        NexusClient<TestProxy> client = NexusClient.create(clientConfig, HANDSHAKE, nexus,
             TestProxy::new, (config, timeout) -> {
                 LoopbackTransport transport = new LoopbackTransport();
                 transports.add(transport);
                 return transport;
-            }, new ManualTimers(), SessionOptions.defaults().withDisconnectDelayMillis(0));
+            }, timers, SessionOptions.defaults().withDisconnectDelayMillis(0));
         clients.add(client);
         return client;
     }
@@ -157,5 +166,42 @@ class NexusClientInvocationTest {
         ExecutionException e = assertThrows(ExecutionException.class,
             () -> client.proxy().ping().get(5, TimeUnit.SECONDS));
         assertInstanceOf(IllegalStateException.class, e.getCause());
+    }
+
+    @Test
+    void invocationOptionsFromTheConfigReachTheRuntime() throws Exception {
+        NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).invocationOptions(
+            InvocationOptions.defaults().withRemoteExceptionDetail(RemoteExceptionDetail.TYPE_AND_MESSAGE)).build());
+        nexus.connectedGate.countDown();
+        CompletableFuture<Void> connected = client.connect();
+        FakeServer server = accept();
+        connected.get(5, TimeUnit.SECONDS);
+        server.write(Frame.of(MessageTypes.INVOCATION, new byte[] {(byte) 0x94, 7, 0, 0, (byte) 0x90}).bytes());
+        byte[] frame = server.readFrame();
+        if (frame[0] == MessageTypes.INVOCATION_CREDIT) {
+            frame = server.readFrame();
+        }
+        // An Exception result [7, 2, detail] that, unlike the default (None, [7, 2]), carries the type and message.
+        assertEquals(MessageTypes.INVOCATION_RESULT, frame[0]);
+        assertArrayEquals(new byte[] {(byte) 0x93, 7, 2, (byte) 0x93}, java.util.Arrays.copyOfRange(frame, 3, 7));
+        String text = new String(frame, java.nio.charset.StandardCharsets.ISO_8859_1);
+        assertTrue(text.contains("Exception"), text);
+    }
+
+    @Test
+    void theProgressTimeoutFromTheConfigReachesTheSession() throws Exception {
+        NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).progressTimeoutMillis(1_000).build());
+        nexus.connectedGate.countDown();
+        CompletableFuture<Void> connected = client.connect();
+        FakeServer server = accept();
+        connected.get(5, TimeUnit.SECONDS);
+        int before = InvocationCounters.largeMessages();
+        // MessageStart [id 7, kind Argument, inner Invocation, 200000 bytes]; then no data.
+        server.write(Frame.of(MessageTypes.MESSAGE_START, new byte[] {(byte) 0x94, 7, 0, MessageTypes.INVOCATION,
+            (byte) 0xCE, 0, 3, 0x0D, 0x40}).bytes());
+        NexusClientTest.waitFor(() -> InvocationCounters.largeMessages() > before);
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED.code(), server.readByte());
+        client.disconnected().get(5, TimeUnit.SECONDS);
     }
 }

@@ -1,5 +1,6 @@
 package com.dtronix.nexnet.client;
 
+import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import com.dtronix.nexnet.transport.NexusConnector;
@@ -45,6 +46,8 @@ public final class ClientConfig {
      * 10 seconds, as in C#.
      */
     public static final int DEFAULT_PING_INTERVAL_MILLIS = 10_000;
+    /** Default {@link #progressTimeoutMillis()}: 30 seconds, as in C# ({@code ConfigBase.ProgressTimeout}). */
+    public static final int DEFAULT_PROGRESS_TIMEOUT_MILLIS = 30_000;
 
     private final TransportKind transport;
     private final @Nullable URI uri;
@@ -64,6 +67,8 @@ public final class ClientConfig {
     private final int handshakeTimeoutMillis;
     private final int timeoutMillis;
     private final @Nullable Integer pingIntervalMillis;
+    private final int progressTimeoutMillis;
+    private final InvocationOptions invocationOptions;
 
     private ClientConfig(Builder b) {
         this.transport = b.transport;
@@ -84,6 +89,8 @@ public final class ClientConfig {
         this.handshakeTimeoutMillis = b.handshakeTimeoutMillis;
         this.timeoutMillis = b.timeoutMillis;
         this.pingIntervalMillis = b.pingIntervalMillis;
+        this.progressTimeoutMillis = b.progressTimeoutMillis;
+        this.invocationOptions = b.invocationOptions;
     }
 
     /**
@@ -318,6 +325,26 @@ public final class ClientConfig {
         return pingIntervalMillis;
     }
 
+    /**
+     * How long a large argument or result being received may get no data before the session disconnects with
+     * {@code Stalled} (protocol specification section 9). Checked on every keepalive tick.
+     *
+     * @return milliseconds
+     */
+    public int progressTimeoutMillis() {
+        return progressTimeoutMillis;
+    }
+
+    /**
+     * The invocation limits of each session: concurrent invocations, separate-pool invocations, the session receive
+     * budget and how much of an exception is sent to the server.
+     *
+     * @return the options; {@link InvocationOptions#defaults()} unless set
+     */
+    public InvocationOptions invocationOptions() {
+        return invocationOptions;
+    }
+
     private static URI requireScheme(URI uri, String plain, String secure) {
         String scheme = uri.getScheme();
         if (scheme == null || !(scheme.equalsIgnoreCase(plain) || scheme.equalsIgnoreCase(secure))) {
@@ -370,6 +397,8 @@ public final class ClientConfig {
         private int handshakeTimeoutMillis = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS;
         private int timeoutMillis = DEFAULT_TIMEOUT_MILLIS;
         private @Nullable Integer pingIntervalMillis;
+        private int progressTimeoutMillis = DEFAULT_PROGRESS_TIMEOUT_MILLIS;
+        private InvocationOptions invocationOptions = InvocationOptions.defaults();
 
         private Builder(TransportKind transport, @Nullable URI uri, @Nullable String host, int port) {
             this.transport = transport;
@@ -569,6 +598,35 @@ public final class ClientConfig {
          */
         public Builder pingIntervalMillis(@Nullable Integer millis) {
             this.pingIntervalMillis = millis == null ? null : requirePositive(millis, "pingIntervalMillis");
+            return this;
+        }
+
+        /**
+         * Sets the progress timeout.
+         *
+         * @param millis milliseconds, 50 to 600000 (as in C#)
+         * @return this builder
+         */
+        public Builder progressTimeoutMillis(int millis) {
+            if (millis < 50 || millis > 600_000) {
+                throw new IllegalArgumentException("progressTimeoutMillis must be 50 to 600000: " + millis);
+            }
+            this.progressTimeoutMillis = millis;
+            return this;
+        }
+
+        /**
+         * Sets the invocation limits, for example
+         * {@code InvocationOptions.defaults().withMaxConcurrentInvocations(8)}.
+         *
+         * @param options the options
+         * @return this builder
+         */
+        public Builder invocationOptions(InvocationOptions options) {
+            if (options == null) {
+                throw new NullPointerException("options");
+            }
+            this.invocationOptions = options;
             return this;
         }
 
