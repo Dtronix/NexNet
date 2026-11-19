@@ -136,10 +136,12 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
 
         await disabled.Timeout(2);
         Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
+        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
 
         // Enabling again resynchronizes.
         Assert.That(await list.EnableAsync().Timeout(1), Is.True);
         await list.ReadyTask.Timeout(1);
+        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected));
         Assert.That(list, Is.EquivalentTo([5]));
     }
 
@@ -161,6 +163,7 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         FailNextProcess(list);
         await AssertThrows<InvalidOperationException>(() => list.EnableAsync().AsTask().Timeout(1));
         Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly")), Is.True);
+        Assert.That(list.State, Is.EqualTo(NexusCollectionState.Disconnected));
 
         // A retry is a fresh enable.
         Assert.That(await list.EnableAsync().Timeout(1), Is.True);
