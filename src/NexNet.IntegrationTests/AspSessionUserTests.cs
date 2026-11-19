@@ -301,7 +301,8 @@ internal class AspSessionUserTests(LanguageHostPool hosts) : BaseAspTests
         await using var client = await Harness.CreateClientAsync(target, CreateClientSpec(type));
 
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        await client.ConnectAsync().Timeout(T(2));
+        // TcpTls row: a TLS handshake in the loaded parallel suite can take more than 2 s (see TestTimeouts.Connect).
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
 
         // During authentication and once connected.
         await Assert.That(await authenticated.Task.Timeout(T(1))).IsNull();
