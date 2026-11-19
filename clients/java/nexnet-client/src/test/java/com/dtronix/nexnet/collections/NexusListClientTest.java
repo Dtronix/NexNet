@@ -111,8 +111,12 @@ class NexusListClientTest {
         if (peer != null) {
             peer.close();
         }
-        callbacks.shutdownNow();
-        invocations.shutdownNow();
+        // Queued completions run first (a closed session fails its pending calls on the callback executor), then the
+        // pools end. shutdownNow() would drop them, and the dropped calls would stay pending for the leak audit.
+        callbacks.shutdown();
+        invocations.shutdown();
+        assertTrue(callbacks.awaitTermination(5, TimeUnit.SECONDS), "callbacks ended");
+        assertTrue(invocations.awaitTermination(5, TimeUnit.SECONDS), "invocations ended");
     }
 
     <T> NexusListClient<T> list(NexusCollectionMode mode, TestFormat<T> format) {

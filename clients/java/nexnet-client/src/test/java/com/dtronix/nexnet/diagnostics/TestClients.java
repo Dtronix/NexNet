@@ -104,17 +104,49 @@ public final class TestClients {
     }
 
     /**
-     * Waits up to 5 s for every leak-audit counter to return to 0 (D23). The counters are process-wide, so every test
-     * that opens sessions, pipes or invocations must leave them at 0.
+     * What earlier tests leaked and never released, per counter (in {@link #values} order); all 0 while no test has
+     * leaked. A leak fails the test that left it, once: it is then added here, so later tests are audited against it
+     * instead of all failing on the same leak.
+     */
+    private static final int[] LEAKED = new int[9];
+
+    /**
+     * Waits up to 5 s for every leak-audit counter to return to 0 (D23), or to what earlier tests already leaked. The
+     * counters are process-wide, so every test that opens sessions, pipes or invocations must leave them at 0. A leak
+     * fails the calling test once and is then tolerated, so it does not cascade into every following test.
      */
     public static void awaitIdle() throws InterruptedException {
         long deadline = System.currentTimeMillis() + 5_000;
-        while (!Diagnostics.isIdle()) {
-            if (System.currentTimeMillis() > deadline) {
-                throw new AssertionError("Counters " + Diagnostics.counters() + " did not return to 0.");
+        synchronized (LEAKED) {
+            while (true) {
+                NexusCounters counters = Diagnostics.counters();
+                int[] now = values(counters);
+                boolean idle = true;
+                for (int i = 0; i < now.length; i++) {
+                    if (now[i] > LEAKED[i]) {
+                        idle = false;
+                        break;
+                    }
+                }
+                if (idle) {
+                    // A leak an earlier test reported that has since been released is audited again.
+                    System.arraycopy(now, 0, LEAKED, 0, now.length);
+                    return;
+                }
+                if (System.currentTimeMillis() > deadline) {
+                    for (int i = 0; i < now.length; i++) {
+                        LEAKED[i] = Math.max(LEAKED[i], now[i]);
+                    }
+                    throw new AssertionError("Counters " + counters + " did not return to 0.");
+                }
+                Thread.sleep(5);
             }
-            Thread.sleep(5);
         }
+    }
+
+    private static int[] values(NexusCounters c) {
+        return new int[] {c.sessions(), c.threads(), c.pendingWrites(), c.timers(), c.pendingInvocations(),
+            c.largeMessages(), c.pipes(), c.subscriptions(), c.pooledClients()};
     }
 
     static byte[] concat(byte[] a, byte[] b) {

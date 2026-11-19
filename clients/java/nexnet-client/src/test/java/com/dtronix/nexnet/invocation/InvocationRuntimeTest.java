@@ -161,8 +161,12 @@ class InvocationRuntimeTest {
             s.abort(DisconnectReason.GRACEFUL);
             assertTrue(s.awaitThreads(), "threads ended");
         }
-        callbacks.shutdownNow();
-        invocations.shutdownNow();
+        // Queued completions run first (a closed session fails its pending calls on the callback executor), then the
+        // pools end. shutdownNow() would drop them, and the dropped calls would stay pending for the leak audit.
+        callbacks.shutdown();
+        invocations.shutdown();
+        assertTrue(callbacks.awaitTermination(5, TimeUnit.SECONDS), "callbacks ended");
+        assertTrue(invocations.awaitTermination(5, TimeUnit.SECONDS), "invocations ended");
     }
 
     private static <T> T await(CompletableFuture<T> future) throws Exception {
@@ -860,5 +864,6 @@ class InvocationRuntimeTest {
         // The next tick (20 s) finds the stream stalled.
         timers.advance(10_000);
         assertEquals(DisconnectReason.STALLED, closedWith());
+        assertInstanceOf(CancellationException.class, failure(call));
     }
 }
