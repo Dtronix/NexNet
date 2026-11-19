@@ -804,6 +804,7 @@ server never sends a nil item, and the client never sends one.
   request, that client's copy has Ack set and every other copy has it clear
   (`Pipes/Broadcast/NexusBroadcastConnectionManager.cs:242-261` and `:59-61`).
 - A change made by server code (source session null) is sent without Ack to everyone.
+- A Noop goes to the originator only, always with Ack set (§12.6).
 
 **Version.** The version is an `int32` counter of applied changes.
 - The server's list starts at version 0. Every applied change, Clear included, adds 1
@@ -843,17 +844,18 @@ ResetStart yet), **Resetting**, **Ready**.
 | Disabled | enable | open the pipe, invoke the collection (§12.1) | Opening | `NexusBroadcastClient.cs:61-90` |
 | Opening | `Ready` | start reading items | AwaitingReset | `NexusBroadcastClient.cs:90-137` |
 | Opening | `Refused`, or the session ends | enable fails | Disabled | `NexusBroadcastClient.cs:90` |
-| AwaitingReset | ResetStart(`version`, `totalValues`) | empty the value buffer (capacity `totalValues`) and the change buffer; remember `version` | Resetting | `NexusListClient.cs:52-62` |
-| AwaitingReset | change (tags 3–8) | buffer it, as in Resetting (see the note below) | AwaitingReset | — |
-| Resetting | ResetValues(`values`) | append `values` to the value buffer | Resetting | `NexusListClient.cs:81-92` |
+| AwaitingReset | ResetStart(`version`, `totalValues`) | A negative `totalValues` is a protocol error (§12.8). Otherwise start an empty value buffer, keep the changes buffered so far, and remember `version` and `totalValues` | Resetting | `NexusListClient.cs:62-81` |
+| AwaitingReset | change (tags 3–8) | buffer it, as in Resetting (see the note below) | AwaitingReset | `NexusListClient.cs:132-138` |
+| Resetting | ResetValues(`values`) | append `values` to the value buffer. More values in total than `totalValues` is a protocol error (§12.8) | Resetting | `NexusListClient.cs:109-129` |
 | Resetting | change (tags 3–8) | append it to the change buffer | Resetting | `NexusListClient.cs:95-100` |
-| Resetting | ResetStart | protocol error (§12.8) | Resetting | `NexusListClient.cs:53-57` |
+| Resetting | ResetStart | protocol error (§12.8) | Disabled | `NexusListClient.cs:63-67` |
+| Resetting | ResetComplete, value count ≠ `totalValues` | protocol error (§12.8) | Disabled | `NexusListClient.cs:90-95` |
 | Resetting | ResetComplete | 1. Replace the list with the value buffer; version = the ResetStart version. 2. Process the change buffer in order with the Ready rules (stale changes are dropped). 3. Raise `Reset`, then `Ready`. 4. Complete enable with success | Ready | `NexusListClient.cs:64-79`, `:144-188`; `NexusBroadcastClient.cs:195-203` |
 | Ready | change with `version` > 0 and ≤ current | drop it (stale rule, §12.5). Nothing is raised | Ready | `NexusListClient.cs:111-116` |
 | Ready | Clear, Insert, Replace, Move, Remove | validate (below), apply, set version, raise the change event; if Ack, complete the pending request with `true` | Ready | `NexusListClient.cs:102-142` |
-| Ready | change that fails validation | if Ack, complete the pending request with `false`; protocol error (§12.8) | Ready | `NexusListClient.cs:118-128` |
-| Ready | Noop | complete the pending request with `false` (§12.6) | Ready | — |
-| Ready | ResetValues or ResetComplete | protocol error (§12.8) | Ready | `NexusListClient.cs:65-69`, `:82-86` |
+| Ready | change that fails validation | if Ack, complete the pending request with `false`; protocol error (§12.8) | Disabled | `NexusListClient.cs:118-128` |
+| Ready | Noop | complete the pending request with `false` (§12.6) | Ready | `NexusListClient.cs:140-146` |
+| Ready | ResetValues or ResetComplete | protocol error (§12.8) | Disabled | `NexusListClient.cs:65-69`, `:82-86` |
 | any open state | an item fails to decode | close the pipe | Disabled | `NexusBroadcastClient.cs:128-135` |
 | any open state | disable | close the pipe (send Complete, §7.3) and wait until it is closed | Disabled | `NexusBroadcastClient.cs:48-59` |
 | any open state | pipe completes (either side, or the session ends) | empty the list, version 0; complete the pending request with `false`; raise `Reset`; complete the disabled task | Disabled | `NexusListClient.cs:37-43`; `NexusBroadcastClient.cs:94-95`, `:153-181` |
@@ -877,9 +879,10 @@ reset (`NexusBroadcastServer.cs:43-50`). A change broadcast in that window can t
 ResetStart.
 - Its version may be at or below the snapshot version (already in the snapshot), or above it (not in the snapshot).
 - Buffering it and replaying it after ResetComplete, with the stale rule, is correct in both cases.
-- The C# client instead applies it to its empty list at once (`NexusListClient.cs:95-118`). There it usually fails
-  validation and is logged and dropped. If it is newer than the snapshot, it is lost.
-- New clients should buffer. This race was found by reading the code; no test reproduces it.
+- The C# client buffers it (`NexusListClient.cs:132-138`) and keeps it when ResetStart arrives
+  (`NexusListClient.cs:78-79`).
+- Every client must buffer. Applied at once to the empty list, such a change usually fails validation, which is a
+  protocol error that closes the pipe (§12.8).
 
 ### 12.5 Reset sequence and the stale rule
 
@@ -887,7 +890,10 @@ A reset is `ResetStart(version, totalValues)`, then zero or more `ResetValues`, 
 (`NexusListServer.cs:212-242`).
 - The snapshot is one immutable list state, so `version` and the values are consistent with each other.
 - C# servers put up to 40 values in each ResetValues item. The `values` together hold `totalValues` items in list
-  order. The C# client does not check the count.
+  order.
+- The client checks the count (`NexusListClient.cs:69-73`, `:90-95`, `:119-124`). A negative `totalValues`, more
+  values than `totalValues`, or a different count at ResetComplete is a protocol error (§12.8). The value count
+  comes from the wire, so do not size a buffer from `totalValues` alone; C# caps the initial capacity at 1024.
 - Live changes from other sessions are interleaved with the reset as they happen. The client buffers them
   (§12.4).
 
@@ -920,14 +926,9 @@ C#, where requests are sent only after Ready.
 - or the request's base version has fallen out of the server's history (§12.7).
 
 Nothing changes on the server, the version is not incremented, and nothing is broadcast.
-- **Intended behavior:** Noop carries Ack, and the client completes the pending request with `false`.
-- **Current C# behavior:**
-  - The server sends Noop with `flags` 0. It wraps the Noop without a source session, so no Ack copy is made
-    (`NexusListServer.cs:59`; `NexusBroadcastConnectionManager.cs:59-61`).
-  - The C# client does not recognize Noop. `NexusListTransformers.RentOperation` returns null and the item is
-    logged and dropped (`NexusListClient.cs:102-109`).
-  - The request therefore never completes until the pipe closes. This was reproduced with two clients removing
-    index 0 at the same time: one request returned `true`, the other was still pending after 2 s.
+- Noop carries Ack (`NexusListServer.cs:68-79`). If the originator's outgoing queue is full, the server closes its
+  pipe instead (§12.8).
+- The client completes the pending request with `false` (`NexusListClient.cs:140-146`).
 - A client must treat **any** Noop, with or without Ack, as the answer to its pending request (`false`). A Noop
   with no request pending is ignored.
 
@@ -966,16 +967,19 @@ from version `v` to `v+1`. A Clear empties the history and becomes its first ent
 - §12.7 step 1 or 5 fails;
 - an item fails to decode (`NexusBroadcastServer.cs:81-85`);
 - the client cannot keep up: each session has a queue of 1000 outgoing items, and the pipe is closed when it is full
-  (`NexusBroadcastSession.cs:90-97`, `NexusBroadcastConnectionManager.cs:147-156`);
+  (`NexusBroadcastSession.cs:90-97`, `NexusBroadcastConnectionManager.cs:147-156`). This includes a Noop answer
+  (`NexusListServer.cs:73-78`);
 - the server stops (`NexusBroadcastConnectionManager.cs:185-196`).
 
 The session itself stays up in all of these cases.
 
-**Client protocol errors.** These are an unexpected Reset* item, or a change that fails validation. The C# client
-logs and continues, without closing the pipe. Its processor ignores the "disconnect" result for client-side
-items, because the client enqueues them with no source session (`NexusBroadcastClient.cs:125`;
-`Pipes/Broadcast/NexusBroadcastMessageProcessor.cs:102-105`). Other clients should do the same, for identical
-behavior.
+**Client protocol errors.** These are an unexpected Reset* item, a reset whose value count does not match
+`totalValues` (§12.5), a change that fails validation, and an unknown item. The client closes the pipe (send
+Complete, §7.3), so the collection goes to Disabled (§12.4); the session stays up. Enabling the collection again
+resynchronizes it with a full reset. The C# client closes the pipe itself, because its processor does not act on
+the "disconnect" result of items read from the pipe (`NexusBroadcastClient.cs:324-351`;
+`Pipes/Broadcast/NexusBroadcastMessageProcessor.cs:136-139`). An exception while processing an item is handled
+the same way. Other clients must do the same, for identical behavior.
 
 **Session loss and re-enable.** A session that ends completes every pipe, so each collection goes to Disabled
 (§12.4). Collections are **not** resumed automatically after a reconnect.
@@ -1048,7 +1052,7 @@ sequenceDiagram
     S->>A: Remove [Ack, version 4, index 0]
     S->>B: Remove [0, version 4, index 0]
     Note over S: B's request (base 3) removes the same item:<br/>made obsolete, no version change
-    S->>B: Noop [flags 0 today, Ack intended]
+    S->>B: Noop [Ack]
     Note over B: RemoveAsync completes false (§12.6)
 ```
 
