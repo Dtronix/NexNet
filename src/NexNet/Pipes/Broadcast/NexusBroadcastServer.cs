@@ -110,8 +110,6 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
             initialized = await Processor.EnqueueActionWaitForResult(async ct =>
             {
                 snapshot = CaptureSnapshot();
-                if (snapshot == null)
-                    OnConnected(client);
                 await _connectionManager.RegisterClientAsync(client, ct).ConfigureAwait(false);
             }).ConfigureAwait(false);
         }
@@ -124,15 +122,6 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         if (!initialized)
         {
             Logger?.LogWarning($"S{session.Id} Could not send client init data. Connection will be closed.");
-            await pipe.CompleteAsync().ConfigureAwait(false);
-            return;
-        }
-
-        // A legacy snapshot written straight into the buffer must fit in it: never leave the client a partial one.
-        if (client.BufferOverflowed)
-        {
-            Logger?.LogWarning(
-                $"S{session.Id} Collection snapshot does not fit in the client buffer ({NexusBroadcastSession<TUnion>.BufferCapacity} messages). Connection will be closed.");
             await pipe.CompleteAsync().ConfigureAwait(false);
             return;
         }
@@ -386,7 +375,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
 
     /// <summary>
     /// Runs on the processing loop when a client connects. Captures the current state and returns the messages that
-    /// bring a new client to it (reset start, values, reset complete), or null to use <see cref="OnConnected"/>.
+    /// bring a new client to it (reset start, values, reset complete), or null when there is nothing to send.
     /// </summary>
     /// <remarks>
     /// Capture the state before returning: the messages are enumerated later, off the processing loop, while
@@ -397,15 +386,6 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         return null;
     }
 
-    /// <summary>
-    /// Legacy hook, called on the processing loop when <see cref="CaptureSnapshot"/> returns null: writes the
-    /// snapshot straight into the client's buffer. The buffer holds
-    /// <see cref="NexusBroadcastSession{TUnion}.BufferCapacity"/> messages; a snapshot that does not fit closes the
-    /// client's pipe. Prefer <see cref="CaptureSnapshot"/>, which writes with backpressure.
-    /// </summary>
-    protected virtual void OnConnected(NexusBroadcastSession<TUnion> client)
-    {
-    }
     protected abstract ProcessResult OnProcess(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);
