@@ -5,7 +5,9 @@ import com.dtronix.nexnet.Registration;
 /**
  * The session's clock and timer scheduler. The default ({@link #system()}) uses {@link System#nanoTime()} and a
  * shared daemon {@code ScheduledExecutorService}; tests inject a manual clock to drive the handshake timeout, the
- * idle timeout and the ping interval deterministically.
+ * idle timeout and the ping interval deterministically. The disconnect delay and the close fallback (the progress
+ * timeout plus the disconnect delay) always run on the system timers: they wait for real network work, and a test clock
+ * that is no longer advanced must not keep a session closing (as C#, where the delay is a {@code Task.Delay}).
  *
  * <p>Timer tasks must be short and must not block: they run on the scheduler's thread.
  */
