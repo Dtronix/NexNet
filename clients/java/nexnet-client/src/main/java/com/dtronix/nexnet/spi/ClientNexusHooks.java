@@ -1,6 +1,7 @@
 package com.dtronix.nexnet.spi;
 
 import com.dtronix.nexnet.client.ClientSessionContext;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
@@ -64,6 +65,19 @@ public final class ClientNexusHooks {
      */
     public static boolean separatePool(ClientNexusBase<?> nexus, int methodId) {
         return nexus.separatePool(methodId);
+    }
+
+    /**
+     * Calls {@link ClientNexusBase#onInvocationException(Throwable, int)}.
+     *
+     * @param nexus the nexus
+     * @param exception the exception the method threw
+     * @param methodId the method id
+     * @return the error to send, or null
+     */
+    public static @Nullable NexusRemoteError invocationException(ClientNexusBase<?> nexus, Throwable exception,
+                                                                 int methodId) {
+        return nexus.onInvocationException(exception, methodId);
     }
 
     /**
