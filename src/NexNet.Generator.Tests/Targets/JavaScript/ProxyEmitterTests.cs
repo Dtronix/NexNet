@@ -295,10 +295,11 @@ public class JsProxyEmitterTests
     // ------------------------------------------------------------------ target
 
     [Test]
-    public async Task TestScaffoldingModeEmitsNothing()
+    public async Task TestScaffoldingModeEmitsNoClientFiles()
     {
         var files = JavaScriptTarget.Instance.Emit(Chat.Ir!, JsTestRunner.TargetOptionsFor(), EmitMode.TestScaffolding);
-        await Assert.That(files).IsEmpty();
+        await Assert.That(files).IsNotEmpty();
+        await Assert.That(files.Select(f => f.Path).Intersect(Chat.Files.Keys)).IsEmpty();
     }
 
     [Test]

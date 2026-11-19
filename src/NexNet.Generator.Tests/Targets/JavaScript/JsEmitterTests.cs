@@ -88,10 +88,10 @@ public class JsEmitterTests
     }
 
     [Test]
-    public async Task TestScaffoldingModeEmitsNothing()
+    public async Task TestScaffoldingModeEmitsOnlyTheScaffoldingDirectory()
     {
         var files = JavaScriptTarget.Instance.Emit(Features.Ir!, JsTestRunner.TargetOptionsFor(), EmitMode.TestScaffolding);
-        await Assert.That(files).IsEmpty();
+        await Assert.That(files.All(f => f.Path.StartsWith(JsScaffoldingEmitter.Directory, StringComparison.Ordinal))).IsTrue();
     }
 
     [Test]
