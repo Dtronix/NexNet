@@ -5,7 +5,7 @@ import * as node from '../src/node.js';
 
 const {
   ClientNexusBase, ConnectionState, DisconnectReason, FormatterRegistry, MsgPackReader, MsgPackWriter,
-  NexusBusyError, NexusChannelReader, NexusChannelWriter, NexusClient, NexusClientPool, NexusDateTime,
+  NexusBusyError, NexusChannelReader, NexusChannelWriter, NexusClient, NexusDateTime,
   NexusDecimal, NexusDuplexChannel, NexusDuplexPipe, NexusError, NexusList, NexusMessageTooLargeError,
   NexusRemoteInvocationError, NexusTransportError, NexusUnauthorizedError, NexusVersion, ProxyBase, Version,
   cancellationError, isCancellationError, tuple,
@@ -20,6 +20,10 @@ const coreExports = [
   'NexusList', 'NexusMessageTooLargeError', 'NexusRemoteInvocationError', 'NexusTimeOnly', 'NexusTimeSpan',
   'NexusTransportError', 'NexusUnauthorizedError', 'NexusVersion', 'ProxyBase', 'RemoteExceptionDetail',
   'TransportKinds', 'Version', 'cancellationError', 'isCancellationError', 'tuple', 'tupleFormatter',
+  // J10
+  'NexusClientPoolConnectionError', 'CoreLogger', 'ConsoleLogger', 'RollingLogger', 'NexusLogBehaviors',
+  'NexusLogLevelOrder', 'DefaultReconnectionPolicy', 'DEFAULT_RECONNECT_DELAYS', 'DEFAULT_RECONNECT_REASONS',
+  'ReconnectController', 'NexusMetrics', 'Instruments', 'MetricTags', 'METER_NAME', 'diagnostics',
 ];
 
 const notImplemented = /^not implemented: /;
@@ -34,10 +38,13 @@ describe('entry points', () => {
     for (const name of coreExports) expect(browser[/** @type {keyof typeof browser} */ (name)]).toBe(core[/** @type {keyof typeof core} */ (name)]);
   });
 
-  it('node adds NodeNexusClient and exports it as NexusClient', () => {
-    expect(Object.keys(node).sort()).toEqual([...coreExports, 'NodeNexusClient'].sort());
+  it('node adds NodeNexusClient and NodeNexusClientPool and exports them as NexusClient and NexusClientPool', () => {
+    expect(Object.keys(node).sort()).toEqual([...coreExports, 'NodeNexusClient', 'NodeNexusClientPool'].sort());
     expect(node.NexusClient).toBe(node.NodeNexusClient);
     expect(Object.getPrototypeOf(node.NodeNexusClient)).toBe(core.NexusClient);
+    expect(node.NexusClientPool).toBe(node.NodeNexusClientPool);
+    expect(node.NodeNexusClientPool.clientClass).toBe(node.NodeNexusClient);
+    expect(core.NexusClientPool.clientClass).toBe(core.NexusClient);
   });
 
   it('Version is NexusVersion (G03 type mapper name)', () => {
@@ -132,7 +139,7 @@ describe('client skeleton', () => {
   });
 
   it('every skeleton prototype method throws not implemented', () => {
-    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry, NexusList, NexusClientPool];
+    const classes = [MsgPackWriter, MsgPackReader, FormatterRegistry, NexusList];
     for (const cls of classes) {
       const proto = cls.prototype;
       const keys = [...Object.getOwnPropertyNames(proto), ...Object.getOwnPropertySymbols(proto)]

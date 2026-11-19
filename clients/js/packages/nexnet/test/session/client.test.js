@@ -304,7 +304,7 @@ describe('connect', () => {
     const h = harness();
     expect(h.client.getSnapshot()).toBeNull();
     await connected(h, { clientId: 99n, idleTimeoutMs: 9000 });
-    expect(h.client.getSnapshot()).toMatchObject({ id: 99n, state: ConnectionState.Connected, isSecure: false, idleTimeoutMs: 9000, pingInterval: 3000 });
+    expect(h.client.getSnapshot()).toMatchObject({ id: 99n, state: ConnectionState.Connected, isSecure: false, isEstablished: true, transport: 'tcp' });
   });
 
   it('session counters return to zero after the client disconnects', async () => {
