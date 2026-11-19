@@ -31,13 +31,13 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         Action<AspServerConfig> configureServer,
         Action<ClientSpec>? configureClient = null)
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = MatrixTestBase.ToType(target.Transport);
         var serverConfig = (AspServerConfig)CreateServerConfig(type);
         configureServer(serverConfig);
         var server = CreateServer(serverConfig, null, AspCreateAuthServices, AspAppAuthConfigure);
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        var spec = AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger);
+        var spec = MatrixTestBase.Spec(CreateClientConfig(type), target.Transport, Logger);
         configureClient?.Invoke(spec);
         var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
         return (serverConfig, client);
@@ -69,7 +69,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
 
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
         await tcs.Task.Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -83,7 +83,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await AssertConnectFails(client, TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -94,7 +94,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await AssertConnectFails(client, TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -108,7 +108,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -122,7 +122,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await AssertConnectFails(client, TransportError.InternalError);
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     // One test per token: a ClientMatrix row cannot be combined with [Arguments].
@@ -153,7 +153,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         else
             await AssertConnectFails(client, TransportError.AuthenticationError);
 
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -173,7 +173,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
 
         await Assert.That(GetAccessTokenQueryParameter(server!)).IsNull();
         await AssertConnectFails(client, TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     [Test]
@@ -195,7 +195,7 @@ internal partial class AspClientServerTests(LanguageHostPool hosts) : BaseAspTes
         await using var client = created;
 
         await AssertConnectFails(client, TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await MatrixTestBase.EndAsync(client);
     }
 
     private static void SetAccessTokenQueryParameter(AspServerConfig config, string? name)

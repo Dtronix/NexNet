@@ -43,6 +43,9 @@ public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGene
     /// <summary>The transports (<see cref="ClientMatrixAttribute.Transports"/>).</summary>
     public ClientTransport[] Transports { get; set; } = [];
 
+    /// <summary>Transports added to the C# rows only (<see cref="ClientMatrixAttribute.CSharpTransports"/>).</summary>
+    public ClientTransport[] CSharpTransports { get; set; } = [];
+
     /// <summary>The capabilities the test needs (<see cref="ClientMatrixAttribute.Requires"/>).</summary>
     public ClientCapabilities Requires { get; set; }
 
@@ -59,7 +62,7 @@ public sealed class ClientMatrixAttribute<T>(string dataSource) : DataSourceGene
     {
         ArgumentNullException.ThrowIfNull(values);
         var items = values.ToArray();
-        var matrix = new ClientMatrixAttribute { Transports = Transports, Requires = Requires, Languages = Languages };
+        var matrix = new ClientMatrixAttribute { Transports = Transports, CSharpTransports = CSharpTransports, Requires = Requires, Languages = Languages };
         return matrix.GetTargets(transportOverride).SelectMany(target => items.Select(value => (target, value))).ToArray();
     }
 

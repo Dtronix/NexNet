@@ -27,10 +27,8 @@ namespace NexNet.IntegrationTests;
 /// The QUIC rows of the C# suite are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTests
+internal class NexusServerTests_Authorization(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
-    protected LanguageHostPool Hosts { get; } = hosts;
 
     /// <summary>
     /// Starts an <see cref="AuthServerNexus"/> server for <paramref name="target"/>'s transport, then creates and connects the
@@ -42,31 +40,29 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         Action<AuthServerNexus> nexusCreated,
         Action<ServerConfig>? configure = null)
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = ToType(target.Transport);
         var serverConfig = CreateServerConfig(type);
         configure?.Invoke(serverConfig);
         var server = CreateServer<AuthServerNexus, AuthServerNexus.ClientProxy>(serverConfig, nexusCreated);
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        return await AuthTlsMatrix.ConnectAsync<AuthClientNexus, AuthClientNexus.ServerProxy>(
-            target, AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger));
+        return await ConnectAsync<AuthClientNexus, AuthClientNexus.ServerProxy>(
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
     }
 
     /// <summary>As <see cref="ConnectAuthAsync"/>, with an <see cref="AuthPipeServerNexus"/> server.</summary>
     private async Task<IClientUnderTest> ConnectAuthPipeAsync(ClientTarget target, Action<AuthPipeServerNexus> nexusCreated)
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = ToType(target.Transport);
         var serverConfig = CreateServerConfig(type);
         var server = CreateServer<AuthPipeServerNexus, AuthPipeServerNexus.ClientProxy>(serverConfig, nexusCreated);
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
-        return await AuthTlsMatrix.ConnectAsync<AuthPipeClientNexus, AuthPipeClientNexus.ServerProxy>(
-            target, AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger));
+        return await ConnectAsync<AuthPipeClientNexus, AuthPipeClientNexus.ServerProxy>(
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
     }
 
-    private static Remote_IAuthServerNexus Proxy(IClientUnderTest client) => client.Proxy<Remote_IAuthServerNexus>();
+    private static Remote_IAuthServerNexus AuthProxy(IClientUnderTest client) => client.Proxy<Remote_IAuthServerNexus>();
 
     private static Remote_IAuthPipeServerNexus PipeProxy(IClientUnderTest client) => client.Proxy<Remote_IAuthPipeServerNexus>();
-
-    private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
@@ -83,9 +79,9 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
         });
 
-        await Proxy(client).ProtectedMethod("test").Timeout(T(1));
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
         await methodInvoked.Task.Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -96,8 +92,8 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized));
 
         await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
-            await Proxy(client).ProtectedMethod("test").Timeout(T(1)));
-        await AuthTlsMatrix.EndAsync(client);
+            await AuthProxy(client).ProtectedMethod("test").Timeout(T(1)));
+        await EndAsync(client);
     }
 
     [Test]
@@ -110,7 +106,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         // The invocation fails: the session gets disconnected.
         try
         {
-            await Proxy(client).ProtectedMethod("test").Timeout(T(1));
+            await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
         }
         catch
         {
@@ -118,7 +114,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         }
 
         await client.WhenDisconnectedAsync(T(2));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -141,10 +137,10 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
         });
 
-        await Proxy(client).UnprotectedMethod().Timeout(T(1));
+        await AuthProxy(client).UnprotectedMethod().Timeout(T(1));
         await methodInvoked.Task.Timeout(T(1));
         await Assert.That(authCalled).IsFalse();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -164,10 +160,10 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.MarkerOnlyMethodHandler = _ => ValueTask.CompletedTask;
         });
 
-        await Proxy(client).MarkerOnlyMethod().Timeout(T(1));
+        await AuthProxy(client).MarkerOnlyMethod().Timeout(T(1));
         await authCalled.Task.Timeout(T(1));
         await Assert.That(capturedPermissions.Length).IsEqualTo(0);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -187,10 +183,10 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         });
 
-        await Proxy(client).ProtectedMethod("test").Timeout(T(1));
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
         await authCalled.Task.Timeout(T(1));
         await Assert.That(capturedName).IsEqualTo("ProtectedMethod");
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -210,11 +206,11 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         });
 
-        await Proxy(client).ProtectedMethod("test").Timeout(T(1));
+        await AuthProxy(client).ProtectedMethod("test").Timeout(T(1));
         await authCalled.Task.Timeout(T(1));
         await Assert.That(capturedPermissions.Length).IsEqualTo(1);
         await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Write);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -234,12 +230,12 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.MultiPermissionMethodHandler = (_, _) => ValueTask.CompletedTask;
         });
 
-        await Proxy(client).MultiPermissionMethod("test").Timeout(T(1));
+        await AuthProxy(client).MultiPermissionMethod("test").Timeout(T(1));
         await authCalled.Task.Timeout(T(1));
         await Assert.That(capturedPermissions.Length).IsEqualTo(2);
         await Assert.That(capturedPermissions.Span[0]).IsEqualTo((int)TestPermission.Read);
         await Assert.That(capturedPermissions.Span[1]).IsEqualTo((int)TestPermission.Admin);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -252,9 +248,9 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.ProtectedWithReturnHandler = (_, v) => new ValueTask<int>(v * 2);
         });
 
-        var result = await Proxy(client).ProtectedWithReturn(21).Timeout(T(1));
+        var result = await AuthProxy(client).ProtectedWithReturn(21).Timeout(T(1));
         await Assert.That(result).IsEqualTo(42);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -265,8 +261,8 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized));
 
         await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
-            await Proxy(client).ProtectedWithReturn(21).Timeout(T(1)));
-        await AuthTlsMatrix.EndAsync(client);
+            await AuthProxy(client).ProtectedWithReturn(21).Timeout(T(1)));
+        await EndAsync(client);
     }
 
     // One test per cache setting: a ClientMatrix row cannot be combined with [Arguments].
@@ -299,7 +295,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 if (cacheEnabled)
                     config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30);
             });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // Twice each, so that with the cache enabled the second refusal comes from the cache.
         for (var i = 0; i < 2; i++)
@@ -316,7 +312,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         await Assert.That(unprotectedInvoked).IsEqualTo(2);
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -334,14 +330,14 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
             nexus.UnprotectedMethodHandler = _ => ValueTask.CompletedTask;
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         try { await proxy.ProtectedMethod("test").Timeout(T(1)); } catch { }
 
         // Barrier: a later call on the same session has completed.
         await proxy.UnprotectedMethod().Timeout(T(1));
         await Assert.That(bodyExecuted).IsFalse();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -354,7 +350,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             serverNexus ??= nexus;
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
         });
-        var list = Proxy(client).ProtectedList;
+        var list = AuthProxy(client).ProtectedList;
 
         var enabled = await list.EnableAsync().AsTask().Timeout(T(2));
         await Assert.That(enabled).IsTrue();
@@ -364,7 +360,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         await Assert.That(items).IsEquivalentTo(new[] { "hello" });
         await list.DisableAsync().AsTask().Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -377,7 +373,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         try
         {
-            await Proxy(client).ProtectedList.EnableAsync().AsTask().Timeout(T(2));
+            await AuthProxy(client).ProtectedList.EnableAsync().AsTask().Timeout(T(2));
         }
         catch
         {
@@ -385,7 +381,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         }
 
         await client.WhenDisconnectedAsync(T(2));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -402,7 +398,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 return ValueTask.CompletedTask;
             };
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // The server refuses the collection's pipe: the connect fails at once instead of hanging.
         await AssertThrows<NexusBusyException>(proxy.ProtectedList.EnableAsync().AsTask().Timeout(T(1)));
@@ -413,7 +409,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await Assert.That(await proxy.UnprotectedList.EnableAsync().AsTask().Timeout(T(1))).IsTrue();
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
         await proxy.UnprotectedList.DisableAsync().AsTask().Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -427,13 +423,13 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 authCalled = true;
                 return new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
             });
-        var list = Proxy(client).UnprotectedList;
+        var list = AuthProxy(client).UnprotectedList;
 
         var enabled = await list.EnableAsync().AsTask().Timeout(T(2));
         await Assert.That(enabled).IsTrue();
         await Assert.That(authCalled).IsFalse();
         await list.DisableAsync().AsTask().Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -443,10 +439,10 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await using var client = await ConnectAuthAsync(target, nexus =>
             nexus.OnAuthorizeHandler = (_, _, _, _) => throw new InvalidOperationException("Auth error"));
 
-        try { await Proxy(client).ProtectedMethod("test").Timeout(T(1)); } catch { }
+        try { await AuthProxy(client).ProtectedMethod("test").Timeout(T(1)); } catch { }
 
         await client.WhenDisconnectedAsync(T(2));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     // --- Authorization cache tests ---
@@ -470,7 +466,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
             },
             config => config.Time = fakeTime);
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // No time advance — every call falls within the cache TTL deterministically.
         await proxy.CachedMethod().Timeout(T(1));
@@ -478,7 +474,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await proxy.CachedMethod().Timeout(T(1));
 
         await Assert.That(authCallCount).IsEqualTo(1);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -499,7 +495,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
             },
             config => config.Time = fakeTime);
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -513,7 +509,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(2);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -534,7 +530,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
             },
             config => config.Time = fakeTime);
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -544,7 +540,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(1).Because("Cache should remain hot until the TTL elapses");
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -565,7 +561,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
             },
             config => config.Time = fakeTime);
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // Three full TTL cycles - each should re-invoke OnAuthorize once.
         for (var cycle = 1; cycle <= 3; cycle++)
@@ -577,7 +573,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             fakeTime.Advance(TimeSpan.FromMilliseconds(2001));
         }
 
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -598,14 +594,14 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.NeverCachedMethodHandler = _ => ValueTask.CompletedTask;
             },
             config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(60));
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.NeverCachedMethod().Timeout(T(1));
         await proxy.NeverCachedMethod().Timeout(T(1));
         await proxy.NeverCachedMethod().Timeout(T(1));
 
         await Assert.That(authCallCount).IsEqualTo(3);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -626,14 +622,14 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
             },
             config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.ProtectedMethod("a").Timeout(T(1));
         await proxy.ProtectedMethod("b").Timeout(T(1));
         await proxy.ProtectedMethod("c").Timeout(T(1));
 
         await Assert.That(authCallCount).IsEqualTo(1);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -651,13 +647,13 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.ProtectedMethod("a").Timeout(T(1));
         await proxy.ProtectedMethod("b").Timeout(T(1));
 
         await Assert.That(authCallCount).IsEqualTo(2);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -674,14 +670,14 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // Both calls are refused (ProxyUnauthorizedException); verify OnAuthorize is called once.
         try { await proxy.CachedMethod().Timeout(T(1)); } catch { }
         try { await proxy.CachedMethod().Timeout(T(1)); } catch { }
 
         await Assert.That(authCallCount).IsEqualTo(1);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -699,12 +695,12 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         });
 
-        try { await Proxy(client).CachedMethod().Timeout(T(1)); } catch { }
+        try { await AuthProxy(client).CachedMethod().Timeout(T(1)); } catch { }
 
         await client.WhenDisconnectedAsync(T(2));
         // Disconnect result should not be cached (session dies anyway)
         await Assert.That(authCallCount).IsEqualTo(1);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -731,7 +727,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 };
             },
             config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.ProtectedMethod("a").Timeout(T(1));
         await proxy.CachedMethod().Timeout(T(1));
@@ -741,7 +737,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         // Both methods should have been invoked twice (cache is per-method)
         await Assert.That(protectedCallCount).IsEqualTo(2);
         await Assert.That(cachedCallCount).IsEqualTo(2);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -760,7 +756,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -770,7 +766,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         await proxy.CachedMethod().Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(2);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -796,7 +792,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
                 nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
             },
             config => config.AuthorizationCacheDuration = TimeSpan.FromSeconds(30));
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         // Prime both caches
         await proxy.CachedMethod().Timeout(T(1));
@@ -810,7 +806,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await proxy.CachedMethod().Timeout(T(1));
         await proxy.ProtectedMethod("b").Timeout(T(1));
         await Assert.That(authCallCount).IsEqualTo(3); // Only CachedMethod re-checked
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -828,12 +824,12 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         });
 
-        try { await Proxy(client).CachedMethod().Timeout(T(1)); } catch { }
+        try { await AuthProxy(client).CachedMethod().Timeout(T(1)); } catch { }
 
         // Session disconnected due to exception — auth was called once
         await client.WhenDisconnectedAsync(T(2));
         await Assert.That(authCallCount).IsEqualTo(1);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -853,7 +849,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             };
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         });
-        var proxy = Proxy(client);
+        var proxy = AuthProxy(client);
 
         const int concurrentCalls = 10;
         var tasks = new Task[concurrentCalls];
@@ -875,7 +871,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         // All calls should have completed without exceptions.
         // Auth may be called multiple times (cache misses race) but never throws.
         await Assert.That(authCallCount).IsGreaterThan(0);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -906,7 +902,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await Assert.That(await proxy.Ping(5).Timeout(T(1))).IsEqualTo(5);
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
         await Assert.That(methodInvoked).IsFalse();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -934,7 +930,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         await Assert.That(await proxy.Ping(7).Timeout(T(1))).IsEqualTo(7);
         await client.WaitForStateAsync(ConnectionState.Connected, T(1));
         await Assert.That(methodInvoked).IsFalse();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -959,7 +955,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             await Assert.That(await received.Task.Timeout(T(1))).IsEqualTo("test");
         }
 
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -984,7 +980,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
         }
 
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     // --- NexNet greeting token (Authenticate): the canonical authentication of every client (D15) ---
@@ -996,7 +992,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     /// </summary>
     private async Task<ClientSpec> StartGreetingTokenServerAsync(ClientTarget target, string? token)
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = ToType(target.Transport);
         var serverConfig = CreateServerConfig(type);
         serverConfig.Authenticate = true;
         var server = CreateServer<InteropServerNexus, InteropServerNexus.ClientProxy>(serverConfig, nexus =>
@@ -1007,7 +1003,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
             });
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
-        var spec = AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger);
+        var spec = Spec(CreateClientConfig(type), target.Transport, Logger);
         spec.AuthToken = token;
         return spec;
     }
@@ -1017,13 +1013,13 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
     public async Task GreetingToken_IdentityReachesServerAndAuthorizes(ClientTarget target)
     {
         var spec = await StartGreetingTokenServerAsync(target, InteropServerNexus.ReaderIdentity);
-        await using var client = await AuthTlsMatrix.ConnectAsync<InteropClientNexus, InteropClientNexus.ServerProxy>(target, spec);
+        await using var client = await ConnectAsync<InteropClientNexus, InteropClientNexus.ServerProxy>(target, spec);
         var proxy = client.Proxy<IInteropServerNexus>();
 
         await Assert.That(await proxy.GetIdentity().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.ReaderIdentity);
         await Assert.That(await proxy.ReadSecret().AsTask().Timeout(T(1))).IsEqualTo(InteropServerNexus.Secret);
         await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () => await proxy.AdminEcho(1).AsTask().Timeout(T(1)));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -1035,7 +1031,7 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
 
         var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => client.ConnectAsync().Timeout(T(TestTimeouts.Connect)));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AuthenticationError);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     private static async Task AssertThrows<TException>(Task task)
@@ -1051,89 +1047,6 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : BaseTest
         }
 
         Fail.Test($"Expected {typeof(TException).Name}.");
-    }
-}
-
-/// <summary>
-/// Client-matrix helpers of the P01d ports (authorization, versioning, TLS, ASP.NET authentication): the client spec of
-/// a server the test created with <see cref="BaseTests"/>, connecting, and the end-of-test leak audit. P01z consolidates
-/// the per-area helpers.
-/// </summary>
-internal static class AuthTlsMatrix
-{
-    private static readonly double TimeoutScale =
-        double.TryParse(Environment.GetEnvironmentVariable("NEXNET_TIMEOUT_SCALE"), System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var scale) && scale > 0 ? scale : 1;
-
-    /// <summary>The hang guard of <c>BaseTests.T</c>, for these static helpers.</summary>
-    private static double T(double seconds) => seconds * TimeoutScale + 0.25;
-
-    /// <summary>The <see cref="BaseTests.Type"/> of a client-matrix transport.</summary>
-    public static BaseTests.Type ToType(ClientTransport transport) => transport switch
-    {
-        ClientTransport.Tcp => BaseTests.Type.Tcp,
-        ClientTransport.TcpTls => BaseTests.Type.TcpTls,
-        ClientTransport.Uds => BaseTests.Type.Uds,
-        ClientTransport.HttpSocket => BaseTests.Type.HttpSocket,
-        ClientTransport.HttpSocketTls => BaseTests.Type.HttpSocketTls,
-        ClientTransport.WebSocket => BaseTests.Type.WebSocket,
-        ClientTransport.WebSocketTls => BaseTests.Type.WebSocketTls,
-        ClientTransport.Quic => BaseTests.Type.Quic,
-        _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
-    };
-
-    /// <summary>
-    /// The address of the server a C# client configuration (<see cref="BaseTests"/>.CreateClientConfig) connects to,
-    /// in the form of <see cref="ClientSpec.Address"/>.
-    /// </summary>
-    public static string Address(ClientConfig config) => config switch
-    {
-        TcpTlsClientConfig tls => "tls://" + tls.EndPoint,
-        TcpClientConfig tcp => "tcp://" + tcp.EndPoint,
-        UdsClientConfig uds => "uds:" + uds.EndPoint,
-        HttpClientConfig http => http.Url.ToString(),
-        QuicClientConfig quic => "quic://" + quic.EndPoint,
-        _ => throw new ArgumentOutOfRangeException(nameof(config), config.GetType(), null),
-    };
-
-    /// <summary>
-    /// The spec of a client of <paramref name="transport"/> to the server <paramref name="config"/> connects to; a
-    /// secure transport trusts the F08 test CA.
-    /// </summary>
-    public static ClientSpec Spec(ClientConfig config, ClientTransport transport, INexusLogger? logger) => new()
-    {
-        Transport = transport,
-        Address = Address(config),
-        CaPem = transport.IsSecure() ? File.ReadAllText(InteropCertificates.TestCaPemPath) : null,
-        Logger = logger,
-    };
-
-    /// <summary>Creates the client of <paramref name="target"/> and connects it; disposes it when the connect fails.</summary>
-    public static async Task<IClientUnderTest> ConnectAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec)
-        where TClientNexus : ClientNexusBase<TServerProxy>, IInvocationMethodHash, NexNet.Collections.ICollectionConfigurer, new()
-        where TServerProxy : ProxyInvocationBase, IInvocationMethodHash, new()
-    {
-        var client = await Harness.CreateClientAsync<TClientNexus, TServerProxy>(target, spec);
-        try
-        {
-            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-            return client;
-        }
-        catch
-        {
-            await client.DisposeAsync();
-            throw;
-        }
-    }
-
-    /// <summary>Disconnects the client when it is still connected, then asserts its leak audit is clean.</summary>
-    public static async Task EndAsync(IClientUnderTest client)
-    {
-        if (await client.GetStateAsync() != ConnectionState.Disconnected)
-            await client.DisconnectAsync().Timeout(T(1));
-
-        var report = await client.EndTestAuditAsync();
-        await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
     }
 }
 

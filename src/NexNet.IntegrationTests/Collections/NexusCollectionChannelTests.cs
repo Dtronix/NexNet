@@ -7,7 +7,7 @@ namespace NexNet.IntegrationTests.Collections;
 
 /// <summary>Bursts of list operations through the collection's message channels.</summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusCollectionChannelTests(LanguageHostPool hosts) : CollectionMatrixTests(hosts)
+internal class NexusCollectionChannelTests(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]

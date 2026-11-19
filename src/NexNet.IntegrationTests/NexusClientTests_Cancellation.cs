@@ -11,132 +11,13 @@ using NexNet.Transports;
 
 namespace NexNet.IntegrationTests;
 
-/// <summary>
-/// Base of the cancellation tests on the client matrix (P01c): the client under test is created through
-/// <see cref="Harness"/> for each <see cref="ClientTarget"/> row, the server is the C# <see cref="ServerNexus"/> on a
-/// dedicated interop server, and everything the client sends is observed on the server (<see cref="ServerTaps"/>).
-/// </summary>
-internal abstract class CancellationMatrixTests(LanguageHostPool hosts) : BaseTests
-{
-    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
-    protected LanguageHostPool Hosts { get; } = hosts;
-
-    /// <summary>
-    /// Starts a dedicated interop server of <see cref="ServerNexus"/>. <paramref name="configure"/> is called with the
-    /// configuration of every endpoint, so taps and limits apply whatever transport the client uses.
-    /// </summary>
-    protected async Task<InteropServer<ServerNexus, ServerNexus.ClientProxy>> StartServerAsync(
-        Action<ServerNexus>? nexusCreated = null,
-        Action<ServerConfig>? configure = null)
-    {
-        LoggerMode = BasePipeTests.LogMode.OnTestFail;
-        var options = new InteropServerOptions
-        {
-            Logger = Logger,
-            ConfigureEndpoint = (_, config) => configure?.Invoke(config),
-        };
-
-        return await InteropServerHost.StartAsync<ServerNexus, ServerNexus.ClientProxy>(() =>
-        {
-            var nexus = new ServerNexus();
-            nexusCreated?.Invoke(nexus);
-            return nexus;
-        }, options).Timeout(T(TestTimeouts.Connect));
-    }
-
-    /// <summary>
-    /// Creates the client of <paramref name="target"/> for <paramref name="server"/>, lets <paramref name="script"/>
-    /// set up its client nexus, then connects it.
-    /// </summary>
-    protected async Task<IClientUnderTest> ConnectAsync(
-        ClientTarget target,
-        InteropServer<ServerNexus, ServerNexus.ClientProxy> server,
-        Action<ClientNexusScript>? script = null)
-    {
-        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
-        spec.Logger = Logger;
-        var client = await Harness.CreateClientAsync<ClientNexus, ClientNexus.ServerProxy>(target, spec);
-        try
-        {
-            script?.Invoke(client.Callbacks<ClientNexusScript>());
-            await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-            return client;
-        }
-        catch
-        {
-            await client.DisposeAsync();
-            throw;
-        }
-    }
-
-    /// <summary>The server proxy of <paramref name="client"/>.</summary>
-    protected static Remote_IServerNexus Proxy(IClientUnderTest client) => client.Proxy<Remote_IServerNexus>();
-
-    /// <summary>
-    /// Waits until the client has handed every started operation to its runtime, then makes a round trip to the
-    /// server. Frames on a session arrive in order, so once it returns the server has received everything the client
-    /// sent before. Use it before asserting that something did not arrive. A missing server handler fails the call
-    /// remotely, which still completes the round trip.
-    /// </summary>
-    protected static async Task RoundTripAsync(IClientUnderTest client)
-    {
-        await client.BarrierAsync().Timeout(T(1));
-        try
-        {
-            await Proxy(client).ServerTaskValue().Timeout(T(1));
-        }
-        catch (ProxyRemoteInvocationException)
-        {
-            // The server answered.
-        }
-    }
-
-    /// <summary>
-    /// The invocation state of the C# client, for checks of runtime internals the wire does not show; null for the
-    /// clients of other languages, whose leak audit covers what they hold.
-    /// </summary>
-    private static ISessionInvocationStateManager? InProcInvocations(IClientUnderTest client)
-        => (client as InProcClientDriver<ClientNexus, ClientNexus.ServerProxy>)?.Client.Session?.SessionInvocationStateManager;
-
-    /// <summary>On the C# client: waits until invocation <paramref name="id"/> is no longer outstanding, then asserts it.</summary>
-    protected static async Task AssertNotOutstandingInProc(IClientUnderTest client, ushort id)
-    {
-        var invocations = InProcInvocations(client);
-        if (invocations == null)
-            return;
-
-        await WaitUntil(() => !invocations.IsOutstanding(id));
-        await Assert.That(invocations.IsOutstanding(id)).IsFalse();
-    }
-
-    /// <summary>Waits until the client is in <paramref name="state"/>, for at most <c>T(1)</c>.</summary>
-    protected static Task WaitForStateAsync(IClientUnderTest client, ConnectionState state)
-        => client.WaitForStateAsync(state, T(1));
-
-    /// <summary>Disconnects the client when it is still connected, then asserts its leak audit is clean.</summary>
-    protected static async Task EndAsync(IClientUnderTest client)
-    {
-        if (await client.GetStateAsync() != ConnectionState.Disconnected)
-            await client.DisconnectAsync().Timeout(T(1));
-
-        var report = await client.EndTestAuditAsync();
-        await Assert.That(report.IsClean).IsTrue().Because(report.ToString());
-    }
-
-    /// <summary>Creates a task completion source whose continuations run asynchronously.</summary>
-    protected static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-    /// <inheritdoc cref="Signal()"/>
-    protected static TaskCompletionSource<T> Signal<T>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
-}
-
 /// <summary>Cancellation of invocations the client under test makes.</summary>
 /// <remarks>
 /// The C# suite's QUIC rows are kept as C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16): no
 /// other client language has QUIC.
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : CancellationMatrixTests(hosts)
+internal class NexusClientTests_Cancellation(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

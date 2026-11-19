@@ -21,10 +21,8 @@ namespace NexNet.IntegrationTests;
 /// The QUIC rows of the C# suite are C#-only rows (<see cref="ClientMatrixAttribute.CSharpTransports"/>, H16).
 /// </remarks>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
+internal class NexusServerTests_Versioned(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
-    /// <summary>The language hosts of the session; initializing them registers their drivers with <see cref="Harness"/>.</summary>
-    protected LanguageHostPool Hosts { get; } = hosts;
 
     /// <summary>
     /// Starts a server of <typeparamref name="TServerNexus"/> for <paramref name="target"/>'s transport and creates the
@@ -38,12 +36,12 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         where TClientNexus : ClientNexusBase<TServerProxy>, IInvocationMethodHash, NexNet.Collections.ICollectionConfigurer, new()
         where TServerProxy : ProxyInvocationBase, IInvocationMethodHash, new()
     {
-        var type = AuthTlsMatrix.ToType(target.Transport);
+        var type = ToType(target.Transport);
         var serverConfig = CreateServerConfig(type);
         var server = CreateServer<TServerNexus, TClientProxy>(serverConfig, nexusCreated);
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
         var client = await Harness.CreateClientAsync<TClientNexus, TServerProxy>(
-            target, AuthTlsMatrix.Spec(CreateClientConfig(type), target.Transport, Logger));
+            target, Spec(CreateClientConfig(type), target.Transport, Logger));
         return (serverConfig, client);
     }
 
@@ -72,7 +70,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await ConnectAndAssertServerSessionAsync(serverConfig, client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -116,7 +114,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await runTaskV1_1.Task.Timeout(T(1));
         await runTaskWithResultV1_1.Task.Timeout(T(1));
         await verifyVersionV1.Task.Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -127,7 +125,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await AssertServerMismatchAsync(client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -138,7 +136,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await ConnectAndAssertServerSessionAsync(serverConfig, client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -174,7 +172,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await runTaskV1_1.Task.Timeout(T(1));
         await runTaskWithResultV1_1.Task.Timeout(T(1));
         await verifyVersionV1.Task.Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -185,7 +183,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsTrue();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -196,7 +194,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await AssertServerMismatchAsync(client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -207,7 +205,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await ConnectAndAssertServerSessionAsync(serverConfig, client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -228,7 +226,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await client.Proxy<Remote_IVersionedServerNexusV1>().VerifyVersionV1("").Timeout(T(1));
 
         await verifyVersionV1.Task.Timeout(T(1));
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -239,7 +237,7 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await AssertServerMismatchAsync(client);
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
 
     [Test]
@@ -251,8 +249,6 @@ internal class NexusServerTests_Versioned(LanguageHostPool hosts) : BaseTests
         await using var client = created;
 
         await Assert.That(await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect))).IsTrue();
-        await AuthTlsMatrix.EndAsync(client);
+        await EndAsync(client);
     }
-
-    private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

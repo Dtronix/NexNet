@@ -12,7 +12,7 @@ namespace NexNet.IntegrationTests.Pipes;
 /// Pipes between the client under test and the server, mostly opened by the client and handled by the server.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : PipeMatrixTests(hosts)
+internal class NexusServerTests_NexusDuplexPipe(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

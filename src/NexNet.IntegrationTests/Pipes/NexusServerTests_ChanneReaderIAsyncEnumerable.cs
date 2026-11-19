@@ -10,7 +10,7 @@ namespace NexNet.IntegrationTests.Pipes;
 /// byte back (<c>pipe.echo</c>), so the server reads what it wrote, through the client.
 /// </summary>
 [ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
-internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : PipeMatrixTests(hosts)
+internal class NexusServerTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : MatrixTestBase(hosts)
 {
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]

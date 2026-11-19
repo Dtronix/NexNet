@@ -139,6 +139,22 @@ public class ClientMatrixTests
     }
 
     [Test]
+    public async Task WithDataSource_CSharpTransports_AddCSharpRowsOnly()
+    {
+        var attribute = new ClientMatrixAttribute<int>(nameof(Sizes))
+        {
+            Languages = ["csharp", "node"],
+            Transports = [ClientTransport.Tcp],
+            CSharpTransports = [ClientTransport.Quic],
+        };
+        var rows = attribute.GetRows(attribute.GetValues(typeof(ClientMatrixTests)), transportOverride: null);
+
+        await Assert.That(rows.Select(r => r.Target + ":" + r.Value)).IsEquivalentTo(
+            new[] { "csharp/Tcp:1", "csharp/Tcp:2", "csharp/Quic:1", "csharp/Quic:2", "node/Tcp:1", "node/Tcp:2" },
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
+    }
+
+    [Test]
     public async Task WithDataSource_ReadsMethodsAndRejectsMissingMembers()
     {
         await Assert.That(new ClientMatrixAttribute<string>(nameof(Modes)).GetValues(typeof(ClientMatrixTests)))
