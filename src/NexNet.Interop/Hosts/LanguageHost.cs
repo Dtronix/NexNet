@@ -253,7 +253,11 @@ public sealed class LanguageHost : IAsyncDisposable
 
                 if (ended == connection.Completion)
                 {
-                    reason = "the control connection closed: " + connection.Failure?.Message;
+                    // A process that dies closes its connection first; prefer the exit as the reason when it follows.
+                    await Task.WhenAny(process.Exited, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+                    reason = process.Exited.IsCompleted
+                        ? $"the process exited (code {process.ExitCode})"
+                        : "the control connection closed: " + connection.Failure?.Message;
                     break;
                 }
 

@@ -37,10 +37,10 @@ public static class ControlErrors
             var info = new RemoteErrorInfo(errorKind, message)
             {
                 Type = detail?["type"]?.GetValue<string>(),
-                Code = detail?["code"]?.GetValue<int>(),
+                Code = (int?)Number(detail?["code"]),
                 Reason = detail?["reason"]?.GetValue<string>(),
-                Size = detail?["size"]?.GetValue<long>(),
-                Limit = detail?["limit"]?.GetValue<long>(),
+                Size = Number(detail?["size"]),
+                Limit = Number(detail?["limit"]),
             };
             return info.ToException();
         }
@@ -95,6 +95,18 @@ public static class ControlErrors
         }
 
         return Create(kind, exception.Message, detail);
+    }
+
+    /// <summary>An integer member, whether parsed from the wire or built in memory.</summary>
+    internal static long? Number(JsonNode? node)
+    {
+        if (node is not JsonValue value)
+            return null;
+        if (value.TryGetValue<long>(out var l))
+            return l;
+        if (value.TryGetValue<int>(out var i))
+            return i;
+        return long.Parse(value.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>Creates an error object.</summary>

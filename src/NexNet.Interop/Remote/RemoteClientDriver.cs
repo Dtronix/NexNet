@@ -217,7 +217,8 @@ public sealed class RemoteClientDriver : IClientUnderTest
 
         try
         {
-            if (!Connection.IsClosed)
+            // After test.end the host has released the client already.
+            if (!Connection.IsClosed && Connection.HasScope(Test))
                 await CallAsync("client.dispose", null, DefaultWaitMs).ConfigureAwait(false);
         }
         catch (Exception e) when (e is HostCrashedException or ObjectDisposedException)

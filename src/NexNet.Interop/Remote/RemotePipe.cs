@@ -57,7 +57,7 @@ internal sealed class RemotePipe(RemoteClientDriver driver, string handle) : IRe
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0 || driver.Connection.IsClosed)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0 || driver.Connection.IsClosed || !driver.Connection.HasScope(driver.Test))
             return;
 
         try
