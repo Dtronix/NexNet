@@ -213,4 +213,36 @@ class DiagnosticsTest {
         assertTrue(Diagnostics.isIdle());
         assertThrows(NullPointerException.class, () -> Diagnostics.registerCounterSource(null));
     }
+
+    @Test
+    void aLeakFailsTheAuditOnceAndDoesNotCascade() throws Exception {
+        TestClients.awaitIdle();
+        Registration leak = Diagnostics.registerCounterSource(new CounterSource() {
+            @Override
+            public int pipes() {
+                return 1;
+            }
+
+            @Override
+            public int timers() {
+                return 0;
+            }
+
+            @Override
+            public int subscriptions() {
+                return 0;
+            }
+        });
+        try {
+            AssertionError error = assertThrows(AssertionError.class, TestClients::awaitIdle);
+            assertTrue(error.getMessage().contains("pipes=1"), error.getMessage());
+            // Later audits tolerate the reported leak instead of failing on it again.
+            TestClients.awaitIdle();
+        } finally {
+            leak.close();
+        }
+        // Once released, the counter is audited at 0 again.
+        TestClients.awaitIdle();
+        assertTrue(Diagnostics.isIdle());
+    }
 }
