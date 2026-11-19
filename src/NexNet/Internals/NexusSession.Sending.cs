@@ -732,6 +732,18 @@ internal partial class NexusSession<TNexus, TProxy>
     }
 
     /// <summary>
+    /// Test only: writes <paramref name="frame"/> to the transport exactly as given, under the write lock, and flushes.
+    /// Lets tests send frames the session would never produce, e.g. a malformed remote-error detail. Does nothing if
+    /// the session is not connected.
+    /// </summary>
+    /// <param name="frame">Complete frames (type, length and body), or any other bytes.</param>
+    /// <param name="cancellationToken">Cancels the wait for the write lock and the flush.</param>
+    internal ValueTask InternalSendRawAsync(ReadOnlyMemory<byte> frame, CancellationToken cancellationToken = default)
+    {
+        return SendHeaderCore(MessageType.Unset, frame, false, cancellationToken);
+    }
+
+    /// <summary>
     /// Asynchronously sends a message header of a specified type over the transport.
     /// </summary>
     /// <param name="type">The type of the message header to be sent.</param>
