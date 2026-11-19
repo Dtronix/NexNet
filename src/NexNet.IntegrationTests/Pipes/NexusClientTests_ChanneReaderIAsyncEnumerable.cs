@@ -1,138 +1,140 @@
-﻿using NexNet.Pipes;
+﻿using NexNet.IntegrationTests.TestInterfaces;
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.Pipes;
 
 namespace NexNet.IntegrationTests.Pipes;
 
-internal class NexusClientTests_ChanneReaderIAsyncEnumerable : BasePipeTests
+/// <summary>Channels on pipes the client under test opens: the client's channel reader and writer.</summary>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class NexusClientTests_ChanneReaderIAsyncEnumerable(LanguageHostPool hosts) : PipeMatrixTests(hosts)
 {
+    private const string NoReadCancel = "a remote channel read cannot be canceled (follow-up card)";
+
     [Test]
-    [Transports]
-    public async Task IAsyncEnumerable(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task IAsyncEnumerable(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        var tcs = new TaskCompletionSource();
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (nexus, pipe) =>
+        // The client writes strings (an item type every language host has), the server answers each with a counter.
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await ChannelWriter<int>(pipe);
-            int counter = 0;
-            await foreach (var _ in await ChannelReader<ComplexMessage>(pipe))
-            {
+            var counter = 0;
+            await foreach (var message in await ChannelReader<string>(pipe))
                 await writer.WriteAsync(counter++);
-            }
-        };
-
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-        await pipe.ReadyTask.Timeout(T(1));
-        int counter = 0;
-
-        _ = Task.Run(async () =>
-        {
-            await foreach (var _ in await ChannelReader<int>(pipe))
-            {
-                Interlocked.Increment(ref counter);
-                if(counter == 10)
-                    tcs.SetResult();
-                
-            }
         });
-        
-        var writer = await ChannelWriter<ComplexMessage>(pipe);
-        for (int i = 0; i < 10; i++)
+        await using var client = await ConnectAsync(target, server);
+
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            await writer.WriteAsync(ComplexMessage.Random());
-            await Task.Delay(1);
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
+
+            var reader = await pipe.GetChannelReaderAsync<int>();
+            var reading = reader.ReadAllAsync().AsTask();
+            var writer = await pipe.GetChannelWriterAsync<string>();
+            for (var i = 0; i < 10; i++)
+            {
+                await writer.WriteAsync("message " + i).AsTask().Timeout(T(1));
+                await Task.Delay(1);
+            }
+
+            await writer.CompleteAsync().AsTask().Timeout(T(1));
+            await Assert.That(await reading.Timeout(T(1))).IsEquivalentTo(Enumerable.Range(0, 10), CollectionOrdering.Matching);
         }
-        await writer.CompleteAsync().ConfigureAwait(false);
-        await tcs.Task.Timeout(T(1));
+
+        await EndAsync(client);
     }
-    
+
     [Test]
-    [Transports]
-    public async Task StopsOnCompletion(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task StopsOnCompletion(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await ChannelWriter<int>(pipe);
             await writer.WriteAsync(1);
-        };
+        });
+        await using var client = await ConnectAsync(target, server);
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-        await pipe.ReadyTask.Timeout(T(1));
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(1000);
-        await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+        await using (var pipe = await client.CreatePipeAsync())
         {
-            messageReceivedCount++;
-        }
-        await pipe.CompleteTask.Timeout(T(1));
-        
-        await Assert.That(messageReceivedCount).IsEqualTo(1);
-    }
-    
-    [Test]
-    [Transports]
-    public async Task CancelsRead(Type type)
-    {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
-        {
-            var writer = await ChannelWriter<int>(pipe);
-            await Task.Delay(200);
-            await writer.WriteAsync(1);
-        };
+            await Proxy(client).ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.WhenReadyAsync().AsTask().Timeout(T(1));
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-        await pipe.ReadyTask.Timeout(T(1));
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
-        {
-            messageReceivedCount++;
+            // The server's method returns after one item, which completes the channel.
+            var reader = await pipe.GetChannelReaderAsync<int>();
+            var items = await reader.ReadAllAsync().AsTask().Timeout(T(1));
+            await pipe.WhenCompletedAsync().AsTask().Timeout(T(1));
+
+            await Assert.That(items.Count).IsEqualTo(1);
         }
-        await Assert.That(messageReceivedCount).IsEqualTo(0);
-        await pipe.CompleteTask.Timeout(T(1));
+
+        await EndAsync(client);
     }
-    
+
     [Test]
-    [Transports]
-    public async Task CancelsAndResumesRead(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task CancelsRead(ClientTarget target)
     {
-        var (server, _, cNexus, _) = await Setup(type);
-        var sNexus = server.NexusCreatedQueue.First();
-        sNexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        RequireInProc(target, NoReadCancel);
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
             var writer = await ChannelWriter<int>(pipe);
             await Task.Delay(200);
             await writer.WriteAsync(1);
-        };
+        });
+        await using var client = await ConnectAsync(target, server);
 
-        var pipe = cNexus.Context.CreatePipe();
-        await cNexus.Context.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
-        await pipe.ReadyTask.Timeout(T(1));
-        var messageReceivedCount = 0;
-        
-        var cts = new CancellationTokenSource(50);
-        await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+        await using (var pipe = InProc(client).Client.CreatePipe())
         {
-            messageReceivedCount++;
-        }
-        
-        await Assert.That(messageReceivedCount).IsEqualTo(0);
+            await InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.ReadyTask.Timeout(T(1));
+            var messageReceivedCount = 0;
 
-        await foreach (var _ in await ChannelReader<int>(pipe))
-        {
-            messageReceivedCount++;
+            using var cts = new CancellationTokenSource(50);
+            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(0);
+            await pipe.CompleteTask.Timeout(T(1));
         }
-        
-        await Assert.That(messageReceivedCount).IsEqualTo(1);
-        await pipe.CompleteTask.Timeout(T(1));
+
+        await EndAsync(client);
+    }
+
+    [Test]
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.WebSocket, ClientTransport.HttpSocket, ClientTransport.WebSocketTls])]
+    public async Task CancelsAndResumesRead(ClientTarget target)
+    {
+        RequireInProc(target, NoReadCancel);
+        await using var server = await StartServerAsync(nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
+        {
+            var writer = await ChannelWriter<int>(pipe);
+            await Task.Delay(200);
+            await writer.WriteAsync(1);
+        });
+        await using var client = await ConnectAsync(target, server);
+
+        await using (var pipe = InProc(client).Client.CreatePipe())
+        {
+            await InProc(client).Client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
+            await pipe.ReadyTask.Timeout(T(1));
+            var messageReceivedCount = 0;
+
+            using var cts = new CancellationTokenSource(50);
+            await foreach (var _ in (await ChannelReader<int>(pipe)).WithCancellation(cts.Token))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(0);
+
+            await foreach (var _ in await ChannelReader<int>(pipe))
+                messageReceivedCount++;
+
+            await Assert.That(messageReceivedCount).IsEqualTo(1);
+            await pipe.CompleteTask.Timeout(T(1));
+        }
+
+        await EndAsync(client);
     }
 }
