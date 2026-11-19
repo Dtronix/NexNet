@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Reads typed items from a channel. Implemented by K08.
+ * Reads typed items from a channel.
  *
  * @param <T> the item type
  */

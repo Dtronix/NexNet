@@ -12,7 +12,10 @@ import org.jspecify.annotations.Nullable;
  * argument of a client nexus method.
  *
  * <p>Credit is granted to the peer only as this side reads, so a slow reader applies backpressure end to end.
- * Implemented by K08.
+ * Futures complete on the client's callback executor when the session's reader thread completes them.
+ *
+ * <p>A pipe passed to a server method is released by {@link #close()}; a pipe received as an argument of a client
+ * nexus method is closed by the runtime when the method's future completes.
  */
 public interface NexusDuplexPipe extends AutoCloseable {
     /**
@@ -37,9 +40,11 @@ public interface NexusDuplexPipe extends AutoCloseable {
     CompletableFuture<Void> completed();
 
     /**
-     * Reads the next chunk of input.
+     * Reads the next chunk of input. Reading is what grants the peer more credit. Concurrent reads are served in
+     * call order.
      *
-     * @return a future of the next chunk, or of null when the peer completed its output
+     * @return a future of the next chunk, or of null when the peer completed its output (or the pipe or session
+     *     ended)
      */
     CompletableFuture<@Nullable ByteBuffer> read();
 
@@ -47,8 +52,10 @@ public interface NexusDuplexPipe extends AutoCloseable {
      * Writes bytes to the peer. The future completes once the bytes are within the peer's credit and queued for
      * sending.
      *
-     * @param data the bytes; read from its position to its limit
-     * @return the future
+     * @param data the bytes; read from its position to its limit (copied, so the buffer may be reused at once)
+     * @return the future; fails with an {@link IllegalStateException} once the output is complete or the peer
+     *     completed its input, and with a {@link com.dtronix.nexnet.session.SessionClosedException} when the session
+     *     ended
      */
     CompletableFuture<Void> write(ByteBuffer data);
 
@@ -73,7 +80,34 @@ public interface NexusDuplexPipe extends AutoCloseable {
      */
     OutputStream outputStream();
 
-    /** Completes the output and releases the pipe. */
+    /**
+     * Copies everything this pipe receives to {@code destination} until this pipe's input completes, then completes
+     * the destination's output (half-close). This pipe is left as is. Each buffer is read only after the previous
+     * one is within the destination's credit, so a slow destination stalls this pipe instead of buffering.
+     *
+     * @param destination the pipe to write to
+     * @return a future that completes when this pipe's input completed or the destination's output was completed
+     */
+    default CompletableFuture<Void> forwardTo(NexusDuplexPipe destination) {
+        return PipeForwarding.forward(this, destination);
+    }
+
+    /**
+     * Forwards {@code a} to {@code b} and {@code b} to {@code a} at once. Each direction half-closes its destination
+     * when its source completes. If a direction fails, both outputs are completed and the future fails.
+     *
+     * @param a the first pipe
+     * @param b the second pipe
+     * @return a future that completes when both directions have ended
+     */
+    static CompletableFuture<Void> bridge(NexusDuplexPipe a, NexusDuplexPipe b) {
+        return PipeForwarding.bridge(a, b);
+    }
+
+    /**
+     * Completes the output, discards unread input and releases the pipe once the peer has closed it too. Closing a
+     * pipe that was never passed to a method frees it at once.
+     */
     @Override
     void close();
 }

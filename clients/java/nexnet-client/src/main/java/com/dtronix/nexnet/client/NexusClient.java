@@ -13,6 +13,8 @@ import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
+import com.dtronix.nexnet.pipes.PipeManager;
+import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.session.NexusExecutors;
 import com.dtronix.nexnet.session.NexusSession;
@@ -351,6 +353,8 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             .logger(logger)
             .build();
         s.setMessageHandler(runtime);
+        // Pipes and channels (K08): the invocation runtime's next handler.
+        PipeManager.attach(runtime, callbackExecutor, timers, PipeOptions.defaults(), logger);
         synchronized (lock) {
             if (a.canceled) {
                 transport.close(DisconnectReason.GRACEFUL);
@@ -676,12 +680,15 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     }
 
     /**
-     * Creates a pipe to pass to a server method.
+     * Creates a pipe to pass to a server method. It takes a pipe id and a receive window of the current session
+     * until it is closed.
      *
      * @return the pipe
+     * @throws IllegalStateException when the client is not connected
+     * @throws com.dtronix.nexnet.NexusBusyException when the session's pipe limit or budget is reached
      */
     public NexusDuplexPipe createPipe() {
-        throw new UnsupportedOperationException("not implemented");
+        return currentPipes().createPipe();
     }
 
     /**
@@ -690,9 +697,20 @@ public final class NexusClient<TProxy> implements AutoCloseable {
      * @param itemFormatter the item formatter
      * @param <T> the item type
      * @return the channel
+     * @throws IllegalStateException when the client is not connected
+     * @throws com.dtronix.nexnet.NexusBusyException when the session's pipe limit or budget is reached
      */
     public <T> NexusDuplexChannel<T> createChannel(Formatter<T> itemFormatter) {
-        throw new UnsupportedOperationException("not implemented");
+        return currentPipes().createChannel(itemFormatter);
+    }
+
+    private PipeManager currentPipes() {
+        InvocationRuntime runtime = invoker.current();
+        PipeManager pipes = runtime == null ? null : runtime.pipes();
+        if (pipes == null) {
+            throw new IllegalStateException("The client is not connected.");
+        }
+        return pipes;
     }
 
     /**

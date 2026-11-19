@@ -3,7 +3,7 @@ package com.dtronix.nexnet.pipes;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * Writes typed items to a channel. Implemented by K08.
+ * Writes typed items to a channel.
  *
  * @param <T> the item type
  */

@@ -59,7 +59,9 @@ public interface InvocationContext {
     CompletableFuture<Void> result(CompletableFuture<Void> result);
 
     /**
-     * Finishes a fire-and-forget ({@code void}) or pipe method, which sends no result.
+     * Finishes a fire-and-forget ({@code void}) method, which sends no result. Pipe and channel methods use
+     * {@link #result(CompletableFuture)} with the user method's future instead: the runtime closes their pipes when
+     * that future completes (amendment C-3).
      *
      * @return a completed future
      */
