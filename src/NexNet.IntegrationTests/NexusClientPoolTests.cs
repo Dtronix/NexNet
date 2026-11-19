@@ -1416,6 +1416,75 @@ internal class NexusClientPoolTests : BaseTests
     }
 
     [Test]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedConnect()
+    {
+        // No server listening
+        var (_, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds),
+            startServer: false);
+
+        var result = await client.TryConnectAsync().Timeout(1);
+        Assert.That(result.Success, Is.False);
+        Assert.That(client.DisconnectedTask.IsCompleted, Is.True);
+
+        // A second failed attempt leaves it completed too.
+        result = await client.TryConnectAsync().Timeout(1);
+        Assert.That(result.Success, Is.False);
+        Assert.That(client.DisconnectedTask.IsCompleted, Is.True);
+    }
+
+    [Test]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedReconnect()
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(1);
+        Assert.That(client.DisconnectedTask.IsCompleted, Is.False);
+
+        // The server stops: the session ends and its DisconnectedTask completes.
+        await server.StopAsync().Timeout(1);
+        await client.DisconnectedTask.Timeout(1);
+
+        // A connect attempt that fails at the transport leaves DisconnectedTask completed.
+        var result = await client.TryConnectAsync().Timeout(1);
+        Assert.That(result.Success, Is.False);
+        Assert.That(client.DisconnectedTask.IsCompleted, Is.True);
+    }
+
+    [Test]
+    public async Task Pool_RentedClient_DisconnectedTask_CompletedAfterFailedEnsureConnected()
+    {
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(1);
+
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 1 });
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(1);
+            Assert.That(client.DisconnectedTask.IsCompleted, Is.False);
+
+            await server.StopAsync().Timeout(1);
+            await client.DisconnectedTask.Timeout(1);
+
+            Assert.That(await client.EnsureConnectedAsync().Timeout(1), Is.False);
+            Assert.That(client.DisconnectedTask.IsCompleted, Is.True);
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task Pool_EnsureConnectedAsync_SucceedsWhenAlreadyConnected()
     {
         // Arrange
