@@ -246,9 +246,11 @@ class NexusMetricsTest {
         metrics.track(client);
         client.tryConnect();
         TestClients.waitFor(() -> collect().get("nexnet.session.handshaking") == 1L);
+        // The writer thread sends the preamble and the greeting.
+        TestClients.waitFor(() -> collect().get("nexnet.io.bytes/sent") > FakeServer.PREAMBLE.length);
         Map<String, Long> handshaking = collect();
         assertEquals(1L, handshaking.get("nexnet.session.active"));
-        assertTrue(handshaking.get("nexnet.io.bytes/sent") > FakeServer.PREAMBLE.length, handshaking.toString());
+        assertEquals(1L, handshaking.get("nexnet.session.handshaking"));
         assertEquals(0L, handshaking.get("nexnet.io.frames/received"));
         client.close();
         TestClients.waitFor(() -> pushed.size() == 2);
