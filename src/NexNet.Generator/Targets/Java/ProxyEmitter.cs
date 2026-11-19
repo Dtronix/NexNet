@@ -100,10 +100,11 @@ internal static class ProxyEmitter
 
     /// <summary>The Java name of a nexus method: the shared mapping, plus '_' when it names a base class member.</summary>
     internal static string MethodName(JavaContext context, string name, string[] reserved)
-    {
-        var mapped = context.Target.Names.Method(name);
-        return Array.IndexOf(reserved, mapped) >= 0 ? mapped + "_" : mapped;
-    }
+        => EscapeReserved(context.Target.Names.Method(name), reserved);
+
+    /// <summary>A mapped name plus '_' when it names a base class member; the validator uses it too (NEXNET041).</summary>
+    internal static string EscapeReserved(string mapped, string[] reserved)
+        => Array.IndexOf(reserved, mapped) >= 0 ? mapped + "_" : mapped;
 
     internal static string ParamName(JavaContext context, ParamIr param) => context.Target.Names.Parameter(param.Name);
 
