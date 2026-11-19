@@ -56,6 +56,52 @@ internal class TransportConformanceTests : BaseTests
     }
 
     [Test]
+    [Arguments(false, 301)]
+    [Arguments(false, 302)]
+    [Arguments(false, 307)]
+    [Arguments(true, 301)]
+    [Arguments(true, 302)]
+    [Arguments(true, 307)]
+    public async Task UpgradeRedirect_IsNotFollowed_FailsWithProtocolError(bool webSocket, int status)
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        // Where the redirect points. A client that followed it would connect here.
+        using var redirectTarget = new TcpListener(IPAddress.Loopback, 0);
+        redirectTarget.Start();
+        var targetPort = ((IPEndPoint)redirectTarget.LocalEndpoint).Port;
+
+        // A plain HTTP server that answers the upgrade request with a redirect.
+        var serverTask = Task.Run(async () =>
+        {
+            using var socket = await listener.AcceptSocketAsync().ConfigureAwait(false);
+            await ReadRequestHeaders(socket).ConfigureAwait(false);
+            var response = $"HTTP/1.1 {status} Redirect\r\n"
+                           + $"Location: http://127.0.0.1:{targetPort}/redirected\r\n"
+                           + "Content-Length: 0\r\nConnection: close\r\n\r\n";
+            await socket.SendAsync(Encoding.ASCII.GetBytes(response)).ConfigureAwait(false);
+            socket.Shutdown(SocketShutdown.Both);
+        });
+
+        var url = new Uri($"{(webSocket ? "ws" : "http")}://127.0.0.1:{port}/upgrade-test");
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(async () =>
+        {
+            var transport = webSocket
+                ? WebSocketTransport.ConnectAsync(new WebSocketClientConfig { Url = url }, CancellationToken.None)
+                : HttpSocketTransport.ConnectAsync(new HttpSocketClientConfig { Url = url }, CancellationToken.None);
+            await transport.AsTask().Timeout(TestTimeouts.Connect);
+        });
+        await Assert.That(exception!.Error).IsEqualTo(TransportError.ProtocolError);
+        await serverTask.Timeout(TestTimeouts.Connect);
+
+        // The connect failed on the redirect itself: no second request went to the target or back to the server.
+        await Assert.That(redirectTarget.Pending()).IsFalse();
+        await Assert.That(listener.Pending()).IsFalse();
+    }
+
+    [Test]
     [Arguments("https://allowed.example", true)]
     [Arguments("HTTPS://ALLOWED.EXAMPLE", true)]
     [Arguments("https://Allowed.Example", true)]
