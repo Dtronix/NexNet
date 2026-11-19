@@ -31,6 +31,8 @@ export class WriteQueue {
 
   /** Clock time the write in flight started; meaningful only while {@link WriteQueue#inFlight}. Used by the progress timeout (§9). */
   flushStartedAt = 0;
+  /** Clock time the last transport write completed; null until one has. @type {number | null} */
+  lastSentAt = null;
   /** Frames and bytes handed to the transport. */
   framesSent = 0;
   bytesSent = 0;
@@ -141,6 +143,7 @@ export class WriteQueue {
       await this.#transport.write(chunks);
       this.framesSent += chunks.length;
       this.bytesSent += bytes;
+      this.lastSentAt = this.#now();
     } catch (error) {
       ok = false;
       if (!this.#closed) this.#onError(error);

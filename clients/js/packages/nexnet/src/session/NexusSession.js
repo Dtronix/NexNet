@@ -16,6 +16,7 @@ import { countSession } from './diagnostics.js';
 import { encodeFrame, encodeHeaderOnly, encodePreamble } from './frames.js';
 import { startIntervalTimer } from './clock.js';
 import { effectivePingInterval } from './options.js';
+import { notifySessionStarted } from './observers.js';
 import { MIN_PEER_MAX_MESSAGE_SIZE, MessageType } from './protocol.js';
 import { WriteQueue } from './WriteQueue.js';
 import { decodeServerGreeting, encodeClientGreeting } from './wire.js';
@@ -30,6 +31,15 @@ const DISCONNECT_WRITE_TIMEOUT = 5000;
  * @callback FrameHandler
  * @param {import('./FrameReader.js').Frame} frame
  * @returns {number | void}
+ */
+
+/**
+ * Contributes to the session's snapshot (`getSnapshot()`): the pipe layer supplies `pipes`, the invocation layer
+ * `largeMessages`. `now` is the session clock's time.
+ *
+ * @typedef {object} SnapshotSource
+ * @property {(now: number) => import('../diagnostics/snapshot.js').NexusPipeSnapshot[]} [pipes]
+ * @property {(now: number) => import('../diagnostics/snapshot.js').NexusLargeMessageSnapshot[]} [largeMessages]
  */
 
 /**
@@ -60,6 +70,10 @@ export class NexusSession {
   #probes = [];
   /** @type {import('./options.js').ResolvedClientOptions['clock']} */
   #clock;
+  /** @type {import('./observers.js').MetricsSink[]} */
+  #metricsSinks = [];
+  /** @type {SnapshotSource[]} */
+  #snapshotSources = [];
 
   /** @type {import('../contract/enums.js').ConnectionStateValue} */
   #state;
@@ -93,6 +107,8 @@ export class NexusSession {
   idleTimeoutMs = null;
   /** The ping interval in use; 0 before the handshake. */
   pingInterval = 0;
+  /** Clock time the session was created, which is when its transport connected. */
+  connectedAt;
   /** Clock time of the last complete frame received. */
   lastReceived;
   framesReceived = 0;
@@ -121,7 +137,8 @@ export class NexusSession {
     this.#isReconnecting = isReconnecting;
     this.#clock = options.clock;
     this.#state = isReconnecting ? ConnectionState.Reconnecting : ConnectionState.Connecting;
-    this.lastReceived = this.#clock.now();
+    this.connectedAt = this.#clock.now();
+    this.lastReceived = this.connectedAt;
     this.ready = new Promise((resolve) => { this.#resolveReady = resolve; });
     this.closed = new Promise((resolve) => { this.#resolveClosed = resolve; });
     this.controlSender = new ControlSender(() => this.#writer.schedule(), options.invocationCredits / 2);
@@ -221,6 +238,80 @@ export class NexusSession {
   }
 
   /**
+   * Adds a snapshot source (the pipe and invocation layers register theirs when they attach).
+   * @param {SnapshotSource} source
+   * @returns {void}
+   */
+  addSnapshotSource(source) {
+    this.#snapshotSources.push(source);
+  }
+
+  /**
+   * The session-layer part of the snapshot (C# `NexusSessionSnapshot`): milliseconds since the transport connected,
+   * since data was last written to the transport (null if nothing was), and how long the transport write in flight
+   * has been running (null if none is).
+   * @param {number} [now] Session clock time.
+   * @returns {{ connected: number, sinceLastSent: number | null, flushInProgress: number | null }}
+   */
+  snapshot(now = this.#clock.now()) {
+    const lastSent = this.#writer.lastSentAt;
+    return {
+      connected: Math.max(0, now - this.connectedAt),
+      sinceLastSent: lastSent === null ? null : Math.max(0, now - lastSent),
+      flushInProgress: this.#writer.inFlight ? Math.max(0, now - this.#writer.flushStartedAt) : null,
+    };
+  }
+
+  /**
+   * Snapshots of the pipes holding a receive window (from the pipe layer).
+   * @param {number} [now]
+   * @returns {import('../diagnostics/snapshot.js').NexusPipeSnapshot[]}
+   */
+  pipeSnapshots(now = this.#clock.now()) {
+    return this.#snapshotSources.flatMap((source) => source.pipes?.(now) ?? []);
+  }
+
+  /**
+   * Snapshots of the arguments and results larger than one frame being received or sent (from the invocation layer).
+   * @param {number} [now]
+   * @returns {import('../diagnostics/snapshot.js').NexusLargeMessageSnapshot[]}
+   */
+  largeMessageSnapshots(now = this.#clock.now()) {
+    return this.#snapshotSources.flatMap((source) => source.largeMessages?.(now) ?? []);
+  }
+
+  /**
+   * Attaches a metrics sink (the metrics layer does, for sessions of tracked clients). Returns a function that
+   * detaches it. Sinks are dropped when the session reaches `Disconnected`.
+   * @param {import('./observers.js').MetricsSink} sink
+   * @returns {() => void}
+   */
+  addMetricsSink(sink) {
+    this.#metricsSinks.push(sink);
+    return () => {
+      this.#metricsSinks = this.#metricsSinks.filter((s) => s !== sink);
+    };
+  }
+
+  /**
+   * Reports an event instrument measurement to the attached sinks (see {@link import('./observers.js').MetricsSink}).
+   * Does nothing when none is attached.
+   * @param {string} name A key of `Instruments`.
+   * @param {number} value
+   * @param {Readonly<Record<string, string>>} [tags]
+   * @returns {void}
+   */
+  recordMetric(name, value, tags) {
+    for (const sink of this.#metricsSinks) {
+      try {
+        sink(name, value, tags);
+      } catch {
+        // Metrics must never break the session.
+      }
+    }
+  }
+
+  /**
    * Queues an encoded frame. Resolves true once written, false when the session ended first. Frames queued in the
    * same tick go out in one transport write.
    * @param {Uint8Array} frame
@@ -249,6 +340,7 @@ export class NexusSession {
       invocationCredits: this.#options.invocationCredits,
     });
     const type = this.#isReconnecting ? MessageType.ClientGreetingReconnection : MessageType.ClientGreeting;
+    notifySessionStarted(this);
 
     // §5.1: the handshake timeout starts with the read loop. It ends the session without a disconnect byte.
     this.#cancelHandshakeTimer = this.#timer(this.#options.handshakeTimeout, () => {
@@ -485,6 +577,7 @@ export class NexusSession {
         this.#log('error', 'A session close listener threw.', error);
       }
     }
+    this.#metricsSinks = [];
     this.#resolveClosed(reason);
   }
 
