@@ -34,6 +34,13 @@ public sealed record NexusSessionSnapshot
     /// </summary>
     public bool? IsSecure { get; init; }
 
+    /// <summary>
+    /// On a client, the interval at which it pings the server: <c>ClientConfig.PingInterval</c> when set, otherwise
+    /// derived from the idle timeout the server advertised. Null on a server session, and on a client that has not yet
+    /// completed its first connection.
+    /// </summary>
+    public TimeSpan? PingInterval { get; init; }
+
     /// <summary>Connection state.</summary>
     public ConnectionState State { get; init; }
 

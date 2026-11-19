@@ -6,8 +6,12 @@ namespace NexNet.Messages;
 
 /// <summary>
 /// Server response to a client greeting.
-/// Body: <c>[version (int), clientId (int64), maxMessageSize (int), invocationCredits (int)]</c>.
+/// Body: <c>[version (int), clientId (int64), maxMessageSize (int), invocationCredits (int), idleTimeoutMs (uint32)]</c>.
 /// </summary>
+/// <remarks>
+/// <c>idleTimeoutMs</c> is a trailing field: a reader accepts a body without it (read as 0, not advertised) and skips
+/// any elements after it, so fields can be appended later without breaking older readers.
+/// </remarks>
 internal partial class ServerGreetingMessage : IMessageBase
 {
     public static MessageType Type => MessageType.ServerGreeting;
@@ -33,22 +37,42 @@ internal partial class ServerGreetingMessage : IMessageBase
     /// </summary>
     public int InvocationCredits { get; set; }
 
+    /// <summary>
+    /// The server's idle timeout for this session (its endpoint's <c>ConfigBase.Timeout</c>), in milliseconds; 0 when
+    /// the server did not advertise one. The client derives its default ping interval from it.
+    /// </summary>
+    public uint IdleTimeoutMs { get; set; }
+
+    /// <summary>
+    /// Elements before the trailing <see cref="IdleTimeoutMs"/> field; a body must have at least this many.
+    /// </summary>
+    private const int RequiredCount = 4;
+
     public void Serialize(ref MsgPackWriter writer)
     {
-        writer.WriteArrayHeader(4);
+        writer.WriteArrayHeader(RequiredCount + 1);
         writer.Write(Version);
         writer.Write(ClientId);
         writer.Write(MaxMessageSize);
         writer.Write(InvocationCredits);
+        writer.Write(IdleTimeoutMs);
     }
 
     public void Deserialize(ref MsgPackReader reader)
     {
-        reader.ReadArrayHeader(4);
+        var count = reader.ReadArrayHeader();
+        if (count < RequiredCount)
+            throw NexusSerializationException.UnexpectedCount(RequiredCount + 1, count);
+
         Version = reader.ReadInt32();
         ClientId = reader.ReadInt64();
         MaxMessageSize = reader.ReadInt32();
         InvocationCredits = reader.ReadInt32();
+
+        // Trailing fields: absent from older writers, and newer writers may append more.
+        IdleTimeoutMs = count > RequiredCount ? reader.ReadUInt32() : 0;
+        for (var i = RequiredCount + 1; i < count; i++)
+            reader.Skip();
     }
 
     public void Dispose()

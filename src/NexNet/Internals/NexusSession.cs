@@ -181,6 +181,11 @@ internal partial class NexusSession<TNexus, TProxy> : INexusSession<TProxy>, Lar
     }
     
     public IServerSessionManager? SessionManager => _sessionManager;
+
+    /// <summary>
+    /// Client only: the idle timeout the server advertised in its greeting, in milliseconds; 0 if it advertised none.
+    /// </summary>
+    internal uint PeerIdleTimeoutMs { get; private set; }
     public ISessionInvocationStateManager SessionInvocationStateManager { get; }
     public long LastReceived { get; private set; }
 

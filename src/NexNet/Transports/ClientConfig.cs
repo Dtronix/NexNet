@@ -15,9 +15,54 @@ public abstract class ClientConfig : ConfigBase
     public int ConnectionTimeout { get; set; } = 50_000;
 
     /// <summary>
-    /// Number of milliseconds between ping messages sent to the server.
+    /// Ping interval used when <see cref="PingInterval"/> is not set and the server advertises no idle timeout.
     /// </summary>
-    public int PingInterval { get; set; } = 10_000;
+    internal const int DefaultPingInterval = 10_000;
+
+    /// <summary>
+    /// Shortest ping interval derived from the server's advertised idle timeout.
+    /// </summary>
+    internal const int MinimumDerivedPingInterval = 1_000;
+
+    private int? _pingInterval;
+
+    /// <summary>
+    /// Number of milliseconds between ping messages sent to the server, or null (the default) to derive it from the
+    /// server.
+    /// </summary>
+    /// <remarks>
+    /// When null, the client pings at a third of the idle timeout the server advertises in its greeting (its
+    /// endpoint's <see cref="ConfigBase.Timeout"/>), at least every 1000 ms; a server that advertises none is pinged
+    /// every 10000 ms. A value set here is used as is; if it is not below the server's advertised idle timeout, the
+    /// client logs a warning on connect, because the server will time the session out between pings.
+    /// The interval in use is in <c>NexusSessionSnapshot.PingInterval</c> of the client's snapshot.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The value is zero or negative.</exception>
+    public int? PingInterval
+    {
+        get => _pingInterval;
+        set
+        {
+            if (value is { } interval)
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(interval, nameof(PingInterval));
+            _pingInterval = value;
+        }
+    }
+
+    /// <summary>
+    /// Returns the ping interval in milliseconds for a server that advertised <paramref name="serverIdleTimeoutMs"/>
+    /// (0 when it advertised none).
+    /// </summary>
+    internal int GetEffectivePingInterval(uint serverIdleTimeoutMs)
+    {
+        if (_pingInterval is { } explicitInterval)
+            return explicitInterval;
+
+        if (serverIdleTimeoutMs == 0)
+            return DefaultPingInterval;
+
+        return (int)Math.Clamp(serverIdleTimeoutMs / 3, MinimumDerivedPingInterval, int.MaxValue);
+    }
 
     /// <summary>
     /// Policy for reconnecting to the server upon connection closing.

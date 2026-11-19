@@ -103,6 +103,7 @@ A snapshot holds:
 | Large messages | Per value: direction, kind (argument or result), invocation ID, bytes transferred of the total, time since the last chunk. |
 | Transport | Frames and bytes sent and received. |
 | Security | `IsSecure`: on a client, true when the transport is encrypted or local (TLS, `wss://`, `https://`, QUIC, UDS) and false for plain TCP, `ws://`, `http://` and custom transports that do not override `ClientConfig.IsSecureTransport`; the same value as `INexusClient.IsSecure`. Null on server sessions. See [Authentication: Plaintext Transports](authentication.md#plaintext-transports). |
+| Keepalive | `PingInterval`: on a client, the interval at which it pings the server, either `ClientConfig.PingInterval` or derived from the server's advertised `Timeout`. Null on server sessions. See [Sessions & Lifetimes: Ping and Keep-Alive](sessions-and-lifetimes.md#ping-and-keep-alive). |
 
 Each `NexusEndpointSnapshot` holds the endpoint's `Name`, `Transport`, `State` (`Stopped`, `Running`, or `Faulted` when its listener failed while the server keeps running on the other endpoints), `Address` (the socket end point of a TCP, TLS, QUIC or UDS listener, the request path of an ASP.NET endpoint; null when unknown), `IsListener` (false for an external endpoint fed by ASP.NET or the application) and `Sessions`, the number of authenticated sessions it accepted.
 

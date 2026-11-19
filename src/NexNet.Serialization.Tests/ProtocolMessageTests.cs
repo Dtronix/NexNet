@@ -115,12 +115,42 @@ public class ProtocolMessageTests
     [Test]
     public async Task ServerGreetingGoldenVector()
     {
-        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000, MaxMessageSize = 65536, InvocationCredits = 128 });
-        await Assert.That(Hex(body)).IsEqualTo("94" + "01" + "cf0000000100000000" + "ce00010000" + "cc80");
+        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 0x1_0000_0000, MaxMessageSize = 65536, InvocationCredits = 128, IdleTimeoutMs = 30_000 });
+        await Assert.That(Hex(body)).IsEqualTo("95" + "01" + "cf0000000100000000" + "ce00010000" + "cc80" + "cd7530");
         var parsed = Parse<ServerGreetingMessage>(body);
         await Assert.That(parsed.ClientId).IsEqualTo(0x1_0000_0000);
         await Assert.That(parsed.MaxMessageSize).IsEqualTo(65536);
         await Assert.That(parsed.InvocationCredits).IsEqualTo(128);
+        await Assert.That(parsed.IdleTimeoutMs).IsEqualTo(30_000u);
+
+        var reference = Reference(body);
+        await Assert.That(Convert.ToUInt32(reference[4])).IsEqualTo(30_000u);
+    }
+
+    [Test]
+    public async Task ServerGreetingWithoutIdleTimeout_ReadsAsNotAdvertised()
+    {
+        // A server from before the trailing idleTimeoutMs field.
+        var parsed = Parse<ServerGreetingMessage>(Convert.FromHexString("94" + "01" + "01" + "ce00010000" + "cc80"));
+        await Assert.That(parsed.ClientId).IsEqualTo(1);
+        await Assert.That(parsed.InvocationCredits).IsEqualTo(128);
+        await Assert.That(parsed.IdleTimeoutMs).IsEqualTo(0u);
+    }
+
+    [Test]
+    public async Task ServerGreetingSkipsUnknownTrailingFields()
+    {
+        // A newer server may append fields after idleTimeoutMs; they are skipped.
+        var parsed = Parse<ServerGreetingMessage>(Convert.FromHexString("97" + "01" + "01" + "ce00010000" + "cc80" + "cd1770" + "a3616263" + "92c0c3"));
+        await Assert.That(parsed.IdleTimeoutMs).IsEqualTo(6000u);
+        await Assert.That(parsed.InvocationCredits).IsEqualTo(128);
+    }
+
+    [Test]
+    public async Task ServerGreetingIdleTimeoutIsUInt32()
+    {
+        var body = Body(new ServerGreetingMessage { Version = 1, ClientId = 1, MaxMessageSize = 65536, InvocationCredits = 1, IdleTimeoutMs = uint.MaxValue });
+        await Assert.That(Parse<ServerGreetingMessage>(body).IdleTimeoutMs).IsEqualTo(uint.MaxValue);
     }
 
     [Test]

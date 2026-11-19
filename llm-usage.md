@@ -326,7 +326,7 @@ Fire-and-forget (`void`) methods send nothing.
 | Property | Default | Description |
 |----------|---------|-------------|
 | `ConnectionTimeout` | 50000ms | Connect timeout |
-| `PingInterval` | 10000ms | Keepalive interval |
+| `PingInterval` | null | `int?` keepalive interval (ms). Null: a third of the server's advertised idle timeout (`ServerGreeting.idleTimeoutMs` = endpoint `Timeout`), min 1000ms; 10000ms if the server advertises none. Explicit value is used as is; one not below the server's timeout logs a Warning. Effective value: `client.GetSnapshot().PingInterval` |
 | `ReconnectionPolicy` | null | `IReconnectionPolicy`; null = disabled |
 | `Authenticate` | null | `Func<Memory<byte>>` auth token provider; called on every connect/reconnect |
 | `AuthenticateAsync` | null | `Func<CancellationToken, ValueTask<Memory<byte>>>` async token provider; called before the transport connects, bounded by `HandshakeTimeout`. Mutually exclusive with `Authenticate` (`InvalidOperationException`) |
@@ -792,7 +792,7 @@ builder.Services.AddOpenTelemetry().WithMetrics(m => m.AddMeter("NexNet"));
 
 // Live state of one session or a server; not atomic, exposes internal state: never serve unauthenticated.
 NexusSessionSnapshot s = Context.GetSnapshot();      // inside a nexus method
-NexusSessionSnapshot? c = client.GetSnapshot();      // null when not connected
+NexusSessionSnapshot? c = client.GetSnapshot();      // null when not connected; c.PingInterval = interval in use
 NexusServerSnapshot all = server.GetSnapshot();      // authenticated sessions, pending handshakes, rate limiter
 ```
 

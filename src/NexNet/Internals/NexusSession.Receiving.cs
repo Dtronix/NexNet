@@ -552,6 +552,8 @@ internal partial class NexusSession<TNexus, TProxy>
             serverGreeting.ClientId = Id;
             serverGreeting.MaxMessageSize = _config.MaxMessageSize;
             serverGreeting.InvocationCredits = _config.InvocationCredits;
+            // The endpoint's idle timeout, so the client can ping well within it.
+            serverGreeting.IdleTimeoutMs = (uint)_config.Timeout;
 
             await SendMessage(serverGreeting).ConfigureAwait(false);
 
@@ -772,6 +774,9 @@ internal partial class NexusSession<TNexus, TProxy>
                 if (!ApplyPeerLimits(greetingMessage.MaxMessageSize, greetingMessage.InvocationCredits))
                     return DisconnectReason.ProtocolError;
                 _outboundCredits.Release(_peerInvocationCredits);
+
+                // Read by the client before it starts pinging, once the ready task below completes.
+                PeerIdleTimeoutMs = greetingMessage.IdleTimeoutMs;
 
                 //Logger = Logger.CreateLogger(Id.ToString());
    

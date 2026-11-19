@@ -52,7 +52,15 @@ Groups are automatically cleaned up when sessions disconnect. You don't need to 
 
 ## Ping and Keep-Alive
 
-NexNet includes a built-in ping system to detect connection timeouts from both the client and server side. Ping messages are sent periodically (`ClientConfig.PingInterval`, 10 seconds by default), and if nothing is received within `ConfigBase.Timeout` (30 seconds by default), the connection is considered lost.
+NexNet includes a built-in ping system to detect connection timeouts from both the client and server side. The client sends ping messages periodically and the server answers each one. If nothing is received within `ConfigBase.Timeout` (30 seconds by default), the connection is considered lost.
+
+The server tells the client its `Timeout` when the connection is established (for a server with several endpoints, the `Timeout` of the endpoint the client connected to). By default the client pings at a third of it, and at least once a second: a server `Timeout` of 30 s gives a ping every 10 s, and one of 6 s gives a ping every 2 s. Set `ClientConfig.PingInterval` (milliseconds) to choose the interval yourself:
+
+```csharp
+clientConfig.PingInterval = 5_000; // null (the default) derives it from the server
+```
+
+An explicit interval that is not below the server's `Timeout` is still used, but the client logs a warning on connect, because the server would time the session out between pings. The interval in use is in `client.GetSnapshot().PingInterval`.
 
 ## Timeouts
 
