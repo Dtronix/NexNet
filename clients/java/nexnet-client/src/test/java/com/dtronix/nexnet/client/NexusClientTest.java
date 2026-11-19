@@ -372,12 +372,39 @@ class NexusClientTest {
     }
 
     @Test
-    void connectingTwiceFails() throws Exception {
-        NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).build(), new Server(accept()));
+    void connectingAConnectedClientDoesNothing() throws Exception {
+        Server server = new Server(accept());
+        NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).build(), server);
         client.connect().get(5, TimeUnit.SECONDS);
-        ExecutionException e = assertThrows(ExecutionException.class, () -> client.connect().get(5, TimeUnit.SECONDS));
-        assertInstanceOf(IllegalStateException.class, e.getCause());
-        assertEquals(ConnectionResult.Status.EXCEPTION, client.tryConnect().get(5, TimeUnit.SECONDS).status());
+        NexusSession session = client.session();
+        client.connect().get(5, TimeUnit.SECONDS);
+        assertEquals(ConnectionResult.Status.SUCCESS, client.tryConnect().get(5, TimeUnit.SECONDS).status());
+        assertSame(session, client.session());
+        assertEquals(ConnectionState.CONNECTED, client.state());
+        assertEquals(1, server.transports.size());
+    }
+
+    @Test
+    void connectingWhileAnAttemptIsInProgressFails() throws Exception {
+        CountDownLatch blocked = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).build(), (config, timeout) -> {
+            blocked.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new LoopbackTransport();
+        });
+        try {
+            client.tryConnect();
+            assertTrue(blocked.await(5, TimeUnit.SECONDS));
+            ExecutionException e = assertThrows(ExecutionException.class, () -> client.connect().get(5, TimeUnit.SECONDS));
+            assertInstanceOf(IllegalStateException.class, e.getCause());
+        } finally {
+            release.countDown();
+        }
     }
 
     @Test

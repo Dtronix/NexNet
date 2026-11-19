@@ -281,7 +281,8 @@ server `INexusList<T>` (protocol specification section 12):
 - `NexusClient<TProxy>`: `connect()`/`connect(token)`, `tryConnect()`/`tryConnect(token)` (a
   `ConnectionResult`), `disconnect()`, `state()`, `addStateListener`, `disconnected()`, `proxy()`, `isSecure()`,
   `config()`, `session()` (the current `NexusSession`, or null), `createPipe()`, `createChannel(formatter)`,
-  `close()`.
+  `close()`. `connect()`/`tryConnect()` on a connected client succeed and do nothing (C# parity); during an attempt
+  they fail with `IllegalStateException` (`tryConnect()`: an `EXCEPTION` result).
 - `ClientConfig`: `webSocket(URI)` (ws/wss), `httpSocket(URI)` (http/https), `tcp(host, port)`,
   `tcpTls(host, port)`. UDS and QUIC are not available on Java (D4). Builder options:
   - `tls(TlsOptions)`;

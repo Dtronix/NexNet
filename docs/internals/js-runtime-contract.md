@@ -280,7 +280,8 @@ Conversions (J02):
 - `static create(config, nexus, binding)` creates an instance of the class it is called on. `binding` is a
   `ClientBinding` (§4) that the generated `create<Export>Client(config, nexus)` supplies.
 - `connect({signal})`, `tryConnect({signal})` → `ConnectionResult` (`success`, `state`, `disconnectReason`, `error`),
-  `disconnect()`, `[Symbol.asyncDispose]()`.
+  `disconnect()`, `[Symbol.asyncDispose]()`. On a connected client `connect`/`tryConnect` succeed and do nothing (C#
+  parity); during an attempt they share that attempt's result.
 - `state` (`ConnectionState`), `proxy`, `isSecure`, `remoteCertificate`, `disconnected` (a promise, below),
   `reconnection` (below), `config`, `nexus`.
 - `createPipe()`, `createChannel(formatter)`, `getSnapshot()`.
