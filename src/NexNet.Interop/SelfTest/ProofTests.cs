@@ -30,7 +30,7 @@ public class ProofTests
     }
 
     [Test]
-    [ClientMatrix]
+    [ClientMatrix(CSharpTransports = [ClientTransport.Quic])]
     public async Task Invocation_EchoesErrorsAndCallbacks(ClientTarget target)
     {
         await using var server = await StartServer();
@@ -86,7 +86,7 @@ public class ProofTests
     }
 
     [Test]
-    [ClientMatrix]
+    [ClientMatrix(CSharpTransports = [ClientTransport.Quic])]
     public async Task Pipe_EchoesPatternAndChannel(ClientTarget target)
     {
         await using var server = await StartServer();
@@ -124,7 +124,7 @@ public class ProofTests
     }
 
     [Test]
-    [ClientMatrix]
+    [ClientMatrix(CSharpTransports = [ClientTransport.Quic])]
     public async Task Collection_SyncsBothWays(ClientTarget target)
     {
         await using var server = await StartServer();
@@ -156,7 +156,7 @@ public class ProofTests
     }
 
     [Test]
-    [ClientMatrix]
+    [ClientMatrix(CSharpTransports = [ClientTransport.Quic])]
     public async Task Collection_WatchReportsChangeEvents_AndArgumentErrors(ClientTarget target)
     {
         await using var server = await StartServer();

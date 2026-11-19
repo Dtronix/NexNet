@@ -8,6 +8,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.Extensions.Time.Testing;
 using NexNet.InteropServer;
+using NexNet.Quic;
 using NexNet.Transports;
 using NexNet.Transports.HttpSocket;
 using NexNet.Transports.Uds;
@@ -47,6 +48,12 @@ public static class InProcClientConfig
             {
                 Url = new Uri(address),
                 SslClientAuthenticationOptions = transport.IsSecure() ? CreateTls(spec, null) : null,
+            },
+            ClientTransport.Quic => new QuicClientConfig
+            {
+                EndPoint = ParseEndPoint(address, "quic://"),
+                // msquic needs a DNS server name (SNI) for the handshake.
+                SslClientAuthenticationOptions = CreateTls(spec, spec.TlsServerName ?? "localhost"),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(transport), transport, null),
         };
