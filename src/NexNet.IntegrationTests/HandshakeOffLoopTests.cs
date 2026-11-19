@@ -19,6 +19,7 @@ namespace NexNet.IntegrationTests;
 /// Transport handshakes (TLS, the QUIC stream accept) run off the accept loop: a slow or stalled peer must not hold
 /// up other accepts, and each pending handshake counts against MaxPendingHandshakes and the rate limiter.
 /// </summary>
+[NotInParallel]
 internal class HandshakeOffLoopTests : BaseTests
 {
     [Test]

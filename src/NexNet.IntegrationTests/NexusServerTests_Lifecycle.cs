@@ -90,6 +90,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
     /// (200 sessions x 200 ms would take 40 s sequentially).
     /// </summary>
     [Test]
+    [NotInParallel]
     public async Task Stop_With200Sessions_CompletesQuickly()
     {
         const int sessionCount = 200;

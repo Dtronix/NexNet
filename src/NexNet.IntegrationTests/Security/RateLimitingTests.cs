@@ -7,6 +7,7 @@ using NexNet.Transports;
 
 namespace NexNet.IntegrationTests.Security;
 
+[NotInParallel("stress")]
 internal class RateLimitingTests : BaseTests
 {
     private const int MaxGreetingAttempts = 3; // Must match NexusSession.MaxGreetingAttempts

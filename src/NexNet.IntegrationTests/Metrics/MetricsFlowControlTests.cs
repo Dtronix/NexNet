@@ -7,6 +7,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Flow-control gauges (budget, pipes, invocations) and the counters for resets, refusals and aborts.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsFlowControlTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;

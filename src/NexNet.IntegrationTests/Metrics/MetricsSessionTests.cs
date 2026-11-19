@@ -11,6 +11,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Session instruments: active and handshaking sessions, disconnects, duration and rejected connections.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsSessionTests : BaseTests
 {
     private MetricsRecorder _recorder = null!;

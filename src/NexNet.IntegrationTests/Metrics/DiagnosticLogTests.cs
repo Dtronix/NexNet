@@ -7,6 +7,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Log messages that say what went wrong: the stall that disconnected a session, and rate-limited pipe resets.
 /// </summary>
+[NotInParallel("stress")]
 internal class DiagnosticLogTests : BaseTests
 {
     [Test]

@@ -4,6 +4,7 @@ using NexNet.Pipes.Broadcast;
 
 namespace NexNet.IntegrationTests.Collections;
 
+[NotInParallel]
 internal class NexusCollectionAckTests : NexusCollectionBaseTests
 {
     [Test]

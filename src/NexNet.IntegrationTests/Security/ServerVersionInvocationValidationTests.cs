@@ -500,6 +500,7 @@ internal class ServerVersionInvocationValidationTests : BaseTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task VersionedServer_HighVolumeInvalidAccess_ShouldMaintainPerformance()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);

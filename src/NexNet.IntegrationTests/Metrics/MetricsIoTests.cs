@@ -6,6 +6,7 @@ namespace NexNet.IntegrationTests.Metrics;
 /// <summary>
 /// Frame and byte counters.
 /// </summary>
+[NotInParallel("stress")]
 internal class MetricsIoTests : BaseTests
 {
     [Test]

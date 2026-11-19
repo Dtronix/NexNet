@@ -198,6 +198,7 @@ internal class InvocationCreditTests : BaseTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task BroadcastWithStalledClients_ReachesHealthyClientsWithoutWaiting()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
@@ -243,6 +244,7 @@ internal class InvocationCreditTests : BaseTests
     }
 
     [Test]
+    [NotInParallel]
     public async Task BroadcastLargeArgumentWithStalledClient_ReachesHealthyClientsWithoutWaiting()
     {
         var serverConfig = CreateServerConfig(Type.Tcp);
