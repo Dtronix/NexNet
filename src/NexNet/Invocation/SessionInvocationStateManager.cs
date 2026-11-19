@@ -25,6 +25,15 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
     private int _id = Interlocked.Increment(ref _counter);
 
     private readonly ConcurrentDictionary<int, RegisteredInvocationState> _invocationStates;
+
+    // 1 once CancelAll has run: the session is closing, and a call registered from then on is canceled at once.
+    private int _closed;
+
+    /// <summary>
+    /// Test hook: runs after a call has taken its id and right before it registers, so a test can run
+    /// <see cref="CancelAll"/> inside the window where a disconnect used to leave the call pending forever.
+    /// </summary>
+    internal Action? InternalBeforeRegister;
     //private readonly ConcurrentDictionary<int, RegisteredNexusPipe> _waitingPipes;
 
     public SessionInvocationStateManager(PoolManager poolManager, INexusLogger? logger, INexusSession nexusSession)
@@ -148,9 +157,22 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
         state.InvocationId = message.InvocationId;
         state.Owner = this;
 
+        InternalBeforeRegister?.Invoke();
+
         // Registered before the token so that the cancellation callback always finds it, even when the token is
         // already canceled and the callback runs inside Register.
         _invocationStates.TryAdd(message.InvocationId, state);
+
+        // The session started closing before the call registered: CancelAll may already have run and not seen it,
+        // and no result will come for it. Complete it as canceled now and send nothing. Read after the add with a
+        // full fence, as CancelAll sets the flag before it reads the states: one of the two always sees the other,
+        // and only the one that removes the state completes it.
+        if (Interlocked.CompareExchange(ref _closed, 0, 0) != 0)
+        {
+            ForgetUnsent(state);
+            state.TrySetCanceled();
+            return;
+        }
 
         if (cancellationToken != null)
         {
@@ -261,6 +283,9 @@ internal class SessionInvocationStateManager : ISessionInvocationStateManager
 
     public void CancelAll()
     {
+        // Set before reading the states, so a call registering concurrently either is seen here or sees the flag.
+        Interlocked.Exchange(ref _closed, 1);
+
         // Each state is completed only by the path that removes it, so a result racing the disconnect can not
         // complete a state this has already completed.
         foreach (var invocationState in _invocationStates)
