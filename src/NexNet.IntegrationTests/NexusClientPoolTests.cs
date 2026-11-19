@@ -1154,10 +1154,77 @@ internal class NexusClientPoolTests(LanguageHostPool hosts) : BaseTests
             await Assert.That(result).IsFalse();
         }
 
-        // No in-process audit here: after a failed connect attempt the C# client's DisconnectedTask never completes,
-        // so the in-process pool driver counts the returned (and disposed) client as still connected. Follow-up of
-        // P01g. Language hosts still audit the pool at the end of the test.
-        await pool.DisposeAsync();
+        // The failed connect attempt leaves the client's DisconnectedTask completed, so the audit sees no connected client.
+        await DisposeAndAssertNoLeaks(pool);
+    }
+
+    [Test]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedConnect()
+    {
+        // No server listening
+        var (_, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds),
+            startServer: false);
+
+        var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+
+        // A second failed attempt leaves it completed too.
+        result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+    }
+
+    [Test]
+    public async Task Client_DisconnectedTask_CompletedAfterFailedReconnect()
+    {
+        var (server, client, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(client.DisconnectedTask.IsCompleted).IsFalse();
+
+        // The server stops: the session ends and its DisconnectedTask completes.
+        await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+        await client.DisconnectedTask.Timeout(T(TestTimeouts.Connect));
+
+        // A connect attempt that fails at the transport leaves DisconnectedTask completed.
+        var result = await client.TryConnectAsync().Timeout(T(TestTimeouts.Connect));
+        await Assert.That(result.Success).IsFalse();
+        await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+    }
+
+    [Test]
+    public async Task Pool_RentedClient_DisconnectedTask_CompletedAfterFailedEnsureConnected()
+    {
+        var (server, _, _) = CreateServerClient(
+            CreateServerConfig(Type.Uds),
+            CreateClientConfig(Type.Uds));
+
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+
+        var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 1 });
+
+        try
+        {
+            using var client = await pool.RentClientAsync().Timeout(T(TestTimeouts.Connect));
+            await Assert.That(client.DisconnectedTask.IsCompleted).IsFalse();
+
+            await server.StopAsync().Timeout(T(TestTimeouts.Connect));
+            await client.DisconnectedTask.Timeout(T(TestTimeouts.Connect));
+
+            await Assert.That(await client.EnsureConnectedAsync().Timeout(T(TestTimeouts.Connect))).IsFalse();
+            await Assert.That(client.DisconnectedTask.IsCompleted).IsTrue();
+        }
+        finally
+        {
+            await pool.DisposeAsync();
+        }
     }
 
     [Test]
