@@ -1,10 +1,11 @@
 using System.Text;
 using NexNet;
 using NexNet.InteropServer;
-using NexNet.InteropServer.Probe;
+using NexNet.TestNexus.Interop;
 
 // Usage: NexNet.InteropServer.Cli [--token <token>] [--origin <origin>]... [--timeout <ms>]
-// Starts a dedicated interop server with the probe nexus, prints each endpoint's address and runs until Ctrl+C.
+// Starts a dedicated interop server with the interop test nexus (InteropServerNexus, which Java and JavaScript export),
+// prints each endpoint's address and runs until Ctrl+C. The nightly Android job runs its emulator smoke test against it.
 var options = new InteropServerOptions();
 for (var i = 0; i < args.Length; i++)
 {
@@ -28,8 +29,8 @@ for (var i = 0; i < args.Length; i++)
     }
 }
 
-await using var server = await InteropServerHost.StartAsync<InteropProbeServerNexus, InteropProbeServerNexus.ClientProxy>(
-    () => new InteropProbeServerNexus(), options);
+await using var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(
+    () => new InteropServerNexus(), options);
 
 foreach (var (kind, address) in server.Endpoints.ToDictionary())
     Console.WriteLine($"{kind.GetEndpointName(),-15} {address}");
