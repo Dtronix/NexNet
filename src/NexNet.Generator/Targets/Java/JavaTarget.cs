@@ -6,8 +6,9 @@ namespace NexNet.Generator.Targets.Java;
 /// <summary>
 /// The Java client target (<c>com.dtronix:nexnet-client</c>, Java 11 / Android API 24). Client emission writes one file
 /// per declared type into the configured package (<see cref="TypeEmitter"/>) and the formatter classes into its
-/// <c>formatters</c> sub-package (<see cref="FormatterEmitter"/>); proxies and client nexus bases arrive with K04,
-/// test scaffolding with K11.
+/// <c>formatters</c> sub-package (<see cref="FormatterEmitter"/>), and per export its handshake constants, server proxy,
+/// client nexus base and client factory (<see cref="ProxyEmitter"/>, <see cref="ClientNexusEmitter"/>); test
+/// scaffolding arrives with K11.
 /// </summary>
 internal sealed class JavaTarget : TargetLanguageBase
 {
@@ -89,9 +90,9 @@ internal sealed class JavaTarget : TargetLanguageBase
         return true;
     }
 
-    /// <summary>All generated code goes in the configured package: <c>com/acme/ChatServer.java</c>.</summary>
+    /// <summary>All generated code goes in the configured package: <c>com/acme/ChatServerProxy.java</c>… (<see cref="JavaExportNames"/>).</summary>
     public override IEnumerable<string> ExportFiles(ExportIr export, TargetOptions options)
-        => new[] { PackagePath(options) + Names.Type(export.Name) + ".java" };
+        => JavaExportNames.Of(export).All.Select(name => PackagePath(options) + name + ".java").ToArray();
 
     public override IEnumerable<string> TypeFiles(TypeDeclIr type, TargetOptions options)
         => new[] { PackagePath(options) + TypeName(type) + ".java" };
@@ -148,6 +149,8 @@ internal sealed class JavaTarget : TargetLanguageBase
             files.Add(new GeneratedFile(TypeFiles(decl, options).Single(), TypeEmitter.Emit(context, decl, unionsOfCase)));
 
         files.AddRange(FormatterEmitter.Emit(context, decls, UserFormatters(ir, decls), FormattersPath(options)));
+        foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
+            files.AddRange(ProxyEmitter.Emit(context, export, PackagePath(options)));
         return files;
     }
 
