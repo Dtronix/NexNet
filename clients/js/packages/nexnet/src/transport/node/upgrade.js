@@ -6,7 +6,7 @@
 
 import http from 'node:http';
 import https from 'node:https';
-import { upgradeRefused } from '../TransportBase.js';
+import { transportError, upgradeRefused } from '../TransportBase.js';
 import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins, urlHost } from './common.js';
 
 /**
@@ -18,7 +18,9 @@ import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins, 
 
 /**
  * Sends `GET <path>` with `Connection: Upgrade` on a fresh connection (no agent, no pooling) and resolves on the
- * `101`. Any other status rejects with the mapped `NexusTransportError` (`upgradeRefused`). Over TLS it offers
+ * `101`. Any other status rejects with the mapped `NexusTransportError` (`upgradeRefused`). A `3xx` is a redirect,
+ * which is never followed: it rejects with `ProtocolError` and no second request is made (protocol spec §13.6/§13.7),
+ * so the `Authorization` header and any query token never reach another URL. Over TLS it offers
  * ALPN `http/1.1` only (§13.6), so the server cannot pick HTTP/2. With `tls.pins` set, the request (and so its
  * headers) is sent only after the handshake and a matching pin; a mismatch rejects with `AuthenticationError`.
  *
@@ -65,12 +67,12 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
     request.on('error', (error) => reject(connectError(what, error, { tlsPhase: tcpConnected && !tlsDone })));
     request.once('response', (response) => {
       response.resume();
-      reject(upgradeRefused(transport, response.statusCode ?? 0, url.href));
+      reject(refusal(transport, response.statusCode ?? 0, url.href));
     });
     request.once('upgrade', (response, socket, head) => {
       if (response.statusCode !== 101) {
         socket.destroy();
-        reject(upgradeRefused(transport, response.statusCode ?? 0, url.href));
+        reject(refusal(transport, response.statusCode ?? 0, url.href));
         return;
       }
       // Keep the bytes that arrive between now and the transport taking the socket.
@@ -81,6 +83,24 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
     if (pins.length === 0) request.end();
     return () => request.destroy();
   });
+}
+
+/**
+ * The rejection for an upgrade answered with a status other than `101`. A `3xx` redirect is `ProtocolError` for
+ * both transports (it is never followed); every other status maps as in `upgradeRefused`.
+ *
+ * @param {'HttpSocket' | 'WebSocket'} transport
+ * @param {number} status
+ * @param {string} url
+ */
+function refusal(transport, status, url) {
+  if (status >= 300 && status <= 399) {
+    return transportError(
+      `${transport} upgrade to ${url} was answered with redirect HTTP ${status}; redirects are not followed.`,
+      { kind: 'ProtocolError', status },
+    );
+  }
+  return upgradeRefused(transport, status, url);
 }
 
 /**
