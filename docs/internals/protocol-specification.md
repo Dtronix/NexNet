@@ -507,6 +507,14 @@ pipe argument of an invocation. The side that registers the pipe:
 - if it has reached its pipe limit or its budget is exhausted, replies `DuplexPipeUpdateState[Refused]` with the
   opener's partial pipe ID. The opener's pipe fails.
 
+Before it refuses, an implementation may wait briefly for pipes that are already closing (§7.3) to be released. The
+opener frees its side of a pipe as soon as it has both sent and received Complete, so it can open the next pipe
+before the registering side's application has released the old one. With a pipe limit of 1, an immediate refusal
+would fail that open although a slot is about to free up. The C# implementation waits only when such a pipe exists,
+at most 1 s and never longer than `ProgressTimeout` (§9), then refuses if it still has no slot
+(`src/NexNet/Pipes/NexusPipeManager.cs`, `TryReserveAfterPendingFreesAsync`). The opener sees only a later `Ready` or
+`Refused`.
+
 On `Ready` the opener grants its own window with `PipeWindowUpdate[window]`. Neither side writes before it holds
 credit.
 
@@ -960,9 +968,18 @@ A reset is `ResetStart(version, totalValues)`, then zero or more `ResetValues`, 
   comes from the wire, so do not size a buffer from `totalValues` alone; C# caps the initial capacity at 1024.
 - Live changes follow the reset; they are never interleaved with it (server ordering guarantees, below).
 
+**The snapshot is written with backpressure.** The server captures the snapshot on its processing loop and writes
+its items off that loop, through the pipe's flow control (§7.2), waiting for credit as needed
+(`NexusBroadcastServer.cs`, `CaptureSnapshot` and `WriteSnapshotAsync`). A snapshot of any size therefore arrives
+whole, however slowly the client reads, and a slow client does not hold up the other clients. The reset items do not
+go through the client's outgoing buffer (§12.8); live changes broadcast meanwhile wait there and are sent after
+ResetComplete. If the pipe closes before the whole snapshot is written, the server closes it without sending the rest.
+
 **Server ordering guarantees.** A NexNet server gives each client the following ordering on its collection pipe:
 - **The snapshot comes first.** The server takes the snapshot and registers the new client for broadcasts in one
-  step on its processing loop, so no change is applied between the two (`NexusBroadcastServer.cs:102-113`).
+  step on its processing loop, so no change is applied between the two (`NexusBroadcastServer.cs:102-116`). The
+  client's writer starts only after the snapshot is written, so broadcasts queued for it in the meantime follow
+  ResetComplete.
   - The registration is queued behind every broadcast already queued (`NexusBroadcastConnectionManager.cs:60-69`,
     `:298-309`).
   - A change applied before that step is in the snapshot and is never sent to this client.
@@ -1051,9 +1068,12 @@ from version `v` to `v+1`. A Clear empties the history and becomes its first ent
 - the client sends a forbidden tag (§12.3) or an unknown one;
 - §12.7 step 1 or 5 fails;
 - an item fails to decode (`NexusBroadcastServer.cs:150-154`);
-- the client cannot keep up: each session has a queue of 1000 outgoing items, and the pipe is closed when it is full
-  (`NexusBroadcastSession.cs:90-97`, `NexusBroadcastConnectionManager.cs:228-241`). This includes a Noop answer
-  (`NexusBroadcastConnectionManager.cs:312-327`);
+- the client cannot keep up with live changes: each session has a buffer of `BufferCapacity` (1000) outgoing
+  items, and when a change or a Noop answer does not fit, the server closes the pipe and logs the reason ("Collection
+  client buffer is full: the client is not keeping up with the changes") (`NexusBroadcastSession.cs:81-84`,
+  `NexusBroadcastConnectionManager.cs:235-243` and `:318-326`). The snapshot does not count against this buffer
+  (§12.5), but the changes broadcast while it is being written do. The client sees the collection go to Disabled
+  (§12.4); enabling it again resynchronizes it with a full reset;
 - the server stops (`NexusBroadcastConnectionManager.cs:273-288`);
 - the collection's message processor restarts or gives up after an unexpected error (S11). An item may have been
   lost with the stopped processor, so no client's replica can be trusted.
