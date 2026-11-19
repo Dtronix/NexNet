@@ -19,8 +19,10 @@ public class JavaScaffoldingCompileTests
     /// <summary>Vectors whose value the Java type cannot hold, with the reason.</summary>
     private static readonly Dictionary<string, string> Unrepresentable = new(StringComparer.Ordinal)
     {
-        // Java maps decimal to BigDecimal, which has no negative zero: -0m reads as 0 (the sign bit is lost).
-        ["decimal.m0"] = "BigDecimal has no negative zero",
+        // Java maps decimal to BigDecimal, which has no negative zero: -0m reads as 0 (the sign bit is lost). A known
+        // parity loss (K31; docs/internals/java-runtime-contract.md section 5). The runtime's golden tests cover the
+        // vector through NexusDecimal, which keeps the sign.
+        ["decimal.m0"] = "known parity loss (K31): BigDecimal has no negative zero, so -0m reads and re-encodes as 0m",
     };
 
     [Test]
