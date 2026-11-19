@@ -1,11 +1,11 @@
 /**
  * Node-only additions. Reachable only from the `node` entry; must never be imported by the browser entry.
- * J06 implements the transports.
+ * J06 implements the transports (`src/transport/node/`).
  * @module
  */
 
 import { NexusClient } from './client.js';
-import { unimplementedTransport } from './transport.js';
+import { nodeTransports } from '../transport/node/index.js';
 
 /**
  * `NexusClient` with every Node transport. The Node entry exports it as `NexusClient` too.
@@ -16,11 +16,5 @@ import { unimplementedTransport } from './transport.js';
  */
 export class NodeNexusClient extends NexusClient {
   /** @type {typeof NexusClient.transports} */
-  static transports = Object.freeze({
-    ...NexusClient.transports,
-    httpSocket: unimplementedTransport('httpSocket'),
-    tcp: unimplementedTransport('tcp'),
-    tcpTls: unimplementedTransport('tcpTls'),
-    uds: unimplementedTransport('uds'),
-  });
+  static transports = nodeTransports;
 }

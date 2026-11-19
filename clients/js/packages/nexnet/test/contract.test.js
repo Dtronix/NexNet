@@ -54,9 +54,14 @@ describe('transports per entry', () => {
     expect(Object.keys(node.NexusClient.transports).sort()).toEqual([...core.TransportKinds].sort());
   });
 
-  it('transport stubs throw not implemented', () => {
-    const factory = /** @type {import('../src/index.js').TransportFactory} */ (node.NexusClient.transports.tcp);
-    expect(() => factory({}, { signal: new AbortController().signal })).toThrow(notImplemented);
+  it('every transport is implemented (J06); node has its own RFC 6455 webSocket', async () => {
+    const aborted = AbortSignal.abort();
+    for (const factory of [...Object.values(node.NexusClient.transports), NexusClient.transports.webSocket]) {
+      const f = /** @type {import('../src/index.js').TransportFactory} */ (factory);
+      await expect(Promise.resolve().then(() => f(/** @type {any} */ ({ webSocket: { url: 'ws://localhost:1' }, httpSocket: { url: 'http://localhost:1' }, tcp: { host: 'localhost', port: 1 }, tcpTls: { host: 'localhost', port: 1 }, uds: { path: 'x' } }), { signal: aborted })))
+        .rejects.not.toThrow(notImplemented);
+    }
+    expect(node.NexusClient.transports.webSocket).not.toBe(NexusClient.transports.webSocket);
   });
 });
 

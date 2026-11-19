@@ -7,7 +7,7 @@
 import { ConnectionResultState, ConnectionState, DisconnectReason } from '../contract/enums.js';
 import { NexusTransportError, cancellationError } from '../contract/errors.js';
 import { notImplemented } from '../contract/internal.js';
-import { unimplementedTransport } from '../transport/ITransport.js';
+import { webSocketTransport } from '../transport/WebSocketTransport.js';
 import { NexusSession } from '../session/NexusSession.js';
 import { resolveClientOptions } from '../session/options.js';
 import { MAX_VERSION_LENGTH } from '../session/protocol.js';
@@ -75,7 +75,7 @@ export class NexusClient extends EventTarget {
    * @type {Readonly<Partial<Record<import('../contract/config.js').TransportKind, import('../transport/ITransport.js').TransportFactory>>>}
    */
   static transports = Object.freeze({
-    webSocket: unimplementedTransport('webSocket'),
+    webSocket: webSocketTransport,
   });
 
   /** @type {import('../session/options.js').ResolvedClientOptions} */
