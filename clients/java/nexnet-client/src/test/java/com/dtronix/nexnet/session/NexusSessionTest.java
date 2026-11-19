@@ -494,7 +494,8 @@ class NexusSessionTest {
         session.ready().get(5, TimeUnit.SECONDS);
         CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
         assertEquals(21, transport.server().readByte());
-        waitFor(() -> timers.pending() == 1);
+        // The disconnect delay and the close fallback (progress timeout), which closing the transport cancels.
+        waitFor(() -> timers.pending() == 2);
         assertFalse(closing.isDone());
         timers.advance(200);
         assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));

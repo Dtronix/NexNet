@@ -89,6 +89,7 @@ public final class NexusSession {
     private @Nullable Thread writerThread;
     private @Nullable Registration handshakeTimer;
     private @Nullable Registration pingTimer;
+    private @Nullable Registration closeFallback;
 
     private final AtomicBoolean finished = new AtomicBoolean();
     private final CompletableFuture<Void> ready = new CompletableFuture<>();
@@ -102,6 +103,10 @@ public final class NexusSession {
     private volatile int peerInvocationCredits = -1;
     private volatile long advertisedIdleTimeoutMillis = -1;
     private volatile long effectivePingIntervalMillis = -1;
+    /** True while the writer thread is inside a transport write or flush (the progress check, section 9). */
+    private volatile boolean writing;
+    /** The clock reading when the write in progress started; meaningful only while {@code writing}. */
+    private volatile long writeStartedNanos;
 
     private NexusSession(Builder b) {
         this.name = b.name;
@@ -346,6 +351,10 @@ public final class NexusSession {
                 if (phase() == Phase.CONNECTED) {
                     controlSender.drainTo(control);
                 }
+                // Recorded for the progress check (specification section 9): a write that never completes is a
+                // stall of the outbound transport.
+                writeStartedNanos = timers.nanoTime();
+                writing = true;
                 try {
                     for (Pending pending : batch) {
                         out.write(pending.frame.bytes());
@@ -355,13 +364,15 @@ public final class NexusSession {
                     }
                     out.flush();
                 } catch (IOException e) {
-                    fail(batch, DisconnectReason.SOCKET_CLOSED_WHEN_WRITING);
+                    writing = false;
+                    fail(batch, closingReasonOr(DisconnectReason.SOCKET_CLOSED_WHEN_WRITING));
                     if (phase().compareTo(Phase.CLOSING) < 0) {
                         log(NexusLogLevel.DEBUG, "Write failed.", e);
                         close(DisconnectReason.SOCKET_CLOSED_WHEN_WRITING, false);
                     }
                     return;
                 }
+                writing = false;
                 for (Pending pending : batch) {
                     if (pending.done != null) {
                         pending.done.complete(null);
@@ -374,6 +385,7 @@ public final class NexusSession {
             Thread.currentThread().interrupt();
             close(DisconnectReason.SOCKET_ERROR, false);
         } catch (RuntimeException e) {
+            writing = false;
             log(NexusLogLevel.ERROR, "The writer failed.", e);
             fail(batch, DisconnectReason.PROTOCOL_ERROR);
             close(DisconnectReason.PROTOCOL_ERROR, false);
@@ -628,13 +640,21 @@ public final class NexusSession {
     }
 
     /**
-     * The progress check (specification section 9): asks every probe; the first stall it reports disconnects with
-     * {@code Stalled}.
+     * The progress check (specification section 9): first the outbound transport write in progress, then every probe;
+     * the first stall found disconnects with {@code Stalled}. A stalled write closes without the disconnect byte, since
+     * the writer thread that would send it is the one that is stuck; closing the transport unblocks it.
      *
      * @return true when the session is closing because of a stall
      */
     private boolean checkProgress() {
         long now = timers.nanoTime();
+        String writeStall = findStalledWrite(now);
+        if (writeStall != null) {
+            log(NexusLogLevel.WARNING, "The session made no progress within "
+                + TimeUnit.NANOSECONDS.toMillis(progressTimeoutNanos) + " ms: " + writeStall + ".", null);
+            close(DisconnectReason.STALLED, false);
+            return true;
+        }
         for (ProgressProbe probe : probes) {
             String stall;
             try {
@@ -651,6 +671,17 @@ public final class NexusSession {
             }
         }
         return false;
+    }
+
+    /** Describes the outbound transport write in progress when it has run longer than the progress timeout. */
+    private @Nullable String findStalledWrite(long now) {
+        if (!writing) {
+            return null;
+        }
+        long elapsed = now - writeStartedNanos;
+        return elapsed > progressTimeoutNanos
+            ? "outbound transport write running for " + TimeUnit.NANOSECONDS.toMillis(elapsed) + " ms"
+            : null;
     }
 
     private Registration scheduleTimer(Runnable task, long delayMillis) {
@@ -709,6 +740,37 @@ public final class NexusSession {
         log(NexusLogLevel.INFORMATION, "Session disconnected with reason: " + reason + ".", null);
         if (!writerSends) {
             finish();
+            return;
+        }
+        // The writer may be stuck in a transport write that never completes, and then never sends the byte. Closing
+        // waits at most the progress timeout (plus the disconnect delay) for it, then closes the transport, which
+        // unblocks the write. A plain scheduler task, not a session timer: closing cancels the session timers.
+        Registration fallback = timers.schedule(this::writerDidNotFinish,
+            TimeUnit.NANOSECONDS.toMillis(progressTimeoutNanos) + options.disconnectDelayMillis());
+        synchronized (lock) {
+            if (phase != Phase.CLOSED) {
+                closeFallback = fallback;
+                fallback = null;
+            }
+        }
+        if (fallback != null) {
+            fallback.close();
+        }
+    }
+
+    /** The close fallback: the writer did not send the disconnect byte in time. */
+    private void writerDidNotFinish() {
+        if (finished.get()) {
+            return;
+        }
+        log(NexusLogLevel.WARNING, "The disconnect byte was not written within the progress timeout; closing.", null);
+        finish();
+    }
+
+    /** The disconnect reason when the session is closing, else {@code fallback}. */
+    private DisconnectReason closingReasonOr(DisconnectReason fallback) {
+        synchronized (lock) {
+            return phase.compareTo(Phase.CLOSING) >= 0 ? disconnectReason : fallback;
         }
     }
 
@@ -720,6 +782,7 @@ public final class NexusSession {
         DisconnectReason reason;
         List<Pending> dropped;
         boolean started;
+        Registration fallback;
         synchronized (lock) {
             if (phase.compareTo(Phase.CLOSING) < 0) {
                 phase = Phase.CLOSING;
@@ -729,10 +792,15 @@ public final class NexusSession {
             started = readerThread != null;
             phase = Phase.CLOSED;
             stopWriter = true;
+            fallback = closeFallback;
+            closeFallback = null;
             dropped = new ArrayList<>(queue);
             queue.clear();
             SessionCounters.PENDING_WRITES.addAndGet(-dropped.size());
             lock.notifyAll();
+        }
+        if (fallback != null) {
+            fallback.close();
         }
         try {
             transport.close(reason);
@@ -1047,8 +1115,8 @@ public final class NexusSession {
         }
 
         /**
-         * The progress timeout: how long a large message may receive no data before the session disconnects with
-         * {@code Stalled} (specification section 9).
+         * The progress timeout: how long a large message may receive no data, or an outbound transport write may run,
+         * before the session disconnects with {@code Stalled} (specification section 9).
          *
          * @param millis milliseconds
          * @return this builder
