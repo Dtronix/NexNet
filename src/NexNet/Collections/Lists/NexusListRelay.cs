@@ -227,12 +227,13 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     }
 
     /// <summary>
-    /// Runs <paramref name="apply"/> on the processing loop, then broadcasts the message it returns. A change is applied
-    /// to the local list and broadcast without a client registering in between, so a connecting client gets each
-    /// change exactly once: in its snapshot, or as a broadcast after it. When the loop is stopped, no client can
-    /// connect: the change is applied locally and not broadcast.
+    /// Runs <paramref name="apply"/> on the processing loop, then broadcasts what it returns: one change, or a reset
+    /// sequence that brings every connected client to the relay's resynchronized list. A change is applied to the
+    /// local list and broadcast without a client registering in between, so a connecting client gets each change
+    /// exactly once: in its snapshot, or as a broadcast after it. When the loop is stopped, no client can connect:
+    /// the change is applied locally and not broadcast.
     /// </summary>
-    private async Task ApplyOnLoopAsync(Func<INexusCollectionListMessage?> apply)
+    private async Task ApplyOnLoopAsync(Func<RelayBroadcast> apply)
     {
         var ran = false;
         try
@@ -240,11 +241,18 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
             await Processor.EnqueueActionWaitForResult(async ct =>
             {
                 ran = true;
-                var message = Apply(apply);
+                var broadcast = Apply(apply);
                 if (RelayChangeTestHook is { } hook)
                     await hook().ConfigureAwait(false);
-                if (message != null)
-                    await BroadcastFromLoopAsync(message, ct).ConfigureAwait(false);
+                if (broadcast.Change != null)
+                    await BroadcastFromLoopAsync(broadcast.Change, ct).ConfigureAwait(false);
+                else if (broadcast.Resync != null)
+                {
+                    // The same reset sequence a connecting client gets as its snapshot. Each client already
+                    // connected starts a new reset and replaces its list (protocol specification §12.4).
+                    foreach (var message in SnapshotMessages(broadcast.Resync))
+                        await BroadcastFromLoopAsync(message, ct).ConfigureAwait(false);
+                }
             }).ConfigureAwait(false);
         }
         catch (Exception e) when (!ran)
@@ -257,14 +265,22 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         }
 
         if (!ran)
-            Apply(apply)?.Return();
+            Apply(apply).Change?.Return();
     }
 
-    private INexusCollectionListMessage? Apply(Func<INexusCollectionListMessage?> apply)
+    private RelayBroadcast Apply(Func<RelayBroadcast> apply)
     {
         lock (_syncLock)
             return apply();
     }
+
+    /// <summary>
+    /// What a parent change sends to the relay's clients: one change message, a resync to the given list state
+    /// (a reset sequence), or nothing.
+    /// </summary>
+    private readonly record struct RelayBroadcast(
+        INexusCollectionListMessage? Change,
+        VersionedList<T>.ListState? Resync = null);
 
     /// <summary>
     /// Test seam: runs on the processing loop after a parent change is applied locally and before it is broadcast.
@@ -275,26 +291,28 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
     /// <summary>
     /// Applies a parent change to the local list. Runs on the processing loop (or with the loop stopped).
     /// </summary>
-    /// <returns>The message to broadcast to the relay's clients, or null.</returns>
-    private INexusCollectionListMessage? ApplyParentChange(NexusCollectionChangedAction action, ImmutableList<T> parentState)
+    /// <returns>What to broadcast to the relay's clients.</returns>
+    private RelayBroadcast ApplyParentChange(NexusCollectionChangedAction action, ImmutableList<T> parentState)
     {
         switch (action)
         {
             case NexusCollectionChangedAction.Ready:
+                // Connected (or reconnected) to the parent: resync, and reset the clients already connected.
                 SyncFullState(parentState);
                 _state = NexusCollectionState.Connected;
                 _readyTcs?.TrySetResult();
                 _disconnectedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                return null;
+                return new RelayBroadcast(null, _itemList.State);
 
             case NexusCollectionChangedAction.Reset:
             case NexusCollectionChangedAction.Move:
-                // Parent was cleared, or an item moved: resync the full state.
+                // Parent was cleared or resynchronized, or an item moved: resync the full state and reset the
+                // clients already connected, as the clients of a NexusListServer are reset.
                 SyncFullState(parentState);
-                return null;
+                return new RelayBroadcast(null, _itemList.State);
 
             default:
-                return SyncIncrementalChange(action, parentState);
+                return new RelayBroadcast(SyncIncrementalChange(action, parentState));
         }
     }
 
@@ -440,7 +458,7 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
         return ApplyOnLoopAsync(ApplyParentDisconnected);
     }
 
-    private INexusCollectionListMessage? ApplyParentDisconnected()
+    private RelayBroadcast ApplyParentDisconnected()
     {
         // Track if we were previously connected - used to determine TCS handling
         var wasConnected = _state == NexusCollectionState.Connected;
@@ -467,7 +485,8 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
             _readyTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        return null;
+        // Connected clients keep the last state until the parent is back; the Ready resync then resets them.
+        return default;
     }
 
     #region INexusList<T> - Read Operations

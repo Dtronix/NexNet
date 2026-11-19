@@ -803,7 +803,8 @@ cites the C# code it comes from; paths are under `src/NexNet/`.
 3. From then on the pipe carries typed channel items (§7.4), each one union value of §4.11. The server writes
    items in every mode. The client writes items only in BiDirectional mode (§12.2).
 4. The server first writes the reset sequence (§12.5) and then live changes, never a change before the reset has
-   ended (§12.5, server ordering guarantees) (`Pipes/Broadcast/NexusBroadcastServer.cs:94-130`).
+   ended (§12.5, server ordering guarantees) (`Pipes/Broadcast/NexusBroadcastServer.cs:94-130`). A relay server can
+   later send another reset on the same pipe (§12.2).
 5. Enable succeeds once the client has processed `ResetComplete`. It fails if the pipe completes first
    (`NexusBroadcastClient.cs:213-229`).
 
@@ -816,10 +817,18 @@ nexus interface, through generated code (C#) or the generator IR (other language
 |---|---|---|
 | ServerToClient | never; no channel reader is created (`NexusBroadcastServer.cs:132-134`) | fails locally and sends nothing. C# has no channel writer and throws `InvalidOperationException` (`NexusBroadcastClient.cs:148`, `Pipes/Broadcast/NexusBroadcastSession.cs:120-124`) |
 | BiDirectional | yes, one item at a time. The next item is read only after the previous one has been processed (`NexusBroadcastServer.cs:132-148`) | is sent as a request (§12.3) and completes when the server answers (§12.6) |
-| Relay | never. A relay server closes the pipe of a client that writes (`Collections/Lists/NexusListRelay.cs:542-547`) | fails locally, the same as ServerToClient |
+| Relay | never. A relay server closes the pipe of a client that writes (`Collections/Lists/NexusListRelay.cs:607-611`) | fails locally, the same as ServerToClient |
 
 Relay is a server-side mode: the server mirrors a collection from another server. Its clients see the same wire
-traffic as in ServerToClient, except that all versions are 0 (§12.3).
+traffic as in ServerToClient, except that all versions are 0 (§12.3), and that a relay sends a **new reset**
+(§12.5) to every client already connected whenever it resynchronizes its whole list from the parent: when it
+(re)connects to the parent, when the parent's list is reset (cleared or resynchronized), and when an item moves in
+the parent. The reset goes through the broadcast queue in order with the changes, so it is never interleaved with a
+change, and every change after it applies to the reset list (`NexusListRelay.cs:236-262`, `:295-317`). A client
+handles it as any reset: from Ready, ResetStart starts a new reset (§12.4). Unlike a new client's snapshot, this
+reset goes through each client's outgoing buffer (§12.8), so a very large list (more than about 40,000 items) can
+overflow the buffer of a slow client; that client is disconnected from the collection and resynchronizes when it
+enables again.
 
 A client must not write in ServerToClient or Relay mode. The server never reads those bytes, so they only use up
 pipe credit.
@@ -859,7 +868,7 @@ server never sends a nil item, and the client never sends one.
 - **ResetStart:** `version` is the version of the snapshot that follows.
 - **Version 0** in a server change means "unversioned", and the stale rule (§12.5) never discards it. A relay server
   resets its own list to version 0 and broadcasts every change with its unchanged version, so all of its changes carry
-  0 (`NexusListRelay.cs:246`, `:291` and similar).
+  0 (`NexusListRelay.cs:322`, `:354` and similar).
 - The client does not check that versions are contiguous.
 
 **Requests.** The client builds one request per mutation (`Collections/Lists/NexusListClient.cs:263-354`):
@@ -899,6 +908,7 @@ ResetStart yet), **Resetting**, **Ready**.
 | Ready | Clear, Insert, Replace, Move, Remove | validate (below), apply, set version, raise the change event; if Ack, complete the pending request with `true` | Ready | `NexusListClient.cs:155-195` |
 | Ready | change that fails validation | if Ack, complete the pending request with `false`; protocol error (§12.8) | Disabled | `NexusListClient.cs:171-181` |
 | Ready | Noop | complete the pending request with `false` (§12.6) | Ready | `NexusListClient.cs:147-153` |
+| Ready | ResetStart(`version`, `totalValues`) | as in AwaitingReset: start a new reset. Only a relay server sends it (§12.2) | Resetting | `NexusListClient.cs:68-87` |
 | Ready | ResetValues or ResetComplete | protocol error (§12.8) | Disabled | `NexusListClient.cs:90-94`, `:116-120` |
 | any open state | an item fails to decode | close the pipe | Disabled | `NexusBroadcastClient.cs:195-202` |
 | any open state | disable | close the pipe (send Complete, §7.3) and wait until it is closed | Disabled | `NexusBroadcastClient.cs:70-93` |
@@ -914,9 +924,10 @@ ResetStart yet), **Resetting**, **Ready**.
 raises `Reset` (`NexusListTransformers.cs:113-125`). A reset raises `Reset` and then `Ready`. Changes replayed from
 the buffer raise their own events *before* the reset's `Reset`/`Ready`. Closing raises `Reset`.
 
-**A second ResetStart in Ready.** The C# client accepts it and starts a new reset, because it only checks for a
-reset already in progress (`NexusListClient.cs:69`). Servers send exactly one reset per pipe, so this does not
-happen in practice.
+**A second ResetStart in Ready.** A client must accept it and start a new reset: it is how a relay server
+resynchronizes its connected clients (§12.2). The C# client only checks for a reset already in progress
+(`NexusListClient.cs:69`). A `NexusListServer` sends exactly one reset per pipe; a relay server sends one when the
+pipe opens and another each time it resynchronizes from its parent.
 
 **Note: changes before ResetComplete.** A NexNet server never sends a change before ResetStart or between ResetStart
 and ResetComplete (§12.5, server ordering guarantees). The AwaitingReset and Resetting rows for changes are
@@ -1064,7 +1075,7 @@ from version `v` to `v+1`. A Clear empties the history and becomes its first ent
 ### 12.8 Errors and shutdown
 
 **The server closes a client's collection pipe when:**
-- the client writes in ServerToClient or Relay mode (`NexusListServer.cs:39-44`, `NexusListRelay.cs:542-547`);
+- the client writes in ServerToClient or Relay mode (`NexusListServer.cs:39-44`, `NexusListRelay.cs:607-611`);
 - the client sends a forbidden tag (§12.3) or an unknown one;
 - §12.7 step 1 or 5 fails;
 - an item fails to decode (`NexusBroadcastServer.cs:150-154`);
