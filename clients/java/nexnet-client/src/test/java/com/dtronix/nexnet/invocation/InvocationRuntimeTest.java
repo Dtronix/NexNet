@@ -23,6 +23,7 @@ import com.dtronix.nexnet.session.LoopbackTransport;
 import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.NexusSession;
+import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.spi.ArgumentWriter;
 import com.dtronix.nexnet.spi.ClientNexusBase;
@@ -95,6 +96,8 @@ class InvocationRuntimeTest {
     private NexusSession session;
     private InvocationRuntime runtime;
     private Peer peer;
+    private final ManualTimers timers = new ManualTimers();
+    private int progressTimeoutMillis = 30_000;
 
     private static Thread daemon(Runnable runnable, String name) {
         Thread thread = new Thread(runnable, name);
@@ -104,7 +107,8 @@ class InvocationRuntimeTest {
 
     private void connect(Transport transport, FakeServer server, int serverCredits, SessionOptions sessionOptions,
                          InvocationOptions options, boolean dispatch) throws Exception {
-        session = NexusSession.builder(transport, HANDSHAKE).name("t").timers(new ManualTimers())
+        session = NexusSession.builder(transport, HANDSHAKE).name("t").timers(timers)
+            .progressTimeoutMillis(progressTimeoutMillis)
             .options(sessionOptions.withDisconnectDelayMillis(0)).build();
         sessions.add(session);
         runtime = InvocationRuntime.builder(session, HANDSHAKE, nexus).options(options).codec(TestCodec.INSTANCE)
@@ -360,8 +364,14 @@ class InvocationRuntimeTest {
         peer.expect(MessageTypes.INVOCATION);
         CompletableFuture<Void> waiting = runtime.invokeTask(2, ArgumentWriter.NONE, null);
         peer.server().endStream();
-        assertInstanceOf(CancellationException.class, failure(sent));
-        assertInstanceOf(CancellationException.class, failure(waiting));
+        DisconnectReason reason = closedWith();
+        // C-2: canceled, as in C#, with the disconnect reason as the cause.
+        for (CompletableFuture<?> call : Arrays.asList(sent, waiting)) {
+            Throwable error = failure(call);
+            assertInstanceOf(CancellationException.class, error);
+            SessionClosedException cause = assertInstanceOf(SessionClosedException.class, error.getCause());
+            assertEquals(reason, cause.reason());
+        }
         assertEquals(0, runtime.pendingCalls());
         // After the session ended, calls fail at once.
         assertInstanceOf(CancellationException.class, failure(runtime.invokeTask(2, ArgumentWriter.NONE, null)));
@@ -703,5 +713,72 @@ class InvocationRuntimeTest {
         connect();
         peer.send(MessageTypes.MESSAGE_START, array(3, 0, MessageTypes.INVOCATION, 4 * 1024 * 1024 + 1));
         assertEquals(DisconnectReason.PROTOCOL_ERROR, closedWith());
+    }
+
+    // ------------------------------------------------------------------ progress (K17)
+
+    private void awaitLargeMessages(int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (runtime.largeMessagesReceiving() != count) {
+            assertTrue(System.nanoTime() < deadline, "large messages being received: " + count);
+            Thread.sleep(5);
+        }
+    }
+
+    @Test
+    void anIncomingLargeResultWhoseDataStopsDisconnectsWithStalled() throws Exception {
+        progressTimeoutMillis = 1_000;
+        connect();
+        CompletableFuture<byte[]> call = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
+        peer.expect(MessageTypes.INVOCATION);
+        peer.send(MessageTypes.MESSAGE_START, array(1, 1, MessageTypes.INVOCATION_RESULT, 200_000));
+        peer.sendChunk(1, 1, new byte[1000], 0, 1000);
+        awaitLargeMessages(1);
+
+        // The first keepalive tick (10 s): nothing arrived for the stream for longer than the progress timeout.
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED, closedWith());
+        assertEquals(37, peer.server().readByte());
+        Throwable error = failure(call);
+        assertInstanceOf(CancellationException.class, error);
+        assertEquals(DisconnectReason.STALLED, ((SessionClosedException) error.getCause()).reason());
+        assertEquals(0, runtime.largeMessagesReceiving());
+    }
+
+    @Test
+    void anIncomingLargeArgumentWhoseDataStopsDisconnectsWithStalled() throws Exception {
+        progressTimeoutMillis = 1_000;
+        connect();
+        peer.send(MessageTypes.MESSAGE_START, array(4, 0, MessageTypes.INVOCATION, 200_000));
+        awaitLargeMessages(1);
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED, closedWith());
+    }
+
+    @Test
+    void progressIsMeasuredFromTheLastChunk() throws Exception {
+        progressTimeoutMillis = 9_500;
+        connect();
+        CompletableFuture<byte[]> call = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
+        peer.expect(MessageTypes.INVOCATION);
+        CompletableFuture<Void> barrier = runtime.invokeTask(2, ArgumentWriter.NONE, null);
+        peer.expect(MessageTypes.INVOCATION);
+        peer.send(MessageTypes.MESSAGE_START, array(1, 1, MessageTypes.INVOCATION_RESULT, 200_000));
+        awaitLargeMessages(1);
+        timers.advance(900);
+        peer.sendChunk(1, 1, new byte[1000], 0, 1000);
+        // Frames are handled in order: once the barrier's result is in, so is the chunk.
+        peer.send(MessageTypes.INVOCATION_RESULT, array(2, 1));
+        await(barrier);
+
+        // The tick at 10 s: 9.1 s since the chunk, under the 9.5 s timeout (10 s since the start would be over it).
+        timers.advance(9_100);
+        assertEquals(MessageTypes.PING, peer.server().readByte());
+        assertTrue(session.isConnected());
+        assertFalse(call.isDone());
+
+        // The next tick (20 s) finds the stream stalled.
+        timers.advance(10_000);
+        assertEquals(DisconnectReason.STALLED, closedWith());
     }
 }

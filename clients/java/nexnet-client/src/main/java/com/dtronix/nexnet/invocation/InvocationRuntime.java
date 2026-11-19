@@ -24,6 +24,7 @@ import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.NexusExecutors;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.session.SerialExecutor;
+import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.session.SessionProtocolException;
 import com.dtronix.nexnet.spi.ArgumentWriter;
 import com.dtronix.nexnet.spi.ClientNexusBase;
@@ -134,6 +135,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     private volatile MessageHandler next = MessageHandler.UNHANDLED;
     private volatile @Nullable PipeManager pipes;
+    private volatile @Nullable DisconnectReason closeReason;
 
     private InvocationRuntime(Builder b) {
         this.session = b.session;
@@ -153,7 +155,10 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         this.inboundCredits = new AtomicInteger(advertised);
         this.normalPool = new Pool(options.maxConcurrentInvocations());
         this.separatePool = new Pool(options.maxSeparatePoolInvocations());
-        this.receiver = new LargeMessageReceiver(new ReceiverOwner(), budget, session.options().maxMessageSize());
+        this.receiver = new LargeMessageReceiver(new ReceiverOwner(), budget, session.options().maxMessageSize(),
+            session::nanoTime);
+        // Progress (specification section 9): a large message whose data stops arriving ends the session (Stalled).
+        session.addProgressProbe(receiver::findStalled);
     }
 
     /**
@@ -305,6 +310,15 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     /**
+     * Large arguments and results being received; for tests and diagnostics.
+     *
+     * @return the count
+     */
+    int largeMessagesReceiving() {
+        return receiver.count();
+    }
+
+    /**
      * Invocations of the client nexus queued or running; for tests and diagnostics.
      *
      * @return the count
@@ -380,7 +394,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         CompletableFuture<Void> sent = new CompletableFuture<>();
         gate.acquire(new CreditGate.Waiter(
             () -> sendLane.execute(() -> sendIgnoreReturn(methodId, flags, arguments, sent)),
-            () -> completeLater(sent, null, new CancellationException("The session closed."))));
+            () -> completeLater(sent, null, sessionClosed())));
         return sent;
     }
 
@@ -417,7 +431,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         }
         CreditGate.Waiter waiter = new CreditGate.Waiter(
             () -> sendLane.execute(() -> sendCall(call)),
-            () -> NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled("The session closed.")));
+            () -> NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled(sessionClosed())));
         call.waiter = waiter;
         gate.acquire(waiter);
         return call;
@@ -473,7 +487,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             }
         }
         if (id < 0) {
-            NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled("The session closed."));
+            NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled(sessionClosed()));
             return;
         }
         synchronized (call) {
@@ -523,7 +537,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     private void onSendFailed(OutboundCall<?> call, int id) {
         // The session ended before the frame was written; onClosed completes the call if this does not.
         forgetCall(call, id);
-        NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled("The session closed."));
+        NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled(sessionClosed()));
     }
 
     /** Releases a call's id, if the call still holds it. */
@@ -548,7 +562,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
                 }
             }
             if (id < 0) {
-                completeLater(sent, null, new CancellationException("The session closed."));
+                completeLater(sent, null, sessionClosed());
                 return;
             }
         }
@@ -559,7 +573,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
                 if (streamed) {
                     releaseId(reserved);
                 }
-                completeLater(sent, null, error == null ? null : new CancellationException("The session closed."));
+                completeLater(sent, null, error == null ? null : sessionClosed());
             });
             return;
         }
@@ -578,7 +592,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
             } else if (end == StreamEnd.REFUSED) {
                 completeLater(sent, null, new NexusBusyException("The server has no room for the argument right now."));
             } else {
-                completeLater(sent, null, new CancellationException("The session closed."));
+                completeLater(sent, null, sessionClosed());
             }
         });
     }
@@ -1224,6 +1238,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     @Override
     public void onClosed(DisconnectReason reason) {
+        closeReason = reason;
         List<OutboundCall<?>> calls;
         List<InboundInvocation> queued = new ArrayList<>();
         List<InboundInvocation> active;
@@ -1245,7 +1260,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
         // Every call still waiting completes as canceled (specification section 4.5).
         gate.close();
         for (OutboundCall<?> call : calls) {
-            NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled("The session closed."));
+            NexusExecutors.execute(callbackExecutor, () -> call.completeCanceled(sessionClosed()));
         }
         for (InboundInvocation invocation : queued) {
             InvocationCounters.INBOUND_INVOCATIONS.decrementAndGet();
@@ -1269,12 +1284,26 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
 
     // ------------------------------------------------------------------ helpers
 
+    /**
+     * The failure of a call the session ended (amendment C-2): a {@link CancellationException}, as in C#, whose cause
+     * is a {@link SessionClosedException} carrying the disconnect reason.
+     */
+    private CancellationException sessionClosed() {
+        DisconnectReason reason = closeReason;
+        if (reason == null) {
+            reason = session.disconnectReason();
+        }
+        CancellationException canceled = new CancellationException("The session closed.");
+        canceled.initCause(new SessionClosedException(reason));
+        return canceled;
+    }
+
     private <T> void completeLater(CompletableFuture<T> future, @Nullable T value, @Nullable Throwable error) {
         NexusExecutors.execute(callbackExecutor, () -> {
             if (error == null) {
                 future.complete(value);
             } else if (error instanceof CancellationException && future instanceof OutboundCall) {
-                ((OutboundCall<?>) future).completeCanceled(error.getMessage());
+                ((OutboundCall<?>) future).completeCanceled((CancellationException) error);
             } else {
                 future.completeExceptionally(error);
             }
