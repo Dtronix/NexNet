@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.client.ClientConfig;
+import com.dtronix.nexnet.client.ConnectionState;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.diagnostics.TestClients;
 import com.dtronix.nexnet.diagnostics.TestClients.TestProxy;
@@ -196,7 +197,9 @@ class NexusMetricsTest {
         assertEquals("add nexnet.session.disconnects 1 {nexnet.role=client, nexnet.transport=tcp, "
             + "nexnet.disconnect.reason=server_shutdown, nexnet.session.phase=established}", pushed.get(1));
 
-        // A second session is counted again.
+        // A second session is counted again. connect() does nothing while the client still reports the ended session
+        // as connected, so wait for the client to see the disconnect first.
+        TestClients.waitFor(() -> client.state() == ConnectionState.DISCONNECTED);
         client.connect().get(5, TimeUnit.SECONDS);
         TestClients.waitFor(() -> collect().get("nexnet.session.active") == 1L);
         assertEquals(2, MetricsCounters.subscriptions(), "the session observer and the session's sink");
