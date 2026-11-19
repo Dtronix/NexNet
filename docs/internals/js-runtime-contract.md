@@ -315,6 +315,60 @@ not chain to a trusted CA, it is **not called** and the connect succeeds, so pin
 replace it: pass the issuing CA in `ca` to pin a self-signed or private-CA server. The runtime has no built-in pin list
 yet. Browsers do the TLS themselves and ignore `tls`: no custom CA, client certificate or pinning (capability skips).
 
+### 3.8 Runtime internals: session extension points
+
+The layers above the session core (invocations J07, pipes J08, collections J09, reconnection J10) plug into
+`NexusSession` (`src/session/NexusSession.js`) through these members. They are internal to the runtime: not exported
+from the package entries, and generated code never uses them. The client creates one session per connect attempt and
+attaches the layers (`#attachSessionLayers`) **before** `start()`, so frames that arrive in the same read as the
+`ServerGreeting` find their handlers.
+
+| Member | Contract |
+|---|---|
+| `setHandler(type, handler)` | Registers the `FrameHandler` of a message type received after the handshake. A received type without a handler is a protocol error (`ProtocolError`). `Ping`, `ServerGreeting`, `ClientGreeting` and `ClientGreetingReconnection` belong to the session: registering them throws `TypeError`. A later registration for the same type replaces the earlier one |
+| `send(frame)` | Queues one encoded frame. Resolves true once the transport took it, false when the session ended first or the handshake has not completed (nothing is sent then). Frames queued in the same tick go out in one transport write |
+| `controlSender` | The `ControlSender` (C# `SessionControlSender`). Its requests (`requestPong`, `requestPipeControl(source)`, `requestAbort(id, kind, reason)`, `requestInvocationCancellation(id)`, `returnInvocationCredit(n)`) only record what is owed; frames are built when the write queue flushes, so repeated requests cost at most one frame each, and credit is batched to half the advertised `invocationCredits`. A `PipeControlSource` implements `takePendingControl(): Uint8Array[]`. Everything pending is dropped when the session ends |
+| `onClose(listener)` | `listener(reason)` runs once, synchronously, when the session reaches `Disconnected`, after the transport closed and before `closed` resolves. A throwing listener is logged; the others still run |
+| `addProgressProbe(probe)` | `probe(now, progressTimeout)` runs on every keepalive tick (§9) after the session's own write-stall check. Return a description of what stalled, or null; the first non-null result ends the session with `DisconnectReason.Stalled` |
+
+A `FrameHandler` receives a `Frame` (`type`, `body`, and the post-header fields `pipeId`, `invocationId`, `kind`) and
+returns a disconnect reason to end the session (the disconnect byte is sent) or nothing / 0 to continue. A throw ends
+the session with `ProtocolError`. Handlers run synchronously in the transport's data callback and must not call user
+code from there; defer it to a microtask.
+
+**Body lifetime.** `frame.body` is a view into the frame reader's buffer, which is reused and compacted by later
+reads. It is valid only until the handler returns: copy (`body.slice()`) anything that must outlive the call, such as
+a pipe payload queued for a reader or a large-message chunk.
+
+Other session members the layers read: `ready` and `closed` (promises that never reject), `id`,
+`isHandshakeComplete`, `isDisconnecting`, `disconnectReason`, `options` (the resolved `ClientConfig`),
+`peerMaxMessageSize`, `peerInvocationCredits`, `sendMaxMessageSize`, `idleTimeoutMs`, `pingInterval` and the
+frame/byte counters used by `getSnapshot()`.
+
+**Invocation codec.** The invocation layer gets its writers and readers from a process-wide factory in
+`src/invocation/codec.js`: `invocationCodec()` returns `{ createWriter(), createReader(bytes, serializerOptions) }`,
+by default `new MsgPackWriter()` and `new MsgPackReader(bytes, options)`. `DispatchContext.writeResult` and the reader
+passed to `_dispatch` come from it. `setInvocationCodec(codec)` replaces it (null restores the default) and returns the
+previous one; only tests use it (until J02 lands they install `test/invocation/support/testCodec.js`). Generated code
+never does.
+
+### 3.9 Diagnostic counters
+
+Two process-wide counter sets support the leak audit (H05): after every client has disconnected, every counter must be
+zero. Each getter returns a snapshot copy. Both live in runtime modules that the package `exports` map does not expose
+yet (`src/session/diagnostics.js`, `src/invocation/diagnostics.js`); tests import them by path.
+
+| Function | Counter | Counts |
+|---|---|---|
+| `getSessionCounters()` | `openSessions` | Sessions created and not yet `Disconnected` |
+| | `timers` | Session timers running: handshake timeout, keepalive, disconnect delay, disconnect-write timeout |
+| | `pendingWrites` | Frames queued or being written and not yet flushed |
+| `getInvocationCounters()` | `pendingInvocations` | Outbound calls not yet completed (waiting for credit, sending, or waiting for their result) |
+| | `reservedInvocationIds` | Outbound invocation IDs reserved (awaiting a result, or a late result after a cancel) |
+| | `creditWaiters` | Outbound calls parked waiting for invocation credit |
+| | `inboundInvocations` | Server-to-client invocations queued or running |
+| | `largeMessages` | Large messages being sent or received |
+
 ## 4. Handshake descriptor and binding
 
 Generated code passes one `ClientBinding` per export to the runtime:
