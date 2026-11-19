@@ -128,18 +128,23 @@ internal class SnapshotTests : BaseTests
         await pipe.ReadyTask.Timeout(1);
 
         var writing = pipe.Output.WriteAsync(new byte[serverConfig.PipeWindow * 2]).AsTask();
+
+        // The client starts waiting as soon as it has handed the last chunk of the window to its session, before the
+        // server has read it: wait for both sides, so the server's snapshot is not taken while the window is still in
+        // flight.
         NexusPipeSnapshot? clientPipe = null;
+        NexusPipeSnapshot? serverPipe = null;
         await MetricsSessionTests.WaitFor(() =>
         {
             clientPipe = client.GetSnapshot()!.Pipes.SingleOrDefault();
-            return clientPipe?.WaitingForCredit != null;
+            serverPipe = server.GetSnapshot().Sessions.SingleOrDefault()?.Pipes.SingleOrDefault();
+            return clientPipe?.WaitingForCredit != null && serverPipe?.Buffered == serverConfig.PipeWindow;
         }).Timeout(2);
 
         await Assert.That(clientPipe!.WaitingBytes).IsEqualTo(serverConfig.PipeWindow);
         await Assert.That(clientPipe.SendCredit).IsLessThanOrEqualTo(0);
 
-        var serverPipe = server.GetSnapshot().Sessions.Single().Pipes.Single();
-        await Assert.That(serverPipe.Buffered).IsEqualTo(serverConfig.PipeWindow);
+        await Assert.That(serverPipe!.Buffered).IsEqualTo(serverConfig.PipeWindow);
         await Assert.That(serverPipe.ReceiveCredit).IsEqualTo(0);
 
         release.SetResult();
