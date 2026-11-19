@@ -277,6 +277,30 @@ public class NexusPipeWriterTests
             [CallerLineNumber] int? lineNumber = null) => Task.CompletedTask;
     }
 
+    /// <summary>
+    /// A writer disposed (its pipe freed) while a flush waits for credit must not make the flush's token throw when
+    /// it is canceled later: the callback would cancel the disposed flush source. Seen when a server stopped itself
+    /// while a collection pipe was flushing (S17).
+    /// </summary>
+    [Test]
+    public async Task FlushAsync_TokenCanceledAfterDispose_DoesNotThrow()
+    {
+        var state = new SpyStateManager();
+        var messenger = new SpySessionMessenger();
+        // No credit: the flush waits.
+        var writer = new NexusPipeWriter(state, null, messenger, isServer: false, chunkSize: 100);
+
+        writer.GetSpan(10);
+        writer.Advance(10);
+
+        using var cts = new CancellationTokenSource();
+        _ = writer.FlushAsync(cts.Token).AsTask();
+
+        writer.Dispose();
+
+        await Assert.That(() => cts.Cancel()).ThrowsNothing();
+    }
+
     // A messenger that always throws InvalidOperationException in SendHeaderWithBody
     private class ThrowingMessenger : ISessionMessenger
     {
