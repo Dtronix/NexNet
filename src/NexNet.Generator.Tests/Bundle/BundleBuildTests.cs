@@ -134,6 +134,40 @@ public class BundleBuildTests
     }
 
     [Test]
+    public async Task UpToDateBuild_RestoresMissingFiles()
+    {
+        // H22: the unpack stamp must not hide files deleted after the unpack, while the compile is up to date.
+        using var sample = SampleProject.Create();
+        await sample.Build();
+        var files = sample.ReadBundle()
+            .Select(f => (Path: sample.Destination(f.Path), Bytes: Encoding.UTF8.GetBytes(f.Content)))
+            .ToArray();
+
+        async Task AssertRestored(string because)
+        {
+            foreach (var (path, bytes) in files)
+            {
+                await Assert.That(File.Exists(path)).IsTrue().Because(path + " is restored: " + because);
+                await Assert.That(File.ReadAllBytes(path).SequenceEqual(bytes)).IsTrue().Because(path + " matches the bundle");
+            }
+        }
+
+        // An output folder deleted by hand.
+        System.IO.Directory.Delete(Path.Combine(sample.Directory, "generated"), recursive: true);
+        await sample.Build();
+        await AssertRestored("the output folder was deleted");
+
+        // A Clean of another configuration deletes every file of the shared manifest; this configuration's stamp stays.
+        await sample.Build("-c", "Release");
+        await sample.Run("clean", "-c", "Release");
+        foreach (var (path, _) in files)
+            await Assert.That(File.Exists(path)).IsFalse().Because(path + " is cleaned");
+        await Assert.That(File.Exists(Path.Combine(sample.ObjConfigDir, "nexnet-targets.stamp"))).IsTrue();
+        await sample.Build();
+        await AssertRestored("another configuration was cleaned");
+    }
+
+    [Test]
     public async Task NoTargetConfigured_BuildIsUnchanged()
     {
         using var sample = SampleProject.Create();
