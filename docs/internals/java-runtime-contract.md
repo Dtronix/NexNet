@@ -38,13 +38,15 @@ APIs absent on API 24 fail `check`: `java.net.http`, `java.util.concurrent.Flow`
 | `com.dtronix.nexnet.spi` | Generated-code SPI: `ProxyBase`, `ProxyInvoker`, `ArgumentWriter`, `PipeArgumentWriter`, `ClientNexusBase`, `InvocationContext`, `HandshakeDescriptor`, `ClientNexusHooks` | K01 (bases); K07 (`ProxyInvoker`, `InvocationContext` implementations) |
 | `com.dtronix.nexnet.client` | `NexusClient`, `ClientConfig`, `TlsOptions`, `TransportKind`, `ConnectionState`, `ConnectionResult`, `StateListener`, `ClientSessionContext` | K05 (session), K06 (transports) |
 | `com.dtronix.nexnet.logging` | `NexusLogger`, `NexusLogLevel` (section 6.2) | K05 |
-| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`. Runtime-internal (section 6.5) | K05 |
+| `com.dtronix.nexnet.session` | Session core: `NexusSession`, `SessionOptions`, `MessageHandler`, `Frame`, `InboundFrame`, `ControlSender`, `ControlSource`, `SessionTimers`, `NexusExecutors`, `SerialExecutor`, `SessionCounters`, `SessionClosedException`, `ProgressProbe` (K17), `SessionObserver`, `SessionObservers`, `SessionMetricsSink` (K20). Runtime-internal (sections 6.5, 6.9 and 6.10) | K05 |
 | `com.dtronix.nexnet.transport` | `Transport`, `Transport.Connector`, `NexusConnector`, `TlsTrust` (sections 6.3, 6.4, 6.8) | K06 |
 | `com.dtronix.nexnet.invocation` | `InvocationRuntime`, `ClientProxyInvoker`, `InvocationOptions`, `NexusRemoteError`, `RemoteExceptionDetail`, `InvocationCounters`, `SessionBudget`, `PayloadCodec` (section 6.7) | K07 |
 | `com.dtronix.nexnet.pipes` | `NexusDuplexPipe`, `NexusDuplexChannel<T>`, `NexusChannelReader<T>`, `NexusChannelWriter<T>` | K08 |
 | `com.dtronix.nexnet.collections` | `NexusList<T>`, `NexusListChange<T>`, `NexusCollectionState`, `NexusCollectionMode` (C-4), `NexusListClient<T>` (the runtime implementation) | K09 |
 | `com.dtronix.nexnet.reconnect` | `ReconnectionPolicy`, `DefaultReconnectionPolicy` (0/2/10/30 s) | K01 (done); K10 wires it |
 | `com.dtronix.nexnet.pool` | `NexusClientPool`, `NexusClientPoolConfig`, `RentedNexusClient` | K10 |
+| `com.dtronix.nexnet.diagnostics` | `Diagnostics` (leak-audit counters, `snapshot(client)`), `NexusSessionSnapshot`, `NexusInvocationSnapshot`, `NexusBudgetSnapshot`, `NexusPipeSnapshot`, `NexusLargeMessageSnapshot` and the other snapshot types (section 6.10) | K10, K20 |
+| `com.dtronix.nexnet.metrics` | `NexusMetrics`, `NexusMetricsListener`, `MeasurementObserver`, `NexusInstruments`, `NexusInstrument`, `InstrumentKind`, `MetricTags` (section 6.10) | K10, K20 |
 
 The value types and tuples live in the root package because the generator's type mapper (G03, `JavaTarget`) emits
 `com.dtronix.nexnet.NexusDateTime`, `com.dtronix.nexnet.Tuple2` and so on. C# `decimal` maps to
@@ -68,8 +70,8 @@ public interface Formatter<T> {
 }
 ```
 
-- K03 emits `public static final Formatter<X>` constants (`<package>/Formatters.java` or per-type); K02 provides the
-  built-ins. Formatters are stateless and thread-safe. Generic types get factories (`BoxFormatter.of(Formatter<T>)`).
+- K02 provides the built-ins (`com.dtronix.nexnet.serialization.Formatters`). Formatters are stateless and
+  thread-safe. The generated formatters are described in section 3.1.1.
 - `MsgPackWriter`: `writeNil`, `writeBoolean`, `writeInt(long)`, `writeUInt64(long bits)`, `writeFloat`,
   `writeDouble`, `writeString`, `writeBinary`, `writeArrayHeader`, `writeMapHeader`, `writeExtHeader(type, length)`,
   `writeRaw`, `size`, `toByteArray`.
@@ -77,6 +79,35 @@ public interface Formatter<T> {
   `readUInt64`, `readFloat`, `readDouble`, `readString`, `readBinary`, `readArrayHeader`, `readMapHeader`,
   `readExtHeader`, `lastExtType`, `readRaw`, `skip`, `remaining`. Malformed input throws `MsgPackException`.
 - K02 finalizes this API (it owns the formatter contract) and may add methods.
+
+### 3.1.1 Generated types and formatters (K03)
+
+The Java emitter writes one file per declared .NET type, and the formatters in a sub-package:
+
+| File | Contents |
+|---|---|
+| `<package>/<Type>.java` | One flat package (`NexNetJavaPackage`). Nested .NET types are flattened to `Outer_Inner` |
+| `<package>/formatters/Formatters.java` | A `public static final Formatter<X>` constant per non-generic type, named as the type (`Formatters.InteropItem`), and a factory per generic type (`Formatters.InteropBox(Formatter<T>)`). Abstract objects have none |
+| `<package>/formatters/UserFormatters.java` | Only when a `[NexusTargetFormatter<T>(NexusTargets.Java, "fqcn")]` mapping exists (D12): one `Formatter<Object>` field per hand-written formatter class, instantiated with its public no-argument constructor. A missing class fails the Java compilation |
+
+`Formatters`, `UserFormatters` and `formatters` are reserved type names (NEXNET041).
+
+Type shapes:
+
+- **Objects** (`[NexusObject]` classes, structs and records) are mutable classes: private fields, a no-argument
+  constructor, an all-members constructor in key order, and `getX`/`setX` accessors. Every object has value
+  `equals`, `hashCode` and `toString`, so it works in a `Set`, as a `Map` key and with a list's `remove`.
+  Structs are `final`. A non-generic `[NexusObject]` base class is extended; a generic one has its members copied.
+- **Members** that may be null are annotated JSpecify `@Nullable`. A field starts at its C# initializer when the IR
+  records a literal one, otherwise at C# `default(T)`.
+- **Wire form.** An object is a MessagePack array with nil in the key gaps. Reading accepts fewer elements (an older
+  peer: the missing members are `default(T)`) and more (a newer peer: skipped). Struct types refuse null both ways.
+- **Enums** are open value classes, not Java `enum`s: a constant per member, `value()`, and `of(v)` for any value
+  of the underlying type. `[Flags]` enums add `or`, `and` and `has`.
+- **Unions** over an abstract class are an abstract class, and unions over an interface are an interface. Case
+  classes extend or implement them. A union is written as `[tag, value]`.
+- **User-formatter types.** Members whose .NET type has a custom `[NexusFormatter]` are typed `Object`. They are
+  read and written through `UserFormatters`.
 
 ### 3.2 Handshake
 
@@ -249,10 +280,13 @@ server `INexusList<T>` (protocol specification section 12):
     (section 6.2);
   - the timeouts, as in C#: `connectionTimeoutMillis` 50 s, `handshakeTimeoutMillis` 15 s, `timeoutMillis` (receive)
     30 s, all positive; `pingIntervalMillis(@Nullable Integer)`, null by default (section 6.6);
-    `progressTimeoutMillis` 30 s (50 ms to 600 s): it bounds large messages, pipes whose close is not confirmed and
-    channel items given extra credit; the session's keepalive tick checks them and disconnects with `Stalled` (37);
-  - `invocationOptions(InvocationOptions)`; `pipeOptions(PipeOptions)`: `maxPipes` 32 and `pipeWindow` 256 KiB by
-    default (C# `MaxPipes`/`PipeWindow`).
+    `progressTimeoutMillis`, 30000 by default (`DEFAULT_PROGRESS_TIMEOUT_MILLIS`, C# `ProgressTimeout`), 50 to
+    600000 (the builder method throws `IllegalArgumentException` outside that range): it bounds large messages, pipes whose
+    close is not confirmed, channel items given extra credit and outbound transport writes; the session's keepalive
+    tick checks them and disconnects with `Stalled` (37) (section 6.9);
+  - `invocationOptions(InvocationOptions)`, `InvocationOptions.defaults()` unless set (section 6.7), read back with
+    `invocationOptions()`; `pipeOptions(PipeOptions)`: `maxPipes` 32 and `pipeWindow` 256 KiB by default (C#
+    `MaxPipes`/`PipeWindow`).
 - Channels: `NexusChannelReader<T>`: `read()` (`Optional<T>`, empty at the end; **only for item types that are
   never null**: a null item fails it with `NullPointerException`), `readItem()` (`ChannelReadResult<T>` with
   `isCompleted()` and `value()`, which tells a null item apart from the end), `readBatch(max)`,
@@ -438,9 +472,12 @@ so frames that arrive in the same read as the `ServerGreeting` find their handle
 NexusSession s = NexusSession.builder(transport, handshake)
     .name(clientId).authenticationToken(token).reconnecting(isReconnect)
     .options(sessionOptions).handshakeTimeoutMillis(..).timeoutMillis(..).pingIntervalMillis(..)
+    .progressTimeoutMillis(config.progressTimeoutMillis())                        // K17, section 6.9
     .callbackExecutor(callbacks).timers(timers).logger(logger)
+    .owner(client)                                                                 // K20, section 6.10
     .build();
 InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)
+    .options(config.invocationOptions())                                           // K17
     .callbackExecutor(callbacks).invocationExecutor(invocations).logger(logger).build();
 s.setMessageHandler(runtime);                                                     // K07
 PipeManager.attach(runtime, callbacks, timers, config.pipeOptions(), logger);   // K08: next handler; K19: progress probe
@@ -452,9 +489,11 @@ s.start();   // handshake; then runtime.connected(), invoker.attach(runtime), on
 | `setMessageHandler(MessageHandler)` | Receives every message after the handshake except `Ping`, disconnects and `ServerGreeting`. Delivery is on the reader thread, in wire order. `onMessage(InboundFrame)` must not block. To end the session for a protocol violation it throws `SessionProtocolException(reason)`. `onClosed(reason)` is called once, on the thread that closed the session. The default handler, `MessageHandler.UNHANDLED`, ends the session with `PROTOCOL_ERROR`. Handlers chain: `InvocationRuntime.setNextHandler` passes on the types it does not handle (pipes, then collections), together with `onClosed` |
 | `send(Frame)` | Queues a frame (`Frame.of(type, body)`, `Frame.of(type, postHeader, body, offset, length)`, `Frame.headerOnly(type)`; `Frame.MAX_BODY_LENGTH` is 0xFFFF). The runtime-internal future completes on the writer thread once the frame is written and flushed. It fails with `SessionClosedException` (carrying the `DisconnectReason`) when the session has closed, or with `IllegalStateException` before the handshake completes. While the queue is full, callers block, except the reader thread |
 | `controlSender()` | The coalescing `ControlSender` (C# `SessionControlSender`). `requestPing()` keeps at most one ping pending. `returnInvocationCredit(n)` batches credit until half the advertised credits are pending. `requestInvocationCancellation(id)`, `requestAbort(id, kind, reason)` (kind 0 argument or 1 result; reason 0 Busy, 1 TooLarge, 2 Cancelled, 3 Ack) and `requestControl(ControlSource)` (pipe control) complete the set. Requests only record what is owed and wake the writer, which appends the pending frames after the queued frames of each batch |
-| `disconnect(reason)` / `abort(reason)` | Close with a disconnect byte, or at once without one (an abandoned attempt) |
+| `disconnect(reason)` / `abort(reason)` | Close with a disconnect byte, or at once without one (an abandoned attempt). Closing with a byte waits for the writer to send it, but at most the progress timeout plus `disconnectDelayMillis`; then the transport is closed anyway (section 6.9) |
+| `addProgressProbe(ProgressProbe)` | Adds a stall check, asked on every keepalive tick (section 6.9). `nanoTime()` is the session clock the probes are given; `progressTimeoutMillis()` the configured timeout |
+| `addMetricsSink(SessionMetricsSink)` / `recordMetric(instrument, value, tags)` | The session's metrics hook (section 6.10) |
 | `closed()` / `closedInternal()` | Complete with the `DisconnectReason`, on the callback executor or on the closing thread |
-| Read-only state | `id()`, `name()`, `transport()`, `isConnected()`, `isClosing()`, `disconnectReason()`, `isSecure()`, `remoteCertificate()`, `options()`, `peerMaxMessageSize()`, `sendMaxMessageSize()` (the smaller of both sides' limits), `peerInvocationCredits()`, `advertisedIdleTimeoutMillis()` (-1 when none), `pingIntervalMillis()`. The peer values are -1 before the handshake completes |
+| Read-only state | `id()`, `name()`, `transport()`, `isConnected()`, `isClosing()`, `disconnectReason()`, `isSecure()`, `remoteCertificate()`, `options()`, `peerMaxMessageSize()`, `sendMaxMessageSize()` (the smaller of both sides' limits), `peerInvocationCredits()`, `advertisedIdleTimeoutMillis()` (-1 when none), `pingIntervalMillis()`. The peer values are -1 before the handshake completes. Also `isEstablished()` (true once the server's greeting was accepted; it stays true while closing), `owner()` (the `Builder.owner` value, the `NexusClient` for client sessions), `messageHandler()` and the diagnostic readings of section 6.10 |
 
 `InboundFrame` exposes `type()`, `body()` and the post-header fields `postHeader()`, `pipeId()`,
 `chunkInvocationId()` and `chunkKind()`. `SessionTimers` has `nanoTime()` and
@@ -514,11 +553,11 @@ Public types:
 |---|---|
 | `NexusRemoteError(int code, @Nullable String message)` | An application error returned from `ClientNexusBase.onInvocationException`; C# `NexusRemoteError` |
 | `RemoteExceptionDetail` | `NONE` (default): the server sees a failure without detail. `TYPE_AND_MESSAGE`: the class name and message, truncated to 256 and 2048 chars. Use `TYPE_AND_MESSAGE` only with a trusted peer |
-| `InvocationOptions` | Immutable `withX` copies of `defaults()`, the C# untrusted defaults: `maxConcurrentInvocations` 2 (1–1000), `maxSeparatePoolInvocations` 4 (1–1000), `sessionBudget` 16 MiB (at least 64 KiB), `remoteExceptionDetail` `NONE`. Set through `InvocationRuntime.Builder.options`. `NexusClient` uses the defaults |
+| `InvocationOptions` | Immutable `withX` copies of `defaults()`, the C# untrusted defaults: `maxConcurrentInvocations` 2 (1–1000), `maxSeparatePoolInvocations` 4 (1–1000), `sessionBudget` 16 MiB (at least 64 KiB), `remoteExceptionDetail` `NONE`. Set through `ClientConfig.Builder.invocationOptions`, which `NexusClient` passes to `InvocationRuntime.Builder.options` |
 | `SessionBudget` | The session's receive memory (`tryReserve`, `release`, `reserved`, `limit`; thread-safe). The invocation queue (`invocationCredits` x 64 KiB) is reserved up front. A large argument or result that does not fit the rest is refused with `Busy`. The pipe runtime reserves its windows from it. `InvocationRuntime.budget()` |
 | `PayloadCodec` | Turns argument writers and result formatters into bytes and back. `PayloadCodec.MSGPACK` is the default; tests substitute their own through `InvocationRuntime.Builder.codec`. The runtime writes the message envelopes itself |
 | `InvocationCounters` | Diagnostic counters (section 6.5) |
-| `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe (K08) and collection (K09) runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()` |
+| `InvocationRuntime` | Builder `builder(session, handshake, nexus)` with `options`, `codec`, `callbackExecutor`, `invocationExecutor` and `logger`. Lifecycle `connected()` (opens the credit gate with the server's credits) and `startDispatching()`. Attachment points for the pipe (K08) and collection (K09) runtimes: `attachPipes`/`pipes()`, `setNextHandler`, `invokeIgnoreReturn(methodId, flags, arguments)` (flags must include `IgnoreReturn`), `budget()`, `session()` and `codec()`. Per-session counts `pendingCalls()` and `inboundInvocations()`. Diagnostics (section 6.10): `snapshot(nowNanos)`, `budgetSnapshot()`, `largeMessageSnapshots(nowNanos)`, `queued(separate)`, `executing(separate)`, `creditWaits()`, `largeMessagesInbound()` and `largeMessagesOutbound()`. A progress probe (section 6.9) watches the large arguments and results being received |
 | `ClientProxyInvoker` | The proxy's invoker, described above |
 
 **Failed client nexus methods.** When a method that returns a result fails, the runtime calls
@@ -538,7 +577,10 @@ passed to the hook.
 
 - every outbound call still pending completes **canceled**, on the callback executor. This covers calls waiting for
   credit, calls being sent and calls awaiting their result. `future.get()` then throws a
-  `java.util.concurrent.CancellationException` ("The session closed.").
+  `java.util.concurrent.CancellationException` ("The session closed."). Its `getCause()` is a
+  `SessionClosedException` whose `reason()` is the session's `DisconnectReason` (K17), so an application can
+  tell a call the session ended (`STALLED`, `TIMEOUT`, `SOCKET_ERROR` and so on) from one it canceled itself,
+  which has no such cause.
 - `invokeIgnoreReturn` futures still waiting for credit fail with the same exception.
 - outgoing large messages are aborted. Server invocations still queued are dropped, and their budget is released.
 - the `CancellationToken` of every running client nexus method is canceled, on the invocation executor.
@@ -577,3 +619,125 @@ Two failures sit outside this table:
 
 After the handshake, transport failures end the session with a `DisconnectReason` and are not reported as
 `TransportError`. A WebSocket transport closes with code 1002 for `PROTOCOL_ERROR` and 1000 otherwise.
+
+### 6.9 Progress timeout and stall detection (K17, K18)
+
+`ClientConfig.progressTimeoutMillis` (section 4) is the C# `ProgressTimeout` (protocol specification section 9).
+The session checks progress on each keepalive (ping) tick while it is connected, after the receive timeout and
+before the ping, so a stall is noticed within one ping interval of the timeout. The first stall found is logged
+as a `WARNING` ("The session made no progress within <n> ms: <description>.") and closes the session with
+`DisconnectReason.STALLED` (37). The checks, in order:
+
+1. **Outbound transport write (K18).** The writer thread records when each transport write (and its flush) starts.
+   A write that runs longer than the progress timeout is a stall. The session then closes **without** the disconnect
+   byte, because the writer that would send it is the one that is stuck. Closing the transport unblocks the write,
+   and the frames it was writing fail with `SessionClosedException(STALLED)`.
+2. **Progress probes**, in the order they were added. Each one that reports a stall closes the session with the
+   disconnect byte.
+
+```java
+@FunctionalInterface
+public interface ProgressProbe {                       // com.dtronix.nexnet.session
+    @Nullable String findStalled(long nowNanos, long timeoutNanos);  // a log description, or null
+}
+```
+
+- `NexusSession.addProgressProbe(probe)` adds one; there is no removal, since a probe lives as long as its session.
+  `nowNanos` is `NexusSession.nanoTime()` (the `SessionTimers` clock) and `timeoutNanos` the progress timeout.
+- Probes run on the timer thread. They must be quick, must not block and must be thread-safe. A probe that throws a
+  `RuntimeException` is logged as an `ERROR` and skipped.
+- The runtime's own probes are:
+  - the invocation runtime's: a large argument or result being received with no chunk for longer than the
+    timeout;
+  - the pipe runtime's (`PipeManager`): a pipe whose close the server never confirms, or a channel item given extra
+    credit whose data stopped arriving.
+
+**Close fallback (K18).** A close that sends the disconnect byte leaves the writer to send it, then waits
+`SessionOptions.disconnectDelayMillis` before closing the transport. If the writer is stuck, closing waits at most
+the progress timeout plus `disconnectDelayMillis`. It then logs a `WARNING` ("The disconnect byte was not written
+within the progress timeout; closing.") and closes the transport, so a stalled writer cannot keep a session in
+`CLOSING` forever.
+
+### 6.10 Snapshots and metrics hooks (K20)
+
+The diagnostics (`com.dtronix.nexnet.diagnostics`) and metrics (`com.dtronix.nexnet.metrics`) layers read the
+session, invocation and pipe layers through these hooks. They are public for those layers. Applications use
+`Diagnostics` and `NexusMetrics`.
+
+**Session readings (`NexusSession`):**
+
+| Member | Value |
+|---|---|
+| `isEstablished()` | True once the server's greeting was accepted (the handshake completed); it stays true after that |
+| `owner()` | The `Builder.owner(Object)` value: the `NexusClient` for client sessions, null otherwise |
+| `connectedNanos()` | `nanoTime()` when the session started, right after its transport connected; 0 before `start()` |
+| `lastReceivedNanos()` | When a complete frame was last received (the start time until one is) |
+| `hasSent()`, `lastSentNanos()` | Whether a transport write has started, and when the last one did |
+| `isFlushing()`, `flushStartedNanos()` | Whether a transport write (and its flush) is in progress, and when it started |
+| `framesSent()`, `bytesSent()`, `framesReceived()`, `bytesReceived()` | Transport totals, below |
+
+Counting rules, as in C#:
+
+- **Bytes** count everything on the wire: frame headers, post-headers and bodies, the preamble and the disconnect
+  byte.
+- **Frames.** The preamble is not a frame, in either direction. A disconnect byte is one frame, sent or received.
+  Received pings and the control frames the writer appends (credit, cancellation, ping, pipe control) are frames.
+- Sent values are counted when the bytes are handed to the transport, before the flush. They are written by the
+  writer thread only, and received values by the reader thread only. Readers see them through `volatile` reads.
+
+**Session start observer.** `SessionObservers.add(SessionObserver)` registers a process-wide observer and returns
+a `Registration` that removes it. `SessionObserver.started(session)` is called synchronously from
+`NexusSession.start()`, on the thread that starts the session, after the transport connected and before the
+reader and writer threads start. A session that ends during the handshake is therefore still seen. It must be cheap,
+and a `RuntimeException` it throws is ignored.
+
+**Session metrics sink.** `NexusSession.addMetricsSink(SessionMetricsSink)` returns a `Registration` that detaches
+it. `hasMetricsSinks()` lets a layer skip the work of a measurement. The layers report event instruments with
+`recordMetric(NexusInstrument, double value, Map<String, String> tags)`, which does nothing without a sink:
+
+- `value` is a counter increment or a histogram value (seconds for durations);
+- `tags` are the tags beyond the session's role and transport, and are empty when there are none;
+- `SessionMetricsSink.record` is called synchronously where the event happens, which may be the reader thread. It
+  must be cheap and must not block. A `RuntimeException` it throws is ignored.
+
+Reported this way:
+
+- `InvocationRuntime`: invocation queue waits and large-message aborts;
+- `PipeManager`: pipe refusals (`local` or `remote`), pipe resets (too large or invalid item) and pipe credit
+  waits.
+
+**Layer snapshots.** Each takes `nowNanos` from `NexusSession.nanoTime()` where it measures ages:
+
+| Member | Returns |
+|---|---|
+| `InvocationRuntime.snapshot(nowNanos)` | `NexusInvocationSnapshot` (C# `NexusInvocationSnapshot`): queued and executing invocations and the oldest queue wait, per pool (normal and separate), the pool sizes, the inbound credits, the outbound credits available, the calls waiting for credit and the calls awaiting a result. `creditDrops` is always 0 on a client |
+| `InvocationRuntime.budgetSnapshot()` | `NexusBudgetSnapshot`: the session budget's limit and reserved bytes |
+| `InvocationRuntime.largeMessageSnapshots(nowNanos)` | One `NexusLargeMessageSnapshot` per large argument or result in transfer, received ones first: direction, kind, invocation id, total and transferred bytes, time since the last progress, and whether it is being aborted |
+| `PipeManager.snapshots(nowNanos)` | One `NexusPipeSnapshot` per pipe holding a receive window, by id |
+
+`Diagnostics.snapshot(client)` combines these with the session readings into a `NexusSessionSnapshot` whose fields
+match the C# record (checked against `tests/golden/snapshot-fields.json`). It returns null when the client has no
+session. The values are read one at a time, so they are not an atomic picture.
+
+**`NexusMetrics` behavior.**
+
+- **Tracking.** `track(client)` starts reporting a client, and tracking one twice is a no-op. The metrics layer
+  registers one `SessionObserver` while it tracks any client, and matches a started session to a tracked client
+  through `NexusSession.owner()`.
+- **Session lifetime.** Sessions are counted from the transport connection (the session start) until they end, the
+  handshake included. `nexnet.session.handshaking` counts the sessions not yet established. A session that already
+  exists when its client is tracked is counted from then on, but its duration still runs from its transport
+  connection.
+- **Event order.** When a session ends, `nexnet.session.duration` is recorded first, tagged with the disconnect
+  reason and measured from the transport connection. Then `nexnet.session.disconnects` is added, also tagged
+  `nexnet.session.phase`: `handshake` when the session was never established, otherwise `established`. This is
+  the C# order.
+- **Event instruments.** The session's sink forwards to every `NexusMetricsListener`: counters to `add`, and
+  histograms to `record`.
+- **Observable instruments.** `collect(MeasurementObserver)` reads them from the live sessions, so the send and
+  receive paths pay nothing for metrics. `nexnet.io.frames` and `nexnet.io.bytes` stay monotonic: the totals of
+  ended sessions and of untracked clients are kept.
+- **Server-only instruments.** `nexnet.connection.rejections` and `nexnet.invocation.busy` are server-only, and a
+  client never records `nexnet.invocation.credit_drops`.
+- **Listeners** are called synchronously where the event happens, which may be the reader thread. A listener that
+  throws is ignored.
