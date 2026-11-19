@@ -756,6 +756,12 @@ final class PipeImpl implements NexusDuplexPipe, ControlSource {
             outputCompleteSent = true;
             if (!sentClose && (state & PipeWire.CLIENT_WRITER_COMPLETE) == 0) {
                 state |= PipeWire.CLIENT_WRITER_COMPLETE;
+                if (state == PipeWire.COMPLETE) {
+                    // Both directions are now complete: like the C# side, this state is this side's close.
+                    sentClose = true;
+                    closingSince = manager.nanoTime();
+                    inputComplete = true;
+                }
                 sendStateLocked(state, 0);
                 completeLocked(after);
             }
