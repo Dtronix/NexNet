@@ -34,6 +34,11 @@ import org.junit.jupiter.api.TestFactory;
  * decode to the value (whose canonical encoding round-trips), {@code reject} vectors fail with
  * {@link MsgPackException} of the stated kind. The directory comes from the {@code nexnet.golden} system property set
  * by the Gradle build.
+ *
+ * <p>Message bodies, frames and collection items are replayed here with schema-driven stand-ins for the codec's
+ * sake; they are replayed through the runtime's real session, invocation, pipe and collection code by the
+ * {@code GoldenSessionVectorsTest}, {@code GoldenInvocationVectorsTest}, {@code GoldenPipeVectorsTest} and
+ * {@code GoldenCollectionVectorsTest} of those packages ({@link GoldenFiles}).
  */
 class GoldenVectorTests {
     /** The files every format-v1 directory has; any other {@code *.jsonl} (except schemas) is replayed too. */
@@ -108,7 +113,7 @@ class GoldenVectorTests {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Map<String, Object>> loadSchemas() {
+    static Map<String, Map<String, Object>> loadSchemas() {
         Map<String, Map<String, Object>> schemas = new LinkedHashMap<>();
         for (String line : lines("schemas.jsonl")) {
             Map<String, Object> schema = (Map<String, Object>) Json.parse(line);
