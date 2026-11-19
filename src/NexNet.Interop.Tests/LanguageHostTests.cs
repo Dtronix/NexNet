@@ -9,12 +9,17 @@ namespace NexNet.Interop.Tests;
 
 public class LanguageHostTests
 {
+    // The fake host runs in this process and shares its thread pool, so under load (a parallel gate, other test
+    // processes) a ping can go unanswered for over a second while the host is healthy. Only the test of unanswered
+    // pings uses a short ping timeout; the others would otherwise see a spurious "no response to ping" crash.
     private static readonly LanguageHostOptions FastPings = new()
     {
         PingInterval = TimeSpan.FromMilliseconds(100),
-        PingTimeout = TimeSpan.FromMilliseconds(600),
+        PingTimeout = TimeSpan.FromSeconds(30),
         RegisterLanguage = false,
     };
+
+    private static readonly LanguageHostOptions ShortPingTimeout = FastPings with { PingTimeout = TimeSpan.FromSeconds(2) };
 
     private static async Task<FakeHost> CurrentFake(FakeHostLauncher launcher)
         => await launcher.Launched.Last().Host.WaitAsync(TimeSpan.FromSeconds(10));
@@ -42,7 +47,7 @@ public class LanguageHostTests
     public async Task UnansweredPings_AreACrash_InFlightRequestsFail_AndTheHostRestarts()
     {
         var launcher = new FakeHostLauncher();
-        await using var host = new LanguageHost("fake", FakeHostLauncher.Config(), launcher, FastPings);
+        await using var host = new LanguageHost("fake", FakeHostLauncher.Config(), launcher, ShortPingTimeout);
         var crashed = new TaskCompletionSource<HostCrash>(TaskCreationOptions.RunContinuationsAsynchronously);
         host.Crashed += c => crashed.TrySetResult(c);
         await host.StartAsync().WaitAsync(TimeSpan.FromSeconds(20));
