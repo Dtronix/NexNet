@@ -23,8 +23,8 @@ internal partial class NexusServerTests : BaseTests
 
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -45,9 +45,9 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -69,9 +69,9 @@ internal partial class NexusServerTests : BaseTests
 
         for (int i = 0; i < 5; i++)
         {
-            await server.StartAsync().Timeout(1);
+            await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
             await server.StopAsync();
 
@@ -94,7 +94,7 @@ internal partial class NexusServerTests : BaseTests
 
 
         await Assert.That(server.StoppedTask is null).IsTrue();
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.StoppedTask!.IsCompleted).IsFalse();
 
         await server.StopAsync();
@@ -170,8 +170,8 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -199,8 +199,8 @@ internal partial class NexusServerTests : BaseTests
         // Force authentication failure
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
-        var result = await client.TryConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Signalled by the send itself, not by timing.
         await disconnectSent.Task.Timeout(1);
@@ -237,7 +237,7 @@ internal partial class NexusServerTests : BaseTests
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var connectTask = client.TryConnectAsync();
 
         // The server is disconnecting (state changed) and has not sent the disconnect frame yet.
@@ -301,8 +301,8 @@ internal partial class NexusServerTests : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Should complete only after auth succeeded
         await tcs.Task.Timeout(1);
@@ -344,11 +344,11 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Act & Assert: ConnectAsync should throw, and OnConnectedEvent must not fire
         await AssertThrows<TransportException>(async () =>
-            await client.ConnectAsync().Timeout(1));
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect));
 
         await Assert.That(connectedFired).IsFalse().Because("OnConnectedEvent should not fire when authentication handler throws");
     }
@@ -377,16 +377,16 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First cycle: handler throws, but server should stay up
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
         await client.DisconnectedTask.Timeout(1);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
 
         // Second cycle: should still accept and connect cleanly
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
     
@@ -468,8 +468,8 @@ internal partial class NexusServerTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(disconnectTcs.Task.IsCompleted).IsFalse().Because("Client should still be connected at t=0.");
 

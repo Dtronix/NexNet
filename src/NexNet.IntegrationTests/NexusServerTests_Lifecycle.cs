@@ -30,20 +30,20 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var occupier = CreateServer(config, null);
         var server = CreateServer(config, null);
 
-        await occupier.StartAsync().Timeout(1);
+        await occupier.StartAsync().Timeout(TestTimeouts.Connect);
 
-        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(1));
+        var exception = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(exception!.Error).IsEqualTo(TransportError.AddressInUse);
         await Assert.That(exception.Message).Contains($"'{config.TransportName}'").Because("The exception should name the endpoint that failed to bind.");
         await Assert.That(server.State).IsEqualTo(NexusServerState.Stopped);
 
-        await occupier.StopAsync().Timeout(1);
+        await occupier.StopAsync().Timeout(TestTimeouts.Connect);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.State).IsEqualTo(NexusServerState.Running);
 
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
@@ -67,16 +67,16 @@ internal class NexusServerTests_Lifecycle : BaseTests
         serverConfig.RateLimiting = new ConnectionRateLimitConfig { MaxConcurrentConnections = 1 };
         var server = CreateServer(serverConfig, null);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNull();
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(server.GetSnapshot().RateLimiter).IsNotNull();
 
         var (client1, _) = CreateClient(CreateClientConfig(type));
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
 
         var (client2, _) = CreateClient(CreateClientConfig(type));
@@ -106,7 +106,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
                 allConnected.TrySetResult();
             return ValueTask.CompletedTask;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clients = new List<NexusClient<ClientNexus, ClientNexus.ServerProxy>>(sessionCount);
         for (var i = 0; i < sessionCount; i++)
@@ -140,15 +140,15 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var server = CreateServer(CreateServerConfig(type, BasePipeTests.LogMode.None),
             nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42));
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         for (var i = 0; i < cycles; i++)
         {
-            await server.StopAsync().Timeout(1);
-            await server.StartAsync().Timeout(1);
+            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(TestTimeouts.Connect);
         }
 
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(await client.Proxy.ServerTaskValue().Timeout(1)).IsEqualTo(42);
 
         // Late failures of the stopped runs' accept loops would stop the server in this window.
@@ -166,9 +166,9 @@ internal class NexusServerTests_Lifecycle : BaseTests
     public async Task DisposeAsync_WhileRunning_StopsAndDisposes(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await server.DisposeAsync().AsTask().Timeout(2);
 
@@ -240,7 +240,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var config = new FatalAcceptServerConfig { Logger = logger };
         var server = ServerNexus.CreateServer(config, () => null!);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // The fault stops the server on its own: wait through Running and the transient Stopping state.
         var sw = Stopwatch.StartNew();
@@ -304,7 +304,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var listener = new TcpTlsTransportListener((TcpTlsServerConfig)CreateServerConfig(Type.TcpTls), socket);
 
         using var badClient = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        await badClient.ConnectAsync(socket.LocalEndPoint!).Timeout(1);
+        await badClient.ConnectAsync(socket.LocalEndPoint!).Timeout(TestTimeouts.Connect);
         await badClient.SendAsync(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }).Timeout(1);
 
         var transport = await listener.AcceptTransportAsync(CancellationToken.None).AsTask().Timeout(5);
@@ -324,7 +324,7 @@ internal class NexusServerTests_Lifecycle : BaseTests
         var serverConfig = CreateServerConfig(type);
         serverConfig.Logger = logger;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         if (type == Type.TcpTls)
         {

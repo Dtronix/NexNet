@@ -23,8 +23,8 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -42,8 +42,8 @@ internal partial class NexusClientTests : BaseTests
 
         clientConfig.InternalOnClientConnect = () => tcs.SetResult();
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -84,11 +84,11 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         for (int i = 0; i < 5; i++)
         {
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             var disconnected = client.DisconnectedTask;
             await client.DisconnectAsync().Timeout(1);
             await disconnected.Timeout(1);
@@ -116,7 +116,7 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         clientConfig.Authenticate = () => new byte[] { 123 };
         FireOnSend(clientConfig, (_, bytes) =>
@@ -130,7 +130,7 @@ internal partial class NexusClientTests : BaseTests
             }
             tcs.SetException(new Exception("Client didn't send token"));
         });
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -148,7 +148,7 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         FireOnSend(clientConfig, (_, bytes) =>
         {
@@ -156,7 +156,7 @@ internal partial class NexusClientTests : BaseTests
                 tcs.SetResult();
         });
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -174,7 +174,7 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var pingCount = 0;
         var firstPingTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -190,7 +190,7 @@ internal partial class NexusClientTests : BaseTests
             }
         });
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(pingCount).IsEqualTo(0).Because("No ping should be sent before the first interval elapses.");
 
@@ -224,13 +224,13 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await server.StopAsync();
         
         // Wait for the client to process the disconnect.
         await Task.Delay(100);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -260,8 +260,8 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
         startAspServer.Invoke();
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         stopAspServer.Invoke();
 
         // Wait for the client to process the disconnect.
@@ -270,7 +270,7 @@ internal partial class NexusClientTests : BaseTests
         (server, _, _, _, startAspServer, _) = CreateServerClientWithStoppedServer(serverConfig, clientConfig);
         
         startAspServer.Invoke();
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         
         
         await tcs.Task.Timeout(5);
@@ -299,8 +299,8 @@ internal partial class NexusClientTests : BaseTests
         clientConfig.PingInterval = 75;
         clientConfig.Timeout = 50;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
     }
@@ -329,13 +329,13 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Restart cycle: stop, then bring server back up so the eventual reconnect can succeed.
         await server.StopAsync();
         await Task.Delay(100); // let disconnect propagate so the reconnect loop entered the Task.Delay
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Without advancing fake time, the 30 s reconnect delay must not have elapsed yet.
         await Task.Delay(100);
@@ -365,8 +365,8 @@ internal partial class NexusClientTests : BaseTests
 
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await server.StopAsync();
         await tcs.Task.Timeout(1000);
     }
@@ -390,8 +390,8 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
         startAspServer.Invoke();
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         stopAspServer.Invoke();
         await tcs.Task.Timeout(1);
     }
@@ -422,8 +422,8 @@ internal partial class NexusClientTests : BaseTests
         serverConfig.InternalNoLingerOnShutdown = true;
         serverConfig.InternalForceDisableSendingDisconnectSignal = true;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Task.Delay(100);
         await server.StopAsync();
@@ -463,8 +463,8 @@ internal partial class NexusClientTests : BaseTests
             }
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Task.Delay(100);
         await server.StopAsync();
@@ -479,9 +479,9 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
     }
 
     [Test]
@@ -502,8 +502,8 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.FromResult<IIdentity?>(new DefaultIdentity());
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await Assert.That(authCompleted).IsTrue();
     }
@@ -521,9 +521,9 @@ internal partial class NexusClientTests : BaseTests
 
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
-        await client.TryConnectAsync().Timeout(1);
+        await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
     }
 
@@ -537,8 +537,8 @@ internal partial class NexusClientTests : BaseTests
 
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var disconnectTask = client.DisconnectedTask;
 
         await server.StopAsync();
@@ -561,8 +561,8 @@ internal partial class NexusClientTests : BaseTests
 
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = hub => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
-        await client.TryConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectedTask.Timeout(1);
 
         await Assert.That(client.State).IsEqualTo(ConnectionState.Disconnected);
@@ -577,11 +577,11 @@ internal partial class NexusClientTests : BaseTests
         var clientConfig = CreateClientConfig(type);
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Act
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
 
         // Assert: client.DisconnectedTask will complete promptly
         await client.DisconnectedTask.Timeout(1);
@@ -605,8 +605,8 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -627,8 +627,8 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
 
         await tcs.Task.Timeout(1);
@@ -645,8 +645,8 @@ internal partial class NexusClientTests : BaseTests
         // Server throws
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.ThrowsExactlyAsync<ProxyRemoteInvocationException>(() => client.Proxy.ServerTaskValue().Timeout(1));
     }
@@ -672,12 +672,12 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Second ConnectAsync should throw
-        await client.ConnectAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
     }
     
     [Test]
@@ -688,8 +688,8 @@ internal partial class NexusClientTests : BaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
         // First disconnect
@@ -711,8 +711,8 @@ internal partial class NexusClientTests : BaseTests
         // Server always returns 42
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(42);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Fire off 20 simultaneous calls
         var calls = Enumerable.Range(0, 20)
@@ -743,8 +743,8 @@ internal partial class NexusClientTests : BaseTests
         // Force authentication to fail
         server.OnNexusCreated = nexus => nexus.OnAuthenticateEvent = _ => ValueTask.FromResult<IIdentity?>(null);
 
-        await server.StartAsync().Timeout(1);
-        var result = await client.TryConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        var result = await client.TryConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Task.WhenAny(disconnectSent.Task, Task.Delay(1000));
 
@@ -767,8 +767,8 @@ internal partial class NexusClientTests : BaseTests
         // Server will respond, but we will disconnect before calling
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(1);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.DisconnectAsync().Timeout(1);
 
         // Any RPC after clean disconnect should throw
@@ -800,9 +800,9 @@ internal partial class NexusClientTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
-        await server.StopAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
 
         // Give it a moment to (not) trigger
         await Task.Delay(50);
@@ -819,10 +819,10 @@ internal partial class NexusClientTests : BaseTests
         var server = CreateServer(CreateServerConfig(type), /*listenerFactory*/ null);
 
         // First start should succeed
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Second concurrent start should throw InvalidOperationException
-        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync().Timeout(1));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => server.StartAsync().Timeout(TestTimeouts.Connect));
     }
     
     

@@ -131,8 +131,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("test").Timeout(1);
         await methodInvoked.Task.Timeout(1);
@@ -149,8 +149,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedMethod("test").Timeout(1));
@@ -170,8 +170,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // The invocation will fail since the session gets disconnected
         try
@@ -208,8 +208,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.UnprotectedMethod().Timeout(1);
         await methodInvoked.Task.Timeout(1);
@@ -235,8 +235,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.MarkerOnlyMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.MarkerOnlyMethod().Timeout(1);
         await authCalled.Task.Timeout(1);
@@ -262,8 +262,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
@@ -289,8 +289,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
@@ -317,8 +317,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.MultiPermissionMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.MultiPermissionMethod("test").Timeout(1);
         await authCalled.Task.Timeout(1);
@@ -339,8 +339,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedWithReturnHandler = (_, v) => new ValueTask<int>(v * 2);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var result = await client.Proxy.ProtectedWithReturn(21).Timeout(1);
         await Assert.That(result).IsEqualTo(42);
@@ -357,8 +357,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Unauthorized);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.ThrowsExactlyAsync<ProxyUnauthorizedException>(async () =>
             await client.Proxy.ProtectedWithReturn(21).Timeout(1));
@@ -393,8 +393,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Twice each, so that with the cache enabled the second refusal comes from the cache.
         for (var i = 0; i < 2; i++)
@@ -430,8 +430,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         try { await client.Proxy.ProtectedMethod("test").Timeout(1); } catch { }
 
@@ -451,8 +451,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var enabled = await client.Proxy.ProtectedList.EnableAsync().Timeout(2);
         await Assert.That(enabled).IsTrue();
@@ -483,8 +483,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         try
         {
@@ -515,8 +515,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // The server refuses the collection's pipe: the connect fails at once instead of hanging.
         await AssertThrows<NexusBusyException>(client.Proxy.ProtectedList.EnableAsync().AsTask().Timeout(1));
@@ -544,8 +544,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var enabled = await client.Proxy.UnprotectedList.EnableAsync().Timeout(2);
         await Assert.That(enabled).IsTrue();
@@ -566,8 +566,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         try { await client.Proxy.ProtectedMethod("test").Timeout(1); } catch { }
 
@@ -596,8 +596,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // No time advance — every call falls within the cache TTL deterministically.
         await client.Proxy.CachedMethod().Timeout(1);
@@ -626,8 +626,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.CachedMethod().Timeout(1);
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -662,8 +662,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.CachedMethod().Timeout(1);
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -694,8 +694,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Three full TTL cycles - each should re-invoke OnAuthorize once.
         for (var cycle = 1; cycle <= 3; cycle++)
@@ -726,8 +726,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.NeverCachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.NeverCachedMethod().Timeout(1);
         await client.Proxy.NeverCachedMethod().Timeout(1);
@@ -754,8 +754,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("a").Timeout(1);
         await client.Proxy.ProtectedMethod("b").Timeout(1);
@@ -782,8 +782,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("a").Timeout(1);
         await client.Proxy.ProtectedMethod("b").Timeout(1);
@@ -808,8 +808,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // CachedMethod has return type ValueTask (void), so Unauthorized with no return channel
         // means silent drop. Just verify OnAuthorize is called once.
@@ -839,8 +839,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         _ = client.DisconnectedTask.ContinueWith(_ => disconnected.TrySetResult());
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
 
@@ -877,8 +877,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.ProtectedMethod("a").Timeout(1);
         await client.Proxy.CachedMethod().Timeout(1);
@@ -907,8 +907,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.Proxy.CachedMethod().Timeout(1);
         await Assert.That(authCallCount).IsEqualTo(1);
@@ -942,8 +942,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.ProtectedMethodHandler = (_, _) => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Prime both caches
         await client.Proxy.CachedMethod().Timeout(1);
@@ -982,8 +982,8 @@ internal class NexusServerTests_Authorization : BaseTests
 
         _ = client.DisconnectedTask.ContinueWith(_ => { });
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         try { await client.Proxy.CachedMethod().Timeout(1); } catch { }
 
@@ -1011,8 +1011,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.CachedMethodHandler = _ => ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         const int concurrentCalls = 10;
         var tasks = new Task[concurrentCalls];
@@ -1051,8 +1051,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Twice: the refused pipe's ID is freed and the second open fails the same way.
         for (var i = 0; i < 2; i++)
@@ -1085,8 +1085,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var channel = client.CreateChannel<int>();
         await client.Proxy.ProtectedChannel(42, "test", channel).Timeout(1);
@@ -1114,8 +1114,8 @@ internal class NexusServerTests_Authorization : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ProtectedPipe("test", pipe).Timeout(1);
@@ -1134,8 +1134,8 @@ internal class NexusServerTests_Authorization : BaseTests
             nexus.OnAuthorizeHandler = (_, _, _, _) => new ValueTask<AuthorizeResult>(AuthorizeResult.Disconnect);
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         try

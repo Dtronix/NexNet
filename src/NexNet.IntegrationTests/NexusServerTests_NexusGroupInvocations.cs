@@ -117,7 +117,7 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
             };
         }
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Task.WhenAll(clients.Select(c => c.Client.ConnectAsync())).Timeout(1);
         
         await clients.First().Client.Proxy.ServerTask();
@@ -166,7 +166,7 @@ internal class NexusServerTests_NexusGroupInvocations : BaseTests
             };
         }
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Task.WhenAll(clients.Select(c => c.Client.ConnectAsync())).Timeout(1);
         
         await onReady.Invoke(server.ContextProvider.Rent().Context.Clients);

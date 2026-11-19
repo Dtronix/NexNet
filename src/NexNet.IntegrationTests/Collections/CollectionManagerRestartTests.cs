@@ -39,14 +39,14 @@ internal class CollectionManagerRestartTests : NexusCollectionBaseTests
             CreateServerConfig(Type.Uds),
             CreateClientConfig(Type.Uds));
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         for (var i = 0; i < Cycles; i++)
         {
-            await server.StopAsync().Timeout(1);
-            await server.StartAsync().Timeout(1);
+            await server.StopAsync().Timeout(TestTimeouts.Connect);
+            await server.StartAsync().Timeout(TestTimeouts.Connect);
         }
 
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var serverNexus = server.NexusCreatedQueue.First();
         await Assert.That(await client.Proxy.IntListBi.EnableAsync().Timeout(1)).IsTrue();
         await client.Proxy.IntListBi.AddAsync(1).Timeout(1);

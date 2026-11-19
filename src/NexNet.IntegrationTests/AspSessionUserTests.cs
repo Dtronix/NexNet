@@ -102,7 +102,7 @@ internal class AspSessionUserTests : BaseAspTests
         }, ClaimsServices(defaultScheme: false), AspAppAuthConfigure);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
 
         var user = await seen.Task.Timeout(1);
@@ -130,7 +130,7 @@ internal class AspSessionUserTests : BaseAspTests
         }, OtherDefaultSchemeServices(), AspAppAuthConfigure);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
 
         await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
@@ -160,7 +160,7 @@ internal class AspSessionUserTests : BaseAspTests
         }, ClaimsServices(defaultScheme: false), AspAppAuthConfigure);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
         await client.Proxy.ServerTaskValue().Timeout(1);
 
@@ -186,7 +186,7 @@ internal class AspSessionUserTests : BaseAspTests
         }, ClaimsServices(defaultScheme: true), AspAppAuthConfigure);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
 
         await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
@@ -209,7 +209,7 @@ internal class AspSessionUserTests : BaseAspTests
         }, ClaimsServices(defaultScheme: false), AspAppAuthConfigure);
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var result = await client.TryConnectAsync().Timeout(2);
 
         await Assert.That(await seen.Task.Timeout(1)).IsEqualTo(UserName);
@@ -241,7 +241,7 @@ internal class AspSessionUserTests : BaseAspTests
         });
         var (client, _) = CreateClient(clientConfig);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
 
         await Assert.That(await authenticated.Task.Timeout(1)).IsNull();

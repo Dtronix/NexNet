@@ -67,9 +67,9 @@ internal class SeparatePoolTests : BaseTests
         serverConfig.MeterFactory = _recorder;
         configure(serverConfig);
         var server = CreateServer<SeparatePoolServerNexus, SeparatePoolServerNexus.ClientProxy>(serverConfig, nexusCreated);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient<SeparatePoolClientNexus, SeparatePoolClientNexus.ServerProxy>(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         return (server, client);
     }
 

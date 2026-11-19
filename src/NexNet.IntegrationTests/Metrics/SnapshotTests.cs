@@ -17,10 +17,10 @@ internal class SnapshotTests : BaseTests
     {
         var server = CreateServer(CreateServerConfig(type), nexus =>
             nexus.ServerTaskValueWithParamEvent = (_, value) => ValueTask.FromResult(value));
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
         await Assert.That(client.GetSnapshot()).IsNull();
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await client.Proxy.ServerTaskValueWithParam(1).Timeout(1);
 
         var snapshot = client.GetSnapshot()!;
@@ -56,9 +56,9 @@ internal class SnapshotTests : BaseTests
             running.TrySetResult(n.Context.GetSnapshot());
             await release.Task;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var call = client.Proxy.ServerTask().AsTask();
         var fromContext = await running.Task.Timeout(1);
@@ -83,9 +83,9 @@ internal class SnapshotTests : BaseTests
             {
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -119,9 +119,9 @@ internal class SnapshotTests : BaseTests
         var serverConfig = CreateServerConfig(Type.Uds);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, _) => await release.Task);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);

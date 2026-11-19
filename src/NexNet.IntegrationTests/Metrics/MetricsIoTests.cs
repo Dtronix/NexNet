@@ -20,8 +20,8 @@ internal class MetricsIoTests : BaseTests
         clientConfig.MeterFactory = recorder;
         var (server, client, _) = CreateServerClient(serverConfig, clientConfig);
         server.OnNexusCreated = nexus => nexus.ServerTaskValueWithParamEvent = (_, value) => ValueTask.FromResult(value);
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         for (var i = 0; i < 10; i++)
             await client.Proxy.ServerTaskValueWithParam(i).Timeout(1);

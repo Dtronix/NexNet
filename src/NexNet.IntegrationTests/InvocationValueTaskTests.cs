@@ -26,8 +26,8 @@ internal class InvocationValueTaskTests : BaseTests
             nexus.ServerTaskEvent = async _ => await release.Task;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var withResult = Task.Run(() => client.Proxy.ServerTaskValue().GetAwaiter().GetResult());
         var withoutResult = Task.Run(() => client.Proxy.ServerTask().GetAwaiter().GetResult());
@@ -46,8 +46,8 @@ internal class InvocationValueTaskTests : BaseTests
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => ValueTask.FromResult(5);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var call = client.Proxy.ServerTaskValue();
         await Assert.That(await call).IsEqualTo(5);
@@ -72,8 +72,8 @@ internal class InvocationValueTaskTests : BaseTests
             nexus.ServerTaskEvent = _ => new ValueTask(Task.Delay(20));
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var context = new CountingContext();
         await Task.Run(async () =>
@@ -96,8 +96,8 @@ internal class InvocationValueTaskTests : BaseTests
         var (server, client, _) = CreateServerClient(CreateServerConfig(type), CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueWithParamEvent = (_, value) => ValueTask.FromResult(value);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cts = new CancellationTokenSource();
         await Task.WhenAll(Enumerable.Range(0, 8).Select(worker => Task.Run(async () =>
@@ -142,9 +142,9 @@ internal class InvocationValueTaskTests : BaseTests
             await wait.Release.Task;
             return 1;
         });
-        await wait.Server.StartAsync().Timeout(1);
+        await wait.Server.StartAsync().Timeout(TestTimeouts.Connect);
         (wait.Client, _) = CreateClient(CreateClientConfig(type));
-        await wait.Client.ConnectAsync().Timeout(1);
+        await wait.Client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         wait.First = wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();
         wait.Second = wait.Client.Proxy.ServerTaskValueWithCancellation(CancellationToken.None).AsTask();

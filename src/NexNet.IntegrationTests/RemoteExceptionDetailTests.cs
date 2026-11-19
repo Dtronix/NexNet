@@ -198,8 +198,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("secret");
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -232,8 +232,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         var (server, client, _) = CreateServerClient(serverConfig, CreateClientConfig(type));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("boom");
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -258,8 +258,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         var longMessage = new string('x', 5000);
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException(longMessage);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -275,8 +275,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
         var (server, client, clientNexus) = CreateServerClient(serverConfig, CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Larger than the client accepts (4 MiB by default): the server fails the call with a limit exception.
         var exception = await Throws(
@@ -302,8 +302,8 @@ internal class RemoteExceptionDetailTests : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -328,8 +328,8 @@ internal class RemoteExceptionDetailTests : BaseTests
             nexus.OnInvocationExceptionEvent = (_, _, _) => null;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -352,8 +352,8 @@ internal class RemoteExceptionDetailTests : BaseTests
             nexus.OnInvocationExceptionEvent = (_, _, _) => throw new NotSupportedException("hook failed");
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await Throws(
             async () => await client.Proxy.ServerTaskValue().Timeout(1));
@@ -375,8 +375,8 @@ internal class RemoteExceptionDetailTests : BaseTests
         var (server, client, clientNexus) = CreateServerClient(CreateServerConfig(type), clientConfig);
         clientNexus.ClientTaskValueEvent = _ => throw new InvalidOperationException("client boom");
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var context = server.Server.ContextProvider.Rent();
         var exception = await Throws(
@@ -407,8 +407,8 @@ internal class RemoteExceptionDetailTests : BaseTests
             }
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var exception = await tcs.Task.Timeout(1);
         await Assert.That(exception.RemoteErrorCode).IsEqualTo(7);
@@ -424,7 +424,7 @@ internal class RemoteExceptionDetailTests : BaseTests
         serverConfig.RemoteExceptionDetail = RemoteExceptionDetail.TypeAndMessage;
         var (server, _, _) = CreateServerClient(serverConfig, CreateClientConfig(Type.Uds));
         server.OnNexusCreated = nexus => nexus.ServerTaskValueEvent = _ => throw new InvalidOperationException("pooled boom");
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var pool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
             new NexusClientPoolConfig(CreateClientConfig(Type.Uds)) { MaxConnections = 2 });

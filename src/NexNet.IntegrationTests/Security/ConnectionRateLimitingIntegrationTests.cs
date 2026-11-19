@@ -24,7 +24,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
     {
         try
         {
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             // If no exception, wait a bit and check state
             await Task.Delay(100);
             await Assert.That(client.State).IsNotEqualTo(ConnectionState.Connected).Because("Connection should not remain connected when rate limited");
@@ -57,14 +57,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First two connections succeed
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
@@ -87,10 +87,10 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         };
 
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (client1, _) = CreateClient(CreateClientConfig(type));
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var disconnectedTask = client1.DisconnectedTask;
         await client1.DisconnectAsync().Timeout(1);
@@ -101,7 +101,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         // New connection should succeed after disconnect
         var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
     }
@@ -127,11 +127,11 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First connection from localhost succeeds
         var (client1, _) = CreateClient(CreateClientConfig(type));
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
         await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
@@ -164,14 +164,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // UDS connections should not be subject to per-IP limits
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
@@ -198,7 +198,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clients = new List<NexusClient<ClientNexus, ClientNexus.ServerProxy>>();
 
@@ -206,7 +206,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         for (int i = 0; i < 5; i++)
         {
             var (client, _) = CreateClient(CreateClientConfig(type));
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             clients.Add(client);
         }
 
@@ -238,7 +238,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clients = new List<NexusClient<ClientNexus, ClientNexus.ServerProxy>>();
 
@@ -246,7 +246,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         for (int i = 0; i < 5; i++)
         {
             var (client, _) = CreateClient(CreateClientConfig(type));
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             clients.Add(client);
         }
 
@@ -306,14 +306,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Connect two clients
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         await tcs.Task.Timeout(1);
 
         // Disconnect both
@@ -332,8 +332,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         var (client3, _) = CreateClient(CreateClientConfig(type));
         var (client4, _) = CreateClient(CreateClientConfig(type));
 
-        await client3.ConnectAsync().Timeout(1);
-        await client4.ConnectAsync().Timeout(1);
+        await client3.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client4.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client3.State).IsEqualTo(ConnectionState.Connected);
         await Assert.That(client4.State).IsEqualTo(ConnectionState.Connected);
@@ -361,14 +361,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First two connections succeed
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
@@ -404,14 +404,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First two connections succeed
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
 
@@ -434,10 +434,10 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         };
 
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (client1, _) = CreateClient(CreateClientConfig(type));
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var disconnectedTask = client1.DisconnectedTask;
         await client1.DisconnectAsync().Timeout(1);
@@ -448,7 +448,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
 
         // New connection should succeed after disconnect
         var (client2, _) = CreateClient(CreateClientConfig(type));
-        await client2.ConnectAsync().Timeout(1);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client2.State).IsEqualTo(ConnectionState.Connected);
     }
@@ -474,11 +474,11 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // First connection from localhost succeeds
         var (client1, _) = CreateClient(CreateClientConfig(type));
-        await client1.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(1);
         await Assert.That(client1.State).IsEqualTo(ConnectionState.Connected);
@@ -507,7 +507,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clients = new List<NexusClient<ClientNexus, ClientNexus.ServerProxy>>();
 
@@ -515,7 +515,7 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         for (int i = 0; i < 5; i++)
         {
             var (client, _) = CreateClient(CreateClientConfig(type));
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
             clients.Add(client);
         }
 
@@ -550,14 +550,14 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
                 return ValueTask.CompletedTask;
             };
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Connect two clients
         var (client1, _) = CreateClient(CreateClientConfig(type));
         var (client2, _) = CreateClient(CreateClientConfig(type));
 
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
         await tcs.Task.Timeout(1);
 
         // Disconnect both
@@ -576,8 +576,8 @@ internal class ConnectionRateLimitingIntegrationTests : BaseTests
         var (client3, _) = CreateClient(CreateClientConfig(type));
         var (client4, _) = CreateClient(CreateClientConfig(type));
 
-        await client3.ConnectAsync().Timeout(1);
-        await client4.ConnectAsync().Timeout(1);
+        await client3.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client4.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client3.State).IsEqualTo(ConnectionState.Connected);
         await Assert.That(client4.State).IsEqualTo(ConnectionState.Connected);

@@ -81,7 +81,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await Assert.That(multi.Server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds", "websocket", "httpsocket" }, CollectionOrdering.Matching);
         await Assert.That(multi.Server.Endpoints[2]).IsEqualTo(new NexusEndpointInfo("websocket", "websocket", false, "/websocket-test"));
 
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         await ConnectAll(multi);
 
         await WaitFor(() => multi.Server.GetSnapshot().Sessions.Count == AllTransports.Length).Timeout(2);
@@ -113,7 +113,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         for (var run = 0; run < 2; run++)
         {
-            await server.StartAsync().Timeout(1);
+            await server.StartAsync().Timeout(TestTimeouts.Connect);
 
             var snapshot = server.GetSnapshot();
             foreach (var type in new[] { Type.Tcp, Type.TcpTls })
@@ -158,7 +158,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         var name = multi.Configs[Type.Quic].TransportName;
         await Assert.That(server.Endpoints.Single(e => e.Name == name).BoundEndPoint).IsNull().Because("Nothing is bound before start.");
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var bound = server.Endpoints.Single(e => e.Name == name).BoundEndPoint as IPEndPoint;
         await Assert.That(bound).IsNotNull().Because("QUIC: no bound end point.");
@@ -194,7 +194,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             },
             null,
             AllTransports);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         var clients = await ConnectAll(multi);
 
         var all = new Dictionary<Type, TaskCompletionSource>();
@@ -238,7 +238,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
     public async Task Collections_SyncAcrossTransports()
     {
         var multi = CreateMultiEndpointServer(AllTransports);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         var clients = await ConnectAll(multi);
 
         foreach (var (client, _) in clients.Values)
@@ -280,7 +280,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             },
             (_, config) => config.Authenticate = true,
             types);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         await ConnectAll(multi);
         await WaitFor(() => { lock (seenLock) return seen.Count == types.Length; }).Timeout(2);
 
@@ -317,7 +317,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             },
             null,
             Type.Tcp, Type.WebSocket);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clientConfig = (HttpClientConfig)multi.CreateClientConfig(Type.WebSocket);
         clientConfig.Url = new UriBuilder(clientConfig.Url) { Scheme = "wss" }.Uri;
@@ -344,7 +344,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                     config.MaxMessageSize = 64 * 1024;
             },
             Type.Tcp, Type.WebSocket);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         var clients = await ConnectAll(multi);
 
         var data = new byte[100 * 1024];
@@ -367,7 +367,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                 },
             (type, config) => config.Authenticate = type == Type.Uds,
             Type.Tcp, Type.Uds);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (tcpClient, _) = CreateClient(multi.CreateClientConfig(Type.Tcp));
         await tcpClient.ConnectAsync().Timeout(2);
@@ -395,7 +395,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
         await Assert.That(multi.Server.State).IsEqualTo(NexusServerState.Stopped);
 
         multi.Configs[Type.Uds].Authenticate = true;
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(multi.Server.State).IsEqualTo(NexusServerState.Running);
     }
 
@@ -409,7 +409,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                     config.Timeout = 300;
             },
             Type.Tcp, Type.Uds);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Clients that do not ping within the UDS endpoint's timeout.
         var tcpConfig = multi.CreateClientConfig(Type.Tcp);
@@ -438,7 +438,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                     config.MeterFactory = recorder;
             },
             Type.Tcp, Type.Uds, Type.WebSocket);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         await ConnectAll(multi);
 
         foreach (var (endpoint, transport) in new[] { ("tcp", "tcp"), ("uds", "uds"), ("websocket", "websocket") })
@@ -488,7 +488,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
                     config.RateLimiting = new ConnectionRateLimitConfig { MaxConnectionsPerIp = 1 };
             },
             Type.Tcp, Type.WebSocket);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var (tcpClient, _) = CreateClient(multi.CreateClientConfig(Type.Tcp));
         await tcpClient.ConnectAsync().Timeout(2);
@@ -552,7 +552,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         await Assert.That(server.Endpoints.Select(e => e.Name)).IsEquivalentTo(new[] { "tcp", "uds", "ws" }, CollectionOrdering.Matching);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         Assert.ThrowsExactly<InvalidOperationException>(() => server.AddListener(
             new TcpServerConfig { EndPoint = new IPEndPoint(IPAddress.Loopback, FreeTcpPort()) }, "late"));
 
@@ -604,7 +604,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
 
         var tcpConfig = (TcpServerConfig)CreateServerConfig(Type.Tcp);
         var acceptor = multi.Server.AddExternalEndpoint(tcpConfig, "external");
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var listener = await tcpConfig.CreateServerListener(CancellationToken.None);
         await using var _ = new AsyncDisposableAction(() => listener!.CloseAsync(false));
@@ -699,21 +699,21 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             },
             Type.Tcp, Type.WebSocket);
         await Assert.That(multi.Server.Endpoints[1].Name).IsEqualTo("websocket").Because("The WebSocket is an added endpoint.");
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
         var url = ((HttpClientConfig)multi.CreateClientConfig(Type.WebSocket)).Url;
 
         using (var blocked = new ClientWebSocket())
         {
             blocked.Options.CollectHttpResponseDetails = true;
             blocked.Options.SetRequestHeader("Origin", "https://evil.example");
-            await Assert.ThrowsExactlyAsync<WebSocketException>(() => blocked.ConnectAsync(url, CancellationToken.None).Timeout(1));
+            await Assert.ThrowsExactlyAsync<WebSocketException>(() => blocked.ConnectAsync(url, CancellationToken.None).Timeout(TestTimeouts.Connect));
             await Assert.That(blocked.HttpStatusCode).IsEqualTo(HttpStatusCode.Forbidden);
         }
 
         using (var permitted = new ClientWebSocket())
         {
             permitted.Options.SetRequestHeader("Origin", allowed);
-            await permitted.ConnectAsync(url, CancellationToken.None).Timeout(1);
+            await permitted.ConnectAsync(url, CancellationToken.None).Timeout(TestTimeouts.Connect);
             await Assert.That(permitted.State).IsEqualTo(WebSocketState.Open);
             permitted.Abort();
         }
@@ -745,7 +745,7 @@ internal class NexusServerTests_MultiEndpoint : BaseAspTests
             AspCreateAuthServices,
             AspAppAuthConfigure,
             Type.Tcp, type);
-        await multi.Server.StartAsync().Timeout(1);
+        await multi.Server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clientConfig = (HttpClientConfig)multi.CreateClientConfig(type);
         clientConfig.Url = new Uri(clientConfig.Url + "?access_token=" + (validToken ? "Token123" : "Bad"));

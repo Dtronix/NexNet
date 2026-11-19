@@ -37,7 +37,7 @@ public class WaitForActionHandler : IDisposable
         return _tcs.Task;
     }
     
-    public async Task Wait(int timeout = 1)
+    public async Task Wait(double timeout = TestTimeouts.CollectionEvent)
     {
         try
         {

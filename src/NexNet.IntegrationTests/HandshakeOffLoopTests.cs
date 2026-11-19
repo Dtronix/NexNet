@@ -27,7 +27,7 @@ internal class HandshakeOffLoopTests : BaseTests
     {
         var serverConfig = CreateServerConfig(Type.TcpTls);
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Ten connections that never send a ClientHello; each would hold a sequential accept loop for the full
         // SslConnectionTimeout (5 s).
@@ -57,7 +57,7 @@ internal class HandshakeOffLoopTests : BaseTests
         var serverConfig = (TcpTlsServerConfig)CreateServerConfig(Type.TcpTls);
         serverConfig.SslConnectionTimeout = 300;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var stalled = await OpenStalledTcpClients(serverConfig.EndPoint, 1);
         try
@@ -79,7 +79,7 @@ internal class HandshakeOffLoopTests : BaseTests
         var serverConfig = CreateServerConfig(Type.TcpTls);
         serverConfig.MaxPendingHandshakes = 2;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var endPoint = ((TcpTlsServerConfig)serverConfig).EndPoint;
         var stalled = await OpenStalledTcpClients(endPoint, 2);
@@ -90,7 +90,7 @@ internal class HandshakeOffLoopTests : BaseTests
 
             // A third connection is closed straight away, long before the TLS handshake timeout.
             using var rejected = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            await rejected.ConnectAsync(endPoint).Timeout(1);
+            await rejected.ConnectAsync(endPoint).Timeout(TestTimeouts.Connect);
             await Assert.That(await ReceiveUntilClosed(rejected).Timeout(1)).IsEqualTo(0);
         }
         finally
@@ -111,7 +111,7 @@ internal class HandshakeOffLoopTests : BaseTests
             BanDurationSeconds = 0,
         };
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // The stalled connection takes the only rate limiter slot before its handshake runs.
         var stalled = await OpenStalledTcpClients(serverConfig.EndPoint, 1);
@@ -143,7 +143,7 @@ internal class HandshakeOffLoopTests : BaseTests
         var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
         serverConfig.HandshakeTimeout = 500;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // QUIC connections that complete the TLS handshake but never open the NexNet stream.
         var silent = new List<QuicConnection>();
@@ -224,7 +224,7 @@ internal class HandshakeOffLoopTests : BaseTests
         var serverConfig = (QuicServerConfig)CreateServerConfig(Type.Quic);
         var serverOptions = serverConfig.SslServerAuthenticationOptions;
         var server = CreateServer(serverConfig, null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clientConfig = (QuicClientConfig)CreateClientConfig(Type.Quic);
         var clientOptions = clientConfig.SslClientAuthenticationOptions;
@@ -346,7 +346,7 @@ internal class HandshakeOffLoopTests : BaseTests
         {
             var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             sockets.Add(socket);
-            await socket.ConnectAsync(endPoint).Timeout(1);
+            await socket.ConnectAsync(endPoint).Timeout(TestTimeouts.Connect);
         }
 
         return sockets;

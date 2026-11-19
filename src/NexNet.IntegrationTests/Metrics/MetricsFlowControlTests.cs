@@ -35,9 +35,9 @@ internal class MetricsFlowControlTests : BaseTests
         clientConfig.MeterFactory = _recorder;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, _) => await release.Task);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(Sum("nexnet.budget.limit", "server")).IsEqualTo(serverConfig.SessionBudget);
         var baseline = Sum("nexnet.budget.reserved", "server");
@@ -71,9 +71,9 @@ internal class MetricsFlowControlTests : BaseTests
         serverConfig.InvocationCredits = 1;
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskEvent = async _ => await release.Task);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var calls = Enumerable.Range(0, 3).Select(_ => client.Proxy.ServerTask().AsTask()).ToArray();
 
@@ -111,9 +111,9 @@ internal class MetricsFlowControlTests : BaseTests
                 // The reset ends the read.
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -133,9 +133,9 @@ internal class MetricsFlowControlTests : BaseTests
         clientConfig.MeterFactory = _recorder;
         clientConfig.MaxPipes = 1;
         var server = CreateServer(CreateServerConfig(Type.Uds), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await using var first = client.CreatePipe();
         Assert.ThrowsExactly<NexusBusyException>(() => client.CreatePipe());
@@ -165,9 +165,9 @@ internal class MetricsFlowControlTests : BaseTests
             await hold.Task;
             return data;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var first = client.Proxy.ServerEcho(new byte[900 * 1024]).AsTask();
         await holding.Task.Timeout(5);

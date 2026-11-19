@@ -165,7 +165,7 @@ internal class PreAuthTests : BaseTests
     {
         try
         {
-            await client.ConnectAsync().Timeout(1);
+            await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         }
         catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.ConnectionRefused)
         {

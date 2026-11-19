@@ -35,9 +35,9 @@ internal class DiagnosticLogTests : BaseTests
                 // The session ends.
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(clientConfig);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(1);
@@ -79,9 +79,9 @@ internal class DiagnosticLogTests : BaseTests
                 // The reset ends the read.
             }
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(Type.Uds));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         for (var i = 1; i <= 3; i++)
         {

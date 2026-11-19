@@ -24,8 +24,8 @@ internal class NexusCollectionRefusalTests : BaseTests
         clientConfig.MaxPipes = ClientMaxPipes;
         var (client, _) = CreateClient<AuthClientNexus, AuthClientNexus.ServerProxy>(clientConfig);
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         return (client, () =>
         {

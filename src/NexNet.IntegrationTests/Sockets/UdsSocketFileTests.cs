@@ -63,7 +63,7 @@ internal class UdsSocketFileTests : BaseTests
         var config = CreateUdsServerConfig();
         var server = CreateServer(config, null);
 
-        var ex = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(1));
+        var ex = await Assert.ThrowsExactlyAsync<TransportException>(() => server.StartAsync().Timeout(TestTimeouts.Connect));
         await Assert.That(ex!.Error).IsEqualTo(TransportError.AddressInUse);
         await Assert.That(File.Exists(_path)).IsTrue();
     }
@@ -77,7 +77,7 @@ internal class UdsSocketFileTests : BaseTests
         var (server, client, _) = CreateServerClient(config, CreateClientConfig(Type.Uds), startServer: false);
 
         await server.StartAsync().Timeout(2);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
@@ -86,7 +86,7 @@ internal class UdsSocketFileTests : BaseTests
     public async Task LiveServer_IsNotDisturbed()
     {
         var (live, client, _) = CreateServerClient(CreateUdsServerConfig(), CreateClientConfig(Type.Uds), startServer: false);
-        await live.StartAsync().Timeout(1);
+        await live.StartAsync().Timeout(TestTimeouts.Connect);
 
         var config = CreateUdsServerConfig();
         config.RemoveStaleSocketFile = true;
@@ -97,7 +97,7 @@ internal class UdsSocketFileTests : BaseTests
         await Assert.That(File.Exists(_path)).IsTrue().Because("the live server's socket file was deleted");
 
         // The live server still accepts connections on its endpoint.
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
@@ -160,16 +160,16 @@ internal class UdsSocketFileTests : BaseTests
         if (OperatingSystem.IsWindows())
         {
             var server = CreateServer(config, null);
-            var ex = await Assert.ThrowsExactlyAsync<PlatformNotSupportedException>(() => server.StartAsync().Timeout(1));
+            var ex = await Assert.ThrowsExactlyAsync<PlatformNotSupportedException>(() => server.StartAsync().Timeout(TestTimeouts.Connect));
             await Assert.That(ex!.Message).Contains(nameof(UdsServerConfig.SocketFileMode));
             return;
         }
 
         var (factory, client, _) = CreateServerClient(config, CreateClientConfig(Type.Uds), startServer: false);
-        await factory.StartAsync().Timeout(1);
+        await factory.StartAsync().Timeout(TestTimeouts.Connect);
 
         await Assert.That(File.GetUnixFileMode(_path)).IsEqualTo(mode);
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
     }
 
@@ -177,10 +177,10 @@ internal class UdsSocketFileTests : BaseTests
     public async Task GracefulStop_DeletesSocketFile()
     {
         var server = CreateServer(CreateUdsServerConfig(), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(File.Exists(_path)).IsTrue();
 
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(File.Exists(_path)).IsFalse();
     }
 
@@ -188,13 +188,13 @@ internal class UdsSocketFileTests : BaseTests
     public async Task GracefulStop_LeavesAReplacedFileAlone()
     {
         var server = CreateServer(CreateUdsServerConfig(), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Someone else removed the socket file and put another file at the path while the server ran.
         File.Delete(_path);
         await File.WriteAllTextAsync(_path, "replacement");
 
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(File.Exists(_path)).IsTrue().Because("the server deleted a file it did not create");
         await Assert.That(await File.ReadAllTextAsync(_path)).IsEqualTo("replacement");
     }

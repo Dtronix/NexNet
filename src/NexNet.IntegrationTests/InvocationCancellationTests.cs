@@ -36,9 +36,9 @@ internal class InvocationCancellationTests : BaseTests
 
             return 1;
         });
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         var (client, _) = CreateClient(CreateClientConfig(type));
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var cancel = new CancellationTokenSource();
         var first = client.Proxy.ServerTaskValueWithCancellation(cancel.Token).AsTask();
@@ -64,7 +64,7 @@ internal class InvocationCancellationTests : BaseTests
     public async Task OverlappingFireAndForgetCalls_ShareTheSessionToken_CanceledOnDisconnect(Type type)
     {
         var server = CreateServer(CreateServerConfig(type), null);
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var tokens = new List<CancellationToken>();
         var secondDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -95,7 +95,7 @@ internal class InvocationCancellationTests : BaseTests
                 firstCanceled.TrySetResult();
             }
         };
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         // Both are fire-and-forget with invocation ID 0.
         using var context = server.ContextProvider.Rent();
@@ -122,7 +122,7 @@ internal class InvocationCancellationTests : BaseTests
         // the call.
         var voidCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(CreateServerConfig(type), nexus => nexus.ServerVoidEvent = _ => voidCalled.TrySetResult());
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         var clientCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var (client, clientNexus) = CreateClient(CreateClientConfig(type));
@@ -131,7 +131,7 @@ internal class InvocationCancellationTests : BaseTests
             clientCalled.TrySetResult();
             return ValueTask.CompletedTask;
         };
-        await client.ConnectAsync().Timeout(1);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         using var canceled = new CancellationTokenSource();
         canceled.Cancel();

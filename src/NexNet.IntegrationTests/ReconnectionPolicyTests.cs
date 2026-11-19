@@ -117,15 +117,15 @@ internal class ReconnectionPolicyTests : BaseTests
         // The server sends its ServerShutdown signal on stop (the signal is not disabled here).
         serverConfig.InternalNoLingerOnShutdown = true;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
 
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(await disconnected.Timeout(1)).IsEqualTo(DisconnectReason.ServerShutdown);
 
         // Restart on the same endpoint; the policy keeps retrying every 20 ms until it gets through.
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         await reconnected.Task.Timeout(2);
         await Assert.That(client.State).IsEqualTo(ConnectionState.Connected);
@@ -157,14 +157,14 @@ internal class ReconnectionPolicyTests : BaseTests
 
         serverConfig.InternalNoLingerOnShutdown = true;
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
 
-        await server.StopAsync().Timeout(1);
+        await server.StopAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(await disconnected.Timeout(1)).IsEqualTo(DisconnectReason.ServerShutdown);
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
 
         // Several policy delays pass; no reconnect may start.
         await Task.Delay(300);

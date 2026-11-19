@@ -26,8 +26,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -51,8 +51,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remotePort = await tcs.Task.Timeout(1);
 
@@ -75,8 +75,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var (remoteAddress, remotePort) = await tcs.Task.Timeout(1);
 
@@ -108,9 +108,9 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client1.ConnectAsync().Timeout(1);
-        await client2.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client1.ConnectAsync().Timeout(TestTimeouts.Connect);
+        await client2.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await tcs.Task.Timeout(2);
 
@@ -134,8 +134,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -169,8 +169,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remotePort = await tcs.Task.Timeout(1);
 
@@ -195,8 +195,8 @@ internal class RemoteEndpointTests : BaseTests
             return ValueTask.CompletedTask;
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var (remoteAddress, remotePort) = await tcs.Task.Timeout(1);
 
@@ -237,8 +237,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -276,8 +276,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -317,8 +317,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -357,8 +357,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -396,8 +396,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remotePort = await tcs.Task.Timeout(1);
 
@@ -436,8 +436,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -477,8 +477,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -516,8 +516,8 @@ internal class RemoteEndpointTests : BaseTests
 
         var (client, _) = CreateClient(CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         var remoteAddress = await tcs.Task.Timeout(1);
 
@@ -552,8 +552,8 @@ internal class RemoteEndpointTests : BaseTests
             };
         };
 
-        await server.StartAsync().Timeout(1);
-        await client.ConnectAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
         await Task.Delay(100); // Let connection stabilize
 
         // Trigger an invocation (void method, so no await needed on the call itself)

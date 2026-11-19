@@ -20,7 +20,7 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await tcs.Task.Timeout(1);
     }
@@ -59,7 +59,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
 
         await client.client.Proxy.RunTaskNewV2();
         client.client.Proxy.RunTaskV1_1();
@@ -82,7 +82,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        var result = await client.client.TryConnectAsync().Timeout(1);
+        var result = await client.client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         
         await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
@@ -100,7 +100,7 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await tcs.Task.Timeout(1);
     }
@@ -133,7 +133,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         client.client.Proxy.RunTaskV1_1();
         await client.client.Proxy.RunTaskWithResultV1_1();
@@ -154,7 +154,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        var result = await client.client.TryConnectAsync().Timeout(1);
+        var result = await client.client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(result.Success).IsTrue();
     }
     
@@ -168,7 +168,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV1_1, VersionedClientNexusV1_1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        var result = await client.client.TryConnectAsync().Timeout(1);
+        var result = await client.client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         
         await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
@@ -186,7 +186,7 @@ internal class NexusServerTests_Versioned : BaseTests
         await server.StartAsync();
         serverConfig.InternalOnConnect = () => tcs.SetResult();
 
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await tcs.Task.Timeout(1);
     }
@@ -211,7 +211,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV1, VersionedClientNexusV1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        await client.client.ConnectAsync().Timeout(1);
+        await client.client.ConnectAsync().Timeout(TestTimeouts.Connect);
         
         await client.client.Proxy.VerifyVersionV1("");
 
@@ -228,7 +228,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV2, VersionedClientNexusV2.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        var result = await client.client.TryConnectAsync().Timeout(1);
+        var result = await client.client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         await Assert.That(result.DisconnectReason).IsEqualTo(DisconnectReason.ServerMismatch);
     }
     
@@ -242,7 +242,7 @@ internal class NexusServerTests_Versioned : BaseTests
         var client = CreateClient<VersionedClientNexusV1, VersionedClientNexusV1.ServerProxy>(clientConfig);
         
         await server.StartAsync();
-        var result = await client.client.TryConnectAsync().Timeout(1);
+        var result = await client.client.TryConnectAsync().Timeout(TestTimeouts.Connect);
         
         await Assert.That(result.Success).IsTrue();
     }

@@ -94,7 +94,7 @@ internal class NexusCollectionEventTests : NexusCollectionBaseTests
             CreateServerConfig(type),
             CreateClientConfig(type));
 
-        await server.StartAsync().Timeout(1);
+        await server.StartAsync().Timeout(TestTimeouts.Connect);
         await client.ConnectAsync().Timeout(2);
 
         await client.Proxy.IntListSC.EnableAsync().Timeout(2);
