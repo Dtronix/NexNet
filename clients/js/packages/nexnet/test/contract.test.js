@@ -15,7 +15,7 @@ const {
 const coreExports = [
   'ClientNexusBase', 'ConnectionResultState', 'ConnectionState', 'DateTimeKind', 'DisconnectReason',
   'FormatterRegistry', 'MsgPackReader', 'MsgPackWriter', 'NexusBusyError', 'NexusChannelReader',
-  'NexusChannelWriter', 'NexusClient', 'NexusClientPool', 'NexusCollectionState', 'NexusDateOnly',
+  'NexusChannelWriter', 'NexusClient', 'NexusClientPool', 'NexusCollectionMode', 'NexusCollectionState', 'NexusDateOnly',
   'NexusDateTime', 'NexusDateTimeOffset', 'NexusDecimal', 'NexusDuplexChannel', 'NexusDuplexPipe', 'NexusError',
   'NexusList', 'NexusMessageTooLargeError', 'NexusRemoteInvocationError', 'NexusTimeOnly', 'NexusTimeSpan',
   'NexusTransportError', 'NexusUnauthorizedError', 'NexusVersion', 'ProxyBase', 'RemoteExceptionDetail',

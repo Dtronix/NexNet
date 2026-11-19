@@ -317,7 +317,7 @@ rejects with a `DOMException` named `AbortError` whose `cause` is a `NexusTransp
 dropped and those running see `ctx.signal` abort.
 
 `ConnectionState`, `ConnectionResultState`, `DisconnectReason` (wire codes 20–38), `RemoteExceptionDetail`,
-`NexusCollectionState` and `DateTimeKind` are frozen objects with the C# values.
+`NexusCollectionState`, `NexusCollectionMode` and `DateTimeKind` are frozen objects with the C# values.
 
 ### 3.7 Transport errors and TLS
 
