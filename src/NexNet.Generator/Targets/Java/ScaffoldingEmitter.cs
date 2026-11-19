@@ -154,6 +154,13 @@ internal static class ScaffoldingEmitter
             body.Line("return CompletableFuture.completedFuture(null);");
         }
 
+        imports.Add("com.dtronix.nexnet.invocation.NexusRemoteError");
+        imports.Add("org.jspecify.annotations.Nullable");
+        body.Line();
+        body.Line("@Override");
+        using (body.Block("protected @Nullable NexusRemoteError onInvocationException(Throwable exception, int methodId)"))
+            body.Line("return host$.onInvocationException(exception, methodId);");
+
         var w = new CodeWriter();
         w.Line(JavaSyntax.Header);
         w.Line("package " + package + ";");
@@ -162,7 +169,8 @@ internal static class ScaffoldingEmitter
         JavaSyntax.Javadoc(w, "The scriptable client nexus " + ProxyEmitter.ClrCode(api.ClrName) + " of the cross-language test harness.",
             "<p>Every call hands its typed-JSON arguments to the {@link ScriptHost}, which runs the slot's script, and completes",
             "with the typed-JSON result converted back. {@code onConnected} and {@code onDisconnected} run their slots without",
-            "waiting for them. Fire-and-forget methods drop their result and errors.");
+            "waiting for them. Fire-and-forget methods drop their result and errors. {@code onInvocationException} asks the",
+            "host ({@link ScriptHost#onInvocationException}).");
         using (w.Block("public final class " + own.ScriptableNexus + " extends " + context.Package + "." + names.ClientNexusBase))
         {
             w.Line("private final ScriptHost host$;");

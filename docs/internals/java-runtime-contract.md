@@ -788,8 +788,9 @@ strings), `String` and `List` (JSON arrays). Floats are bit-pattern strings (`"f
 | `TestCodecs` | The codecs of every type the exports use; `forType(expression)` finds one by golden type expression (declared types by full metadata name), or null. |
 | `TypedJson` | The typed-JSON ↔ MessagePack conversion (the Java port of the C# `TypedJson`); `defaultValue`, `base64`, `integer`. |
 
-The scriptable nexus has no `onInvocationException` hook, so a host cannot honor `ClientSpec.onInvocationException`
-(the JVM host refuses it with `NotSupported`).
+The scriptable nexus's `onInvocationException` asks `ScriptHost.onInvocationException(exception, methodId)` (a
+default method returning null), which a host overrides to honor `ClientSpec.onInvocationException`. The Java
+`NexusRemoteError` always has a code, so the JVM host refuses a hook error without one with `NotSupported`.
 
 **The JVM interop host** (`clients/java/interop-host`, K12) implements the control protocol
 (`docs/internals/interop-control-protocol.md`) on top of this API. `clients/java/gradlew -p clients/java

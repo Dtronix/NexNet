@@ -13,6 +13,7 @@ import com.dtronix.nexnet.client.InteropClientFactory;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.collections.NexusListChange;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.testnexus.scaffolding.ScaffoldingExport;
@@ -48,6 +49,8 @@ final class ClientEntry extends Driven implements ScriptHost {
     /** The reason of the last failed connection attempt; cleared when a session is established. */
     private volatile String lastFailure;
     private volatile boolean disposed;
+    /** The error the onInvocationException hook returns ({@code ClientSpec.onInvocationException}), or null. */
+    private final NexusRemoteError invocationError;
 
     /** The script of a slot (§6.6). */
     private static final class Slot {
@@ -61,9 +64,11 @@ final class ClientEntry extends Driven implements ScriptHost {
         }
     }
 
-    private ClientEntry(InteropHost host, Scope scope, String handle, ScaffoldingExport<?> export, FakeTimers fakeTime) {
+    private ClientEntry(InteropHost host, Scope scope, String handle, ScaffoldingExport<?> export, FakeTimers fakeTime,
+                        NexusRemoteError invocationError) {
         super(host, scope, handle, export);
         this.fakeTime = fakeTime;
+        this.invocationError = invocationError;
     }
 
     static ClientEntry create(InteropHost host, Scope scope, String handle, ScaffoldingExport<?> export, Args spec) {
@@ -71,7 +76,7 @@ final class ClientEntry extends Driven implements ScriptHost {
         ClientLogger logger = level == null ? null
             : new ClientLogger(host, scope.id, handle, Names.parse(NexusLogLevel.class, level));
         SpecMapper.Setup setup = SpecMapper.map(spec, logger, null);
-        ClientEntry entry = new ClientEntry(host, scope, handle, export, setup.fakeTime);
+        ClientEntry entry = new ClientEntry(host, scope, handle, export, setup.fakeTime, setup.invocationError);
         NexusClient<?> client = newClient(export, setup, entry);
         entry.client = client;
         client.addStateListener(entry::onState);
@@ -236,6 +241,11 @@ final class ClientEntry extends Driven implements ScriptHost {
 
     private CompletableFuture<Void> signal$(String name) {
         return signals.computeIfAbsent(name, k -> new CompletableFuture<>());
+    }
+
+    @Override
+    public NexusRemoteError onInvocationException(Throwable exception, int methodId) {
+        return invocationError;
     }
 
     @Override

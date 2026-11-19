@@ -3,6 +3,7 @@ package com.dtronix.nexnet.interop.host;
 import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.client.TlsOptions;
 import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
@@ -38,12 +39,16 @@ final class SpecMapper {
         final SessionOptions sessionOptions;
         final SessionTimers timers;
         final FakeTimers fakeTime;
+        /** The error the client nexus's onInvocationException hook returns, or null for no hook. */
+        final NexusRemoteError invocationError;
 
-        Setup(ClientConfig config, SessionOptions sessionOptions, SessionTimers timers, FakeTimers fakeTime) {
+        Setup(ClientConfig config, SessionOptions sessionOptions, SessionTimers timers, FakeTimers fakeTime,
+              NexusRemoteError invocationError) {
             this.config = config;
             this.sessionOptions = sessionOptions;
             this.timers = timers;
             this.fakeTime = fakeTime;
+            this.invocationError = invocationError;
         }
     }
 
@@ -62,10 +67,7 @@ final class SpecMapper {
                 throw HostError.notSupported("The JVM host does not know the ClientSpec member '" + member + "'.");
             }
         }
-        if (spec.has("onInvocationException")) {
-            throw HostError.notSupported("The generated Java scriptable client nexus has no OnInvocationException hook, "
-                + "so the Java client cannot set ClientSpec.onInvocationException.");
-        }
+        NexusRemoteError invocationError = invocationError(spec.optObj("onInvocationException"));
 
         String transport = spec.str("transport");
         String address = spec.str("address");
@@ -173,7 +175,26 @@ final class SpecMapper {
             fake = fakeTime != null ? fakeTime : new FakeTimers();
             timers = fake;
         }
-        return new Setup(builder.build(), options, timers, fake);
+        return new Setup(builder.build(), options, timers, fake, invocationError);
+    }
+
+    /** The error of {@code onInvocationException} ({@code {code?, message?}}), or null when the spec has no hook. */
+    private static NexusRemoteError invocationError(Args hook) {
+        if (hook == null) {
+            return null;
+        }
+        for (String member : hook.raw().keySet()) {
+            if (!member.equals("code") && !member.equals("message")) {
+                throw HostError.notSupported("The JVM host does not know the onInvocationException member '" + member + "'.");
+            }
+        }
+        Long code = hook.optInteger("code");
+        if (code == null) {
+            // The Java NexusRemoteError always has a code; C#'s and JavaScript's may be null.
+            throw HostError.notSupported("The Java NexusRemoteError has no null code, so the Java client cannot set "
+                + "an onInvocationException error without a code.");
+        }
+        return new NexusRemoteError(code.intValue(), hook.optStr("message"));
     }
 
     private static URI uri(String address) {

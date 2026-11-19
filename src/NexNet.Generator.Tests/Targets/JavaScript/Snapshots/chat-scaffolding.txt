@@ -10,7 +10,7 @@ import type { Item } from '../Item.js';
 /**
  * The scriptable client nexus `Chat.IChatClient` of the cross-language test harness.
  *
- * Every call hands its typed-JSON arguments to the script host, which runs the slot's script, and completes with the typed-JSON result converted back. `onConnected` and `onDisconnected` run their slots without waiting for them. Fire-and-forget methods drop their result and errors.
+ * Every call hands its typed-JSON arguments to the script host, which runs the slot's script, and completes with the typed-JSON result converted back. `onConnected` and `onDisconnected` run their slots without waiting for them. Fire-and-forget methods drop their result and errors. `onInvocationException` asks the script host.
  */
 export declare class ChatScriptableNexus extends $m.ChatClientNexusBase {
   /**
@@ -29,6 +29,7 @@ export declare class ChatScriptableNexus extends $m.ChatClientNexusBase {
   protected pick(colors: Array<Color>, map: Map<number, string> | null): Promise<Color>;
   onConnected(isReconnected: boolean): void;
   onDisconnected(): void;
+  onInvocationException(error: unknown, methodId: number): { code?: number | null; message?: string | null } | null | undefined;
 }
 
 /** The test scaffolding of the NexNet export `Chat.ChatServerNexus`: `Chat.IChatClient` / `Chat.IChatServer`. */
@@ -45,7 +46,7 @@ const $se = $sr.ScaffoldingExport;
 /**
  * The scriptable client nexus `Chat.IChatClient` of the cross-language test harness.
  *
- * Every call hands its typed-JSON arguments to the script host, which runs the slot's script, and completes with the typed-JSON result converted back. `onConnected` and `onDisconnected` run their slots without waiting for them. Fire-and-forget methods drop their result and errors.
+ * Every call hands its typed-JSON arguments to the script host, which runs the slot's script, and completes with the typed-JSON result converted back. `onConnected` and `onDisconnected` run their slots without waiting for them. Fire-and-forget methods drop their result and errors. `onInvocationException` asks the script host.
  */
 export class ChatScriptableNexus extends $m.ChatClientNexusBase {
   /** @type {import('./scaffolding-runtime.js').ScriptHost} */
@@ -99,6 +100,17 @@ export class ChatScriptableNexus extends $m.ChatClientNexusBase {
 
   onDisconnected() {
     $sr.runDetached(this.#host, $sr.ON_DISCONNECTED, []);
+  }
+
+  /**
+   * Asks the script host (`ScriptHost.onInvocationException`).
+   *
+   * @param {unknown} error
+   * @param {number} methodId
+   * @returns {{ code?: number | null, message?: string | null } | null | undefined}
+   */
+  onInvocationException(error, methodId) {
+    return this.#host.onInvocationException?.(error, methodId) ?? null;
   }
 }
 
