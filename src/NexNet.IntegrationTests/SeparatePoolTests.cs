@@ -446,8 +446,18 @@ internal class SeparatePoolTests : BaseTests
         var queued = client.Proxy.SlowWithCancellation(2, cts.Token).AsTask();
         await WaitFor(() => Invocations(server)?.SeparatePoolQueued == 1, "the cancelable call queued");
 
+        var framesSentBeforeCancel = client.GetSnapshot()!.FramesSent;
         cts.Cancel();
         await Assert.ThrowsAsync<OperationCanceledException>(async () => await queued.Timeout(1));
+
+        // A canceled call returns at once, and the client's control sender sends the cancellation afterwards, on the
+        // thread pool. Releasing the slot before the server has read it lets the queued method start with a
+        // token that is not canceled yet (it is canceled a moment later). That is a race in the test, not the
+        // product, so wait for the server to read it: wait until the cancellation frame is written, then make a
+        // round trip on the same connection. The server reads frames in order, so the reply proves it has
+        // handled the cancellation.
+        await WaitFor(() => client.GetSnapshot()!.FramesSent > framesSentBeforeCancel, "the cancellation sent");
+        await client.Proxy.Plain(0).Timeout(TestTimeouts.Connect);
 
         // Once a slot frees, the canceled call either does not run or runs with its token already canceled, and ends.
         gates.Release(1);
