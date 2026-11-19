@@ -3,11 +3,14 @@ package com.dtronix.nexnet.pipes;
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.Registration;
+import com.dtronix.nexnet.diagnostics.NexusPipeSnapshot;
 import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.invocation.PayloadCodec;
 import com.dtronix.nexnet.invocation.SessionBudget;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
+import com.dtronix.nexnet.metrics.MetricTags;
+import com.dtronix.nexnet.metrics.NexusInstruments;
 import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.session.Frame;
 import com.dtronix.nexnet.session.InboundFrame;
@@ -21,6 +24,8 @@ import com.dtronix.nexnet.session.SessionTimers;
 import com.dtronix.nexnet.spi.PipeArgumentWriter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +45,15 @@ import org.jspecify.annotations.Nullable;
  * ever blocks on the session's write queue. Window updates go through the session's control sender.
  */
 public final class PipeManager implements MessageHandler {
+    private static final Map<String, String> REFUSAL_LOCAL =
+        Collections.singletonMap(MetricTags.REFUSAL_SIDE, "local");
+    private static final Map<String, String> REFUSAL_REMOTE =
+        Collections.singletonMap(MetricTags.REFUSAL_SIDE, "remote");
+    private static final Map<String, String> RESET_INVALID_ITEM =
+        Collections.singletonMap(MetricTags.RESET_REASON, "invalid_item");
+    private static final Map<String, String> RESET_TOO_LARGE =
+        Collections.singletonMap(MetricTags.RESET_REASON, "too_large");
+
     /** One wait for session budget for extra credit. */
     private static final class BudgetWaiter {
         final long bytes;
@@ -125,6 +139,42 @@ public final class PipeManager implements MessageHandler {
         }
     }
 
+    /**
+     * The pipes holding a receive window (C# {@code NexusPipeSnapshot}s), by id.
+     *
+     * @param nowNanos the session clock ({@link NexusSession#nanoTime()})
+     * @return the snapshots
+     */
+    public List<NexusPipeSnapshot> snapshots(long nowNanos) {
+        List<PipeImpl> current;
+        synchronized (lock) {
+            current = new ArrayList<>(pipes.values());
+        }
+        List<NexusPipeSnapshot> result = new ArrayList<>(current.size());
+        for (PipeImpl pipe : current) {
+            result.add(pipe.snapshot(nowNanos));
+        }
+        result.sort(Comparator.comparingInt(NexusPipeSnapshot::id));
+        return result;
+    }
+
+    // ------------------------------------------------------------------ metrics
+
+    /** Records {@code nexnet.pipe.refusals}: a pipe open refused here ({@code local}) or by the server. */
+    void recordRefusal(boolean local) {
+        session.recordMetric(NexusInstruments.PIPE_REFUSALS, 1, local ? REFUSAL_LOCAL : REFUSAL_REMOTE);
+    }
+
+    /** Records {@code nexnet.pipe.resets}: a channel item that breaks the framing or is too large. */
+    void recordReset(boolean tooLarge) {
+        session.recordMetric(NexusInstruments.PIPE_RESETS, 1, tooLarge ? RESET_TOO_LARGE : RESET_INVALID_ITEM);
+    }
+
+    /** Records {@code nexnet.pipe.credit_wait}. */
+    void recordCreditWait(double seconds) {
+        session.recordMetric(NexusInstruments.PIPE_CREDIT_WAIT, seconds, Collections.<String, String>emptyMap());
+    }
+
     // ------------------------------------------------------------------ opening
 
     /**
@@ -140,14 +190,15 @@ public final class PipeManager implements MessageHandler {
                 throw new IllegalStateException("The session has closed.");
             }
             int local = takeWindowAndIdLocked();
-            if (local < 0) {
-                throw new NexusBusyException("Can't open a pipe: the session's pipe limit or budget is reached.");
+            if (local >= 0) {
+                PipeImpl pipe = new PipeImpl(this, 0, local, true, options.pipeWindow());
+                // Known by its partial id (its own byte, the server's 0) until the server's Ready.
+                pipes.put(local, pipe);
+                return pipe;
             }
-            PipeImpl pipe = new PipeImpl(this, 0, local, true, options.pipeWindow());
-            // Known by its partial id (its own byte, the server's 0) until the server's Ready.
-            pipes.put(local, pipe);
-            return pipe;
         }
+        recordRefusal(true);
+        throw new NexusBusyException("Can't open a pipe: the session's pipe limit or budget is reached.");
     }
 
     /**
@@ -235,7 +286,7 @@ public final class PipeManager implements MessageHandler {
         if (otherId < 1 || otherId > 255) {
             throw new IllegalArgumentException("A pipe id is 1 to 255: " + otherId);
         }
-        PipeImpl pipe;
+        PipeImpl pipe = null;
         synchronized (lock) {
             if (closed) {
                 throw new IllegalStateException("The session has closed.");
@@ -245,10 +296,14 @@ public final class PipeManager implements MessageHandler {
                 // Refused carries the opener's partial id: the server's byte, ours 0.
                 send(Frame.of(MessageTypes.DUPLEX_PIPE_UPDATE_STATE,
                     PipeWire.stateBody(otherId << 8, PipeWire.REFUSED, 0)));
-                throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
+            } else {
+                pipe = new PipeImpl(this, local | (otherId << 8), local, false, options.pipeWindow());
+                pipes.put(pipe.id(), pipe);
             }
-            pipe = new PipeImpl(this, local | (otherId << 8), local, false, options.pipeWindow());
-            pipes.put(pipe.id(), pipe);
+        }
+        if (pipe == null) {
+            recordRefusal(true);
+            throw new NexusBusyException("Refused a pipe: the session's pipe limit or budget is reached.");
         }
         pipe.sendReady();
         return pipe;
