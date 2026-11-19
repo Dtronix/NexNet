@@ -353,4 +353,32 @@ internal static class IrFixtures
         {
         }
         """;
+
+    /// <summary>Nullable reference annotations inside tuple elements, nested, in parameters and returns (G06).</summary>
+    public const string NullableTuples = Usings + """
+        #nullable enable
+        namespace Tuples;
+
+        public interface ITupleServer
+        {
+            ValueTask<(int, string?, double)> Get();
+            ValueTask Set((int, string?, double) value);
+            ValueTask<(string?, (int, List<string?>?)?, Tuple<string?, int>?)> Nested((string?, (int, List<string?>?)?, Tuple<string?, int>?) value);
+        }
+
+        public interface ITupleClient
+        {
+            ValueTask<(int, string?)> Echo((string?, int) value, List<(string?, string)> list);
+        }
+
+        [Nexus<ITupleServer, ITupleClient>(NexusType = NexusType.Server)]
+        public partial class TupleServerNexus
+        {
+        }
+
+        [Nexus<ITupleClient, ITupleServer>(NexusType = NexusType.Client)]
+        public partial class TupleClientNexus
+        {
+        }
+        """;
 }
