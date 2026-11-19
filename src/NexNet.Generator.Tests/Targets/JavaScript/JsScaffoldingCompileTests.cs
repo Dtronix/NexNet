@@ -19,8 +19,10 @@ public class JsScaffoldingCompileTests
     /// <summary>Vectors whose value the JavaScript type cannot hold, with the reason.</summary>
     private static readonly Dictionary<string, string> Unrepresentable = new(StringComparer.Ordinal)
     {
-        // The runtime holds Half[] as a Float32Array of numbers (J02): a NaN's sign and payload do not survive.
-        ["ext78.half"] = "Half[] is a Float32Array: NaN sign and payload are lost",
+        // The runtime holds Half[] as a Float32Array of numbers (J02): a NaN's sign and payload do not survive, so .NET's
+        // Half.NaN (0xFE00) re-encodes as 0x7E00. A known parity loss (J25; docs/internals/js-runtime-contract.md
+        // section 3.1, "Half NaN"). The runtime's golden tests cover the vector and compare any NaN with any NaN.
+        ["ext78.half"] = "known parity loss (J25): Half[] is a Float32Array, so a NaN's sign and payload are lost (0xFE00 re-encodes as 0x7E00)",
     };
 
     [Test]
