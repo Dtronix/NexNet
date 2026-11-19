@@ -2,6 +2,7 @@ package com.dtronix.nexnet.client;
 
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.logging.NexusLogger;
+import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import com.dtronix.nexnet.transport.NexusConnector;
 import java.net.URI;
@@ -69,6 +70,7 @@ public final class ClientConfig {
     private final @Nullable Integer pingIntervalMillis;
     private final int progressTimeoutMillis;
     private final InvocationOptions invocationOptions;
+    private final PipeOptions pipeOptions;
 
     private ClientConfig(Builder b) {
         this.transport = b.transport;
@@ -91,6 +93,7 @@ public final class ClientConfig {
         this.pingIntervalMillis = b.pingIntervalMillis;
         this.progressTimeoutMillis = b.progressTimeoutMillis;
         this.invocationOptions = b.invocationOptions;
+        this.pipeOptions = b.pipeOptions;
     }
 
     /**
@@ -326,8 +329,9 @@ public final class ClientConfig {
     }
 
     /**
-     * How long a large argument or result being received may get no data before the session disconnects with
-     * {@code Stalled} (protocol specification section 9). Checked on every keepalive tick.
+     * How long a large argument or result being received, a pipe whose close the server has not confirmed, or a
+     * channel item given extra credit may go without progress before the session disconnects with {@code Stalled}
+     * (protocol specification section 9). Checked on every keepalive tick.
      *
      * @return milliseconds
      */
@@ -343,6 +347,17 @@ public final class ClientConfig {
      */
     public InvocationOptions invocationOptions() {
         return invocationOptions;
+    }
+
+    /**
+     * The pipe limits of each session: how many pipes and channels may be open at once and each one's receive window
+     * (C# {@code MaxPipes} and {@code PipeWindow}). A pipe that stops making progress is bounded by
+     * {@link #progressTimeoutMillis()}.
+     *
+     * @return the options
+     */
+    public PipeOptions pipeOptions() {
+        return pipeOptions;
     }
 
     private static URI requireScheme(URI uri, String plain, String secure) {
@@ -399,6 +414,7 @@ public final class ClientConfig {
         private @Nullable Integer pingIntervalMillis;
         private int progressTimeoutMillis = DEFAULT_PROGRESS_TIMEOUT_MILLIS;
         private InvocationOptions invocationOptions = InvocationOptions.defaults();
+        private PipeOptions pipeOptions = PipeOptions.defaults();
 
         private Builder(TransportKind transport, @Nullable URI uri, @Nullable String host, int port) {
             this.transport = transport;
@@ -627,6 +643,20 @@ public final class ClientConfig {
                 throw new NullPointerException("options");
             }
             this.invocationOptions = options;
+            return this;
+        }
+
+        /**
+         * Sets the pipe limits, for example {@code PipeOptions.defaults().withMaxPipes(8).withPipeWindow(64 * 1024)}.
+         *
+         * @param options the options
+         * @return this builder
+         */
+        public Builder pipeOptions(PipeOptions options) {
+            if (options == null) {
+                throw new NullPointerException("options");
+            }
+            this.pipeOptions = options;
             return this;
         }
 

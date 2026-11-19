@@ -2,37 +2,30 @@ package com.dtronix.nexnet.pipes;
 
 /**
  * The pipe limits of a client session (protocol specification section 9). Immutable; start from
- * {@link #defaults()}, which are the C# untrusted defaults ({@code MaxPipes} 32, {@code PipeWindow} 256 KiB,
- * progress timeout 30 s).
+ * {@link #defaults()}, which are the C# untrusted defaults ({@code MaxPipes} 32, {@code PipeWindow} 256 KiB). Set
+ * them with {@code ClientConfig.Builder.pipeOptions}. How long a pipe may go without progress is the session's
+ * progress timeout, {@code ClientConfig.Builder.progressTimeoutMillis}.
  */
 public final class PipeOptions {
     /** The default {@link #maxPipes()}. */
     public static final int DEFAULT_MAX_PIPES = 32;
     /** The default {@link #pipeWindow()}: 256 KiB. */
     public static final int DEFAULT_PIPE_WINDOW = 256 * 1024;
-    /** The default {@link #progressTimeoutMillis()}: 30 seconds. */
-    public static final long DEFAULT_PROGRESS_TIMEOUT_MILLIS = 30_000;
 
-    private static final PipeOptions DEFAULTS =
-        new PipeOptions(DEFAULT_MAX_PIPES, DEFAULT_PIPE_WINDOW, DEFAULT_PROGRESS_TIMEOUT_MILLIS);
+    private static final PipeOptions DEFAULTS = new PipeOptions(DEFAULT_MAX_PIPES, DEFAULT_PIPE_WINDOW);
 
     private final int maxPipes;
     private final int pipeWindow;
-    private final long progressTimeoutMillis;
 
-    private PipeOptions(int maxPipes, int pipeWindow, long progressTimeoutMillis) {
+    private PipeOptions(int maxPipes, int pipeWindow) {
         if (maxPipes < 1 || maxPipes > 255) {
             throw new IllegalArgumentException("maxPipes must be 1 to 255");
         }
         if (pipeWindow < 2 || pipeWindow > (1 << 30)) {
             throw new IllegalArgumentException("pipeWindow must be 2 bytes to 1 GiB");
         }
-        if (progressTimeoutMillis < 1) {
-            throw new IllegalArgumentException("progressTimeoutMillis must be positive");
-        }
         this.maxPipes = maxPipes;
         this.pipeWindow = pipeWindow;
-        this.progressTimeoutMillis = progressTimeoutMillis;
     }
 
     /**
@@ -63,42 +56,29 @@ public final class PipeOptions {
     }
 
     /**
-     * How long a closing pipe, or a channel item given extra credit, may go without progress before the session
-     * disconnects with {@code Stalled}.
-     *
-     * @return milliseconds
-     */
-    public long progressTimeoutMillis() {
-        return progressTimeoutMillis;
-    }
-
-    /**
      * A copy with another {@link #maxPipes()}.
      *
      * @param value 1 to 255
      * @return the options
+     * @throws IllegalArgumentException when out of range
      */
     public PipeOptions withMaxPipes(int value) {
-        return new PipeOptions(value, pipeWindow, progressTimeoutMillis);
+        return new PipeOptions(value, pipeWindow);
     }
 
     /**
      * A copy with another {@link #pipeWindow()}.
      *
-     * @param value bytes
+     * @param value bytes, 2 to 1 GiB
      * @return the options
+     * @throws IllegalArgumentException when out of range
      */
     public PipeOptions withPipeWindow(int value) {
-        return new PipeOptions(maxPipes, value, progressTimeoutMillis);
+        return new PipeOptions(maxPipes, value);
     }
 
-    /**
-     * A copy with another {@link #progressTimeoutMillis()}.
-     *
-     * @param value milliseconds
-     * @return the options
-     */
-    public PipeOptions withProgressTimeoutMillis(long value) {
-        return new PipeOptions(maxPipes, pipeWindow, value);
+    @Override
+    public String toString() {
+        return "PipeOptions[maxPipes=" + maxPipes + ", pipeWindow=" + pipeWindow + "]";
     }
 }

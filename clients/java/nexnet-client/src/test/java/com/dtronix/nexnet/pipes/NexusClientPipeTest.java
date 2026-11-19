@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.dtronix.nexnet.NexusBusyException;
 import com.dtronix.nexnet.client.ClientConfig;
 import com.dtronix.nexnet.client.NexusClient;
 import com.dtronix.nexnet.serialization.MsgPackReader;
@@ -62,8 +63,12 @@ class NexusClientPipeTest {
     }
 
     private void connect() throws Exception {
-        client = NexusClient.create(ClientConfig.tcp("h", 1).build(), PipeTestBase.HANDSHAKE, new Nexus(),
-            Proxy::new, (config, timeout) -> {
+        connect(ClientConfig.tcp("h", 1).build());
+    }
+
+    private void connect(ClientConfig config) throws Exception {
+        client = NexusClient.create(config, PipeTestBase.HANDSHAKE, new Nexus(),
+            Proxy::new, (c, timeout) -> {
                 LoopbackTransport transport = new LoopbackTransport();
                 transports.add(transport);
                 return transport;
@@ -109,6 +114,18 @@ class NexusClientPipeTest {
         pipe.completed().get(5, TimeUnit.SECONDS);
         PipeTestBase.waitFor(() -> PipeCounters.openPipes() == openBefore);
         assertThrows(IllegalStateException.class, () -> client.createPipe(), "not connected");
+    }
+
+    @Test
+    void thePipeOptionsOfTheConfigReachTheSession() throws Exception {
+        connect(ClientConfig.tcp("h", 1)
+            .pipeOptions(PipeOptions.defaults().withMaxPipes(1).withPipeWindow(4096)).build());
+        NexusDuplexPipe pipe = client.createPipe();
+        assertThrows(NexusBusyException.class, () -> client.createPipe(), "maxPipes 1");
+        int fullId = 1 | (5 << 8);
+        peer.sendState(fullId, PipeWire.READY, 1000);
+        pipe.ready().get(5, TimeUnit.SECONDS);
+        assertEquals(4096, peer.take(MessageTypes.PIPE_WINDOW_UPDATE, fullId).window());
     }
 
     @Test

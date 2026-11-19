@@ -4,12 +4,16 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.DisconnectReason;
 import com.dtronix.nexnet.NexusMessageTooLargeException;
 import com.dtronix.nexnet.invocation.InvocationOptions;
+import com.dtronix.nexnet.serialization.Formatter;
 import com.dtronix.nexnet.serialization.MsgPackException;
+import com.dtronix.nexnet.serialization.MsgPackReader;
+import com.dtronix.nexnet.serialization.MsgPackWriter;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.session.SessionTimers;
@@ -27,12 +31,32 @@ import org.junit.jupiter.api.Timeout;
 @Timeout(60)
 class ChannelTest extends PipeTestBase {
     static final int WINDOW = 1024;
+    /** MessagePack nil. */
+    static final byte[] NIL = {(byte) 0xC0};
+    /** Raw MessagePack values, with nil read and written as null. */
+    static final Formatter<byte[]> NULLABLE = new Formatter<byte[]>() {
+        @Override
+        public void write(MsgPackWriter writer, byte[] value) {
+            TestCodec.BYTES.write(writer, value == null ? NIL : value);
+        }
+
+        @Override
+        public byte[] read(MsgPackReader reader) {
+            byte[] value = TestCodec.BYTES.read(reader);
+            return Arrays.equals(value, NIL) ? null : value;
+        }
+    };
 
     /** The server opens a channel to client method 1 with its id {@code serverId}. */
     private NexusDuplexChannel<byte[]> registeredChannel(int serverId) throws Exception {
+        return registeredChannel(serverId, TestCodec.BYTES);
+    }
+
+    /** The server opens a channel of {@code formatter} items to client method 1 with its id {@code serverId}. */
+    private NexusDuplexChannel<byte[]> registeredChannel(int serverId, Formatter<byte[]> formatter) throws Exception {
         CompletableFuture<NexusDuplexChannel<byte[]>> opened = new CompletableFuture<>();
         nexus.methods.put(1, (args, ctx) -> {
-            opened.complete(ctx.channel(args[1], TestCodec.BYTES));
+            opened.complete(ctx.channel(args[1], formatter));
             return ctx.result(methodResult());
         });
         invokePipeMethod(1, serverId);
@@ -85,17 +109,83 @@ class ChannelTest extends PipeTestBase {
     }
 
     @Test
-    void anItemTooLargeForTheServerFailsWithoutSendingAnything() throws Exception {
+    void anItemTooLargeForTheServerFailsWithoutSendingIt() throws Exception {
         connect(PipeOptions.defaults().withPipeWindow(WINDOW));
         NexusDuplexChannel<byte[]> channel = registeredChannel(9);
         int id = channel.pipe().id();
         peer.sendWindow(id, 10_000);
         NexusChannelWriter<byte[]> writer = await(channel.writer());
-        Throwable error = failure(writer.writeAll(Arrays.asList(bin(1, 1), bin(4 * 1024 * 1024, 2))));
-        assertInstanceOf(NexusMessageTooLargeException.class, error);
+        assertInstanceOf(NexusMessageTooLargeException.class, failure(writer.write(bin(4 * 1024 * 1024, 2))));
         peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, id, 100);
         await(writer.write(bin(2, 2)));
         assertArrayEquals(framed(bin(2, 2)), peer.take(MessageTypes.DUPLEX_PIPE_WRITE, id).body);
+    }
+
+    @Test
+    void writeAllSendsTheItemsBeforeAnItemTooLargeAsInCSharp() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        int id = channel.pipe().id();
+        peer.sendWindow(id, 10_000);
+        NexusChannelWriter<byte[]> writer = await(channel.writer());
+        byte[] a = bin(1, 1);
+        byte[] b = bin(20, 3);
+        Throwable error = failure(writer.writeAll(Arrays.asList(a, b, bin(4 * 1024 * 1024, 2), bin(5, 4))));
+        assertInstanceOf(NexusMessageTooLargeException.class, error);
+        assertArrayEquals(framed(a, b), peer.take(MessageTypes.DUPLEX_PIPE_WRITE, id).body);
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, id, 100);
+
+        // writeAndComplete: the items before are sent and the channel is not completed.
+        error = failure(writer.writeAndComplete(Arrays.asList(b, bin(4 * 1024 * 1024, 2))));
+        assertInstanceOf(NexusMessageTooLargeException.class, error);
+        assertArrayEquals(framed(b), peer.take(MessageTypes.DUPLEX_PIPE_WRITE, id).body);
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_UPDATE_STATE, id, 100);
+
+        // The channel stays usable.
+        await(writer.writeAndComplete(Arrays.asList(a)));
+        assertArrayEquals(framed(a), peer.take(MessageTypes.DUPLEX_PIPE_WRITE, id).body);
+        peer.expectState(id, PipeWire.READY | PipeWire.CLIENT_WRITER_COMPLETE, 0);
+    }
+
+    @Test
+    void writeAllSendsTheItemsBeforeOneTheFormatterCannotWrite() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9);
+        int id = channel.pipe().id();
+        peer.sendWindow(id, 10_000);
+        NexusChannelWriter<byte[]> writer = await(channel.writer());
+        byte[] a = bin(1, 1);
+        // TestCodec.BYTES writes nothing for null, which the codec rejects.
+        Throwable error = failure(writer.writeAll(Arrays.asList(a, null, a)));
+        assertInstanceOf(IllegalStateException.class, error);
+        assertArrayEquals(framed(a), peer.take(MessageTypes.DUPLEX_PIPE_WRITE, id).body);
+        peer.expectNone(MessageTypes.DUPLEX_PIPE_WRITE, id, 100);
+    }
+
+    @Test
+    void readItemTellsANullItemApartFromTheEnd() throws Exception {
+        connect(PipeOptions.defaults().withPipeWindow(WINDOW));
+        NexusDuplexChannel<byte[]> channel = registeredChannel(9, NULLABLE);
+        NexusChannelReader<byte[]> reader = await(channel.reader());
+        int id = channel.pipe().id();
+        byte[] a = bin(3, 1);
+        peer.sendData(id, framed(NIL, a, NIL, NIL));
+        ChannelReadResult<byte[]> first = await(reader.readItem());
+        assertFalse(first.isCompleted());
+        assertNull(first.value());
+        ChannelReadResult<byte[]> second = await(reader.readItem());
+        assertFalse(second.isCompleted());
+        assertArrayEquals(a, second.value());
+        // read() is for non-null item types: a null item fails it rather than reading as the end.
+        assertInstanceOf(NullPointerException.class, failure(reader.read()));
+        peer.sendState(id, PipeWire.READY | PipeWire.CLIENT_READER_COMPLETE, 0);
+        ChannelReadResult<byte[]> third = await(reader.readItem());
+        assertFalse(third.isCompleted(), "the last null item is still read");
+        assertNull(third.value());
+        ChannelReadResult<byte[]> end = await(reader.readItem());
+        assertTrue(end.isCompleted());
+        assertNull(end.value());
+        assertFalse(await(reader.read()).isPresent());
     }
 
     @Test

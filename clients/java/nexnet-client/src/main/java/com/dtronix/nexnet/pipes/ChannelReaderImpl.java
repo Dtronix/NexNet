@@ -35,8 +35,23 @@ final class ChannelReaderImpl<T> implements NexusChannelReader<T> {
 
     @Override
     public CompletableFuture<Optional<T>> read() {
+        return readItem().thenApply(result -> {
+            if (result.isCompleted()) {
+                return Optional.<T>empty();
+            }
+            T value = result.value();
+            if (value == null) {
+                // An empty optional would read as the end of the channel.
+                throw new NullPointerException("The channel item is null; use readItem() for a nullable item type.");
+            }
+            return Optional.of(value);
+        });
+    }
+
+    @Override
+    public CompletableFuture<ChannelReadResult<T>> readItem() {
         return serialized(() -> fill(1)).thenApply(items -> items.isEmpty()
-            ? Optional.<T>empty() : Optional.ofNullable(items.get(0)));
+            ? ChannelReadResult.<T>completed() : ChannelReadResult.of(items.get(0)));
     }
 
     @Override

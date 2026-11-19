@@ -11,11 +11,21 @@ import java.util.concurrent.CompletableFuture;
  */
 public interface NexusChannelReader<T> {
     /**
-     * Reads the next item.
+     * Reads the next item, for item types that are never null. An empty optional means the channel is complete.
+     * For a nullable item type use {@link #readItem()}, which tells a null item apart from the end of the channel.
      *
-     * @return a future of the item, or of an empty optional when the channel is complete
+     * @return a future of the item, or of an empty optional when the channel is complete; it fails with a
+     *     {@link NullPointerException} when the item read is null (the item is consumed)
      */
     CompletableFuture<Optional<T>> read();
+
+    /**
+     * Reads the next item, which may be null, or the end of the channel.
+     *
+     * @return a future of the result: {@link ChannelReadResult#isCompleted()} at the end of the channel, otherwise
+     *     the item in {@link ChannelReadResult#value()}
+     */
+    CompletableFuture<ChannelReadResult<T>> readItem();
 
     /**
      * Reads up to {@code max} items that are available, waiting for at least one.

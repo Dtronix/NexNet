@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dtronix.nexnet.invocation.InvocationOptions;
 import com.dtronix.nexnet.invocation.RemoteExceptionDetail;
+import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
@@ -124,6 +125,20 @@ class ClientConfigTest {
             .pingIntervalMillis());
         assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(0));
         assertThrows(IllegalArgumentException.class, () -> ClientConfig.tcp("h", 1).pingIntervalMillis(-5));
+    }
+
+    @Test
+    void pipeOptionsAreConfigurable() {
+        assertSame(PipeOptions.defaults(), ClientConfig.tcp("h", 1).build().pipeOptions());
+        PipeOptions options = PipeOptions.defaults().withMaxPipes(8).withPipeWindow(64 * 1024);
+        ClientConfig config = ClientConfig.tcp("h", 1).pipeOptions(options).build();
+        assertSame(options, config.pipeOptions());
+        assertEquals(8, config.pipeOptions().maxPipes());
+        assertEquals(64 * 1024, config.pipeOptions().pipeWindow());
+        assertThrows(NullPointerException.class, () -> ClientConfig.tcp("h", 1).pipeOptions(null));
+        assertThrows(IllegalArgumentException.class, () -> PipeOptions.defaults().withMaxPipes(0));
+        assertThrows(IllegalArgumentException.class, () -> PipeOptions.defaults().withMaxPipes(256));
+        assertThrows(IllegalArgumentException.class, () -> PipeOptions.defaults().withPipeWindow(1));
     }
 
     @Test

@@ -14,7 +14,6 @@ import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.pipes.PipeManager;
-import com.dtronix.nexnet.pipes.PipeOptions;
 import com.dtronix.nexnet.reconnect.ReconnectController;
 import com.dtronix.nexnet.reconnect.ReconnectableClient;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
@@ -365,7 +364,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             .build();
         s.setMessageHandler(runtime);
         // Pipes and channels (K08): the invocation runtime's next handler.
-        PipeManager.attach(runtime, callbackExecutor, timers, PipeOptions.defaults(), logger);
+        PipeManager.attach(runtime, callbackExecutor, timers, config.pipeOptions(), logger);
         synchronized (lock) {
             if (a.canceled) {
                 transport.close(DisconnectReason.GRACEFUL);

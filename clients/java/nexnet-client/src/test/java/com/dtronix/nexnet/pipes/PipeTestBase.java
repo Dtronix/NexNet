@@ -58,6 +58,12 @@ abstract class PipeTestBase {
     final List<CountDownLatch> latches = new ArrayList<>();
     /** Results of client methods that run until the test ends; completed in {@link #tearDown()}. */
     final List<CompletableFuture<Void>> methodResults = new ArrayList<>();
+    /** The session's clock: drives its keepalive tick and so the progress check. */
+    final ManualTimers sessionTimers = new ManualTimers();
+    /** The session's progress timeout, set before connecting. */
+    int progressTimeoutMillis = 30_000;
+    /** The session's ping interval, set before connecting; null derives it. */
+    Integer pingIntervalMillis;
     NexusSession session;
     InvocationRuntime runtime;
     PipeManager pipes;
@@ -77,7 +83,8 @@ abstract class PipeTestBase {
                  SessionOptions sessionOptions) throws Exception {
         LoopbackTransport transport = new LoopbackTransport();
         FakeServer server = transport.server();
-        session = NexusSession.builder(transport, HANDSHAKE).name("t").timers(new ManualTimers())
+        session = NexusSession.builder(transport, HANDSHAKE).name("t").timers(sessionTimers)
+            .progressTimeoutMillis(progressTimeoutMillis).pingIntervalMillis(pingIntervalMillis)
             .options(sessionOptions.withDisconnectDelayMillis(0).withInvocationCredits(2)).build();
         runtime = InvocationRuntime.builder(session, HANDSHAKE, nexus).options(invocationOptions)
             .codec(TestCodec.INSTANCE).callbackExecutor(callbacks).invocationExecutor(invocations).build();
