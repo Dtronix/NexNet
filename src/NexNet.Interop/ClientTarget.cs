@@ -34,8 +34,63 @@ public static class ClientTransports
     /// <summary>Every transport, in declaration order.</summary>
     public static IReadOnlyList<ClientTransport> All { get; } = Enum.GetValues<ClientTransport>();
 
-    /// <summary>The transports a <see cref="ClientMatrixAttribute"/> uses when it names none.</summary>
+    /// <summary>
+    /// The transports a <see cref="ClientMatrixAttribute"/> uses when it names none and <c>NEXNET_TEST_TRANSPORTS</c> is
+    /// unset.
+    /// </summary>
     public static IReadOnlyList<ClientTransport> Default { get; } = [ClientTransport.HttpSocketTls, ClientTransport.WebSocketTls];
+
+    /// <summary>
+    /// The environment variable that overrides the transports of a <see cref="ClientMatrixAttribute"/> that names none
+    /// (<see cref="Select(ClientLanguageInfo, string?)"/>).
+    /// </summary>
+    public const string EnvironmentVariable = "NEXNET_TEST_TRANSPORTS";
+
+    /// <summary>The <c>NEXNET_TEST_TRANSPORTS</c> value meaning every transport the language supports.</summary>
+    public const string AllValue = "all";
+
+    /// <summary>The transports of <paramref name="language"/> for a <c>NEXNET_TEST_TRANSPORTS</c> value.</summary>
+    /// <param name="language">The language.</param>
+    /// <param name="value">
+    /// Unset or blank: <see cref="Default"/>. <c>all</c>: every transport the language supports
+    /// (<see cref="ClientLanguageInfo.Transports"/>), in declaration order. Otherwise a comma-separated list of
+    /// <see cref="ClientTransport"/> names (case-insensitive), used for every language; a transport a language lacks is
+    /// a visible skip on its row.
+    /// </param>
+    /// <exception cref="ArgumentException">The list names an unknown transport.</exception>
+    public static IReadOnlyList<ClientTransport> Select(ClientLanguageInfo language, string? value)
+    {
+        ArgumentNullException.ThrowIfNull(language);
+        if (string.IsNullOrWhiteSpace(value))
+            return Default;
+
+        var entries = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (entries.Any(e => string.Equals(e, AllValue, StringComparison.OrdinalIgnoreCase)))
+            return All.Where(language.Transports.Contains).ToArray();
+
+        var result = new List<ClientTransport>(entries.Length);
+        foreach (var entry in entries)
+        {
+            var index = -1;
+            for (var i = 0; i < All.Count; i++)
+            {
+                if (string.Equals(All[i].ToString(), entry, StringComparison.OrdinalIgnoreCase))
+                    index = i;
+            }
+
+            if (index < 0)
+            {
+                throw new ArgumentException(
+                    $"{EnvironmentVariable} names an unknown transport '{entry}'. Use '{AllValue}' or a comma-separated list of: {string.Join(", ", All)}.",
+                    nameof(value));
+            }
+
+            if (!result.Contains(All[index]))
+                result.Add(All[index]);
+        }
+
+        return result.Count > 0 ? result : Default;
+    }
 
     /// <summary>The interop server endpoint of <paramref name="transport"/>.</summary>
     public static InteropEndpointKind ToEndpointKind(this ClientTransport transport) => transport switch
