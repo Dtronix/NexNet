@@ -75,6 +75,11 @@ final class PoolEntry {
         String level = spec.optStr("logLevel");
         ClientLogger logger = level == null ? null
             : new ClientLogger(host, scope.id, handle, Names.parse(NexusLogLevel.class, level));
+        if (spec.has("onInvocationException")) {
+            // Control protocol §6.4.1: the client nexus of pooled clients is not scripted.
+            throw HostError.notSupported("The client nexus of pooled clients is not scripted: ClientSpec.onInvocationException "
+                + "needs a client.");
+        }
         SpecMapper.Setup setup = SpecMapper.map(spec, logger, null);
         this.fakeTime = setup.fakeTime;
 
