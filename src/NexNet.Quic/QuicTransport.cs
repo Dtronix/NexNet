@@ -130,12 +130,21 @@ internal class QuicTransport : ITransport
         {
             mainStream = await quicConnection.OpenOutboundStreamAsync(QuicStreamType.Bidirectional, timeoutCancellation.Token).ConfigureAwait(false);
         }
-        catch
+        catch (Exception e)
         {
             // The connection is established but unusable without its stream: close it so it does not linger
             // until the peer's idle timeout.
             await quicConnection.DisposeAsync().ConfigureAwait(false);
-            throw;
+
+            // Report it like any other connect failure.
+            throw e switch
+            {
+                OperationCanceledException =>
+                    new TransportException(TransportError.ConnectionTimeout, "Opening the QUIC stream timed out.", e),
+                QuicException quicException =>
+                    new TransportException(QuicHelpers.GetTransportError(quicException.QuicError), e.Message, e),
+                _ => new TransportException(TransportError.ConnectionRefused, e.Message, e),
+            };
         }
 
         return new QuicTransport(quicConnection, mainStream, clientConfig.SendSessionPipeOptions);
