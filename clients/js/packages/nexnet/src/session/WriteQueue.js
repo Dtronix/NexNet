@@ -89,7 +89,8 @@ export class WriteQueue {
 
   /**
    * Queues `frame` as the last frame (a disconnect byte), refuses later ones, and resolves once it is written (true),
-   * or false when the write failed or the queue closed.
+   * or false when the write failed or the queue closed. The frames already queued are written before it, behind the
+   * write in flight (specification §5.6).
    * @param {Uint8Array} frame
    * @returns {Promise<boolean>}
    */

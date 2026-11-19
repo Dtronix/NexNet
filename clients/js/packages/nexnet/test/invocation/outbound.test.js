@@ -150,6 +150,27 @@ describe('invocation credits (§8)', () => {
     expect(getInvocationCounters()).toEqual(zeroCounters());
   });
 
+  it('invocations queued before a disconnect go out before the byte; result calls end canceled (§5.6, K25)', async () => {
+    const h = await connectedHarness();
+    const calls = [h.proxy.invoke(0, null), h.proxy.invoke(1, null)];
+    h.proxy.invokeVoid(3, null);
+    const results = Promise.allSettled(calls);
+    await h.client.disconnect();
+    // As the invocations a C# client wrote before its disconnect: all of them, then the byte.
+    expect(h.frames().map((f) => f.type)).toEqual([MessageType.Invocation, MessageType.Invocation, MessageType.Invocation, DisconnectReason.Graceful]);
+    expect(invocations(h).map((i) => [i.invocationId, i.methodId, i.flags])).toEqual([[1, 0, 0], [2, 1, 0], [0, 3, 1]]);
+    // The session ends before a result can arrive: canceled (C-2), as in C#.
+    for (const result of await results) {
+      expect(result.status).toBe('rejected');
+      const error = /** @type {PromiseRejectedResult} */ (result).reason;
+      expect(isCancellationError(error)).toBe(true);
+      expect(error.cause).toBeInstanceOf(NexusTransportError);
+      expect(error.cause.reason).toBe(DisconnectReason.Graceful);
+    }
+    await tick();
+    expect(getInvocationCounters()).toEqual(zeroCounters());
+  });
+
   it('the session ending fails calls waiting for credit and calls waiting for results', async () => {
     const h = await connectedHarness({ greeting: { invocationCredits: 1 } });
     const sent = h.proxy.invoke(0, null);

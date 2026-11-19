@@ -555,7 +555,7 @@ export class NexusSession {
     this.controlSender.clear();
 
     if (sendByte && this.#started) {
-      // The byte queues behind any write in flight. A transport write that never settles (a stuck socket) must not
+      // The byte queues behind any write in flight and the frames already queued (§5.6). A transport write that never settles (a stuck socket) must not
       // hold the close: past the limit the session closes without the byte (J20).
       const limit = this.#disconnectWriteLimit();
       const finished = this.#writer.finish(encodeHeaderOnly(reason));
