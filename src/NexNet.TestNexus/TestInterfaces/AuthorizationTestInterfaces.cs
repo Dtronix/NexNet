@@ -1,6 +1,7 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
 using NexNet.Invocation;
+using NexNet.Pipes;
 
 #pragma warning disable CS8618
 #pragma warning disable VSTHRD200
@@ -109,3 +110,47 @@ public partial class AuthServerNexus
 
 [Nexus<IAuthClientNexus, IAuthServerNexus>(NexusType = NexusType.Client)]
 public partial class AuthClientNexus { }
+
+public partial interface IAuthPipeServerNexus
+{
+    ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe);
+    ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel);
+    ValueTask<int> Ping(int value);
+}
+
+public partial interface IAuthPipeClientNexus { }
+
+[Nexus<IAuthPipeServerNexus, IAuthPipeClientNexus>(NexusType = NexusType.Server, Targets = NexusTargets.Java | NexusTargets.JavaScript)]
+public partial class AuthPipeServerNexus
+{
+    public Func<ServerSessionContext<ClientProxy>, int, string, ReadOnlyMemory<int>, ValueTask<AuthorizeResult>>? OnAuthorizeHandler;
+    public Func<string, INexusDuplexPipe, ValueTask>? ProtectedPipeHandler;
+    public Func<int, string, INexusDuplexChannel<int>, ValueTask>? ProtectedChannelHandler;
+
+    [NexusAuthorize<TestPermission>(TestPermission.Write)]
+    public ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe)
+    {
+        return ProtectedPipeHandler?.Invoke(input, pipe) ?? ValueTask.CompletedTask;
+    }
+
+    [NexusAuthorize<TestPermission>(TestPermission.Write)]
+    public ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel)
+    {
+        return ProtectedChannelHandler?.Invoke(value, input, channel) ?? ValueTask.CompletedTask;
+    }
+
+    public ValueTask<int> Ping(int value) => new(value);
+
+    protected override ValueTask<AuthorizeResult> OnAuthorize(
+        ServerSessionContext<ClientProxy> context,
+        int methodId,
+        string methodName,
+        ReadOnlyMemory<int> requiredPermissions)
+    {
+        return OnAuthorizeHandler?.Invoke(context, methodId, methodName, requiredPermissions)
+               ?? new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
+    }
+}
+
+[Nexus<IAuthPipeClientNexus, IAuthPipeServerNexus>(NexusType = NexusType.Client)]
+public partial class AuthPipeClientNexus { }
