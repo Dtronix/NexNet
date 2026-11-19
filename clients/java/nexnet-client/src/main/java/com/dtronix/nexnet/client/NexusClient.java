@@ -192,7 +192,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     // ------------------------------------------------------------------ connecting
 
     /**
-     * Connects. Fails when the client is already connected or connecting.
+     * Connects. Does nothing when the client is already connected (C# parity); fails when an attempt is in progress.
      *
      * @return a future that completes when connected, or fails with the reason
      */
@@ -211,6 +211,10 @@ public final class NexusClient<TProxy> implements AutoCloseable {
      */
     public CompletableFuture<Void> connect(CancellationToken cancellationToken) {
         CompletableFuture<Void> future = new CompletableFuture<>();
+        if (isConnected()) {
+            NexusExecutors.execute(callbackExecutor, () -> future.complete(null));
+            return future;
+        }
         Attempt started;
         try {
             started = begin(false, cancellationToken);
@@ -246,6 +250,11 @@ public final class NexusClient<TProxy> implements AutoCloseable {
      */
     public CompletableFuture<ConnectionResult> tryConnect(CancellationToken cancellationToken) {
         CompletableFuture<ConnectionResult> future = new CompletableFuture<>();
+        if (isConnected()) {
+            NexusExecutors.execute(callbackExecutor,
+                () -> future.complete(new ConnectionResult(ConnectionResult.Status.SUCCESS, DisconnectReason.NONE, null)));
+            return future;
+        }
         Attempt started;
         try {
             started = begin(false, cancellationToken);
@@ -258,6 +267,13 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             future.complete(result);
         }));
         return future;
+    }
+
+    /** True while a session is established and the client is open: connecting again is then a no-op. */
+    private boolean isConnected() {
+        synchronized (lock) {
+            return !closed && attempt == null && session != null;
+        }
     }
 
     /** A failed attempt's {@link #disconnected()} future completes before the caller sees the failure. */
