@@ -12,7 +12,7 @@ src/
 ├── NexNet.Generator/          # Roslyn source generator
 ├── NexNet.Quic/              # QUIC transport
 ├── NexNet.Asp/               # ASP.NET Core integration
-├── NexNet.IntegrationTests/  # Integration tests (TUnit, serial)
+├── NexNet.IntegrationTests/  # Integration tests (TUnit, parallel)
 ├── NexNet.TestNexus/         # Shared test nexuses + interop type zoo (not packaged)
 ├── NexNet.Generator.Tests/   # Generator tests
 ├── NexNet.Serialization.Tests/ # Serializer, protocol message and fuzz smoke tests
@@ -38,6 +38,9 @@ test app. Every suite is TUnit; filter with `--treenode-filter`:
   The path is `/assembly/namespace/class/test`. `--filter` (VSTest syntax) is not supported.
 
 List tests: `dotnet test <proj> -c Release --list-tests`.
+
+IntegrationTests run in parallel (see 4.4). `NEXNET_TEST_PARALLEL=<n>` overrides how many tests run at once (`1` runs
+the suite serially, which helps when chasing a timing failure).
 
 ---
 
@@ -322,7 +325,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.1 Base Classes
 
-- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger and resets the session id counter, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS socket files in one run-wide temp directory with a static counter, transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
+- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS endpoints from `NewUdsEndPoint()` in a per-test subdirectory of one run-wide temp directory (deleted after the test), transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation (`FreeTcpPort()`/`FreeUdpPort()` delegate to `TestPorts`), TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
 - `BasePipeTests.cs` - Pipe test base: LogMode enum (None/OnTestFail/Always), Setup() with auto server/client connection
 - `NexusCollectionBaseTests.cs` (Collections/) - Collection base: ConnectServerAndClient(), CreateRelayCollectionClientServers() for relay topology
 - `BaseAspTests.cs` - ASP.NET base: AspCreateAuthServices(), AspAppAuthConfigure()
@@ -335,6 +338,9 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `TaskExtensions.cs` - Timeout() overloads, AssertTimeout()
 - `Collections/CollectionHelpers.cs` - WaitForEvent() extension, WaitForActionHandler
 - `PipeStateManagerStub.cs` - IPipeStateManager mock
+- `TestPorts.cs` - Process-wide loopback port allocator: walks 12000-31999 (below the OS ephemeral ranges) from a random offset, never hands a port out twice, skips ports not bindable for both TCP and UDP. Use it instead of binding port 0 and closing (that races under parallel runs)
+- `TestTimeouts.cs` - Shared hang guards in seconds for load-dependent steps: `Connect` (server start/stop, client connect; 5) and `CollectionEvent` (5). Use them in `.Timeout(...)` instead of `1` for such steps
+- `IntegrationParallelLimit.cs` - TUnit `IParallelLimit` for the assembly: half the logical processors (at least 2), or `NEXNET_TEST_PARALLEL`
 
 ### 4.3 Test Categories
 
@@ -372,6 +378,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `NexusPipeReaderTests.cs` / `NexusPipeWriterTests.cs` - Pipe ops
 - `NexusDuplexPipeReaderTests.cs` / `NexusDuplexPipeWriterTests.cs` - Duplex ops
 - `NexusClientTests_NexusDuplexPipe.cs` / `NexusServerTests_NexusDuplexPipe.cs` - Integration
+- `NexusPipeWriterCloseRaceTests.cs` / `PipeCloseWriteRaceTests.cs` - A pipe closed or reset while a write or flush is in flight: buffers stay valid, no data after the Complete, the session survives
 
 **Security (Security/, 10 files):**
 - `AuthenticationTokenTests.cs` - Token validation
@@ -408,7 +415,14 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.4 Test Patterns
 
-**TUnit:** the suite runs on TUnit in source-gen mode, one test at a time (`[assembly: NotInParallel]` in `GlobalUsings.cs`). TUnit creates a new instance per test, so per-class state goes in static fields set by static `[Before(Class)]`/`[After(Class)]` hooks (see `TlsCertificateTests`).
+**TUnit:** the suite runs on TUnit in source-gen mode.
+
+**Parallelism:** tests run in parallel, up to `IntegrationParallelLimit` at once (`[assembly: ParallelLimiter<...>]` in `GlobalUsings.cs`; `NEXNET_TEST_PARALLEL` overrides it). A new test must be parallel-safe: take ports from `TestPorts` (via `FreeTcpPort()`/`FreeUdpPort()` or the `CreateServerConfig`/`CreateClientConfig` helpers), UDS paths from `NewUdsEndPoint()`, and never depend on session ID values or other process-wide state. Bound load-dependent steps with `TestTimeouts`. Opt out only where needed:
+- `[NotInParallel("stress")]`: stress tests (`Parallel.Invoke`, `Thread.Sleep`, high volume), metrics, session-budget, rate-limit and snapshot tests. They run alongside other tests but never alongside each other.
+- `[NotInParallel("static-state")]`: tests that read or reset process-wide state (object pools, `ObjectCache`, pooled completion sources, static counters), e.g. `PoolingTests`, `PooledResettableValueTaskCompletionSourceTests`. Prefer private types or injected state where a test can avoid the shared state.
+- `[NotInParallel]` (no key): tests that assert on wall-clock time; they run on their own.
+
+TUnit creates a new instance per test, so per-class state goes in static fields set by static `[Before(Class)]`/`[After(Class)]` hooks (see `TlsCertificateTests`).
 
 **Multi-Transport:** `[Test]` plus `[Transports]` (`TransportsAttribute.cs`) runs a test once per transport, passing it as the first `Type` parameter: `[Transports]` is every transport, `[Transports(Type.Uds, Type.Tcp)]` only those, `[Transports(Except = new[] { Type.Quic })]` all but those. Rows with more arguments use `[Arguments(Type.Tcp, true)]`; generated rows use `[MethodDataSource]`.
 
@@ -419,8 +433,8 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 **Setup Pattern:**
 ```
 var (server, client, clientNexus) = CreateServerClient(config, config);
-await server.StartAsync().Timeout(1);
-await client.ConnectAsync().Timeout(1);
+await server.StartAsync().Timeout(TestTimeouts.Connect);
+await client.ConnectAsync().Timeout(TestTimeouts.Connect);
 ```
 
 **Event Assertions:** Set delegates on test nexus before operations; capture values in the callbacks and assert after awaiting them
