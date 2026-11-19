@@ -9,9 +9,12 @@ internal static class JsSupportEmitter
     public static IEnumerable<GeneratedFile> Emit(JsContext context)
     {
         yield return new GeneratedFile(JsSyntax.SupportModule + ".js",
-            JsSyntax.Header + "\nimport * as " + JsSyntax.Rt + " from " + JsSyntax.String(context.RuntimeModule) + ";\n" + Js);
-        yield return new GeneratedFile(JsSyntax.SupportModule + ".d.ts", JsSyntax.Header + "\n" + Dts);
+            JsSyntax.Header + "\nimport * as " + JsSyntax.Rt + " from " + JsSyntax.String(context.RuntimeModule) + ";\n" + Lf(Js));
+        yield return new GeneratedFile(JsSyntax.SupportModule + ".d.ts", JsSyntax.Header + "\n" + Lf(Dts));
     }
+
+    // The raw strings take the line endings of this file's checkout; emitted files always use '\n'.
+    private static string Lf(string text) => text.Replace("\r\n", "\n");
 
     private const string Dts = """
 
