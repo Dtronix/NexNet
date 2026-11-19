@@ -371,6 +371,11 @@ session. Its options:
   `DispatchContext`: `invocationId`, `signal` (the C# `CancellationToken`), `writeResult`, `pipe(pipeId)` and
   `channel(pipeId, formatter)`. Unknown IDs fall through to `super._dispatch`, which throws. The runtime checks
   `methodId` against `acceptedIds` before dispatching.
+
+  The generated `_dispatch` awaits every method, C# `void` methods included, so a failure (sync or async) reaches the
+  runtime, which logs it. The invocation's execution slot is held until the method settles, so a `void` method that is
+  still running counts against `maxConcurrentConnectionInvocations` (or `maxSeparatePoolInvocations`). This is a J04
+  choice; the Java client nexus does not wait for `void` methods.
 - `onInvocationException(error, methodId)` (C# `OnInvocationException`): called when a method that returns a result
   throws, before the failure is sent. Return a `NexusRemoteError` (`{ code?: number | null, message?: string | null }`)
   to send that in place of the exception's detail, whatever `remoteExceptionDetail` says; return null or undefined to

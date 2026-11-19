@@ -59,6 +59,16 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
     protected override IReadOnlyList<string> OptionNames => Options;
 
     /// <summary>
+    /// The proxy and client nexus base escape names of their runtime base class members with a trailing '_'
+    /// (<see cref="JsProxyEmitter.MethodName"/>), so NEXNET041 sees the name the emitters write.
+    /// </summary>
+    protected override string EscapeApiMember(bool serverApi, string mapped)
+    {
+        var reserved = serverApi ? JsProxyEmitter.ReservedMembers : JsClientNexusEmitter.ReservedMembers;
+        return Array.IndexOf(reserved, mapped) >= 0 ? mapped + "_" : mapped;
+    }
+
+    /// <summary>
     /// One module and its declarations per export: <c>ChatServerNexus.js</c>, <c>ChatServerNexus.d.ts</c>
     /// (<see cref="JsProxyEmitter"/>).
     /// </summary>
