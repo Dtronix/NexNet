@@ -1,6 +1,7 @@
 package com.dtronix.nexnet.spi;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
@@ -68,12 +69,13 @@ public interface ProxyInvoker {
                                               PipeArgumentWriter arguments);
 
     /**
-     * See {@link ProxyBase#list(int, Formatter)}.
+     * See {@link ProxyBase#list(int, NexusCollectionMode, Formatter)}.
      *
      * @param collectionId the collection id
+     * @param mode the collection's mode, from its {@code [NexusCollection]} attribute (amendment C-4)
      * @param itemFormatter the item formatter
      * @param <T> the item type
      * @return the list
      */
-    <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter);
+    <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter);
 }

@@ -9,7 +9,9 @@ import com.dtronix.nexnet.NexusMessageTooLargeException;
 import com.dtronix.nexnet.NexusRemoteInvocationException;
 import com.dtronix.nexnet.NexusUnauthorizedException;
 import com.dtronix.nexnet.Registration;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
+import com.dtronix.nexnet.collections.NexusListClient;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
@@ -136,6 +138,7 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     private volatile MessageHandler next = MessageHandler.UNHANDLED;
     private volatile @Nullable PipeManager pipes;
     private volatile @Nullable DisconnectReason closeReason;
+    private final Map<Integer, NexusList<?>> lists = new HashMap<>();
 
     private InvocationRuntime(Builder b) {
         this.session = b.session;
@@ -373,8 +376,17 @@ public final class InvocationRuntime implements MessageHandler, ProxyInvoker {
     }
 
     @Override
-    public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
-        throw new UnsupportedOperationException("not implemented");
+    public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
+        // Used when this runtime is the proxy's invoker directly: one list per collection, bound to this session.
+        synchronized (lists) {
+            @SuppressWarnings("unchecked")
+            NexusList<T> list = (NexusList<T>) lists.get(collectionId);
+            if (list == null) {
+                list = new NexusListClient<>(collectionId, mode, itemFormatter, () -> this, callbackExecutor, logger);
+                lists.put(collectionId, list);
+            }
+            return list;
+        }
     }
 
     /**

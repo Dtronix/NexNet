@@ -1,7 +1,9 @@
 package com.dtronix.nexnet.invocation;
 
 import com.dtronix.nexnet.CancellationToken;
+import com.dtronix.nexnet.collections.NexusCollectionMode;
 import com.dtronix.nexnet.collections.NexusList;
+import com.dtronix.nexnet.collections.NexusListClient;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
 import com.dtronix.nexnet.pipes.NexusDuplexPipe;
 import com.dtronix.nexnet.serialization.Formatter;
@@ -9,6 +11,8 @@ import com.dtronix.nexnet.session.NexusExecutors;
 import com.dtronix.nexnet.spi.ArgumentWriter;
 import com.dtronix.nexnet.spi.PipeArgumentWriter;
 import com.dtronix.nexnet.spi.ProxyInvoker;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import org.jspecify.annotations.Nullable;
@@ -21,6 +25,7 @@ import org.jspecify.annotations.Nullable;
 public final class ClientProxyInvoker implements ProxyInvoker {
     private final Executor callbackExecutor;
     private volatile @Nullable InvocationRuntime runtime;
+    private final Map<Integer, NexusList<?>> lists = new HashMap<>();
 
     /**
      * Creates the invoker.
@@ -111,7 +116,16 @@ public final class ClientProxyInvoker implements ProxyInvoker {
     }
 
     @Override
-    public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
-        throw new UnsupportedOperationException("not implemented");
+    public <T> NexusList<T> list(int collectionId, NexusCollectionMode mode, Formatter<T> itemFormatter) {
+        // One list per collection for the life of the client; each enable binds it to the current session.
+        synchronized (lists) {
+            @SuppressWarnings("unchecked")
+            NexusList<T> list = (NexusList<T>) lists.get(collectionId);
+            if (list == null) {
+                list = new NexusListClient<>(collectionId, mode, itemFormatter, this::current, callbackExecutor, null);
+                lists.put(collectionId, list);
+            }
+            return list;
+        }
     }
 }
