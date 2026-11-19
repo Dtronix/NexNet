@@ -51,6 +51,10 @@ internal class QuicTransport : ITransport
             : (connection.RemoteEndPoint?.ToString(), null);
     }
 
+    /// <remarks>
+    /// Never completes <see cref="Input"/>: its buffers are only touched by the session's read, which completes it
+    /// after the read has ended. Closing the connection or disposing the stream ends a pending read.
+    /// </remarks>
     public async ValueTask CloseAsync(bool linger)
     {
         if (linger)
