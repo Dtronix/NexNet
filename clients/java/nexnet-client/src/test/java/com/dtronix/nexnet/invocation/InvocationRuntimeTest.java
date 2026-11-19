@@ -541,6 +541,12 @@ class InvocationRuntimeTest {
         nexus.error = new NexusRemoteError(42, "nope");
         peer.send(MessageTypes.INVOCATION, invocation(3, 0, 0, SMALL_ARGS));
         assertArrayEquals(array(3, 2, array(42, null, "nope")), peer.expect(MessageTypes.INVOCATION_RESULT).body);
+
+        // An error with only a message sends a nil code, as the C# NexusRemoteError(null, message) does.
+        nexus.error = new NexusRemoteError(null, "message only");
+        peer.send(MessageTypes.INVOCATION, invocation(4, 0, 0, SMALL_ARGS));
+        assertArrayEquals(array(4, 2, array(null, null, "message only")),
+            peer.expect(MessageTypes.INVOCATION_RESULT).body);
     }
 
     @Test
