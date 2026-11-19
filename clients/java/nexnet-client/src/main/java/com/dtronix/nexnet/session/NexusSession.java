@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
@@ -70,6 +71,7 @@ public final class NexusSession {
     private final SessionOptions options;
     private final int handshakeTimeoutMillis;
     private final long timeoutNanos;
+    private final long progressTimeoutNanos;
     private final @Nullable Integer pingIntervalMillis;
     private final Executor callbackExecutor;
     private final SessionTimers timers;
@@ -78,6 +80,7 @@ public final class NexusSession {
 
     private final Object lock = new Object();
     private final ArrayDeque<Pending> queue = new ArrayDeque<>();
+    private final List<ProgressProbe> probes = new CopyOnWriteArrayList<>();
     private Phase phase = Phase.NEW;
     private DisconnectReason disconnectReason = DisconnectReason.NONE;
     private @Nullable DisconnectReason terminal;
@@ -109,6 +112,7 @@ public final class NexusSession {
         this.options = b.options;
         this.handshakeTimeoutMillis = b.handshakeTimeoutMillis;
         this.timeoutNanos = TimeUnit.MILLISECONDS.toNanos(b.timeoutMillis);
+        this.progressTimeoutNanos = TimeUnit.MILLISECONDS.toNanos(b.progressTimeoutMillis);
         this.pingIntervalMillis = b.pingIntervalMillis;
         this.callbackExecutor = b.callbackExecutor;
         this.timers = b.timers;
@@ -616,8 +620,37 @@ public final class NexusSession {
             close(DisconnectReason.TIMEOUT, true);
             return;
         }
+        if (checkProgress()) {
+            return;
+        }
         controlSender.requestPing();
         schedulePing();
+    }
+
+    /**
+     * The progress check (specification section 9): asks every probe; the first stall it reports disconnects with
+     * {@code Stalled}.
+     *
+     * @return true when the session is closing because of a stall
+     */
+    private boolean checkProgress() {
+        long now = timers.nanoTime();
+        for (ProgressProbe probe : probes) {
+            String stall;
+            try {
+                stall = probe.findStalled(now, progressTimeoutNanos);
+            } catch (RuntimeException e) {
+                log(NexusLogLevel.ERROR, "A progress probe failed.", e);
+                continue;
+            }
+            if (stall != null) {
+                log(NexusLogLevel.WARNING, "The session made no progress within "
+                    + TimeUnit.NANOSECONDS.toMillis(progressTimeoutNanos) + " ms: " + stall + ".", null);
+                close(DisconnectReason.STALLED, true);
+                return true;
+            }
+        }
+        return false;
     }
 
     private Registration scheduleTimer(Runnable task, long delayMillis) {
@@ -809,6 +842,37 @@ public final class NexusSession {
     }
 
     /**
+     * Adds a progress probe, asked on every keepalive tick (specification section 9). A stall it reports
+     * disconnects the session with {@link DisconnectReason#STALLED}.
+     *
+     * @param probe the probe
+     */
+    public void addProgressProbe(ProgressProbe probe) {
+        if (probe == null) {
+            throw new NullPointerException("probe");
+        }
+        probes.add(probe);
+    }
+
+    /**
+     * The session clock, the one {@link ProgressProbe}s are given.
+     *
+     * @return nanoseconds, comparable only to other values of this clock
+     */
+    public long nanoTime() {
+        return timers.nanoTime();
+    }
+
+    /**
+     * The progress timeout.
+     *
+     * @return milliseconds
+     */
+    public long progressTimeoutMillis() {
+        return TimeUnit.NANOSECONDS.toMillis(progressTimeoutNanos);
+    }
+
+    /**
      * The options this session advertised.
      *
      * @return the options
@@ -897,6 +961,7 @@ public final class NexusSession {
         private SessionOptions options = SessionOptions.defaults();
         private int handshakeTimeoutMillis = 15_000;
         private int timeoutMillis = 30_000;
+        private int progressTimeoutMillis = 30_000;
         private @Nullable Integer pingIntervalMillis;
         private Executor callbackExecutor = NexusExecutors.shared();
         private SessionTimers timers = SessionTimers.system();
@@ -978,6 +1043,18 @@ public final class NexusSession {
          */
         public Builder timeoutMillis(int millis) {
             this.timeoutMillis = millis;
+            return this;
+        }
+
+        /**
+         * The progress timeout: how long a large message may receive no data before the session disconnects with
+         * {@code Stalled} (specification section 9).
+         *
+         * @param millis milliseconds
+         * @return this builder
+         */
+        public Builder progressTimeoutMillis(int millis) {
+            this.progressTimeoutMillis = millis;
             return this;
         }
 
