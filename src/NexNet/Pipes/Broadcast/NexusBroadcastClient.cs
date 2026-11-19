@@ -18,7 +18,6 @@ namespace NexNet.Pipes.Broadcast;
 internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion>, INexusCollectionConnector
     where TUnion : class, INexusCollectionUnion<TUnion>
 {
-    private ushort _pipeId;
     private IProxyInvoker? _invoker;
     private INexusSession? _session;
     private NexusBroadcastSession<TUnion>? _client;
@@ -26,6 +25,9 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     private TaskCompletionSource? _initializedTcs;
     private TaskCompletionSource? _disconnectTcs;
     private TaskCompletionSource? _readyTcs;
+
+    // Reader of the current enable's pipe. It returns the pipe to the pipe manager when it ends.
+    private Task? _readerTask;
 
     // Token of the current enable's processor run, and the failure recorded when that processor stopped on its own.
     private CancellationToken _processorToken;
@@ -62,6 +64,12 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
     /// </summary>
     public Task DisconnectedTask => _disconnectTcs?.Task ?? Task.CompletedTask;
 
+    /// <summary>
+    /// Test seam: runs during an enable once the pipe is open and the run's disconnect cleanup is registered, before
+    /// the run's reader starts. Always null outside tests.
+    /// </summary>
+    internal Func<INexusDuplexPipe, Task>? EnableTestHook { get; set; }
+
     protected NexusBroadcastClient(ushort id, NexusCollectionMode mode, INexusLogger? logger)
         : base(id, mode, logger, "BRC")
     {
@@ -75,6 +83,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         // Captured before the pipe closes: once it has, a new enable may replace them.
         var disconnectedTask = _disconnectTcs!.Task.ConfigureAwait(false);
         var loopTask = Processor.LoopTask;
+        var readerTask = _readerTask;
         // Complete the pipe and everything closes.
         await _client!.CompletePipe().ConfigureAwait(false);
 
@@ -90,6 +99,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             // A faulted loop is logged by SuperviseProcessorAsync; the collection is disabled either way.
             Logger?.LogDebug(e, "Collection message processor loop ended with an error.");
         }
+
+        // The reader returns the pipe once it ends. Waiting for it means the pipe's slot is free as soon as the peer
+        // has confirmed the close, so an enable right after this one does not find the pipe limit reached.
+        if (readerTask != null)
+            await readerTask.ConfigureAwait(false);
     }
 
     public async ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)
@@ -143,14 +157,14 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             throw;
         }
 
-        _pipeId = pipe.Id;
-
         var writer = Mode == NexusCollectionMode.BiDirectional ? new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>()) : null;
-        _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
+        // Kept in a local: once the pipe closes, Disconnected clears _client, possibly before this method reads it.
+        var client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
+        _client = client;
 
-        _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var initializedTcs = _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var disconnectTcs = _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var run = new EnableRun(this, _client, stopCts, OperationSemaphore, readyTcs, disconnectTcs);
+        var run = new EnableRun(this, client, stopCts, OperationSemaphore, readyTcs, disconnectTcs);
 
         // Registered once the enable's state is in place, so a pipe that is already closed still runs the full
         // disconnect path against it. Not tied to the enable token: the cleanup must run whenever the pipe closes,
@@ -161,22 +175,23 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             run.Owner.Disconnected(run);
         }, run, CancellationToken.None);
 
+        if (EnableTestHook is { } enableTestHook)
+            await enableTestHook(pipe).ConfigureAwait(false);
+
         // Long-running task listening for changes.
         // The reader feeds this run only: messages still buffered in this pipe after it closes must not reach the
         // processor of a later pipe, ahead of that pipe's reset.
-        _ = Task.Factory.StartNew(async static state =>
+        // The run's own client and token, never the fields: the pipe can close (and a new enable replace the fields)
+        // before this task starts. Reading a cleared _client here used to skip returning the pipe.
+        _readerTask = Task.Factory.StartNew(async static state =>
         {
-            var (broadcaster, runGeneration) = ((NexusBroadcastClient<TUnion>, int))state!;
-            var clientState = broadcaster._client;
+            var (broadcaster, clientState, processorToken, runGeneration) =
+                ((NexusBroadcastClient<TUnion>, NexusBroadcastSession<TUnion>, CancellationToken, int))state!;
             var logger = broadcaster.Logger;
 
-            if (clientState == null)
-                return;
-
             if(logger != null)
-                logger.PathSegment = $"S{clientState.Id}|P{broadcaster._pipeId:00000}|BR{broadcaster.Id}";
+                logger.PathSegment = $"S{clientState.Id}|P{clientState.Pipe.Id:00000}|BR{broadcaster.Id}";
 
-            var processorToken = broadcaster._processorToken;
             var reader = new NexusChannelReader<TUnion>(clientState.Pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>());
             try
             {
@@ -205,13 +220,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             if (clientState.Pipe is IRentedNexusDuplexPipe rentedPipe)
                 await rentedPipe.DisposeAsync().ConfigureAwait(false);
 
-        }, (this, runGeneration), TaskCreationOptions.DenyChildAttach);
-        
-        // Capture locally to avoid race with Disconnected() nulling _client.
-        var client = _client!;
+        }, (this, client, stopCts.Token, runGeneration), CancellationToken.None, TaskCreationOptions.DenyChildAttach,
+            TaskScheduler.Default).Unwrap();
 
         // Wait for either the complete task fires or the client is actually connected.
-        await Task.WhenAny(client.Pipe.CompleteTask, _initializedTcs.Task).ConfigureAwait(false);
+        await Task.WhenAny(client.Pipe.CompleteTask, initializedTcs.Task).ConfigureAwait(false);
 
         // Check to see if we have connected or have just been disconnected.
         var isDisconnected = client.Pipe.CompleteTask.IsCompleted;
