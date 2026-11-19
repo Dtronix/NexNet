@@ -3,6 +3,7 @@ import { ConnectionResultState, ConnectionState, DisconnectReason } from '../../
 import { getSessionCounters } from '../../src/session/diagnostics.js';
 import { encodeFrame, encodeHeaderOnly, encodePreamble } from '../../src/session/frames.js';
 import { MessageType } from '../../src/session/protocol.js';
+import { DEFAULT_PING_INTERVAL, MIN_DERIVED_PING_INTERVAL, effectivePingInterval, resolveClientOptions } from '../../src/session/options.js';
 import { decodeInvocationCancellation, decodeInvocationCredit, decodeMessageAbort } from '../../src/session/wire.js';
 import { concat } from './support/LoopbackTransport.js';
 import { CLIENT_HASH, connected, createHarness, serverHello, tick } from './support/harness.js';
@@ -178,6 +179,43 @@ describe('timers', () => {
     const b = harness();
     await connected(b);
     expect(b.client._session?.pingInterval).toBe(10_000);
+  });
+
+  it('derived intervals are at least 1000 ms; 0 advertised means none (S04 parity, J15)', async () => {
+    const a = harness();
+    await connected(a, { idleTimeoutMs: 1500 });
+    expect(a.client._session?.pingInterval).toBe(1000);
+    expect(a.client._session?.idleTimeoutMs).toBe(1500);
+    const b = harness();
+    await connected(b, { idleTimeoutMs: 0 });
+    expect(b.client._session?.idleTimeoutMs).toBeNull();
+    expect(b.client._session?.pingInterval).toBe(10_000);
+    const c = harness();
+    await connected(c, { idleTimeoutMs: 0xffffffff });
+    expect(c.client._session?.idleTimeoutMs).toBe(0xffffffff);
+    expect(c.client._session?.pingInterval).toBe(Math.floor(0xffffffff / 3));
+  });
+
+  it('an explicit pingInterval is not capped; one not below the advertised idle timeout logs a warning (J15)', async () => {
+    const warned = (/** @type {ReturnType<typeof createHarness>} */ h) =>
+      h.logs.some(([level, m]) => level === 'warning' && String(m).includes('is not below the server\'s idle timeout'));
+    const above = harness({ config: { pingInterval: 5000 } });
+    await connected(above, { idleTimeoutMs: 3000 });
+    expect(above.client._session?.pingInterval).toBe(5000);
+    expect(warned(above)).toBe(true);
+    const equal = harness({ config: { pingInterval: 3000 } });
+    await connected(equal, { idleTimeoutMs: 3000 });
+    expect(warned(equal)).toBe(true);
+    const below = harness({ config: { pingInterval: 2999 } });
+    await connected(below, { idleTimeoutMs: 3000 });
+    expect(warned(below)).toBe(false);
+    const none = harness({ config: { pingInterval: 60_000 } });
+    await connected(none);
+    expect(none.client._session?.pingInterval).toBe(60_000);
+    expect(warned(none)).toBe(false);
+    const derived = harness();
+    await connected(derived, { idleTimeoutMs: 2000 }); // a derived interval never warns
+    expect(warned(derived)).toBe(false);
   });
 
   it('disconnects with Timeout when no complete frame arrived within timeout, checked on the ping tick (§5.5)', async () => {
@@ -459,3 +497,28 @@ function parse(bytes) {
   return out;
 }
 
+describe('ping interval rule (C# ClientConfig.GetEffectivePingInterval, J15)', () => {
+  it('matches the C# rule', () => {
+    expect(effectivePingInterval(null, null)).toBe(DEFAULT_PING_INTERVAL);
+    expect(effectivePingInterval(null, 0)).toBe(DEFAULT_PING_INTERVAL);
+    expect(effectivePingInterval(null, 1)).toBe(MIN_DERIVED_PING_INTERVAL);
+    expect(effectivePingInterval(null, 2999)).toBe(1000);
+    expect(effectivePingInterval(null, 30_000)).toBe(10_000);
+    expect(effectivePingInterval(null, 30_002)).toBe(10_000);
+    expect(effectivePingInterval(null, 0xffffffff)).toBe(1_431_655_765);
+    expect(effectivePingInterval(1, 30_000)).toBe(1);
+    expect(effectivePingInterval(90_000, 30_000)).toBe(90_000);
+    expect(effectivePingInterval(500, null)).toBe(500);
+  });
+
+  it('a zero, negative or non-integer pingInterval is a config error', () => {
+    const resolve = (/** @type {unknown} */ pingInterval) => resolveClientOptions(
+      /** @type {any} */ ({ tcp: { host: 'localhost', port: 1 }, pingInterval }), { tcp: () => null });
+    expect(() => resolve(0)).toThrow(RangeError);
+    expect(() => resolve(-1)).toThrow(RangeError);
+    expect(() => resolve(1.5)).toThrow(TypeError);
+    expect(resolve(1).pingInterval).toBe(1);
+    expect(resolve(undefined).pingInterval).toBeNull();
+    expect(resolve(null).pingInterval).toBeNull();
+  });
+});

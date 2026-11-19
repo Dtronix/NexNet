@@ -67,6 +67,13 @@ describe('ServerGreeting trailing fields (S04)', () => {
     expect(decodeServerGreeting(body).idleTimeoutMs).toBe(30000);
   });
 
+  it('reads idleTimeoutMs as uint32: values above int32 are accepted, negatives rejected (J15)', () => {
+    const big = encodeServerGreeting({ version: 1, clientId: 2n, maxMessageSize: 65526, invocationCredits: 1, idleTimeoutMs: 0xffffffff });
+    expect(decodeServerGreeting(big).idleTimeoutMs).toBe(0xffffffff);
+    const neg = new BodyWriter().writeArrayHeader(5).writeInt(1).writeInt(2).writeInt(65526).writeInt(1).writeInt(-1).toUint8Array();
+    expect(() => decodeServerGreeting(neg)).toThrow(WireFormatError);
+  });
+
   it('accepts nil idleTimeoutMs and skips further trailing elements', () => {
     const w = new BodyWriter().writeArrayHeader(7).writeInt(1).writeInt(2).writeInt(65526).writeInt(1).writeNil();
     w.writeString('future').writeArrayHeader(2).writeInt(1).writeInt(-1);
