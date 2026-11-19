@@ -208,12 +208,24 @@ transports. Its JSDoc type is `unknown` so the platform-neutral declarations do 
 | `_invokeVoid(methodId, args)` → `void` | `void` (fire-and-forget; queued for credit, never dropped) |
 | `_invokePipe(methodId, pipe, args, {signal})` → `Promise<void>` | `INexusDuplexPipe` parameter |
 | `_invokeChannel(methodId, channel, args, {signal})` → `Promise<void>` | `INexusDuplexChannel<T>`/`INexusDuplexUnmanagedChannel<T>` parameter |
-| `_collection(methodId, formatter, {equals})` → `NexusList<T>` | collection property |
+| `_collection(methodId, formatter, {mode, equals, valuesFormatter})` → `NexusList<T>` | collection property |
 
 `args` is an `ArgumentsWriter` `(writer) => void` that writes **one MessagePack array** with an element per C#
 parameter in declaration order, excluding the `CancellationToken`; `null` when there are no parameters. For pipe and
 channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that writes the pipe or channel parameter as
 `pipeId` at its position.
+
+`_collection` returns one `NexusList` per `methodId` for the lifetime of the client; it follows the client's current
+session. Its options:
+
+- `mode`: the `[NexusCollection]` mode of the server property, a `NexusCollectionMode` value (`Unset` 0,
+  `ServerToClient` 1, `BiDirectional` 2, `Relay` 3; `src/collections/mode.js`). Default `ServerToClient`, as in C#.
+  `Unset` and unknown values throw `TypeError`. Only `BiDirectional` accepts changes from a client; `Relay` behaves
+  like `ServerToClient` for a client (protocol spec §12.2).
+- `equals`: item equality for `remove(item)`, `indexOf` and `contains` (protocol spec §12.9). Default: see §3.5.
+- `valuesFormatter`: the formatter of the C# `T[]`, which reads the values of a reset. Generated code passes it when
+  C# writes `T[]` as ext 78 (arrays of primitive numeric types, protocol spec §10.5). Default: a MessagePack array of
+  items read with `formatter`.
 
 `ClientNexusBase<TProxy>` (base of `<Client>NexusBase`):
 
@@ -242,9 +254,29 @@ channel methods it is a `PipeArgumentsWriter` `(writer, pipeId) => void` that wr
 - `NexusDuplexChannel<T>`: `pipe`, `getReader()`, `getWriter()`, `complete()`, `[Symbol.asyncDispose]`.
 - `NexusChannelReader<T>`: `read()` → `IteratorResult<T>`, `readBatch(max)`, `readUntilComplete()`,
   `[Symbol.asyncIterator]`, `isComplete`. `NexusChannelWriter<T>`: `write`, `writeMany`, `complete`, `writeAndComplete`.
-- `NexusList<T> extends EventTarget` (event `changed`): `state`, `isEnabled`, `ready`, `disabled`, `count`, `get`,
-  `indexOf`, `contains`, `toArray`, iterator, `enable`, `disable`, and the `Promise<boolean>` mutations `add`,
-  `insert`, `remove`, `removeAt`, `replace`, `move` and `clear`.
+- `NexusList<T> extends EventTarget` (event `changed`): `state`, `isEnabled`, `ready`, `disabled`, `mode`, `version`,
+  `count`, `length`, `get`, `at`, `indexOf`, `contains`, `toArray`, iterator, `enable`, `disable`, and the
+  `Promise<boolean>` mutations `add`, `insert`, `remove`, `removeAt`, `replace`, `move` and `clear`.
+  - `mode` is the `NexusCollectionMode` passed to `_collection`. `version` is the list version the replica is at
+    (protocol spec §12.3).
+  - `length` is `count`. `get(index)` throws `RangeError` when out of range (C# indexer); `at(index)` follows
+    `Array.prototype.at`: a negative index counts back from the end, and out of range returns `undefined`.
+  - `changed` is a `CustomEvent` whose `detail` is a `NexusListChange<T>`: `{ action, index?, item?, oldItem?,
+    fromIndex?, toIndex? }`. `action` is `add`, `remove`, `replace` or `move` (C# `NexusCollectionChangedAction`),
+    `reset` (a Clear, a completed reset, or the list closing; the list is then empty or holds the reset's items), or
+    `ready` (follows the `reset` of every completed reset, the initial synchronization included, as C# raises
+    `Ready`). `add` carries `index` and the new `item`; `remove` carries `index` and the removed `item`; `replace`
+    carries `index`, the new `item` and `oldItem`; `move` carries `fromIndex`, `toIndex` and the moved `item`.
+  - Default equality (C# `EqualityComparer<T>.Default` for the JS mappings): an item with an `equals` method (the
+    runtime value types, generated structs and records) uses it; anything else compares with SameValueZero, which is
+    `===` except that NaN equals NaN. Objects without `equals` compare by identity. Pass `equals` to `_collection` to
+    override it.
+  - Mutations are BiDirectional only and run one at a time, in call order. Each resolves with true once the server
+    applied it and false when the server discarded it or the collection closed; the list changes only when the
+    server's change arrives (no optimistic apply). A mutation made while `enable` runs, before the initial reset
+    arrived, waits for that reset and is then built from the synchronized state and sent with its version; it
+    resolves with false when the enable fails. Mutations reject with a `NexusError` in ServerToClient and Relay mode
+    and when the list is not enabled, and with `RangeError` for an index that is not a non-negative int32.
 - Pipe details (J08):
   - `writable` has a `highWaterMark` of **1** chunk, not 0: with 0, `ReadableStream.pipeTo` never writes (it waits for
     a positive `desiredSize`). The sink still takes one chunk at a time and sends only what the credit allows.
