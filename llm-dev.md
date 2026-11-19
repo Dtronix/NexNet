@@ -42,6 +42,18 @@ List tests: `dotnet test <proj> -c Release --list-tests`.
 IntegrationTests run in parallel (see 4.4). `NEXNET_TEST_PARALLEL=<n>` overrides how many tests run at once (`1` runs
 the suite serially, which helps when chasing a timing failure).
 
+Cross-language rows (`[ClientMatrix]` tests, `src/NexNet.Interop/`): each row is one client language times one transport
+and carries the TUnit properties `Lang` (`csharp`, `node`, `java`, `browser-chromium`, `browser-firefox`,
+`browser-webkit`) and `Transport` (a `ClientTransport` name such as `WebSocketTls`). Select rows by property:
+- `--treenode-filter "/*/*/*/*[Lang=node]"` runs one language's rows; `[Transport=Tcp]` one transport's.
+- `NEXNET_TEST_LANGS` (comma list) picks the languages. `csharp` (in process) always runs first; `browser` means
+  `browser-chromium`, `browsers` all three. Unset: only `csharp`, and no Gradle/npm is ever invoked (D27).
+- `NEXNET_TEST_TRANSPORTS` picks the transports of tests that name none of their own. Unset: HttpSocketTls and
+  WebSocketTls. `all`: every transport the language supports. A comma list of `ClientTransport` names
+  (case-insensitive) is used for every language; a transport a language lacks is a visible skip on its row, and an
+  unknown name fails discovery.
+- A filter that selects no test exits with code 8; add `--ignore-exit-code 8` when an empty selection is expected.
+
 ---
 
 ## 1. Core Library (src/NexNet/)
