@@ -913,10 +913,13 @@ C#, where requests are sent only after Ready.
 - A server can be told not to send Ack (`INexusBroadcastServerTestModifier.DoNotSendAck`; test only). The
   request then waits until the pipe closes.
 
-**Noop.** The server sends Noop only to the session whose request the transform made obsolete. For example, the
-request targets an item that a concurrent change removed or cleared (`VersionedList.cs:103-110`,
-`NexusListServer.cs:55-61`). Nothing changes on the server, the version is not incremented, and nothing is
-broadcast.
+**Noop.** The server sends Noop only to the session whose request it discards (`VersionedList.cs:124-148`,
+`NexusListServer.cs:62-82`):
+- the transform made the request obsolete. For example, the request targets an item that a concurrent change removed
+  or cleared;
+- or the request's base version has fallen out of the server's history (§12.7).
+
+Nothing changes on the server, the version is not incremented, and nothing is broadcast.
 - **Intended behavior:** Noop carries Ack, and the client completes the pending request with `false`.
 - **Current C# behavior:**
   - The server sends Noop with `flags` 0. It wraps the Noop without a source session, so no Ack copy is made
@@ -931,14 +934,21 @@ broadcast.
 ### 12.7 Versions and conflicts (server side)
 
 The client has no conflict logic. It sends its base version, and the server rebases the request
-(`VersionedList.ProcessOperation`, `VersionedList.cs:70-123`). The server keeps a history of the last 1024 applied
-changes (`NexusListServer.cs:26`). For each request, in order:
+(`VersionedList.ProcessOperation`, `VersionedList.cs:93-161`). The server keeps a history of the last 1024 applied
+changes (`NexusListServer.cs:32`). The history is indexed by version: entry `v` is the change that moved the list
+from version `v` to `v+1`. A Clear empties the history and becomes its first entry. For each request, in order:
 
 1. Base version above the server's version: the server closes the client's pipe (`InvalidVersion`).
-2. Base version older than the history: the server closes the pipe (`OutOfOperationalRange`).
-3. Clear: the server clears the history and applies it.
-4. Anything else is transformed against each history entry after the base version.
-   - Transform rules are in each operation's `TransformAgainst`.
+2. Clear: the server clears the history, applies the Clear and broadcasts it, whatever the base version.
+3. The request is transformed against every history entry from its base version up to the current version
+   (`VersionedList.cs:122-148`). A base equal to the current version has nothing to transform, even when the
+   history is empty.
+   - If the base is older than the oldest stored entry and that entry is a Clear, the request is transformed from
+     that Clear on. Changes before a Clear are irrelevant.
+   - If the base is older than the oldest stored entry and that entry is not a Clear (more than 1024 changes since
+     the base, with no Clear in between that is still in the history), the request cannot be rebased. The server
+     answers with **Noop** (§12.6), nothing changes, and the pipe stays open (`OutOfOperationalRange`).
+4. Transform rules are in each operation's `TransformAgainst`:
    - An insert at or before the index shifts the index up, and a remove before it shifts it down.
    - A remove of the same item, or any Clear, invalidates Remove, Replace and Move. Each transform invalidates the
      request and the server answers with Noop (§12.6).
@@ -948,24 +958,12 @@ changes (`NexusListServer.cs:26`). For each request, in order:
 6. The server applies the change, increments the version and broadcasts the change with the new version
    (`NexusListServer.cs:71-80`). The originator's copy has Ack.
 
-**Known C# server deviations** (reproduced against `VersionedList` directly):
-- The rebase loop runs `for (i = baseVersion; i < history.Count; i++)` (`VersionedList.cs:103`). It compares an
-  absolute version with the number of stored entries. After a Clear, or after more than 1024 changes, concurrent
-  requests are applied **without** being transformed.
-  - Example: the list is cleared (version 2), then gets `Insert(0, 10)` (version 3). A concurrent
-    `Insert(0, 20)` based on version 2 yields `[20, 10]` instead of `[10, 20]`.
-- A request whose base version predates a Clear fails step 2, so the client's pipe is closed instead of the
-  request being transformed (after a Clear only the Clear itself is in the history).
-
-Clients need not do anything about these deviations. They stay correct because the server's broadcast is the only
-source of truth.
-
 ### 12.8 Errors and shutdown
 
 **The server closes a client's collection pipe when:**
 - the client writes in ServerToClient or Relay mode (`NexusListServer.cs:33-38`, `NexusListRelay.cs:542-547`);
 - the client sends a forbidden tag (§12.3) or an unknown one;
-- §12.7 steps 1, 2 or 5 fail;
+- §12.7 step 1 or 5 fails;
 - an item fails to decode (`NexusBroadcastServer.cs:81-85`);
 - the client cannot keep up: each session has a queue of 1000 outgoing items, and the pipe is closed when it is full
   (`NexusBroadcastSession.cs:90-97`, `NexusBroadcastConnectionManager.cs:147-156`);
