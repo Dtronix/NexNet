@@ -7,6 +7,7 @@ import { NexusError, NexusTransportError, cancellationError } from '../contract/
 import { notImplemented } from '../contract/internal.js';
 import { serialize, invocationCodec } from '../invocation/codec.js';
 import { getInvocationManager } from '../invocation/InvocationManager.js';
+import { invokePipe } from '../pipes/invoke.js';
 
 /**
  * Opaque session handle the runtime passes to proxy constructors. Generated code never touches it.
@@ -116,7 +117,12 @@ export class ProxyBase {
    * @param {{ signal?: AbortSignal }} [options]
    * @returns {Promise<void>}
    */
-  _invokePipe(methodId, pipe, args, options) { throw notImplemented('ProxyBase._invokePipe'); }
+  async _invokePipe(methodId, pipe, args, options) {
+    const signal = options?.signal;
+    if (signal?.aborted) throw cancellationError(signal);
+    const manager = connectedManager(this._session);
+    await invokePipe(manager, /** @type {SessionHandle} */ (this._session).session, methodId, pipe, args, signal);
+  }
 
   /**
    * Invokes a method with a channel parameter (`INexusDuplexChannel<T>`, `INexusDuplexUnmanagedChannel<T>`).
@@ -128,7 +134,9 @@ export class ProxyBase {
    * @param {{ signal?: AbortSignal }} [options]
    * @returns {Promise<void>}
    */
-  _invokeChannel(methodId, channel, args, options) { throw notImplemented('ProxyBase._invokeChannel'); }
+  async _invokeChannel(methodId, channel, args, options) {
+    await this._invokePipe(methodId, channel.pipe, args, options);
+  }
 
   /**
    * Returns the synchronized collection behind a server nexus collection property. The same instance is returned
