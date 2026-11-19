@@ -23,7 +23,7 @@ internal class FlowControlTests : BaseTests
         {
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
             {
-                await foreach (var item in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                await foreach (var item in await ChannelReader<byte[]>(pipe))
                 {
                     await Task.Delay(5);
                     if (Interlocked.Increment(ref received) == count)
@@ -39,7 +39,7 @@ internal class FlowControlTests : BaseTests
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
         await pipe.ReadyTask.Timeout(T(1));
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        var writer = await ChannelWriter<byte[]>(pipe);
         var writing = Task.Run(async () =>
         {
             for (var i = 0; i < count; i++)
@@ -64,7 +64,7 @@ internal class FlowControlTests : BaseTests
         {
             nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
             {
-                await foreach (var received in await pipe.GetChannel<byte[]>().GetReaderAsync())
+                await foreach (var received in await ChannelReader<byte[]>(pipe))
                     item.TrySetResult(received.Length);
             };
             nexus.ServerTaskValueEvent = _ => new ValueTask<int>(1);
@@ -76,7 +76,7 @@ internal class FlowControlTests : BaseTests
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
         await pipe.ReadyTask.Timeout(T(1));
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        var writer = await ChannelWriter<byte[]>(pipe);
         await writer.WriteAsync(new byte[300 * 1024]).Timeout(T(5));
 
         await Assert.That(await item.Task.Timeout(T(5))).IsEqualTo(300 * 1024);
@@ -93,7 +93,7 @@ internal class FlowControlTests : BaseTests
         var received = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         var server = CreateServer(serverConfig, nexus => nexus.ServerTaskValueWithDuplexPipeEvent = async (_, pipe) =>
         {
-            await foreach (var value in await pipe.GetChannel<byte[]>().GetReaderAsync())
+            await foreach (var value in await ChannelReader<byte[]>(pipe))
                 received.TrySetResult(value.Length);
         });
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
@@ -103,7 +103,7 @@ internal class FlowControlTests : BaseTests
         await using var pipe = client.CreatePipe();
         await client.Proxy.ServerTaskValueWithDuplexPipe(pipe).Timeout(T(1));
         await pipe.ReadyTask.Timeout(T(1));
-        var writer = await pipe.GetChannel<byte[]>().GetWriterAsync();
+        var writer = await ChannelWriter<byte[]>(pipe);
 
         // The server accepts 64 KiB; the client checks before sending.
         await Assert.ThrowsAsync<NexusMessageTooLargeException>(async () => await writer.WriteAsync(new byte[100 * 1024]));

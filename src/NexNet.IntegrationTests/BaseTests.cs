@@ -910,14 +910,14 @@ internal abstract class BaseTests
     /// instead of the channel extensions, so the cross-language harness can map it to its remote pipe operations.
     /// </summary>
     protected static ValueTask<INexusChannelWriter<TItem>> ChannelWriter<TItem>(INexusDuplexPipe pipe)
-        => pipe.GetChannel<TItem>().GetWriterAsync();
+        => pipe.GetChannelWriter<TItem>();
 
     /// <summary>
     /// The client's reader on a pipe used as a channel of <typeparamref name="TItem"/>; see
     /// <see cref="ChannelWriter{TItem}"/>.
     /// </summary>
     protected static ValueTask<INexusChannelReader<TItem>> ChannelReader<TItem>(INexusDuplexPipe pipe)
-        => pipe.GetChannel<TItem>().GetReaderAsync();
+        => pipe.GetChannelReader<TItem>();
 
     /// <summary>
     /// A round trip from the client to the server. Frames on a session arrive in order, so once it returns the server
