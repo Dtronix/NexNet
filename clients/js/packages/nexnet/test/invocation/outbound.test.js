@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DisconnectReason } from '../../src/contract/enums.js';
-import { NexusMessageTooLargeError, NexusRemoteInvocationError, NexusTransportError, NexusUnauthorizedError } from '../../src/contract/errors.js';
+import { NexusMessageTooLargeError, NexusRemoteInvocationError, NexusTransportError, NexusUnauthorizedError, isCancellationError } from '../../src/contract/errors.js';
 import { setInvocationCodec } from '../../src/invocation/codec.js';
 import { getInvocationCounters } from '../../src/invocation/diagnostics.js';
 import { AbortReason, LargeMessageKind, ResultState, decodeInvocation, decodeMessageStart, encodeInvocationResult, encodeRemoteErrorDetail } from '../../src/invocation/messages.js';
@@ -156,8 +156,14 @@ describe('invocation credits (§8)', () => {
     const waiting = h.proxy.invoke(1, null);
     await tick();
     h.transport.serverClose();
-    await expect(sent).rejects.toMatchObject({ name: 'NexusTransportError', reason: DisconnectReason.SocketError });
-    await expect(waiting).rejects.toBeInstanceOf(NexusTransportError);
+    // Amendment C-2: canceled (AbortError), with the transport error and its reason as the cause.
+    for (const call of [sent, waiting]) {
+      const error = await call.then(() => null, (e) => e);
+      expect(error.name).toBe('AbortError');
+      expect(isCancellationError(error)).toBe(true);
+      expect(error.cause).toBeInstanceOf(NexusTransportError);
+      expect(error.cause.reason).toBe(DisconnectReason.SocketError);
+    }
     await tick();
     expect(getInvocationCounters()).toEqual(zeroCounters());
   });
@@ -347,6 +353,20 @@ describe('large arguments and results (§6)', () => {
     expect(h.framesOf(MessageType.InvocationCancellation)).toEqual([]);
     expect(getInvocationCounters()).toEqual(zeroCounters());
     await finish(h);
+  });
+
+  it('the session ending while an argument streams rejects as canceled with the transport error as cause (C-2)', async () => {
+    const h = await connectedHarness();
+    h.transport.holdWrites = true;
+    const call = h.proxy.invoke(1, binArgs(blob(200_000)));
+    await tick();
+    await h.session.abort(DisconnectReason.Timeout);
+    const error = await call.then(() => null, (e) => e);
+    expect(error.name).toBe('AbortError');
+    expect(error.cause).toBeInstanceOf(NexusTransportError);
+    expect(error.cause.reason).toBe(DisconnectReason.Timeout);
+    await tick();
+    expect(getInvocationCounters()).toEqual(zeroCounters());
   });
 
   it('reassembles a streamed result', async () => {

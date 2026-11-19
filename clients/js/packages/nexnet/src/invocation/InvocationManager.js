@@ -822,7 +822,10 @@ export class InvocationManager {
     this.#gate.close();
     this.budget.close();
     this.#receiver.clear();
+    // A stream may wait on a transport write that never settles once the transport is gone: forget it here.
     for (const entry of this.#outgoing.values()) entry.aborted = true;
+    countInvocation('largeMessages', -this.#outgoing.size);
+    this.#outgoing.clear();
 
     const ended = this.#sessionEnded(reason);
     for (const call of [...this.#calls]) this.#settle(call, false, ended);
@@ -845,9 +848,14 @@ export class InvocationManager {
     return new NexusTransportError('Session is not connected.', { reason: this.#session.disconnectReason });
   }
 
-  /** @param {number} [reason] @returns {NexusTransportError} */
+  /**
+   * The rejection of a call still pending when the session ends: canceled, as in C# and spec §4.5 (amendment C-2),
+   * with the transport error carrying the disconnect reason as its `cause`.
+   * @param {number} [reason]
+   * @returns {DOMException}
+   */
   #sessionEnded(reason = this.#session.disconnectReason) {
-    return new NexusTransportError('The session ended before the invocation completed.', { reason });
+    return sessionEndedError(reason);
   }
 
   /**
@@ -865,6 +873,19 @@ export class InvocationManager {
       // A logger must never break the session.
     }
   }
+}
+
+/**
+ * An `AbortError` whose `cause` is a `NexusTransportError` with the disconnect reason (amendment C-2). `cause` is
+ * set as an own property: not every platform's `DOMException` constructor accepts it.
+ * @param {number} reason
+ * @returns {DOMException}
+ */
+export function sessionEndedError(reason) {
+  const error = new DOMException('The session ended before the invocation completed.', 'AbortError');
+  const cause = new NexusTransportError('The session ended before the invocation completed.', { reason });
+  Object.defineProperty(error, 'cause', { value: cause, writable: true, configurable: true, enumerable: false });
+  return error;
 }
 
 /**
