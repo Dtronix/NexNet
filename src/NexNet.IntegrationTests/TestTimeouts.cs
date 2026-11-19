@@ -16,4 +16,11 @@ internal static class TestTimeouts
     /// Waiting for a collection change notification (<c>WaitForActionHandler.Wait</c>).
     /// </summary>
     public const double CollectionEvent = 5;
+
+    /// <summary>
+    /// Enabling or disabling a synchronized collection from a client: a pipe opened or closed in round trips with the
+    /// server. Under the parallel suite's load a 1 s bound can be missed on the slower transports (QUIC, TLS) without
+    /// anything being wrong; this only bounds a hang.
+    /// </summary>
+    public const double CollectionEnable = 5;
 }
