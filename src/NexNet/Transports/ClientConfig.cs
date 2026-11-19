@@ -165,7 +165,4 @@ public abstract class ClientConfig : ConfigBase
     /// <param name="cancellationToken">Cancellation token used to cancel the connection.</param>
     /// <exception cref="TransportException">Throws socket exception upon failure to connect.</exception>
     protected abstract ValueTask<ITransport> OnConnectTransport(CancellationToken cancellationToken);
-
-    internal Action? InternalOnClientConnect;
-
 }
