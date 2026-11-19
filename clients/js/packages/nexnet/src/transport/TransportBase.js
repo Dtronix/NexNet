@@ -41,7 +41,9 @@ export function transportError(message, { kind = 'InternalError', cause, status 
 
 /**
  * Maps the status of a refused HTTP upgrade (HttpSocket and WebSocket, protocol spec §13.6/§13.7).
- * 401 and 403 are authentication failures; anything else, 2xx included, is a connect failure.
+ * 401 and 403 are `AuthenticationError`. For WebSocket, 5xx is `InternalError` and anything else `ProtocolError`; for
+ * HttpSocket, anything else, 2xx included, is `InternalError`. A 3xx never reaches here: the upgrade maps it to
+ * `ProtocolError` first, for both transports, and never follows it (`node/upgrade.js`).
  *
  * @param {string} transport `'HttpSocket'` or `'WebSocket'`.
  * @param {number} status
