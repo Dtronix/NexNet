@@ -1,5 +1,9 @@
+using NexNet.Interop;
+using NexNet.Interop.Hosts;
+using NexNet.InteropServer;
 using NexNet.Invocation;
 using NexNet.Messages;
+using NexNet.TestNexus.Interop;
 using NexNet.Transports;
 #pragma warning disable VSTHRD200
 
@@ -8,8 +12,17 @@ namespace NexNet.IntegrationTests;
 /// <summary>
 /// The reconnection policy decides which disconnect reasons the client reconnects for.
 /// </summary>
-internal class ReconnectionPolicyTests : BaseTests
+/// <remarks>
+/// The policy unit tests and <see cref="ReconnectsAfterServerShutdown_WhenPolicyAllowsIt"/> use the C# policy API
+/// (<see cref="DefaultReconnectionPolicy.ReconnectReasons"/>, which <see cref="ClientSpec"/> has no field for), so they
+/// stay on the C# client. The other transport test runs on every row of the client matrix.
+/// </remarks>
+[ClassDataSource<LanguageHostPool>(Shared = SharedType.PerTestSession)]
+internal class ReconnectionPolicyTests(LanguageHostPool hosts) : BaseTests
 {
+    /// <summary>The language hosts of the session; their hello decides which rows are skipped.</summary>
+    public LanguageHostPool Hosts { get; } = hosts;
+
     private static readonly DisconnectReason[] AllReasons = Enum.GetValues<DisconnectReason>();
 
     private static readonly DisconnectReason[] DefaultReasons =
@@ -132,44 +145,46 @@ internal class ReconnectionPolicyTests : BaseTests
     }
 
     [Test]
-    [Transports(Type.Uds, Type.Tcp)]
-    public async Task DoesNotReconnectAfterServerShutdown_WithDefaultPolicy(Type type)
+    [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
+    public async Task DoesNotReconnectAfterServerShutdown_WithDefaultPolicy(ClientTarget target)
     {
-        var reconnecting = false;
-        var reconnected = false;
-        var clientConfig = CreateClientConfig(type);
-        var serverConfig = CreateServerConfig(type);
-        var (server, client, clientNexus) = CreateServerClient(serverConfig, clientConfig);
+        // The server sends its ServerShutdown signal on stop (the signal is not disabled here).
+        await using var server = await InteropServerHost.StartAsync<InteropServerNexus, InteropServerNexus.ClientProxy>(
+            () => new InteropServerNexus(),
+            new InteropServerOptions { ConfigureEndpoint = (_, config) => config.InternalNoLingerOnShutdown = true });
 
-        clientConfig.ReconnectionPolicy = new DefaultReconnectionPolicy(new[] { TimeSpan.FromMilliseconds(20) });
-
-        clientNexus.OnReconnectingEvent = _ =>
-        {
-            reconnecting = true;
-            return ValueTask.CompletedTask;
-        };
-        clientNexus.OnConnectedEvent = (_, isReconnected) =>
-        {
-            if (isReconnected)
-                reconnected = true;
-            return ValueTask.CompletedTask;
-        };
-
-        serverConfig.InternalNoLingerOnShutdown = true;
-
-        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        // The default reasons with a 20 ms delay, retried continuously.
+        var spec = ClientSpec.ForEndpoint(server.Endpoints, target.Transport);
+        spec.ReconnectDelaysMs = [20];
+        spec.ReconnectContinuously = true;
+        await using var client = await Harness.CreateClientAsync(target, spec);
         await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
-        var disconnected = (Task<DisconnectReason>)client.DisconnectedTask;
+        var connected = client.Callbacks<InteropClientNexusScript>().OnConnected;
+        await Assert.That((await connected.NextCallAsync().AsTask().Timeout(T(1))).IsReconnected).IsFalse();
 
+        var disconnected = client.WhenDisconnectedAsync(T(TestTimeouts.Connect));
         await server.StopAsync().Timeout(T(TestTimeouts.Connect));
-        await Assert.That(await disconnected.Timeout(T(1))).IsEqualTo(DisconnectReason.ServerShutdown);
+        await Assert.That(await disconnected).IsEqualTo(DisconnectReason.ServerShutdown);
 
         await server.StartAsync().Timeout(T(TestTimeouts.Connect));
 
         // Several policy delays pass; no reconnect may start.
-        await Task.Delay(300);
-        await Assert.That(reconnecting).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
+        var reconnected = false;
+        using (var window = new CancellationTokenSource(300))
+        {
+            try
+            {
+                await connected.NextCallAsync(window.Token);
+                reconnected = true;
+            }
+            catch (OperationCanceledException) when (window.IsCancellationRequested)
+            {
+                // No reconnection within the window.
+            }
+        }
+
         await Assert.That(reconnected).IsFalse().Because("The default policy must not reconnect after ServerShutdown.");
-        await WaitForState(client, ConnectionState.Disconnected);
+        await Assert.That(await client.GetStateAsync()).IsEqualTo(ConnectionState.Disconnected)
+            .Because("The default policy must not start reconnecting after ServerShutdown.");
     }
 }
