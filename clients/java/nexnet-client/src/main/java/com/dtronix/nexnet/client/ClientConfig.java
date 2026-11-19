@@ -2,8 +2,13 @@ package com.dtronix.nexnet.client;
 
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
+import com.dtronix.nexnet.transport.NexusConnector;
 import java.net.URI;
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.function.Supplier;
@@ -16,6 +21,15 @@ import org.jspecify.annotations.Nullable;
  * <pre>{@code
  * ClientConfig config = ClientConfig.webSocket(URI.create("wss://example.com/nexus"))
  *     .authenticate(() -> token)
+ *     .build();
+ * }</pre>
+ *
+ * <p>WebSocket and HttpSocket connections can also carry extra upgrade request headers and a query-string token, for
+ * servers that authorize the HTTP request itself (NexNet.Asp):
+ *
+ * <pre>{@code
+ * ClientConfig config = ClientConfig.webSocket(URI.create("wss://example.com/nexus"))
+ *     .authorization("Bearer " + jwt)
  *     .build();
  * }</pre>
  */
@@ -34,6 +48,9 @@ public final class ClientConfig {
     private final @Nullable String host;
     private final int port;
     private final TlsOptions tls;
+    private final Map<String, String> upgradeHeaders;
+    private final @Nullable String queryTokenName;
+    private final @Nullable String queryTokenValue;
     private final @Nullable Supplier<byte[]> authenticate;
     private final @Nullable Supplier<CompletableFuture<byte[]>> authenticateAsync;
     private final @Nullable Executor callbackExecutor;
@@ -51,6 +68,9 @@ public final class ClientConfig {
         this.host = b.host;
         this.port = b.port;
         this.tls = b.tls;
+        this.upgradeHeaders = Collections.unmodifiableMap(new LinkedHashMap<>(b.upgradeHeaders));
+        this.queryTokenName = b.queryTokenName;
+        this.queryTokenValue = b.queryTokenValue;
         this.authenticate = b.authenticate;
         this.authenticateAsync = b.authenticateAsync;
         this.callbackExecutor = b.callbackExecutor;
@@ -150,6 +170,34 @@ public final class ClientConfig {
      */
     public TlsOptions tls() {
         return tls;
+    }
+
+    /**
+     * The extra headers of the WebSocket and HttpSocket upgrade requests, in the order they were set. A header that
+     * a custom {@link NexusConnector} also sets is sent with the connector's value.
+     *
+     * @return the headers (name to value), unmodifiable; empty for none and for TCP transports
+     */
+    public Map<String, String> upgradeHeaders() {
+        return upgradeHeaders;
+    }
+
+    /**
+     * The name of the query parameter that carries the token of the upgrade requests.
+     *
+     * @return the parameter name, or null for no query-string token
+     */
+    public @Nullable String queryTokenName() {
+        return queryTokenName;
+    }
+
+    /**
+     * The token appended to the query string of the upgrade requests, as {@code queryTokenName=value}.
+     *
+     * @return the token, or null for no query-string token
+     */
+    public @Nullable String queryTokenValue() {
+        return queryTokenValue;
     }
 
     /**
@@ -302,6 +350,9 @@ public final class ClientConfig {
         private final @Nullable String host;
         private final int port;
         private TlsOptions tls = TlsOptions.defaults();
+        private final Map<String, String> upgradeHeaders = new LinkedHashMap<>();
+        private @Nullable String queryTokenName;
+        private @Nullable String queryTokenValue;
         private @Nullable Supplier<byte[]> authenticate;
         private @Nullable Supplier<CompletableFuture<byte[]>> authenticateAsync;
         private @Nullable Executor callbackExecutor;
@@ -332,6 +383,70 @@ public final class ClientConfig {
             }
             this.tls = tls;
             return this;
+        }
+
+        /**
+         * Adds a header to the WebSocket or HttpSocket upgrade request, for servers that authorize the HTTP request
+         * (NexNet.Asp). Setting a name again (ignoring case) replaces its value. The headers the protocol needs
+         * (Host, Connection, Upgrade, Sec-WebSocket-*, Content-Length, Transfer-Encoding) cannot be set.
+         *
+         * @param name the header name, an HTTP token
+         * @param value the header value, Latin-1 without control characters other than tab
+         * @return this builder
+         * @throws IllegalArgumentException for a reserved name or a name or value with CR, LF or other control
+         *     characters
+         * @throws IllegalStateException for a TCP transport, which has no upgrade request
+         */
+        public Builder header(String name, String value) {
+            requireUpgradeTransport();
+            // The connector's validation, so both ways of setting a header accept the same input.
+            NexusConnector.builder().header(name, value);
+            for (Iterator<String> it = upgradeHeaders.keySet().iterator(); it.hasNext();) {
+                if (it.next().equalsIgnoreCase(name)) {
+                    it.remove();
+                }
+            }
+            upgradeHeaders.put(name, value);
+            return this;
+        }
+
+        /**
+         * Sets the {@code Authorization} header of the WebSocket or HttpSocket upgrade request, for example
+         * {@code "Bearer <token>"}. The C# client's {@code AuthenticationHeader}.
+         *
+         * @param value the header value
+         * @return this builder
+         * @throws IllegalArgumentException for a value with CR, LF or other control characters
+         * @throws IllegalStateException for a TCP transport, which has no upgrade request
+         */
+        public Builder authorization(String value) {
+            return header("Authorization", value);
+        }
+
+        /**
+         * Appends a token to the query string of the WebSocket or HttpSocket upgrade request, URL-encoded, for
+         * servers that accept one (NexNet.Asp's opt-in query-string token; browsers cannot send headers). Prefer
+         * {@link #authorization(String)}: query strings are often logged.
+         *
+         * @param name the query parameter name, not empty
+         * @param value the token
+         * @return this builder
+         * @throws IllegalArgumentException for an empty name
+         * @throws IllegalStateException for a TCP transport, which has no upgrade request
+         */
+        public Builder queryToken(String name, String value) {
+            requireUpgradeTransport();
+            NexusConnector.builder().queryToken(name, value);
+            this.queryTokenName = name;
+            this.queryTokenValue = value;
+            return this;
+        }
+
+        private void requireUpgradeTransport() {
+            if (transport != TransportKind.WEB_SOCKET && transport != TransportKind.HTTP_SOCKET) {
+                throw new IllegalStateException("Upgrade headers and query-string tokens need a WebSocket or "
+                    + "HttpSocket transport, not " + transport + ".");
+            }
         }
 
         /**

@@ -120,6 +120,90 @@ class UpgradeTransportTest {
         }
     }
 
+    /** The request head's lines, with the request line first; header names lower-cased. */
+    static java.util.List<String[]> captureHead(ClientConfig config, NexusConnector connector) throws Exception {
+        CompletableFuture<java.util.List<String[]>> request = new CompletableFuture<>();
+        boolean webSocket = config.transport() == com.dtronix.nexnet.client.TransportKind.WEB_SOCKET;
+        try (TestServer server = TestServer.plain(socket -> {
+            InputStream in = socket.getInputStream();
+            ByteArrayOutputStream raw = new ByteArrayOutputStream();
+            while (true) {
+                int b = in.read();
+                raw.write(b);
+                byte[] sofar = raw.toByteArray();
+                int n = sofar.length;
+                if (b < 0 || (n >= 4 && sofar[n - 4] == '\r' && sofar[n - 3] == '\n' && sofar[n - 2] == '\r'
+                    && sofar[n - 1] == '\n')) {
+                    break;
+                }
+            }
+            String[] lines = new String(raw.toByteArray(), StandardCharsets.ISO_8859_1).split("\r\n");
+            java.util.List<String[]> parsed = new java.util.ArrayList<>();
+            Map<String, String> head = new java.util.LinkedHashMap<>();
+            parsed.add(new String[] {"", lines[0]});
+            for (int i = 1; i < lines.length; i++) {
+                int colon = lines[i].indexOf(':');
+                String name = lines[i].substring(0, colon).trim().toLowerCase(java.util.Locale.ROOT);
+                String value = lines[i].substring(colon + 1).trim();
+                parsed.add(new String[] {name, value});
+                head.put(name, value);
+            }
+            request.complete(parsed);
+            write(socket.getOutputStream(), webSocket ? TestServer.webSocketResponse(head) : SWITCHING);
+            echo(socket.getInputStream(), socket.getOutputStream());
+        })) {
+            URI uri = config.uri();
+            URI target = URI.create(uri.getScheme() + "://127.0.0.1:" + server.port() + uri.getRawPath()
+                + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()));
+            ClientConfig.Builder b = webSocket ? ClientConfig.webSocket(target) : ClientConfig.httpSocket(target);
+            for (Map.Entry<String, String> h : config.upgradeHeaders().entrySet()) {
+                b.header(h.getKey(), h.getValue());
+            }
+            if (config.queryTokenName() != null) {
+                b.queryToken(config.queryTokenName(), config.queryTokenValue());
+            }
+            connector.connect(b.build(), 10_000).close(DisconnectReason.GRACEFUL);
+            return request.get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    /** The values of a header in a captured head, in order. */
+    static java.util.List<String> values(java.util.List<String[]> head, String name) {
+        java.util.List<String> values = new java.util.ArrayList<>();
+        for (String[] h : head) {
+            if (h[0].equals(name)) {
+                values.add(h[1]);
+            }
+        }
+        return values;
+    }
+
+    @Test
+    void configHeadersAndQueryTokenReachBothUpgradeTransports() throws Exception {
+        for (boolean webSocket : new boolean[] {false, true}) {
+            URI uri = URI.create((webSocket ? "ws" : "http") + "://placeholder/nexus?x=1");
+            ClientConfig.Builder b = webSocket ? ClientConfig.webSocket(uri) : ClientConfig.httpSocket(uri);
+            ClientConfig config = b.authorization("Bearer cfg").header("X-Custom", "c")
+                .queryToken("access_token", "a b&c").build();
+            java.util.List<String[]> head = captureHead(config, NexusConnector.defaults());
+            assertEquals("GET /nexus?x=1&access_token=a%20b%26c HTTP/1.1", head.get(0)[1]);
+            assertEquals(Arrays.asList("Bearer cfg"), values(head, "authorization"));
+            assertEquals(Arrays.asList("c"), values(head, "x-custom"));
+        }
+    }
+
+    @Test
+    void connectorHeadersAndQueryTokenOverrideTheConfig() throws Exception {
+        ClientConfig config = ClientConfig.httpSocket(URI.create("http://placeholder/n"))
+            .authorization("Bearer cfg").header("X-Config", "1").queryToken("cfg_token", "c").build();
+        NexusConnector connector = NexusConnector.builder()
+            .header("AUTHORIZATION", "Bearer connector").queryToken("token", "k").build();
+        java.util.List<String[]> head = captureHead(config, connector);
+        assertEquals("GET /n?token=k HTTP/1.1", head.get(0)[1]);
+        assertEquals(Arrays.asList("Bearer connector"), values(head, "authorization"));
+        assertEquals(Arrays.asList("1"), values(head, "x-config"));
+    }
+
     @Test
     void httpSocketResponseSplitAcrossManyWrites() throws Exception {
         try (TestServer server = TestServer.plain(socket -> {

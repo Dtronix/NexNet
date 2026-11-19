@@ -11,6 +11,9 @@ import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.DefaultReconnectionPolicy;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import java.net.URI;
+import java.security.GeneralSecurityException;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +43,64 @@ class ClientConfigTest {
             .authenticate(() -> new byte[] {1})
             .authenticateAsync(() -> CompletableFuture.completedFuture(new byte[] {2}));
         assertThrows(IllegalStateException.class, builder::build);
+    }
+
+    @Test
+    void upgradeHeadersAndQueryTokenAreKept() {
+        ClientConfig config = ClientConfig.webSocket(URI.create("wss://h/p"))
+            .header("X-One", "1")
+            .authorization("Bearer a")
+            .header("x-one", "2")
+            .authorization("Bearer b")
+            .queryToken("access_token", "t")
+            .build();
+        Map<String, String> headers = config.upgradeHeaders();
+        assertEquals(Arrays.asList("x-one", "Authorization"), Arrays.asList(headers.keySet().toArray()));
+        assertEquals("2", headers.get("x-one"));
+        assertEquals("Bearer b", headers.get("Authorization"));
+        assertEquals("access_token", config.queryTokenName());
+        assertEquals("t", config.queryTokenValue());
+        assertThrows(UnsupportedOperationException.class, () -> headers.put("X", "y"));
+
+        ClientConfig plain = ClientConfig.httpSocket(URI.create("http://h/")).build();
+        assertTrue(plain.upgradeHeaders().isEmpty());
+        assertNull(plain.queryTokenName());
+        assertNull(plain.queryTokenValue());
+    }
+
+    @Test
+    void upgradeHeadersAreValidatedLikeTheConnector() {
+        ClientConfig.Builder b = ClientConfig.httpSocket(URI.create("https://h/"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("X-A", "a\r\nB: c"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("X-A", "a\nb"));
+        assertThrows(IllegalArgumentException.class, () -> b.authorization("Bearer \r"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("Bad Name", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("Host", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("upgrade", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("Connection", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("Sec-WebSocket-Protocol", "x"));
+        assertThrows(IllegalArgumentException.class, () -> b.header("Content-Length", "1"));
+        assertThrows(IllegalArgumentException.class, () -> b.queryToken("", "x"));
+        assertTrue(b.build().upgradeHeaders().isEmpty());
+        assertNull(b.build().queryTokenName());
+    }
+
+    @Test
+    void upgradeOptionsNeedAnUpgradeTransport() {
+        assertThrows(IllegalStateException.class, () -> ClientConfig.tcp("h", 1).header("X-A", "1"));
+        assertThrows(IllegalStateException.class, () -> ClientConfig.tcpTls("h", 1).authorization("Bearer x"));
+        assertThrows(IllegalStateException.class, () -> ClientConfig.tcpTls("h", 1).queryToken("t", "x"));
+    }
+
+    @Test
+    void tlsConvenienceOptionsRejectBadInput() {
+        assertThrows(GeneralSecurityException.class,
+            () -> TlsOptions.builder().trustCaCertificatesPem("not a certificate", false));
+        assertThrows(GeneralSecurityException.class,
+            () -> TlsOptions.builder().trustCaCertificates(new byte[0], false));
+        assertThrows(Exception.class,
+            () -> TlsOptions.builder().clientCertificatePkcs12(new byte[] {1, 2, 3}, "x".toCharArray()));
     }
 
     @Test

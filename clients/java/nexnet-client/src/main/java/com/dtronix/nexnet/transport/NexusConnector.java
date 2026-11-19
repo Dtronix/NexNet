@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLSocket;
 import org.jspecify.annotations.Nullable;
@@ -32,8 +33,10 @@ import org.jspecify.annotations.Nullable;
  * ({@code ws://}, {@code wss://}, RFC 6455, binary messages, no subprotocol). Unix domain sockets are not available.
  * {@link #defaults()} is the connector a client uses unless it is given another.
  *
- * <p>The upgrade transports can carry extra request headers and a query-string token, for servers that authorize
- * the HTTP request itself (NexNet.Asp):
+ * <p>The upgrade transports send the headers and the query-string token of the {@link ClientConfig}
+ * ({@code ClientConfig.Builder.header}, {@code authorization}, {@code queryToken}). A connector built here can add
+ * more, for servers that authorize the HTTP request itself (NexNet.Asp); where both set the same header (ignoring
+ * case) or both set a query-string token, the connector's wins:
  *
  * <pre>{@code
  * Transport.Connector connector = NexusConnector.builder()
@@ -88,9 +91,9 @@ public final class NexusConnector implements Transport.Connector {
             case TCP_TLS:
                 return tcp(requireHost(config), config.port(), true, config.tls(), deadline);
             case HTTP_SOCKET:
-                return upgrade(requireUri(config), false, config.tls(), deadline);
+                return upgrade(requireUri(config), false, config, deadline);
             case WEB_SOCKET:
-                return upgrade(requireUri(config), true, config.tls(), deadline);
+                return upgrade(requireUri(config), true, config, deadline);
             default:
                 throw new NexusTransportException(TransportError.INTERNAL_ERROR,
                     "Unknown transport " + config.transport() + ".", null);
@@ -125,7 +128,8 @@ public final class NexusConnector implements Transport.Connector {
             TlsSupport.leafCertificate(secure), "tcptls", null);
     }
 
-    private Transport upgrade(URI uri, boolean webSocket, TlsOptions options, long deadline) throws IOException {
+    private Transport upgrade(URI uri, boolean webSocket, ClientConfig config, long deadline) throws IOException {
+        TlsOptions options = config.tls();
         String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
         boolean tls = scheme.equals("https") || scheme.equals("wss");
         int defaultPort = tls ? 443 : 80;
@@ -161,10 +165,10 @@ public final class NexusConnector implements Transport.Connector {
                 requestHeaders.add(new String[] {"Connection", "Upgrade"});
                 requestHeaders.add(new String[] {"Upgrade", "nexnet-httpsockets"});
             }
-            requestHeaders.addAll(headers);
+            requestHeaders.addAll(userHeaders(config));
 
             HttpUpgrade.Response response = HttpUpgrade.exchange(in, out,
-                HttpUpgrade.request(target(uri), hostHeader, requestHeaders));
+                HttpUpgrade.request(target(uri, config), hostHeader, requestHeaders));
             if (response.status != 101) {
                 throw HttpUpgrade.failure(response);
             }
@@ -224,7 +228,34 @@ public final class NexusConnector implements Transport.Connector {
         }
     }
 
-    private String target(URI uri) {
+    /** The configuration's headers, minus those this connector overrides, then this connector's headers. */
+    private List<String[]> userHeaders(ClientConfig config) {
+        List<String[]> all = new ArrayList<>();
+        for (Map.Entry<String, String> h : config.upgradeHeaders().entrySet()) {
+            if (!overrides(h.getKey())) {
+                all.add(new String[] {h.getKey(), h.getValue()});
+            }
+        }
+        all.addAll(headers);
+        return all;
+    }
+
+    private boolean overrides(String name) {
+        for (String[] h : headers) {
+            if (h[0].equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String target(URI uri, ClientConfig config) {
+        String queryName = this.queryName;
+        String queryValue = this.queryValue;
+        if (queryName == null) {
+            queryName = config.queryTokenName();
+            queryValue = config.queryTokenValue();
+        }
         String path = uri.getRawPath();
         StringBuilder sb = new StringBuilder(path == null || path.isEmpty() ? "/" : path);
         String query = uri.getRawQuery();
