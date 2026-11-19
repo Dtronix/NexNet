@@ -9,20 +9,18 @@ namespace NexNet.IntegrationTests;
 
 /// <summary>Synchronized collection helpers of <see cref="MatrixTestBase"/> (P01f).</summary>
 /// <remarks>
-/// The client's list is read through <see cref="IRemoteList{T}"/> snapshots. Tests about the client's <c>Changed</c>
-/// events, and tests of C#-only list members (<c>IsReadOnly</c>, <c>CopyTo</c>, <c>DisabledTask</c>), drive the C#
-/// client directly and skip other languages visibly (<see cref="RequireInProc"/>).
+/// The client's list is read through <see cref="IRemoteList{T}"/> snapshots and its change events through a watch
+/// (<see cref="WatchAsync"/>). Tests of C#-only list members (<c>IsReadOnly</c>, <c>CopyTo</c>, <c>DisabledTask</c>),
+/// and of a throwing change handler, drive the C# client directly and skip other languages visibly
+/// (<see cref="RequireInProc"/>).
 /// </remarks>
 internal abstract partial class MatrixTestBase
 {
-    /// <summary>Skip reason of tests that observe the client's list change events.</summary>
-    protected const string NoListEvents = "the harness has no list change events (list.changed) yet (follow-up card)";
+    /// <summary>Skip reason of tests that install a change handler on the client's list that throws.</summary>
+    protected const string ThrowingListHandler = "the harness cannot install a throwing change handler on the client's list";
 
     /// <summary>Skip reason of tests of members only the C# list has.</summary>
     protected const string CSharpListApi = "tests a member of the C# INexusList API";
-
-    /// <summary>Skip reason of tests that expect an argument exception from a list operation.</summary>
-    protected const string NoArgumentErrorKind = "argument errors of list operations have no ErrorKind (follow-up card)";
 
     /// <summary>The name of the bidirectional collection most tests use.</summary>
     protected const string IntListBi = nameof(IServerNexus.IntListBi);
@@ -53,6 +51,17 @@ internal abstract partial class MatrixTestBase
     /// <summary>The items the client's list currently holds.</summary>
     protected static async Task<int[]> ItemsAsync(IRemoteList<int> list)
         => (await list.SnapshotAsync().AsTask().Timeout(T(1))).ToArray();
+
+    /// <summary>
+    /// Starts recording the change events of the client's list. Dispose the watch before the test's leak audit
+    /// (<see cref="EndAsync(IClientUnderTest)"/>): a watch still attached counts as a leaked subscription.
+    /// </summary>
+    protected static async Task<IRemoteListWatch<int>> WatchAsync(IRemoteList<int> list)
+        => await list.WatchAsync().AsTask().Timeout(T(1));
+
+    /// <summary>Waits until the client's list raised at least <paramref name="count"/> change events of <paramref name="action"/>.</summary>
+    protected static async Task WaitForChangesAsync(IRemoteListWatch<int> watch, NexusCollectionChangedAction action, int count = 1)
+        => await watch.WaitForAsync(action, count, TimeSpan.FromSeconds(T(TestTimeouts.CollectionEvent)));
 
     /// <summary>Waits until the client's list holds exactly <paramref name="expected"/>, in order, and returns it.</summary>
     protected static async Task<int[]> WaitForItemsAsync(IRemoteList<int> list, params int[] expected)
