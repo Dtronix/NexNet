@@ -249,6 +249,9 @@ The members of `NexNet.Interop.ClientSpec`, camelCase; null members are omitted 
 | `tlsServerName`, `caPem`, `clientCertificatePem`, `clientKeyPem`, `pinSha256` | string | TLS options. |
 | `insecureSkipVerify` | bool | |
 | `connectionTimeoutMs`, `timeoutMs`, `handshakeTimeoutMs`, `pingIntervalMs`, `maxMessageSize`, `invocationCredits` | int | |
+| `maxConcurrentConnectionInvocations` | int | How many invocations from the server the client runs at once (1 – 1000); further ones queue. |
+| `remoteExceptionDetail` | string | `RemoteExceptionDetail` name (`None`, `TypeAndMessage`): what the client sends the server when a client nexus method fails. |
+| `onInvocationException` | object | `{code?, message?}`: the client nexus's `OnInvocationException` hook returns this application error (code int, message string; an absent member is null) for every failed client nexus method, whatever `remoteExceptionDetail` says. Absent: no hook. A pool (§6.11) refuses it with `NotSupported`. |
 | `reconnectDelaysMs` | int[] | Null: no reconnection. |
 | `reconnectContinuously` | bool | |
 | `authToken` | string | Greeting token, UTF-8 text. |
@@ -499,7 +502,7 @@ reports only `action`, so tests that run on every row assert on actions (and cou
 | Kind | Detail members | C# exception |
 |---|---|---|
 | `Transport` | `reason`: a `TransportError` name | `TransportException` |
-| `RemoteInvocation` | `type`?: remote exception type name; `code`?: remote error code | `ProxyRemoteInvocationException` |
+| `RemoteInvocation` | `type`?: remote exception type name; `code`?: remote error code. `message` is the remote message: null (or absent) when the server sent none | `ProxyRemoteInvocationException` (`RemoteMessage` null when `message` is null or absent) |
 | `Unauthorized` | | `ProxyUnauthorizedException` |
 | `Canceled` | | `TaskCanceledException` |
 | `Disconnected` | | `InvalidOperationException` "Session is not connected" |
