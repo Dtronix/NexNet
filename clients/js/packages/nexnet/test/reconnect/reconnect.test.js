@@ -167,6 +167,10 @@ describe('ReconnectController', () => {
     await tick();
     expect(events).toEqual([]);
     expect(h.logs.some(([, m]) => String(m).includes("Can't reconnect with Graceful"))).toBe(true);
+    expect(c.wouldReconnect(DisconnectReason.Graceful)).toBe(false);
+    expect(c.wouldReconnect(DisconnectReason.Timeout)).toBe(true);
+    await c.stop();
+    expect(c.wouldReconnect(DisconnectReason.Timeout)).toBe(false);
   });
 
   it('gives up when the policy returns null', async () => {

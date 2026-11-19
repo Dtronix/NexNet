@@ -111,6 +111,21 @@ export class ReconnectController extends EventTarget {
     return this.#stopped;
   }
 
+  /**
+   * True when a session lost with `reason` would start a reconnection loop: the controller is not stopped and the
+   * policy accepts the reason. A policy that throws counts as no.
+   * @param {number} reason
+   * @returns {boolean}
+   */
+  wouldReconnect(reason) {
+    if (this.#stopped) return false;
+    try {
+      return policyShouldReconnect(this.#policy, reason);
+    } catch {
+      return false;
+    }
+  }
+
   /** Resolves when the current loop ends (at once when none runs). @returns {Promise<void>} */
   get idle() {
     return this.#loop;
