@@ -8,3 +8,5 @@
   href: js-runtime-contract.md
 - name: Java Runtime Contract
   href: java-runtime-contract.md
+- name: Interop Control Protocol
+  href: interop-control-protocol.md
