@@ -8,7 +8,8 @@ import java.util.function.Consumer;
 /**
  * A synchronized list ({@code INexusList<T>}) exposed by a generated proxy. The {@link List} view is read-only: its
  * mutators throw {@link UnsupportedOperationException}. Change the list with the asynchronous methods, which complete
- * with false when the server rejects the operation (for example, a stale version). Implemented by K09.
+ * with false when the server rejects the operation (for example, a stale version). The runtime implementation is
+ * {@link NexusListClient}.
  *
  * @param <T> the item type
  */
