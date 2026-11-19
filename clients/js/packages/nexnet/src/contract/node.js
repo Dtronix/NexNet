@@ -6,6 +6,7 @@
 
 import { NexusClient } from './client.js';
 import { nodeTransports } from '../transport/node/index.js';
+import { NexusClientPool } from '../pool/NexusClientPool.js';
 
 /**
  * `NexusClient` with every Node transport. The Node entry exports it as `NexusClient` too.
@@ -17,4 +18,16 @@ import { nodeTransports } from '../transport/node/index.js';
 export class NodeNexusClient extends NexusClient {
   /** @type {typeof NexusClient.transports} */
   static transports = nodeTransports;
+}
+
+/**
+ * `NexusClientPool` whose clients are {@link NodeNexusClient}s. The Node entry exports it as `NexusClientPool` too.
+ *
+ * @template {import('./nexus.js').ClientNexusBase<TProxy>} TNexus
+ * @template {import('./proxy.js').ProxyBase} TProxy
+ * @extends {NexusClientPool<TNexus, TProxy>}
+ */
+export class NodeNexusClientPool extends NexusClientPool {
+  /** @type {typeof NexusClient} */
+  static clientClass = NodeNexusClient;
 }

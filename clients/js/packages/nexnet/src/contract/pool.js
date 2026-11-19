@@ -1,9 +1,7 @@
 /**
- * Client pool (D20). J10 implements it in `src/pool/`. Mirrors C# `NexusClientPool`.
+ * Client pool (D20). Implemented in `src/pool/` (J10); this file re-exports it. Mirrors C# `NexusClientPool`.
  * @module
  */
-
-import { notImplemented } from './internal.js';
 
 /**
  * @typedef {object} NexusClientPoolConfig
@@ -25,65 +23,4 @@ import { notImplemented } from './internal.js';
  * @property {() => void} release Returns the client to the pool.
  */
 
-/**
- * Pool of connected clients to one server.
- *
- * @template {import('./nexus.js').ClientNexusBase<TProxy>} TNexus
- * @template {import('./proxy.js').ProxyBase} TProxy
- */
-export class NexusClientPool {
-  /**
-   * @readonly
-   * @type {NexusClientPoolConfig}
-   */
-  config;
-
-  /**
-   * @protected
-   * @readonly
-   * @type {() => TNexus}
-   */
-  _nexusFactory;
-
-  /**
-   * @protected
-   * @readonly
-   * @type {import('./handshake.js').ClientBinding<TProxy>}
-   */
-  _binding;
-
-  /**
-   * @param {NexusClientPoolConfig} config
-   * @param {() => TNexus} nexusFactory
-   * @param {import('./handshake.js').ClientBinding<TProxy>} binding Supplied by generated code.
-   */
-  constructor(config, nexusFactory, binding) {
-    this.config = config;
-    this._nexusFactory = nexusFactory;
-    this._binding = binding;
-  }
-
-  /** @returns {number} */
-  get maxConnections() { throw notImplemented('NexusClientPool.maxConnections'); }
-
-  /** @returns {number} */
-  get availableConnections() { throw notImplemented('NexusClientPool.availableConnections'); }
-
-  /**
-   * Rents a connected client, connecting a new one when none is idle and the pool is not full.
-   * @param {{ signal?: AbortSignal }} [options]
-   * @returns {Promise<RentedNexusClient<TProxy>>}
-   */
-  rent(options) { throw notImplemented('NexusClientPool.rent'); }
-
-  /**
-   * Returns a connector that resolves a collection on a pooled client.
-   * @template T
-   * @param {(proxy: TProxy) => import('./collections.js').NexusList<T>} selector
-   * @returns {{ getCollection(): Promise<import('./collections.js').NexusList<T>> }}
-   */
-  collectionConnector(selector) { throw notImplemented('NexusClientPool.collectionConnector'); }
-
-  /** Disconnects every client. @returns {Promise<void>} */
-  [Symbol.asyncDispose]() { throw notImplemented('NexusClientPool[Symbol.asyncDispose]'); }
-}
+export { NexusClientPool } from '../pool/NexusClientPool.js';

@@ -6,4 +6,9 @@
  */
 
 export * from './index.js';
-export { NodeNexusClient, NodeNexusClient as NexusClient } from './contract/node.js';
+export {
+  NodeNexusClient,
+  NodeNexusClient as NexusClient,
+  NodeNexusClientPool,
+  NodeNexusClientPool as NexusClientPool,
+} from './contract/node.js';

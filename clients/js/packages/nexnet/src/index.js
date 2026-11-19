@@ -41,6 +41,16 @@ export { ClientNexusBase } from './contract/nexus.js';
 export { NexusDuplexPipe, NexusChannelReader, NexusChannelWriter, NexusDuplexChannel } from './contract/pipes.js';
 export { NexusList } from './contract/collections.js';
 export { NexusClientPool } from './contract/pool.js';
+export { NexusClientPoolConnectionError } from './pool/NexusClientPool.js';
+export { CoreLogger, ConsoleLogger, RollingLogger, NexusLogBehaviors, NexusLogLevelOrder } from './logging/index.js';
+export {
+  DefaultReconnectionPolicy,
+  DEFAULT_RECONNECT_DELAYS,
+  DEFAULT_RECONNECT_REASONS,
+  ReconnectController,
+} from './reconnect/index.js';
+export { NexusMetrics, Instruments, MetricTags, METER_NAME } from './metrics/index.js';
+export { diagnostics } from './diagnostics/index.js';
 
 /**
  * @template T

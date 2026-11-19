@@ -14,6 +14,9 @@ import { MAX_VERSION_LENGTH } from '../session/protocol.js';
 import { attachInvocations } from '../invocation/InvocationManager.js';
 import { attachPipes, createChannel, createPipe } from '../pipes/PipeManager.js';
 import { bindNexusClient } from './ClientNexusBase.js';
+import { ReconnectController } from '../reconnect/ReconnectController.js';
+import { isBrowserEnvironment, resolveReconnectionPolicy } from '../reconnect/environment.js';
+import { getClientSnapshot } from '../diagnostics/snapshot.js';
 
 /**
  * Result of {@link NexusClient#tryConnect}. Mirrors C# `ConnectionResult`.
@@ -96,6 +99,12 @@ export class NexusClient extends EventTarget {
   #connecting = null;
   /** @type {Promise<void>} */
   #disconnected = Promise.resolve();
+  /** Resolves {@link NexusClient#disconnected} once reconnection gave up (or none applies). @type {(() => void) | null} */
+  #resolveDisconnected = null;
+  /** @type {import('../contract/config.js').ReconnectionPolicy | null} */
+  #reconnectionPolicy;
+  /** Created on the first successful connect; stopped by {@link NexusClient#disconnect}. @type {ReconnectController | null} */
+  #reconnect = null;
 
   /**
    * Creates a client of the class it is called on. Validates `config` and throws `TypeError` when it is invalid
@@ -124,6 +133,7 @@ export class NexusClient extends EventTarget {
     const ctor = /** @type {typeof NexusClient} */ (this.constructor);
     this.#options = resolveClientOptions(config, ctor.transports);
     validateBinding(binding);
+    this.#reconnectionPolicy = resolveReconnectionPolicy(config);
     this.config = config;
     this.nexus = nexus;
     this._binding = binding;
@@ -192,9 +202,19 @@ export class NexusClient extends EventTarget {
    * @returns {Promise<ConnectionResult>}
    */
   tryConnect(options) {
+    return this.#connectOnce(false, options?.signal);
+  }
+
+  /**
+   * Starts one connect attempt unless one is in flight (user connects and reconnect attempts share it).
+   * @param {boolean} isReconnecting
+   * @param {AbortSignal | undefined} signal
+   * @returns {Promise<ConnectionResult>}
+   */
+  #connectOnce(isReconnecting, signal) {
     if (this.#session !== null) return Promise.resolve(SUCCESS);
     if (this.#connecting !== null) return this.#connecting;
-    const attempt = this.#tryConnectCore(false, options?.signal);
+    const attempt = this.#tryConnectCore(isReconnecting, signal);
     this.#connecting = attempt;
     void attempt.finally(() => {
       if (this.#connecting === attempt) this.#connecting = null;
@@ -204,10 +224,18 @@ export class NexusClient extends EventTarget {
 
   /** Disconnects gracefully and stops reconnection. @returns {Promise<void>} */
   async disconnect() {
+    const reconnect = this.#reconnect;
+    this.#reconnect = null;
+    if (reconnect !== null) await reconnect.stop();
     const session = this.#session;
-    if (session === null) return;
-    await session.disconnect(DisconnectReason.Graceful);
+    if (session !== null) await session.disconnect(DisconnectReason.Graceful);
+    this.#resolveDisconnected?.();
     await this.#disconnected;
+  }
+
+  /** The reconnection controller, or null before the first connect and when reconnection is off. @returns {ReconnectController | null} */
+  get reconnection() {
+    return this.#reconnect;
   }
 
   /**
@@ -236,24 +264,7 @@ export class NexusClient extends EventTarget {
    * @returns {object | null}
    */
   getSnapshot() {
-    const session = this.#session;
-    if (session === null || !session.isHandshakeComplete) return null;
-    return {
-      id: session.id,
-      state: session.state,
-      isSecure: this.isSecure,
-      transport: this.#options.transportName,
-      maxMessageSize: this.#options.maxMessageSize,
-      peerMaxMessageSize: session.peerMaxMessageSize,
-      peerInvocationCredits: session.peerInvocationCredits,
-      idleTimeoutMs: session.idleTimeoutMs,
-      pingInterval: session.pingInterval,
-      framesSent: session.framesSent,
-      bytesSent: session.bytesSent,
-      framesReceived: session.framesReceived,
-      bytesReceived: session.bytesReceived,
-      pendingWrites: session.pendingWrites,
-    };
+    return getClientSnapshot(this);
   }
 
   /** Same as {@link NexusClient#disconnect}. @returns {Promise<void>} */
@@ -270,7 +281,7 @@ export class NexusClient extends EventTarget {
    * @returns {Promise<ConnectionResult>}
    */
   async _tryConnectCore(isReconnecting, signal) {
-    return this.#tryConnectCore(isReconnecting, signal);
+    return this.#connectOnce(isReconnecting, signal);
   }
 
   /**
@@ -325,13 +336,16 @@ export class NexusClient extends EventTarget {
     this.#attachSessionLayers(session);
     this.#session = session;
     session.onStateChange = (state) => this.#setState(state);
-    const disconnected = new Promise((resolve) => {
-      session.onClose((reason) => {
-        this.#onSessionClosed(session, reason);
-        resolve(undefined);
+    // A reconnect keeps the promise of the session it replaces: it resolves once reconnection gives up.
+    if (this.#resolveDisconnected === null) {
+      this.#disconnected = new Promise((resolve) => {
+        this.#resolveDisconnected = () => {
+          this.#resolveDisconnected = null;
+          resolve();
+        };
       });
-    });
-    this.#disconnected = /** @type {Promise<void>} */ (disconnected);
+    }
+    session.onClose((reason) => this.#onSessionClosed(session, reason));
 
     const onAbort = () => void session.abort(DisconnectReason.SocketError);
     signal?.addEventListener('abort', onAbort, { once: true });
@@ -352,6 +366,11 @@ export class NexusClient extends EventTarget {
     }
 
     if (this.#proxy === null) this.#proxy = new this._binding.proxy(this.#handle);
+    if (this.#reconnect === null && this.#reconnectionPolicy !== null) {
+      const reconnect = new ReconnectController(/** @type {any} */ (this), { policy: this.#reconnectionPolicy, lifecycle: isBrowserEnvironment() });
+      reconnect.addEventListener('reconnectfailed', () => this.#resolveDisconnected?.());
+      this.#reconnect = reconnect;
+    }
     const nexus = this.nexus;
     queueMicrotask(() => this.#callHook('onConnected', () => nexus.onConnected(isReconnecting)));
     return SUCCESS;
@@ -375,13 +394,20 @@ export class NexusClient extends EventTarget {
   #onSessionClosed(session, reason) {
     if (this.#session !== session) return;
     this.#session = null;
+    const reconnect = this.#reconnect;
+    const reconnecting = session.isHandshakeComplete && reconnect !== null && !reconnect.stopped
+      && reconnect.wouldReconnect(reason);
     // A session that never completed its handshake is reported through the connect result only.
-    if (!session.isHandshakeComplete) return;
-    const nexus = this.nexus;
-    queueMicrotask(() => {
-      this.dispatchEvent(new CustomEvent('disconnected', { detail: /** @type {DisconnectedDetail} */ ({ reason }) }));
-      this.#callHook('onDisconnected', () => nexus.onDisconnected(reason));
-    });
+    if (session.isHandshakeComplete) {
+      const nexus = this.nexus;
+      queueMicrotask(() => {
+        this.dispatchEvent(new CustomEvent('disconnected', { detail: /** @type {DisconnectedDetail} */ ({ reason }) }));
+        this.#callHook('onDisconnected', () => nexus.onDisconnected(reason));
+      });
+    }
+    // A failed reconnect attempt leaves the promise to the loop; anything else that ends ends it. Resolved after the
+    // hook is queued, so awaiting `disconnected` sees onDisconnected.
+    if (!reconnecting && reconnect?.isReconnecting !== true) this.#resolveDisconnected?.();
   }
 
   /**
