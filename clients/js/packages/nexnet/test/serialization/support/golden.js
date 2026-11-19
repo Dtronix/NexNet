@@ -39,12 +39,6 @@ export function vectorFiles(present) {
   return [...VECTOR_FILES, ...extra];
 }
 
-/**
- * Declared objects that are C# structs, so never nil. `schemas.jsonl` does not record it; these come from
- * `src/NexNet.TestNexus/Interop/InteropTypes.cs`.
- */
-const STRUCT_OBJECTS = new Set(['InteropStruct', 'InteropRecordStruct']);
-
 const VECTOR_FIELDS = new Set(['id', 'type', 'mode', 'options', 'error', 'note', 'value', 'hex']);
 
 /**
@@ -534,7 +528,8 @@ export class GoldenCodecs {
    */
   #object(schema, args, key) {
     const length = schema.length;
-    const struct = STRUCT_OBJECTS.has(schema.id);
+    /** A C# struct (`"struct": true` in `schemas.jsonl`): never nil, missing members at their default. */
+    const struct = schema.struct === true;
     /** @type {(Codec | undefined)[]} */
     const members = new Array(length);
     /** Missing members are C# `default(T)`: null for a reference type. */
