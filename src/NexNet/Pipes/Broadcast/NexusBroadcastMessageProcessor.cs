@@ -59,17 +59,60 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     }
 
 
-    public async ValueTask<bool> EnqueueWaitForResult(TUnion message, INexusBroadcastSession<TUnion>? client)
+    /// <summary>
+    /// Queues a message and waits for its processing result.
+    /// </summary>
+    /// <param name="message">The message to process.</param>
+    /// <param name="client">The client that sent the message, or null.</param>
+    /// <param name="runGeneration">When set, the message is accepted only by the run that <see cref="Run"/>
+    /// returned this value for. A reader of a closed pipe then cannot feed a later run.</param>
+    /// <exception cref="ChannelClosedException">The processor is stopped, or the given run has ended.</exception>
+    public async ValueTask<bool> EnqueueWaitForResult(TUnion message, INexusBroadcastSession<TUnion>? client,
+        int? runGeneration = null)
     {
+        Channel<ProcessRequestWrapper> channel;
+        lock (_runLock)
+        {
+            if (runGeneration is { } generation && generation != _runGeneration)
+                throw new ChannelClosedException("The processor run ended.");
+            channel = _processorChannel;
+        }
+
         var tcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
         var wrapper = ProcessRequestWrapper.Rent(client, message, tcs);
+        try
+        {
+            await channel.Writer.WriteAsync(wrapper).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogDebug(e, $"S{client?.Id}: Enqueue rejected for {message.GetType().Name}, processor is stopped.");
+            wrapper.Return();
+            tcs.Return();
+            throw;
+        }
+        var result = await tcs.Task.ConfigureAwait(false);
+        tcs.Return();
+        return result;
+    }
+
+    /// <summary>
+    /// Runs an action on the processing loop, in order with the messages around it: no message is processed while
+    /// it runs.
+    /// </summary>
+    /// <param name="action">The action to run. It receives the run's cancellation token.</param>
+    /// <returns>True when the action ran to completion; false when it threw or the processor stopped first.</returns>
+    public async ValueTask<bool> EnqueueActionWaitForResult(Func<CancellationToken, ValueTask> action)
+    {
+        var tcs = PooledResettableValueTaskCompletionSource<bool>.Rent();
+        var wrapper = ProcessRequestWrapper.Rent(null, null!, tcs, action);
         try
         {
             await _processorChannel.Writer.WriteAsync(wrapper).ConfigureAwait(false);
         }
         catch (Exception e)
         {
-            Logger?.LogDebug(e, $"S{client?.Id}: Enqueue rejected for {message.GetType().Name}, processor is stopped.");
+            Logger?.LogDebug(e, "Enqueue of an action rejected, processor is stopped.");
             wrapper.Return();
             tcs.Return();
             throw;
@@ -84,8 +127,9 @@ internal class NexusBroadcastMessageProcessor<TUnion>
     /// call: the new loop waits for it to exit before it processes anything.
     /// A run that stopped on its own after an unexpected error counts as stopped, so it can be started again.
     /// </summary>
+    /// <returns>The run's generation, for <see cref="EnqueueWaitForResult"/>.</returns>
     /// <exception cref="InvalidOperationException">A previous run is still active and was not cancelled.</exception>
-    public void Run(CancellationToken token)
+    public int Run(CancellationToken token)
     {
         lock (_runLock)
         {
@@ -98,6 +142,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
             var channel = _processorChannel = CreateChannel();
             var previousLoop = _loop;
             _loop = Task.Run(() => RunLoop(this, channel, generation, previousLoop, token));
+            return generation;
         }
     }
 
@@ -123,6 +168,13 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                 bool success = false;
                 try
                 {
+                    if (messageWrapper.Action != null)
+                    {
+                        await messageWrapper.Action(ct).ConfigureAwait(false);
+                        success = true;
+                        continue;
+                    }
+
                     processor.Logger?.LogTrace(
                         $"Source Client S{messageWrapper.Client?.Id}: Processing {messageWrapper.Message.GetType().Name} message.");
 
@@ -141,7 +193,9 @@ internal class NexusBroadcastMessageProcessor<TUnion>
                 catch (Exception e)
                 {
                     processor.Logger?.LogInfo(e,
-                        $"S{messageWrapper.Client?.Id} Exception while processing collection.");
+                        messageWrapper.Action != null
+                            ? "Exception while running a processor action."
+                            : $"S{messageWrapper.Client?.Id} Exception while processing collection.");
 
                     if (messageWrapper.Client != null)
                         await messageWrapper.Client.CompletePipe().ConfigureAwait(false)!;
@@ -194,6 +248,7 @@ internal class NexusBroadcastMessageProcessor<TUnion>
         public INexusBroadcastSession<TUnion>? Client;
         public TUnion Message = null!;
         public PooledResettableValueTaskCompletionSource<bool>? CompletionTaskSource;
+        public Func<CancellationToken, ValueTask>? Action;
         
         private ProcessRequestWrapper()
         {
@@ -202,7 +257,8 @@ internal class NexusBroadcastMessageProcessor<TUnion>
         
         public static ProcessRequestWrapper Rent(INexusBroadcastSession<TUnion>? client, 
             TUnion message,
-            PooledResettableValueTaskCompletionSource<bool>? completionTaskSource)
+            PooledResettableValueTaskCompletionSource<bool>? completionTaskSource,
+            Func<CancellationToken, ValueTask>? action = null)
         {
             if (!_pool.TryTake(out var wrapper))
                 wrapper = new ProcessRequestWrapper();
@@ -210,12 +266,17 @@ internal class NexusBroadcastMessageProcessor<TUnion>
             wrapper.Client = client;
             wrapper.Message = message;
             wrapper.CompletionTaskSource = completionTaskSource;
+            wrapper.Action = action;
             
             return wrapper;
         }
 
         public void Return()
         {
+            Client = null;
+            Message = null!;
+            CompletionTaskSource = null;
+            Action = null;
             _pool.Add(this);
         }
     }

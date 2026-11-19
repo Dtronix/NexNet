@@ -92,7 +92,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         var stopCts = StopCts = new CancellationTokenSource();
         Volatile.Write(ref _processorFailure, null);
         _processorToken = stopCts.Token;
-        Processor.Run(stopCts.Token);
+        var runGeneration = Processor.Run(stopCts.Token);
         _ = SuperviseProcessorAsync(Processor.LoopTask, stopCts.Token);
 
         try
@@ -134,9 +134,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         
 
         // Long-running task listening for changes.
+        // The reader feeds this run only: messages still buffered in this pipe after it closes must not reach the
+        // processor of a later pipe, ahead of that pipe's reset.
         _ = Task.Factory.StartNew(async static state =>
         {
-            var broadcaster = Unsafe.As<NexusBroadcastClient<TUnion>>(state)!;
+            var (broadcaster, runGeneration) = ((NexusBroadcastClient<TUnion>, int))state!;
             var clientState = broadcaster._client;
             var logger = broadcaster.Logger;
 
@@ -154,7 +156,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
                 await foreach (var message in reader.ConfigureAwait(false))
                 {
                     logger?.LogTrace($"Received {message.GetType()} message.");
-                    await broadcaster.Processor.EnqueueWaitForResult(message, null).ConfigureAwait(false);
+                    await broadcaster.Processor.EnqueueWaitForResult(message, null, runGeneration).ConfigureAwait(false);
                 }
             }
             catch (ChannelClosedException) when (!processorToken.IsCancellationRequested)
@@ -175,7 +177,7 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             if (clientState.Pipe is IRentedNexusDuplexPipe rentedPipe)
                 await rentedPipe.DisposeAsync().ConfigureAwait(false);
 
-        }, this, TaskCreationOptions.DenyChildAttach);
+        }, (this, runGeneration), TaskCreationOptions.DenyChildAttach);
         
         // Capture locally to avoid race with Disconnected() nulling _client.
         var client = _client!;
