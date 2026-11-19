@@ -31,7 +31,14 @@ public static partial class GoldenGenerator
             TypedCodecs.Get<InteropAllTypes>().Schemas,
             [("InteropPoint", "User formatter InteropPointFormatter: [X: int, Y: int], two canonical integers.")],
             Messages().Concat(CollectionMessages()),
+            IsZooStruct,
             CollectionUnions());
+
+    /// <summary>True when the zoo type with full metadata name <paramref name="fullName"/> is a C# struct.</summary>
+    private static bool IsZooStruct(string fullName)
+        => (typeof(InteropAllTypes).Assembly.GetType(fullName, throwOnError: false)
+            ?? throw new InvalidOperationException("Zoo type " + fullName + " is not in " + typeof(InteropAllTypes).Assembly.GetName().Name + "."))
+            .IsValueType;
 
     /// <summary>Builds every vector, checking each against the C# implementation.</summary>
     public static GoldenBuilder Build()

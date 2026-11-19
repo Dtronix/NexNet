@@ -11,11 +11,11 @@
 {"id":"InteropNested","kind":"object","typeParams":0,"length":5,"members":[[0,"Record","InteropRecord"],[1,"Items","List<InteropItem>"],[2,"ByIndex","Dictionary<int,InteropStruct>"],[3,"Shape","InteropShape"],[4,"Child","InteropNested"]]}
 {"id":"InteropPair","kind":"object","typeParams":2,"length":2,"members":[[0,"First","$0"],[1,"Second","List<$1>"]]}
 {"id":"InteropRecord","kind":"object","typeParams":0,"length":3,"members":[[0,"Name","string"],[1,"Count","int"],[2,"Point","InteropStruct"]]}
-{"id":"InteropRecordStruct","kind":"object","typeParams":0,"length":2,"members":[[0,"Id","long"],[1,"Key","Guid"]]}
+{"id":"InteropRecordStruct","kind":"object","typeParams":0,"length":2,"members":[[0,"Id","long"],[1,"Key","Guid"]],"struct":true}
 {"id":"InteropRectangle","kind":"object","typeParams":0,"length":2,"members":[[0,"Width","double"],[1,"Height","double"]]}
 {"id":"InteropShape","kind":"union","typeParams":0,"cases":[[0,"InteropCircle"],[1,"InteropRectangle"]]}
 {"id":"InteropSparse","kind":"object","typeParams":0,"length":4,"members":[[0,"First","int"],[3,"Fourth","string"]]}
-{"id":"InteropStruct","kind":"object","typeParams":0,"length":3,"members":[[0,"X","int"],[1,"Y","double"],[2,"Label","string"]]}
+{"id":"InteropStruct","kind":"object","typeParams":0,"length":3,"members":[[0,"X","int"],[1,"Y","double"],[2,"Label","string"]],"struct":true}
 {"id":"InteropTextMessage","kind":"object","typeParams":0,"length":1,"members":[[0,"Text","string"]]}
 {"id":"InteropPoint","kind":"external","note":"User formatter InteropPointFormatter: [X: int, Y: int], two canonical integers."}
 {"id":"ClientGreeting","kind":"message","messageType":100,"minCount":6,"maxCount":6,"fields":[["version","string"],["serverNexusHash","int"],["clientNexusHash","int"],["authenticationToken","byte[]"],["maxMessageSize","int"],["invocationCredits","int"]]}

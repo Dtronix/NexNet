@@ -41,9 +41,6 @@ import java.util.function.Supplier;
  * {@link MsgPackReader}/{@link MsgPackWriter}, which stand in for generated formatters.
  */
 final class GoldenCodecs {
-    /** C# structs among the declared objects: nil is not a value of them (schemas.jsonl does not say). */
-    private static final Set<String> STRUCTS = new HashSet<>(Arrays.asList("InteropStruct", "InteropRecordStruct"));
-
     private static final Set<String> EXT78 = new HashSet<>(Arrays.asList(
         "sbyte", "short", "ushort", "int", "uint", "long", "ulong", "float", "double", "char", "half"));
 
@@ -737,7 +734,8 @@ final class GoldenCodecs {
     private Codec object(Map<String, Object> schema, List<TypeExpr> bindings) {
         String id = (String) schema.get("id");
         int length = ((BigInteger) schema.get("length")).intValue();
-        boolean struct = STRUCTS.contains(id);
+        // A C# struct ("struct": true in schemas.jsonl): nil is not a value of it, missing members are at their default.
+        boolean struct = Boolean.TRUE.equals(schema.get("struct"));
         Codec[] members = new Codec[length];
         for (Object m : jlist(schema.get("members"))) {
             List<Object> member = jlist(m);

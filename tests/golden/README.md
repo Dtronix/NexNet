@@ -162,6 +162,7 @@ One declared type per line. Member and field types are type expressions.
 
 ```json
 {"id":"InteropItem","kind":"object","typeParams":0,"length":2,"members":[[0,"Id","int"],[1,"Name","string"]]}
+{"id":"InteropStruct","kind":"object","typeParams":0,"length":3,"members":[[0,"X","int"],[1,"Y","double"],[2,"Label","string"]],"struct":true}
 {"id":"InteropShape","kind":"union","typeParams":0,"cases":[[0,"InteropCircle"],[1,"InteropRectangle"]]}
 {"id":"InteropEnum","kind":"enum","underlying":"int"}
 {"id":"InteropPoint","kind":"external","note":"User formatter InteropPointFormatter: [X: int, Y: int], two canonical integers."}
@@ -169,6 +170,8 @@ One declared type per line. Member and field types are type expressions.
 ```
 
 - **object**: a `[NexusObject]` class or struct, an array of `length` elements; `members` are `[key, name, type]` (§10.2).
+  `"struct": true` marks a C# struct (omitted for a class): nil is not a value of it (a nullable struct is written
+  `Name?`), and a member missing from a shorter array decodes as its default rather than null.
 - **union**: `[tag, value]`; `cases` are `[tag, case id]`; the cases share the union's type parameters (§10.3). A case
   may also be a message body: `CollectionListMessage` (§4.11) is a union of the `CollectionList*` messages.
 - **enum**: the underlying integer type.
