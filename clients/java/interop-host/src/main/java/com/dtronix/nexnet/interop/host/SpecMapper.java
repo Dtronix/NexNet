@@ -179,7 +179,7 @@ final class SpecMapper {
     }
 
     /** The error of {@code onInvocationException} ({@code {code?, message?}}), or null when the spec has no hook. */
-    private static NexusRemoteError invocationError(Args hook) {
+    static NexusRemoteError invocationError(Args hook) {
         if (hook == null) {
             return null;
         }
@@ -189,12 +189,10 @@ final class SpecMapper {
             }
         }
         Long code = hook.optInteger("code");
-        if (code == null) {
-            // The Java NexusRemoteError always has a code; C#'s and JavaScript's may be null.
-            throw HostError.notSupported("The Java NexusRemoteError has no null code, so the Java client cannot set "
-                + "an onInvocationException error without a code.");
+        if (code != null && (code < Integer.MIN_VALUE || code > Integer.MAX_VALUE)) {
+            throw HostError.badRequest("The onInvocationException code " + code + " is not an Int32.");
         }
-        return new NexusRemoteError(code.intValue(), hook.optStr("message"));
+        return new NexusRemoteError(code == null ? null : code.intValue(), hook.optStr("message"));
     }
 
     private static URI uri(String address) {
