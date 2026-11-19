@@ -825,10 +825,10 @@ traffic as in ServerToClient, except that all versions are 0 (§12.3), and that 
 (re)connects to the parent, when the parent's list is reset (cleared or resynchronized), and when an item moves in
 the parent. The reset goes through the broadcast queue in order with the changes, so it is never interleaved with a
 change, and every change after it applies to the reset list (`NexusListRelay.cs:236-256`, `:295-317`). A client
-handles it as any reset: from Ready, ResetStart starts a new reset (§12.4). Unlike a new client's snapshot, this
-reset goes through each client's outgoing buffer (§12.8), so a very large list (more than about 40,000 items) can
-overflow the buffer of a slow client; that client is disconnected from the collection and resynchronizes when it
-enables again.
+handles it as any reset: from Ready, ResetStart starts a new reset (§12.4). Only the ResetStart goes through each
+client's outgoing buffer (§12.8). The ResetValues and ResetComplete after it are written to each client with flow
+control, as a new client's snapshot is, before the changes queued after the reset, so a large list reaches a slow
+client whole.
 
 A client must not write in ServerToClient or Relay mode. The server never reads those bytes, so they only use up
 pipe credit.
