@@ -32,7 +32,10 @@ internal class QuicTransport : ITransport
     {
         _quicConnection = quicConnection;
         _quicStream = stream;
-        Input = PipeReader.Create(stream);
+        // Leave the stream open: the session completes the input when its read loop exits, which can happen before
+        // the send loop has written the last frames (the disconnect message). Disposing the stream there would end
+        // the stream (FIN) ahead of that data, and the peer would see a bare close. CloseAsync ends the stream.
+        Input = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
         _sendPipe = new StreamSendPipe(stream, sendPipeOptions);
 
         (RemoteAddress, RemotePort) = GetRemoteEndPointInfo(quicConnection);
@@ -54,6 +57,11 @@ internal class QuicTransport : ITransport
         {
             // Let the send loop write what the session flushed before it completed the output.
             await _sendPipe.DrainAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
+
+            // A written frame may still be in MsQuic's send buffer, and closing the connection discards stream data
+            // the peer has not received: a disconnect message lost that way reaches the peer as a bare close
+            // (SocketError). End the stream after that data (FIN) and wait for the peer to acknowledge it.
+            await CompleteWritesAsync(StreamSendPipe.DrainTimeout).ConfigureAwait(false);
         }
         else
         {
@@ -61,10 +69,42 @@ internal class QuicTransport : ITransport
         }
 
         await _quicConnection.CloseAsync(0).ConfigureAwait(false);
+        await _quicStream.DisposeAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Ends the write side of the stream gracefully and waits up to <paramref name="timeout"/> for the peer to
+    /// acknowledge everything written, FIN included. Best effort: a stream already aborted or closed is left as is.
+    /// </summary>
+    private async ValueTask CompleteWritesAsync(TimeSpan timeout)
+    {
+        try
+        {
+            _quicStream.CompleteWrites();
+        }
+        catch (Exception e) when (e is QuicException or ObjectDisposedException or InvalidOperationException)
+        {
+            return;
+        }
+
+        var writesClosed = _quicStream.WritesClosed;
+        if (!writesClosed.IsCompleted)
+        {
+            using var delayCancellation = new CancellationTokenSource();
+            var finished = await Task.WhenAny(writesClosed, Task.Delay(timeout, delayCancellation.Token))
+                .ConfigureAwait(false);
+            if (finished == writesClosed)
+                await delayCancellation.CancelAsync().ConfigureAwait(false);
+        }
+
+        // Observe a failure (the peer aborted its reads, or the connection closed) so it is not unobserved.
+        if (writesClosed.IsFaulted)
+            _ = writesClosed.Exception;
     }
 
     public void Dispose()
     {
+        _quicStream.DisposeAsync();
         _quicConnection.DisposeAsync();
     }
 
