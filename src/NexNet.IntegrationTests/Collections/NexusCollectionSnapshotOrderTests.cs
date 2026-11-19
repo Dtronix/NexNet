@@ -1,6 +1,5 @@
 using NexNet.Collections;
 using NexNet.Collections.Lists;
-using NUnit.Framework;
 
 namespace NexNet.IntegrationTests.Collections;
 
@@ -10,8 +9,8 @@ namespace NexNet.IntegrationTests.Collections;
 /// </summary>
 internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
 {
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges(Type type)
     {
         const int writers = 4;
@@ -22,7 +21,7 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
         var serverList = server.NexusCreatedQueue.First().IntListBi;
 
         var writerList = client1.Proxy.IntListBi;
-        Assert.That(await writerList.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await writerList.EnableAsync().Timeout(1)).IsTrue();
 
         var joinerClients = new NexusClient<TestInterfaces.ClientNexus, TestInterfaces.ClientNexus.ServerProxy>[joiners];
         for (var i = 0; i < joiners; i++)
@@ -89,18 +88,19 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
         {
             var list = lists[i];
             var listClient = (NexusListClient<int>)list;
-            Assert.Multiple(() =>
+            using (Assert.Multiple())
             {
-                Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected), $"List {i} state");
-                Assert.That(list.ToArray(), Is.EqualTo(expected), $"List {i} contents");
-                Assert.That(listClient.TestChangesReceivedBeforeSnapshot, Is.Zero,
-                    $"List {i} received changes before its snapshot");
-            });
+                await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected).Because($"list {i} state");
+                await Assert.That(list.ToArray()).IsEquivalentTo(expected, CollectionOrdering.Matching)
+                    .Because($"list {i} contents");
+                await Assert.That(listClient.TestChangesReceivedBeforeSnapshot).IsEqualTo(0)
+                    .Because($"list {i} must not receive changes before its snapshot");
+            }
         }
     }
 
-    [TestCase(Type.Tcp)]
-    [TestCase(Type.Uds)]
+    [Test]
+    [Transports(Type.Uds, Type.Tcp)]
     public async Task ConcurrentRemove_LoserSeesWinningChangeBeforeFalse(Type type)
     {
         const int rounds = 30;
@@ -115,8 +115,8 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
 
         var list1 = client1.Proxy.IntListBi;
         var list2 = client2.Proxy.IntListBi;
-        Assert.That(await list1.EnableAsync().Timeout(1), Is.True);
-        Assert.That(await list2.EnableAsync().Timeout(1), Is.True);
+        await Assert.That(await list1.EnableAsync().Timeout(1)).IsTrue();
+        await Assert.That(await list2.EnableAsync().Timeout(1)).IsTrue();
 
         var noops = 0;
         for (var round = 0; round < rounds / 2; round++)
@@ -134,14 +134,14 @@ internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
             if (results.Contains(false))
                 noops++;
 
-            Assert.Multiple(() =>
+            using (Assert.Multiple())
             {
-                Assert.That(results, Has.Some.True, $"Round {round}");
-                Assert.That(count1, Is.EqualTo(serverCount), $"Round {round}: list 1 behind the server");
-                Assert.That(count2, Is.EqualTo(serverCount), $"Round {round}: list 2 behind the server");
-            });
+                await Assert.That(results.Contains(true)).IsTrue().Because($"round {round}: one request wins");
+                await Assert.That(count1).IsEqualTo(serverCount).Because($"round {round}: list 1 behind the server");
+                await Assert.That(count2).IsEqualTo(serverCount).Because($"round {round}: list 2 behind the server");
+            }
         }
 
-        Assert.That(noops, Is.GreaterThan(0), "No round produced a Noop.");
+        await Assert.That(noops).IsGreaterThan(0).Because("at least one round must produce a Noop");
     }
 }
