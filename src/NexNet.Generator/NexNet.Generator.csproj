@@ -38,6 +38,25 @@
     <None Include="buildTransitive/**" Pack="true" PackagePath="buildTransitive/" />
   </ItemGroup>
 
+  <!--
+    The client runtimes the generator emits beside the Java/JavaScript code (D31, docs/internals/generator-emitted-runtime.md).
+    Checked-in sources only: no npm or Gradle runs here (D27). Read by Runtime/EmbeddedRuntime.cs.
+  -->
+  <PropertyGroup>
+    <_NexNetRepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..'))</_NexNetRepoRoot>
+    <_NexNetJsRuntimeDir>$(_NexNetRepoRoot)clients/js/packages/nexnet/src/</_NexNetJsRuntimeDir>
+    <_NexNetJavaRuntimeDir>$(_NexNetRepoRoot)clients/java/nexnet-client/src/main/java/</_NexNetJavaRuntimeDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="$(_NexNetJsRuntimeDir)**/*.js" LogicalName="NexNet.Runtime/javascript/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="$(_NexNetJavaRuntimeDir)**/*.java" LogicalName="NexNet.Runtime/java/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+    <EmbeddedResource Include="$(_NexNetRepoRoot)LICENSE" LogicalName="NexNet.Runtime/LICENSE" WithCulture="false" />
+  </ItemGroup>
+  <Target Name="_NexNetCheckRuntimeSources" BeforeTargets="CoreCompile">
+    <Error Condition="!Exists('$(_NexNetJsRuntimeDir)index.js') or !Exists('$(_NexNetJavaRuntimeDir)com/dtronix/nexnet/NexusRuntime.java') or !Exists('$(_NexNetRepoRoot)LICENSE')"
+           Text="NexNet.Generator embeds the client runtimes from clients/js and clients/java (D31), which are missing under '$(_NexNetRepoRoot)'." />
+  </Target>
+
   <!-- for nuget publish -->
   <Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
     <ItemGroup>

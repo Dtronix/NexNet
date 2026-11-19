@@ -5,6 +5,11 @@
     Shorthand properties, each converted to a NexNetTarget item:
       NexNetJavaOutputDir, NexNetJavaPackage                  -> <NexNetTarget Include="java" OutputDir="..." Package="..." />
       NexNetJavaScriptOutputDir, NexNetJavaScriptModuleName   -> <NexNetTarget Include="javascript" OutputDir="..." ModuleName="..." />
+      NexNetJavaEmitRuntime, NexNetJavaNullness               -> EmitRuntime="...", Nullness="..." on the java item
+      NexNetJavaScriptEmitRuntime, NexNetJavaScriptRuntimeImport -> EmitRuntime="...", RuntimeImport="..." on the javascript item
+
+    The client runtime is emitted beside the generated code unless EmitRuntime="false" (D31,
+    docs/internals/generator-emitted-runtime.md).
 
     Items are evaluated after every property, so these conditions see the values set in the project file.
   -->
@@ -14,8 +19,10 @@
 
   <ItemGroup>
     <NexNetTarget Include="java" Condition="'$(NexNetJavaOutputDir)' != ''"
-                  OutputDir="$(NexNetJavaOutputDir)" Package="$(NexNetJavaPackage)" />
+                  OutputDir="$(NexNetJavaOutputDir)" Package="$(NexNetJavaPackage)"
+                  EmitRuntime="$(NexNetJavaEmitRuntime)" Nullness="$(NexNetJavaNullness)" />
     <NexNetTarget Include="javascript" Condition="'$(NexNetJavaScriptOutputDir)' != ''"
-                  OutputDir="$(NexNetJavaScriptOutputDir)" ModuleName="$(NexNetJavaScriptModuleName)" />
+                  OutputDir="$(NexNetJavaScriptOutputDir)" ModuleName="$(NexNetJavaScriptModuleName)"
+                  EmitRuntime="$(NexNetJavaScriptEmitRuntime)" RuntimeImport="$(NexNetJavaScriptRuntimeImport)" />
   </ItemGroup>
 </Project>

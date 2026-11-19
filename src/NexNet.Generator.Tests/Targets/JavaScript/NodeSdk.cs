@@ -120,20 +120,26 @@ internal sealed class NodeSdk
     /// Makes <c>&lt;dir&gt;/node_modules/@dtronix/nexnet</c> point at the runtime package: a junction on Windows (no
     /// privilege needed), a symbolic link elsewhere.
     /// </summary>
-    public static async Task LinkRuntime(string dir)
+    public static Task LinkRuntime(string dir) => LinkRuntime(dir, RuntimePackage);
+
+    /// <summary>
+    /// As <see cref="LinkRuntime(string)"/>, to another package folder: what <c>npm install file:&lt;target&gt;</c>
+    /// does (D31, the emitted runtime).
+    /// </summary>
+    public static async Task LinkRuntime(string dir, string target)
     {
         var scope = Path.Combine(dir, "node_modules", "@dtronix");
         Directory.CreateDirectory(scope);
         var link = Path.Combine(scope, "nexnet");
         if (OperatingSystem.IsWindows())
         {
-            var result = await Run("cmd.exe", new[] { "/c", "mklink", "/J", link, RuntimePackage }, dir, TimeSpan.FromMinutes(1));
+            var result = await Run("cmd.exe", new[] { "/c", "mklink", "/J", link, target }, dir, TimeSpan.FromMinutes(1));
             if (!result.Success)
                 throw new InvalidOperationException("mklink /J failed: " + result.Output);
         }
         else
         {
-            Directory.CreateSymbolicLink(link, RuntimePackage);
+            Directory.CreateSymbolicLink(link, target);
         }
     }
 

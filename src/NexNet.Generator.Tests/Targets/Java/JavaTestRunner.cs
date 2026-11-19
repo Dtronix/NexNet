@@ -38,14 +38,21 @@ internal sealed record JavaRun(Compilation Output, NexusIr? Ir, Diagnostic[] Dia
 /// <summary>Runs the real generator with the Java target configured and emits the Java client code from its IR.</summary>
 internal static class JavaTestRunner
 {
+    // The emitter tests model the workspace runtime (the nexnet-client jar, which brings JSpecify): no emitted runtime
+    // (D31), so the generated code keeps its @Nullable annotations.
     public static Dictionary<string, string> GlobalOptions(string package) => new()
     {
         ["build_property.NexNetTargets"] = "java",
         ["build_property.NexNetTarget_java_Package"] = package,
+        ["build_property.NexNetTarget_java_EmitRuntime"] = "false",
     };
 
     public static TargetOptions TargetOptionsFor(string package)
-        => new("java", true, new EquatableArray<TargetOption>(new[] { new TargetOption(JavaTarget.PackageOption, package) }));
+        => new("java", true, new EquatableArray<TargetOption>(new[]
+        {
+            new TargetOption(JavaTarget.PackageOption, package),
+            new TargetOption(NexNet.Generator.Runtime.EmbeddedRuntime.EmitRuntimeOption, "false"),
+        }));
 
     public static JavaRun Run(string package, params string[] sources)
     {

@@ -139,6 +139,10 @@ internal static class TargetValidator
                 files.Add((path, "type '" + decl.Id + "'", owner.Location));
         }
 
+        // D31: the emitted client runtime shares the output directory.
+        foreach (var file in language.EmitRuntime(options))
+            files.Add((file.Path, "the " + language.DisplayName + " client runtime (EmitRuntime)", null));
+
         foreach (var group in files.GroupBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
         {
             var owners = group.Select(f => f.Owner).Distinct(StringComparer.Ordinal).ToArray();

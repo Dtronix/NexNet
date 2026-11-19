@@ -1,5 +1,6 @@
 using NexNet.Generator.Extraction;
 using NexNet.Generator.Ir;
+using NexNet.Generator.Runtime;
 
 namespace NexNet.Generator.Targets.Java;
 
@@ -22,7 +23,7 @@ internal sealed class JavaTarget : TargetLanguageBase
     /// <summary>Option: <c>true</c> also emits the test scaffolding (<see cref="EmitMode.TestScaffolding"/>).</summary>
     public const string TestScaffoldingOption = Bundle.TargetBundleBuilder.TestScaffoldingOption;
 
-    private static readonly string[] Options = { PackageOption, TestScaffoldingOption };
+    private static readonly string[] Options = { PackageOption, TestScaffoldingOption, EmbeddedRuntime.EmitRuntimeOption, JavaNullness.Option };
 
     /// <summary>Java reserved words and literals, plus restricted identifiers that cannot name a type or variable.</summary>
     internal static readonly string[] Keywords =
@@ -64,6 +65,13 @@ internal sealed class JavaTarget : TargetLanguageBase
 
     public override IEnumerable<string> ValidateOptions(TargetOptions options)
     {
+        foreach (var problem in base.ValidateOptions(options))
+            yield return problem;
+
+        var nullness = options.Get(JavaNullness.Option);
+        if (nullness != null && !JavaNullness.IsValid(nullness))
+            yield return "Nullness of the java target must be none or jspecify, not '" + nullness + "'";
+
         var package = options.Get(PackageOption);
         if (package == null)
         {
@@ -165,7 +173,35 @@ internal sealed class JavaTarget : TargetLanguageBase
         files.AddRange(FormatterEmitter.Emit(context, decls, UserFormatters(ir, decls), FormattersPath(options)));
         foreach (var export in ir.Exports.Where(e => (e.Targets & (int)Flag) != 0))
             files.AddRange(ProxyEmitter.Emit(context, export, PackagePath(options)));
-        return files;
+        return JavaNullness.Keep(options, EmitsRuntime(options)) ? files : files.Select(f => f with { Content = JavaNullness.Strip(f.Content) }).ToArray();
+    }
+
+    /// <summary>The root of the runtime sources in the output directory: its package, <c>com/dtronix/nexnet/</c>.</summary>
+    internal const string RuntimePath = "com/dtronix/nexnet/";
+
+    /// <summary>
+    /// D31: the nexnet-client sources under <c>com/dtronix/nexnet/</c>, each after the runtime header line, the
+    /// <c>NexusRuntimeVersion</c> class Gradle generates in the workspace build, and <c>LICENSE.txt</c>. Without JSpecify
+    /// annotations unless <c>Nullness=jspecify</c>.
+    /// </summary>
+    protected override IEnumerable<GeneratedFile> EmitRuntimeCore(TargetOptions options)
+    {
+        var keep = JavaNullness.Keep(options, emitsRuntime: true);
+        var header = EmbeddedRuntime.HeaderLine("//") + "\n";
+        foreach (var source in EmbeddedRuntime.Sources(Id))
+            yield return new GeneratedFile(source.Path, header + (keep ? source.Content : JavaNullness.Strip(source.Content)));
+
+        yield return new GeneratedFile(RuntimePath + "NexusRuntimeVersion.java", header
+            + "package com.dtronix.nexnet;\n"
+            + "\n"
+            + "/** The NexNet version of this runtime, written by NexNet.Generator. */\n"
+            + "final class NexusRuntimeVersion {\n"
+            + "    static final String VALUE = \"" + EmbeddedRuntime.Version + "\";\n"
+            + "\n"
+            + "    private NexusRuntimeVersion() {\n"
+            + "    }\n"
+            + "}\n");
+        yield return new GeneratedFile(RuntimePath + "LICENSE.txt", EmbeddedRuntime.License);
     }
 
     /// <summary>The native formatters (D12) of every external type the Java code serializes, by formatter class.</summary>
