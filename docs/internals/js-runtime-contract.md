@@ -94,20 +94,142 @@ an amendment instead.
 
 ## 3. API
 
-### 3.1 Codec (`codec.js`)
+### 3.1 Codec and formatter API (`codec.js`, J02)
 
-- `Formatter<T>` is `{ write(writer, value): void, read(reader): T }`, a stateless plain object.
-- `MsgPackWriter`: canonical (smallest) MessagePack into a growable buffer. `writeNil`, `writeBool`, `writeInt`
-  (safe-integer `number`), `writeInt64`/`writeUInt64` (`bigint`), `writeFloat32`, `writeFloat64`, `writeString`,
-  `writeBin`, `writeArrayHeader`, `writeMapHeader`, `writeExt`, `writeRaw`, `length`, `toUint8Array`, `reset`.
-- `MsgPackReader`: over one `Uint8Array` or a list of segments, hardened by `SerializerOptions` (`preset`, `maxDepth`,
-  `maxElements`, `strictUtf8`). `tryReadNil`, `readBool`, `readInt`, `readInt64`, `readUInt64`, `readFloat`,
-  `readString`, `readBin`, `readArrayHeader`, `readMapHeader`, `readExt`, `skip`, `remaining`.
-- `FormatterRegistry`: `register(key, formatter)`, `get(key)`, `tryGet(key)`.
-- `tupleFormatter(...formatters)`: tuples are JS arrays.
+`codec.js` re-exports `MsgPackWriter`, `MsgPackReader`, `FormatterRegistry` and `tupleFormatter` from
+`src/serialization/` (J02). The main entries also export `NexusSerializationError`, `NexusSerializerOptions`, every
+built-in formatter and combinator below, and the Guid helpers. `src/serialization/index.js` additionally exports
+`resolveSerializerOptions`, the ext 78 helpers (`PRIMITIVE_ARRAY_EXT`, `ElementKinds`, `readPrimitiveArray`,
+`writePrimitiveArray`) and the half helpers (`halfToBits`, `halfFromBits`, `roundToHalf`); these are internal to the
+package and not on the main entries. The wire encodings are protocol specification §10; the decoding limits are §11.
 
-J02 adds the built-in formatters and may add reader/writer members (for example ext 78 primitive arrays); it may not
-rename the ones above.
+**`Formatter<T>`** is `{ write(writer, value): void, read(reader): T }`, a stateless, frozen plain object.
+
+- `write` writes exactly one MessagePack value. It throws `TypeError` for a value of the wrong JS type and
+  `RangeError` for one outside the C# type's range; it never throws `NexusSerializationError`.
+- `read` reads exactly one value and throws `NexusSerializationError` for input it refuses.
+- A formatter of a container (sequence, set, map, tuple, `KeyValuePair`, object, union) calls `reader.enter()` before
+  its array or map header and `reader.exit()` after its last element. That is what `maxDepth` counts.
+
+**`MsgPackWriter`** (`new MsgPackWriter({ initialCapacity? })`, default 256 bytes) appends canonical (smallest-form)
+MessagePack to a growable buffer. A method that throws leaves the buffer unchanged.
+
+| Member | Writes |
+|---|---|
+| `writeNil()`, `writeBool(v)` | nil, bool |
+| `writeInt(v)` | a safe-integer `number` in its smallest form. The target range (sbyte … uint, checked `long`/`ulong`) is the formatter's job |
+| `writeInt64(v)`, `writeUInt64(v)` | a `bigint`, range-checked to int64/uint64 |
+| `writeFloat32(v)`, `writeFloat64(v)` | float32 (rounded) and float64 |
+| `writeString(v)` | UTF-8 str, or nil for null. A lone surrogate becomes U+FFFD |
+| `writeBin(v)` | bin of a `Uint8Array`, or nil for null |
+| `writeBinHeader(length)`, `writeExtHeader(type, length)` | (J02) a header only; the caller appends the data with `writeRaw` |
+| `writeArrayHeader(count)`, `writeMapHeader(count)` | array and map headers (count 0 … 2^32 − 1) |
+| `writeExt(type, data)` | ext of type −128 … 127 |
+| `writeRaw(bytes)` | bytes as they are: already-encoded MessagePack, or the data after a header |
+| `length`, `toUint8Array()`, `reset()` | bytes written; a view valid until the next write or `reset`; clear and keep the capacity |
+
+**`MsgPackReader`** (`new MsgPackReader(source, options?)`) reads one `Uint8Array` or an array of segments (not copied;
+do not change them while reading), hardened by `SerializerOptions`. Every read checks the bytes it needs, and counts
+and lengths are checked against the remaining input before anything is allocated.
+
+| Member | Reads |
+|---|---|
+| `options`, `remaining`, `consumed`, `depth` | (J02) the resolved options; bytes left; bytes read; current nesting |
+| `peekCode()`, `isNil` | (J02) the next type code / whether it is nil, not consumed |
+| `tryReadNil()`, `readNil()` | consumes nil when present / requires it |
+| `readBool()` | bool |
+| `readInt()` | any integer form as a `number`; `range` when not a safe integer |
+| `readSByte()`, `readByte()`, `readInt16()`, `readUInt16()`, `readInt32()`, `readUInt32()` | (J02) any integer form, range-checked to the C# type (`range`) |
+| `readInt64()`, `readUInt64()` | a `bigint`, range-checked |
+| `readFloat()` | float32, float64 or any integer form as a `number`; the caller rounds to float32 or half |
+| `readString()` | a string, or null for nil; invalid UTF-8 is `utf8` with `strictUtf8`, U+FFFD otherwise |
+| `readBin()`, `readBinHeader()`, `readBytes(n)` | bin as a new array, or null for nil (str forms accepted); (J02) the length or −1 for nil; `n` raw bytes as a new array |
+| `readArrayHeader(expected?)` | the count; with `expected`, a different count is `count`. Counts toward `maxElements` |
+| `readMapHeader()` | the entry count; each entry counts its key and its value toward `maxElements` |
+| `readExt()`, `readExtHeader()` | `{ type, data }` with a new array; (J02) `{ type, length }` |
+| `skip()` | one complete value, iteratively; counts neither depth nor elements |
+| `readRaw()` | (J02) one complete value's bytes as a new array (an embedded value carried as is) |
+| `enter()`, `exit()`, `ensureEnd()` | (J02) one nesting level (`depth` past `maxDepth`); leave it; `trailing` unless every byte was read |
+
+**`NexusSerializationError`** (extends `NexusError`, mirrors C# `NexusSerializationException`) is what readers and
+formatters throw for input they refuse. Its `kind` is a `SerializationErrorKind`, the error kinds of the golden format
+(`tests/golden/README.md`):
+
+| `kind` | Meaning |
+|---|---|
+| `truncated` | the input ends inside the value |
+| `type` | a MessagePack type the expected type cannot be read from (nil for a value type, a float for an integer, …) |
+| `reserved` | the never-used code `0xc1` |
+| `range` | an integer outside the target type |
+| `count` | an array with the wrong number of elements for a fixed shape |
+| `size` | a wrong byte length for a fixed-size bin or for ext 78 data |
+| `length` | a declared str/bin/ext length or array/map count larger than the remaining input |
+| `elements` | more elements than `maxElements` |
+| `depth` | more nesting than `maxDepth` |
+| `utf8` | invalid UTF-8 with `strictUtf8` |
+| `value` | a well-formed but invalid value (a date out of range, a decimal scale above 28, an unknown union tag, …) |
+| `trailing` | bytes after the value |
+
+**`SerializerOptions`** (C# `NexusSerializerOptions`, spec §11) is `{ preset?, maxDepth?, maxElements?, strictUtf8? }`.
+`preset` picks the base values and explicit fields override them; `resolveSerializerOptions(options)` applies them
+and throws `RangeError` for a negative or non-numeric limit. The presets are `NexusSerializerOptions.Untrusted` (the
+default: `maxDepth` 64, `strictUtf8` true) and `NexusSerializerOptions.Trusted` (`maxDepth` unlimited, `strictUtf8`
+false). On a bare reader `maxElements` 0 (both presets) means no limit. **The session supplies the default** (J21): it
+resolves `ClientConfig.serializerOptions` with an unset `maxElements` (undefined, null or 0, meaning "use the
+default", as in C# `ConfigBase.SerializerOptions`) replaced by `max(65536, maxMessageSize / 16)`, so every reader the
+session creates (invocation arguments and results, channel items) is bounded. An explicit positive value
+is used as is.
+
+**Built-in formatters** (`src/serialization/formatters.js`). Value types (C# structs) are never nil: reading nil throws
+`type` and writing null throws `TypeError`; wrap them in `nullableFormatter` for `T?`. Reference types map nil to and
+from `null`.
+
+| C# | Formatter | JS value |
+|---|---|---|
+| `bool` | `boolFormatter` | `boolean` |
+| `sbyte`, `byte`, `short`, `ushort`, `int`, `uint` | `sbyteFormatter`, `byteFormatter`, `int16Formatter`, `uint16Formatter`, `int32Formatter`, `uint32Formatter` | `number`, range-checked both ways |
+| `long`, `ulong` | `int64Formatter`, `uint64Formatter` | `bigint` (the default, D13) |
+| `long`, `ulong` (checked number) | `int64NumberFormatter`, `uint64NumberFormatter` | safe-integer `number` (below) |
+| `float`, `double`, `Half` | `float32Formatter`, `float64Formatter`, `halfFormatter` | `number` (float32 rounds with `Math.fround`; `Half` rounds to the nearest half, written as float32) |
+| `char` | `charFormatter` | a 1-unit `string` (a lone surrogate included) |
+| `string`, `Uri` | `stringFormatter`, `uriFormatter` | `string \| null` |
+| `byte[]`, `Memory<byte>` and the other byte buffers | `binFormatter` | `Uint8Array \| null` |
+| `decimal` | `decimalFormatter` | `NexusDecimal` |
+| `DateTime`, `DateTimeOffset`, `TimeSpan`, `DateOnly`, `TimeOnly` | `dateTimeFormatter`, `dateTimeOffsetFormatter`, `timeSpanFormatter`, `dateOnlyFormatter`, `timeOnlyFormatter` | the value types of §3.2 |
+| `Guid` | `guidFormatter` | lower-case "D" `string` (writes accept "D", "N" and "B" in any case) |
+| `BigInteger` | `bigIntegerFormatter` | `bigint` |
+| `Version` | `versionFormatter` | `NexusVersion \| null` |
+| an embedded raw value | `rawFormatter` | `Uint8Array` of one complete MessagePack value |
+| `sbyte[]`, `short[]`, `ushort[]`, `int[]`, `uint[]`, `long[]`, `ulong[]`, `float[]`, `double[]`, `char[]`, `Half[]` (ext 78, spec §10.5) | `int8ArrayFormatter`, `int16ArrayFormatter`, `uint16ArrayFormatter`, `int32ArrayFormatter`, `uint32ArrayFormatter`, `int64ArrayFormatter`, `uint64ArrayFormatter`, `float32ArrayFormatter`, `float64ArrayFormatter`, `charArrayFormatter`, `halfArrayFormatter` | the matching typed array (`char` → `Uint16Array`, `Half` → `Float32Array`) or null; writes accept any array-like |
+
+**Checked-number mapping (D13).** `long`/`ulong` are `bigint` by default. A member or assembly that opts in to the
+checked `number` mapping uses `int64NumberFormatter` (±(2^53 − 1)) or `uint64NumberFormatter` (0 … 2^53 − 1). Writing
+a value outside that range throws `RangeError`; reading one throws `NexusSerializationError` `range`. Nothing is ever
+silently rounded.
+
+**Combinators.** Each returns a new formatter; every container is one nesting level.
+
+| Combinator | C# | JS value |
+|---|---|---|
+| `nullableFormatter(item)` | `T?` of a value type | `T \| null` |
+| `arrayFormatter(item)` | `T[]`, `List<T>` and the list interfaces, `Queue<T>` (front first), `Stack<T>` (top first) of a non-primitive `T` | `T[] \| null`; writes accept any iterable |
+| `setFormatter(item)` | `HashSet<T>` | `Set<T> \| null` (members compare by identity) |
+| `mapFormatter(key, value)` | `Dictionary<K,V>` and the dictionary interfaces | `Map<K,V> \| null` (never a plain object; keys compare by identity, NEXNET046; a repeated key keeps the last value); writes accept a `Map` or an iterable of `[key, value]` |
+| `tupleFormatter(...formatters)` | `ValueTuple<…>` | an array of exactly that many elements; a struct, so wrap it in `nullableFormatter` for `Tuple<…>` or `(A, B)?` |
+| `keyValuePairFormatter(key, value)` | `KeyValuePair<K,V>` | `[key, value]` |
+
+**`FormatterRegistry`** holds formatters by string key: `register(key, formatter)` (throws `TypeError` for a
+non-string key or a value without `write`/`read`, and `Error` for a key already registered), `get(key)` (throws when
+missing) and `tryGet(key)` (undefined when missing). Generated code registers user target formatters (D12) and generic
+instantiations there.
+
+**Guid helpers** (`src/values/guid.js`). A Guid is its lower-case "D" string. `EMPTY_GUID`; `parseGuid(text)`
+normalizes the "D", "N" or "B" form in any case (`SyntaxError` otherwise); `guidToBytes`/`guidFromBytes` convert to and
+from the 16 RFC 4122 (big-endian) bytes, which are the wire form (spec §10.6); `guidToDotNetBytes`/`guidFromDotNetBytes`
+convert to and from the mixed-endian bytes of C# `Guid.ToByteArray()`, which are **not** the wire form.
+
+The members named in J01's skeleton are frozen. J02's additions, marked (J02) above, are part of the contract from
+J02 on; adding a member is not a contract change, renaming or removing one is.
 
 ### 3.2 Value types (`values.js`)
 
@@ -124,8 +246,21 @@ Names match the G03 JavaScript type mapper (`src/NexNet.Generator/Targets/JavaSc
 | `Version` | `NexusVersion`, also exported as **`Version`** (the name the type mapper emits) | `major`, `minor`, `build`, `revision` (-1 when absent) |
 | tuples | arrays; `tuple(...items)` fixes the TS tuple type | |
 
-Fields are public and `readonly`. Each type has `equals(other)` and conversions (`toDate`/`fromDate`, `parse`,
-`toString`, …), implemented by J02.
+Fields are public and `readonly`. Constructors and factories throw `RangeError` for an out-of-range value, and `parse`
+throws `SyntaxError` for malformed text. Every type has `equals(other)`.
+Conversions (J02):
+
+| Type | Members |
+|---|---|
+| `NexusDecimal` | `static parse(text)`, `static fromNumber(v)`, `static fromBits(lo, mid, hi, flags)`, `toBits()`, `toNumber()`, `toString()` |
+| `NexusDateTime` | `static fromDate(date, kind = Utc)`, `static fromBinary(v)`, `toBinary()` (the wire int64, C# `ToBinary`), `toDate()`. A `Local` value holds its instant's UTC ticks |
+| `NexusDateTimeOffset` | `static fromUtcTicks(utcTicks, offsetMinutes)`, `static fromDate(date, offsetMinutes = 0)`, `utcTicks`, `toDate()` |
+| `NexusTimeSpan` | `static fromMilliseconds(ms)`, `totalMilliseconds` |
+| `NexusDateOnly` | `static fromParts(year, month, day)`, `year`, `month`, `day` |
+| `NexusTimeOnly` | `static fromParts(hour, minute, second = 0, millisecond = 0)` |
+| `NexusVersion` | `static parse(text)`, `toString()` |
+
+`DateTimeKind` is `{ Unspecified: 0, Utc: 1, Local: 2 }`.
 
 ### 3.3 Client (`client.js`, `config.js`, `transport.js`)
 
