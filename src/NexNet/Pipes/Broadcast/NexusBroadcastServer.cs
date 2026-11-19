@@ -99,16 +99,19 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         var session = client.Session;
         Logger?.LogTrace($"S{session.Id} Sending client init data");
 
-        // Initialize the client's data. The snapshot and the registration run on the processing loop, so no change
-        // is applied between them: every change before it is in the snapshot and is not sent to this client, and
-        // every change after it is broadcast to this client after the snapshot (protocol specification §12).
+        // Initialize the client's data. The snapshot is captured and the client registered on the processing loop,
+        // so no change is applied between them: every change before it is in the snapshot and is not sent to this
+        // client, and every change after it is broadcast to this client after the snapshot (protocol specification
+        // §12). The broadcasts wait in the client's buffer until the snapshot is written.
         bool initialized;
+        IEnumerable<TUnion>? snapshot = null;
         try
         {
-            _connectionManager.StartClient(client);
             initialized = await Processor.EnqueueActionWaitForResult(async ct =>
             {
-                OnConnected(client);
+                snapshot = CaptureSnapshot();
+                if (snapshot == null)
+                    OnConnected(client);
                 await _connectionManager.RegisterClientAsync(client, ct).ConfigureAwait(false);
             }).ConfigureAwait(false);
         }
@@ -121,6 +124,35 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         if (!initialized)
         {
             Logger?.LogWarning($"S{session.Id} Could not send client init data. Connection will be closed.");
+            await pipe.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+
+        // A legacy snapshot written straight into the buffer must fit in it: never leave the client a partial one.
+        if (client.BufferOverflowed)
+        {
+            Logger?.LogWarning(
+                $"S{session.Id} Collection snapshot does not fit in the client buffer ({NexusBroadcastSession<TUnion>.BufferCapacity} messages). Connection will be closed.");
+            await pipe.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+
+        // Write the snapshot off the processing loop, waiting on the pipe's flow control, so a large snapshot
+        // never overflows the client's buffer and a slow client does not hold up the other clients.
+        if (snapshot != null && !await WriteSnapshotAsync(client, snapshot).ConfigureAwait(false))
+        {
+            await pipe.CompleteAsync().ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            // Sends the broadcasts buffered since the registration, then every later one.
+            _connectionManager.StartClient(client);
+        }
+        catch (Exception e)
+        {
+            Logger?.LogWarning(e, $"S{session.Id} Could not start the collection writer. Connection will be closed.");
             await pipe.CompleteAsync().ConfigureAwait(false);
             return;
         }
@@ -304,7 +336,76 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         }
     }
     
-    protected abstract void OnConnected(NexusBroadcastSession<TUnion> client);
+    /// <summary>
+    /// Writes the snapshot messages to the client in order, waiting for the pipe to accept each one. Every message
+    /// is returned to its pool.
+    /// </summary>
+    /// <returns>True when the whole snapshot was written; false when the client closed or a write failed.</returns>
+    private async ValueTask<bool> WriteSnapshotAsync(NexusBroadcastSession<TUnion> client, IEnumerable<TUnion> snapshot)
+    {
+        var sent = 0;
+        try
+        {
+            foreach (var message in snapshot)
+            {
+                bool written;
+                try
+                {
+                    written = await client.SendAsync(message, client.CompletionToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    message.Return();
+                }
+
+                if (!written)
+                {
+                    Logger?.LogInfo(
+                        $"S{client.Id} Collection pipe closed after {sent} snapshot messages; the snapshot is incomplete. Closing the pipe.");
+                    return false;
+                }
+
+                sent++;
+            }
+
+            return true;
+        }
+        catch (OperationCanceledException) when (client.CompletionToken.IsCancellationRequested)
+        {
+            Logger?.LogInfo(
+                $"S{client.Id} Collection pipe closed after {sent} snapshot messages; the snapshot is incomplete.");
+            return false;
+        }
+        catch (Exception e)
+        {
+            Logger?.LogWarning(e,
+                $"S{client.Id} Could not write the collection snapshot after {sent} messages. Closing the pipe.");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Runs on the processing loop when a client connects. Captures the current state and returns the messages that
+    /// bring a new client to it (reset start, values, reset complete), or null to use <see cref="OnConnected"/>.
+    /// </summary>
+    /// <remarks>
+    /// Capture the state before returning: the messages are enumerated later, off the processing loop, while
+    /// changes go on. Each message is rented and is returned to its pool once written.
+    /// </remarks>
+    protected virtual IEnumerable<TUnion>? CaptureSnapshot()
+    {
+        return null;
+    }
+
+    /// <summary>
+    /// Legacy hook, called on the processing loop when <see cref="CaptureSnapshot"/> returns null: writes the
+    /// snapshot straight into the client's buffer. The buffer holds
+    /// <see cref="NexusBroadcastSession{TUnion}.BufferCapacity"/> messages; a snapshot that does not fit closes the
+    /// client's pipe. Prefer <see cref="CaptureSnapshot"/>, which writes with backpressure.
+    /// </summary>
+    protected virtual void OnConnected(NexusBroadcastSession<TUnion> client)
+    {
+    }
     protected abstract ProcessResult OnProcess(TUnion message,
         INexusBroadcastSession<TUnion>? sourceClient,
         CancellationToken ct);

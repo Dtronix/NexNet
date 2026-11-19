@@ -48,7 +48,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
     /// <summary>
     /// Starts the client's writer and adds the client to the broadcast list at once. Broadcasts already queued
     /// can reach the client before anything the caller writes to its buffer afterwards. A server that sends a
-    /// snapshot first uses <see cref="StartClient"/> and <see cref="RegisterClientAsync"/> instead.
+    /// snapshot first uses <see cref="RegisterClientAsync"/>, then <see cref="StartClient"/> once the snapshot is
+    /// written.
     /// </summary>
     /// <exception cref="InvalidOperationException">The broadcaster is not running.</exception>
     public void AddClientAsync(INexusBroadcastSession<TUnion> client)
@@ -59,9 +60,11 @@ internal class NexusBroadcastConnectionManager<TUnion>
 
     /// <summary>
     /// Queues the client's registration behind every broadcast already queued. The client receives only the
-    /// broadcasts queued after this call, and only after what is already in its buffer (its snapshot).
+    /// broadcasts queued after this call. They collect in its buffer until its writer starts
+    /// (<see cref="StartClient"/>), so a snapshot written to the client before that comes first. A client whose
+    /// buffer fills up is closed.
     /// </summary>
-    /// <param name="client">A client whose writer was started with <see cref="StartClient"/>.</param>
+    /// <param name="client">The client to register.</param>
     /// <param name="ct">Cancellation token.</param>
     public ValueTask RegisterClientAsync(INexusBroadcastSession<TUnion> client, CancellationToken ct = default)
     {
@@ -231,8 +234,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
                         {
                             if (!client.BufferTryWrite(broadcastMessage))
                             {
-                                broadcaster._logger?.LogTrace(
-                                    $"S{client.Id} Could not send to client collection");
+                                broadcaster._logger?.LogInfo(
+                                    $"S{client.Id} Collection client buffer is full: the client is not keeping up with the changes. Closing its pipe.");
                                 // Complete the pipe as it is full and not writing to the client at a decent
                                 // rate.
                                 await client.CompletePipe().ConfigureAwait(false);
@@ -315,7 +318,8 @@ internal class NexusBroadcastConnectionManager<TUnion>
             if (client.BufferTryWrite(control.Message))
                 return;
 
-            broadcaster._logger?.LogTrace($"S{client.Id} Could not send to client collection");
+            broadcaster._logger?.LogInfo(
+                $"S{client.Id} Collection client buffer is full: the client is not keeping up with the changes. Closing its pipe.");
             // The client's buffer is full: it is not keeping up, so close its pipe as a broadcast would.
             control.Message.SignalSent();
             await client.CompletePipe().ConfigureAwait(false);
