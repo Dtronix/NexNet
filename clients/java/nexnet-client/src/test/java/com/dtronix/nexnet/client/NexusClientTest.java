@@ -197,6 +197,16 @@ class NexusClientTest {
     }
 
     @Test
+    void theClockAndOptionsOverloadRefusesNullClockOrOptions() {
+        Transport.Connector connector = (config, timeout) -> new LoopbackTransport();
+        ClientConfig config = ClientConfig.tcp("h", 1).build();
+        assertThrows(NullPointerException.class, () -> NexusClient.create(config, HANDSHAKE, nexus, TestProxy::new,
+            connector, null, SessionOptions.defaults()));
+        assertThrows(NullPointerException.class, () -> NexusClient.create(config, HANDSHAKE, nexus, TestProxy::new,
+            connector, new ManualTimers(), null));
+    }
+
+    @Test
     void sendsTheTokenFromTheSupplierInTheGreeting() throws Exception {
         Server server = new Server(accept());
         NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1)
