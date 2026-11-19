@@ -1,0 +1,147 @@
+using NexNet.Collections;
+using NexNet.Collections.Lists;
+using NUnit.Framework;
+
+namespace NexNet.IntegrationTests.Collections;
+
+/// <summary>
+/// The server sends a new client its snapshot before any change, and answers a Noop after the change that made the
+/// request obsolete (protocol specification §12).
+/// </summary>
+internal class NexusCollectionSnapshotOrderTests : NexusCollectionBaseTests
+{
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.Uds)]
+    public async Task ClientsJoiningMidStream_ReceiveSnapshotBeforeChanges(Type type)
+    {
+        const int writers = 4;
+        const int writesPerWriter = 150;
+        const int joiners = 6;
+
+        var (server, client1, _) = await ConnectServerAndClient(type);
+        var serverList = server.NexusCreatedQueue.First().IntListBi;
+
+        var writerList = client1.Proxy.IntListBi;
+        Assert.That(await writerList.EnableAsync().Timeout(1), Is.True);
+
+        var joinerClients = new NexusClient<TestInterfaces.ClientNexus, TestInterfaces.ClientNexus.ServerProxy>[joiners];
+        for (var i = 0; i < joiners; i++)
+        {
+            (joinerClients[i], _) = CreateClient(CreateClientConfig(type));
+            await joinerClients[i].ConnectAsync().Timeout(1);
+        }
+
+        using var start = new ManualResetEventSlim(false);
+
+        // Server writers mix inserts, removes and replaces; one client writer goes through the processor too.
+        var writerTasks = Enumerable.Range(0, writers).Select(w => Task.Run(async () =>
+        {
+            start.Wait();
+            for (var i = 0; i < writesPerWriter; i++)
+            {
+                var value = w * 100_000 + i;
+                switch (i % 5)
+                {
+                    case 3 when serverList.Count > 10:
+                        await serverList.RemoveAtAsync(0).ConfigureAwait(false);
+                        break;
+                    case 4 when serverList.Count > 0:
+                        await serverList.ReplaceAsync(0, value).ConfigureAwait(false);
+                        break;
+                    default:
+                        await serverList.AddAsync(value).ConfigureAwait(false);
+                        break;
+                }
+            }
+        })).Append(Task.Run(async () =>
+        {
+            start.Wait();
+            for (var i = 0; i < writesPerWriter; i++)
+                await writerList.AddAsync(-i - 1).ConfigureAwait(false);
+        })).ToArray();
+
+        // Joiners enable while the writers run, then disable and enable again to take a second snapshot.
+        var joinerTasks = joinerClients.Select((c, i) => Task.Run(async () =>
+        {
+            start.Wait();
+            var list = c.Proxy.IntListBi;
+            await Task.Delay(i * 3).ConfigureAwait(false);
+            if (!await list.EnableAsync().ConfigureAwait(false))
+                throw new InvalidOperationException("Enable failed.");
+            await Task.Delay(5).ConfigureAwait(false);
+            await list.DisableAsync().ConfigureAwait(false);
+            if (!await list.EnableAsync().ConfigureAwait(false))
+                throw new InvalidOperationException("Second enable failed.");
+        })).ToArray();
+
+        start.Set();
+        await Task.WhenAll(writerTasks.Concat(joinerTasks)).Timeout(20);
+
+        var expected = serverList.ToArray();
+        var lists = joinerClients.Select(c => c.Proxy.IntListBi).Append(writerList).ToArray();
+
+        // Every broadcast is queued; wait for the clients to apply them.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline && !lists.All(l => l.SequenceEqual(expected)))
+            await Task.Delay(10);
+
+        for (var i = 0; i < lists.Length; i++)
+        {
+            var list = lists[i];
+            var listClient = (NexusListClient<int>)list;
+            Assert.Multiple(() =>
+            {
+                Assert.That(list.State, Is.EqualTo(NexusCollectionState.Connected), $"List {i} state");
+                Assert.That(list.ToArray(), Is.EqualTo(expected), $"List {i} contents");
+                Assert.That(listClient.TestChangesReceivedBeforeSnapshot, Is.Zero,
+                    $"List {i} received changes before its snapshot");
+            });
+        }
+    }
+
+    [TestCase(Type.Tcp)]
+    [TestCase(Type.Uds)]
+    public async Task ConcurrentRemove_LoserSeesWinningChangeBeforeFalse(Type type)
+    {
+        const int rounds = 30;
+
+        var (server, client1, _) = await ConnectServerAndClient(type);
+        var serverList = server.NexusCreatedQueue.First().IntListBi;
+        var (client2, _) = CreateClient(CreateClientConfig(type));
+        await client2.ConnectAsync().Timeout(1);
+
+        for (var i = 0; i < rounds; i++)
+            await serverList.AddAsync(i).Timeout(1);
+
+        var list1 = client1.Proxy.IntListBi;
+        var list2 = client2.Proxy.IntListBi;
+        Assert.That(await list1.EnableAsync().Timeout(1), Is.True);
+        Assert.That(await list2.EnableAsync().Timeout(1), Is.True);
+
+        var noops = 0;
+        for (var round = 0; round < rounds / 2; round++)
+        {
+            // Both lists hold every change made so far: each request completes after its own change, or after the
+            // change that made it obsolete.
+            var deadline = DateTime.UtcNow.AddSeconds(1);
+            while (DateTime.UtcNow < deadline && (list1.Count != serverList.Count || list2.Count != serverList.Count))
+                await Task.Delay(1);
+
+            var results = await Task.WhenAll(list1.RemoveAtAsync(0), list2.RemoveAtAsync(0)).Timeout(1);
+
+            // Read before anything else runs: the lists must already hold the winning change.
+            int count1 = list1.Count, count2 = list2.Count, serverCount = serverList.Count;
+            if (results.Contains(false))
+                noops++;
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(results, Has.Some.True, $"Round {round}");
+                Assert.That(count1, Is.EqualTo(serverCount), $"Round {round}: list 1 behind the server");
+                Assert.That(count2, Is.EqualTo(serverCount), $"Round {round}: list 2 behind the server");
+            });
+        }
+
+        Assert.That(noops, Is.GreaterThan(0), "No round produced a Noop.");
+    }
+}
