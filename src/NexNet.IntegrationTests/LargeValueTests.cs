@@ -49,6 +49,24 @@ internal class LargeValueTests(LanguageHostPool hosts) : InvocationMatrixTests(h
         await DisconnectAndAudit(client);
     }
 
+    /// <summary>C#-only QUIC companion of <see cref="LargeArgumentAndResult_RoundTrip"/> (no QUIC interop endpoint yet; H16).</summary>
+    [Test]
+    [Arguments(128 * 1024)]
+    [Arguments(1024 * 1024)]
+    [Arguments(4 * 1024 * 1024 - 1024)]
+    public async Task LargeArgumentAndResult_RoundTrip_Quic(int size)
+    {
+        var server = CreateServer(CreateServerConfig(Type.Quic), null);
+        await server.StartAsync().Timeout(T(TestTimeouts.Connect));
+        var (client, _) = CreateClient(CreateClientConfig(Type.Quic));
+        await client.ConnectAsync().Timeout(T(TestTimeouts.Connect));
+
+        var data = PipePattern.Create(size, size);
+        var echoed = await client.Proxy.ServerEcho(data).Timeout(T(10));
+        await Assert.That(Digest(echoed)).IsEqualTo(Digest(data));
+        await Assert.That(await client.Proxy.ServerDataResult(10).Timeout(T(1))).Count().IsEqualTo(10);
+    }
+
     [Test]
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp])]
     public async Task FireAndForgetLargeArgument_IsDelivered(ClientTarget target)
