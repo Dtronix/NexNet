@@ -4,6 +4,7 @@
  * @module
  */
 
+import { createHash } from 'node:crypto';
 import net from 'node:net';
 import tls from 'node:tls';
 import { cancellationError } from '../../contract/errors.js';
@@ -13,7 +14,8 @@ import { transportError } from '../TransportBase.js';
  * Builds `tls.connect` / `https.request` options from {@link import('../../contract/config.js').TlsOptions}.
  * The host name is verified (Node's `tls.checkServerIdentity`) unless `rejectUnauthorized` is false; a user
  * `checkServerIdentity` runs in addition to it, after it passes (pinning). SNI is the configured `servername`, else
- * the host when it is a DNS name (never an IP literal, RFC 6066).
+ * the host when it is a DNS name (never an IP literal, RFC 6066). `pins` are not part of the result: the transports
+ * check them after the handshake with {@link checkPins}.
  *
  * @param {import('../../contract/config.js').TlsOptions | undefined} options
  * @param {string} host
@@ -36,6 +38,73 @@ export function tlsConnectOptions(options, host) {
     out.checkServerIdentity = (hostname, certificate) => tls.checkServerIdentity(hostname, certificate) ?? extra(hostname, certificate);
   }
   return out;
+}
+
+/** Base64 or base64url text, padded or not. */
+const BASE64 = /^[A-Za-z0-9+/_-]+={0,2}$/;
+
+/**
+ * Decodes `TlsOptions.pins` into 32-byte SHA-256 values. Each pin is base64 (or base64url) text, or the raw bytes.
+ *
+ * @param {import('../../contract/config.js').TlsOptions | undefined} options
+ * @returns {Buffer[]} Empty when no pin is set.
+ * @throws {TypeError} A pin is not 32 bytes of SHA-256 in base64 or a `Uint8Array`.
+ */
+export function tlsPins(options) {
+  const pins = options?.pins;
+  if (pins === undefined || pins === null) return [];
+  if (!Array.isArray(pins)) throw new TypeError('TlsOptions.pins must be an array.');
+  return pins.map((pin, i) => {
+    /** @type {Buffer} */
+    let bytes;
+    if (typeof pin === 'string') {
+      if (!BASE64.test(pin)) throw new TypeError(`TlsOptions.pins[${i}] is not base64.`);
+      bytes = Buffer.from(pin, 'base64');
+    } else if (pin instanceof Uint8Array) {
+      bytes = Buffer.from(pin);
+    } else {
+      throw new TypeError(`TlsOptions.pins[${i}] must be a base64 string or a Uint8Array.`);
+    }
+    if (bytes.length !== 32) throw new TypeError(`TlsOptions.pins[${i}] is not a SHA-256 value (32 bytes).`);
+    return bytes;
+  });
+}
+
+/**
+ * Checks the server chain of a connected TLS socket against the pins (Java `TlsOptions` parity): a pin matches a
+ * chain certificate when it equals the SHA-256 of the certificate's DER encoding or of its DER
+ * SubjectPublicKeyInfo. The connection is accepted when any pin matches any certificate of the chain the server
+ * sent (leaf, intermediates and, when Node can find it, the root). Runs after the handshake, so it applies with
+ * `rejectUnauthorized: false` too.
+ *
+ * @param {import('node:tls').TLSSocket} socket
+ * @param {Buffer[]} pins From {@link tlsPins}. Empty accepts every chain.
+ * @returns {Error | undefined} An error with code `ERR_TLS_CERT_PIN_MISMATCH` when no pin matches.
+ */
+export function checkPins(socket, pins) {
+  if (pins.length === 0) return undefined;
+  /** @type {import('node:tls').DetailedPeerCertificate | undefined} */
+  let cert = socket.getPeerCertificate(true);
+  /** @type {Set<unknown>} */
+  const seen = new Set();
+  while (cert !== undefined && cert !== null && cert.raw !== undefined && !seen.has(cert)) {
+    seen.add(cert);
+    const hashes = [sha256(cert.raw)];
+    if (cert.pubkey !== undefined) hashes.push(sha256(cert.pubkey));
+    if (hashes.some((h) => pins.some((p) => p.equals(h)))) return undefined;
+    cert = cert.issuerCertificate;
+  }
+  const error = /** @type {Error & { code: string }} */ (new Error('The server certificate chain matches no pinned certificate.'));
+  error.code = 'ERR_TLS_CERT_PIN_MISMATCH';
+  return error;
+}
+
+/**
+ * @param {Uint8Array} data
+ * @returns {Buffer}
+ */
+function sha256(data) {
+  return createHash('sha256').update(data).digest();
 }
 
 /**

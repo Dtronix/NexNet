@@ -17,7 +17,13 @@
  * @property {string} [passphrase] Passphrase for `key` or `pfx`.
  * @property {string} [servername] SNI and hostname-verification name. Default: the URL or `host` name.
  * @property {boolean} [rejectUnauthorized] Default true.
- * @property {(hostname: string, certificate: unknown) => Error | undefined} [checkServerIdentity] Extra server check, e.g. SPKI pinning.
+ * @property {(hostname: string, certificate: unknown) => Error | undefined} [checkServerIdentity] Extra server check.
+ *   Node calls it only when the chain is trusted.
+ * @property {Array<string | Uint8Array>} [pins] Certificate pins: SHA-256 values (base64 text or 32 bytes). A pin
+ *   matches a server chain certificate when it equals the SHA-256 of the certificate's DER encoding or of its DER
+ *   SubjectPublicKeyInfo (the HPKP `pin-sha256` form). With pins set, the connect succeeds only when some pin
+ *   matches some chain certificate, in addition to the CA check; with `rejectUnauthorized: false` the pins alone
+ *   decide. A mismatch fails the connect with `AuthenticationError`. Empty or unset: no pinning.
  */
 
 /**

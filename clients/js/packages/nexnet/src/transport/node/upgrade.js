@@ -7,7 +7,7 @@
 import http from 'node:http';
 import https from 'node:https';
 import { upgradeRefused } from '../TransportBase.js';
-import { abortableConnect, connectError, tlsConnectOptions, urlHost } from './common.js';
+import { abortableConnect, checkPins, connectError, tlsConnectOptions, tlsPins, urlHost } from './common.js';
 
 /**
  * @typedef {object} UpgradeResult
@@ -19,7 +19,8 @@ import { abortableConnect, connectError, tlsConnectOptions, urlHost } from './co
 /**
  * Sends `GET <path>` with `Connection: Upgrade` on a fresh connection (no agent, no pooling) and resolves on the
  * `101`. Any other status rejects with the mapped `NexusTransportError` (`upgradeRefused`). Over TLS it offers
- * ALPN `http/1.1` only (§13.6), so the server cannot pick HTTP/2.
+ * ALPN `http/1.1` only (§13.6), so the server cannot pick HTTP/2. With `tls.pins` set, the request (and so its
+ * headers) is sent only after the handshake and a matching pin; a mismatch rejects with `AuthenticationError`.
  *
  * @param {object} init
  * @param {'HttpSocket' | 'WebSocket'} init.transport For messages and status mapping.
@@ -43,6 +44,7 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
       headers,
       agent: false,
     };
+    const pins = secure ? tlsPins(tls) : [];
     if (secure) Object.assign(options, tlsConnectOptions(tls, host), { ALPNProtocols: ['http/1.1'] });
     const request = (secure ? https : http).request(options);
     let tcpConnected = false;
@@ -50,7 +52,15 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
     request.once('socket', (socket) => {
       socket.setNoDelay(true);
       socket.once('connect', () => { tcpConnected = true; });
-      if (secure) socket.once('secureConnect', () => { tlsDone = true; });
+      if (secure) {
+        socket.once('secureConnect', () => {
+          tlsDone = true;
+          if (pins.length === 0) return;
+          const pinError = checkPins(/** @type {import('node:tls').TLSSocket} */ (socket), pins);
+          if (pinError !== undefined) reject(connectError(what, pinError, { tlsPhase: true }));
+          else request.end();
+        });
+      }
     });
     request.on('error', (error) => reject(connectError(what, error, { tlsPhase: tcpConnected && !tlsDone })));
     request.once('response', (response) => {
@@ -67,7 +77,8 @@ export function httpUpgrade({ transport, url, secure, headers, tls, signal }) {
       socket.pause();
       resolve({ response, socket, head });
     });
-    request.end();
+    // Pinned: hold the request until the pins are checked, so no header reaches an unpinned server.
+    if (pins.length === 0) request.end();
     return () => request.destroy();
   });
 }
