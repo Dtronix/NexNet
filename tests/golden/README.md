@@ -31,6 +31,7 @@ into a temporary directory and fails if they differ from the checked-in files, s
 | `unions.jsonl` | unions over an abstract class and an interface |
 | `messages.jsonl` | protocol message bodies (protocol specification §4), including the `ClientGreeting` golden |
 | `frames.jsonl` | the connection preamble and frames (§1, §2) |
+| `collections.jsonl` | collection-sync items (§4.11, §12), type `CollectionListMessage`: every item tag, with and without Ack, version 0 and above 0, embedded `int` and `string` values |
 | `reject.jsonl` | every `reject` vector: input a reader must refuse |
 | `schemas.jsonl` | the declared types the vectors name: zoo objects, unions and enums, externals and message bodies |
 
@@ -168,12 +169,14 @@ One declared type per line. Member and field types are type expressions.
 ```
 
 - **object**: a `[NexusObject]` class or struct, an array of `length` elements; `members` are `[key, name, type]` (§10.2).
-- **union**: `[tag, value]`; `cases` are `[tag, case id]`; the cases share the union's type parameters (§10.3).
+- **union**: `[tag, value]`; `cases` are `[tag, case id]`; the cases share the union's type parameters (§10.3). A case
+  may also be a message body: `CollectionListMessage` (§4.11) is a union of the `CollectionList*` messages.
 - **enum**: the underlying integer type.
 - **external**: a type with a user formatter (D12). Its value is the base64 of its bytes; `note` describes its layout.
 - **message**: a protocol message body (§4). `messageType` is its frame type, or `null` for a value embedded in another
-  message (`RemoteErrorDetail`). A reader accepts `minCount` to `maxCount` elements; `maxCount: null` means it skips
-  any elements after the known ones (`ServerGreeting`'s trailing fields). Missing trailing fields decode as 0.
+  message (`RemoteErrorDetail`) or a union case (the `CollectionList*` item bodies). A reader accepts `minCount` to
+  `maxCount` elements; `maxCount: null` means it skips any elements after the known ones (`ServerGreeting`'s trailing
+  fields). Missing trailing fields decode as 0.
 
 Ids are the C# type names without namespace or generic arity. The zoo entries come from the generator's description of
 the interop nexus types (`src/NexNet.TestNexus/Interop/InteropTypes.cs`), so they always match the generated code.
