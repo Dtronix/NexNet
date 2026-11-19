@@ -100,9 +100,10 @@ describe('NexusMetrics', () => {
     const after = collect(m);
     expect(after['nexnet.session.active']).toBe(0);
     expect(after['nexnet.io.bytes/received']).toBe(live['nexnet.io.bytes/received']);
+    // C# order: the duration, then the disconnect.
     expect(pushed).toEqual([
-      ['add', 'nexnet.session.disconnects', 1, { 'nexnet.role': 'client', 'nexnet.transport': 'tcp', 'nexnet.disconnect.reason': 'socket_error', 'nexnet.session.phase': 'established' }],
       ['record', 'nexnet.session.duration', 2.5, { 'nexnet.role': 'client', 'nexnet.transport': 'tcp', 'nexnet.disconnect.reason': 'socket_error' }],
+      ['add', 'nexnet.session.disconnects', 1, { 'nexnet.role': 'client', 'nexnet.transport': 'tcp', 'nexnet.disconnect.reason': 'socket_error', 'nexnet.session.phase': 'established' }],
     ]);
 
     // A second session adds to the cumulative counters; untracking keeps them.

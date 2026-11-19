@@ -3,9 +3,10 @@
  * `TimeSpan`) are milliseconds; IDs are as on the wire (`id` is a bigint). The field names are checked against
  * `tests/golden/snapshot-fields.json`, exported from the C# records.
  *
- * Values a runtime layer does not expose yet are null. A layer provides its part by implementing the optional
- * provider members: `session.snapshot()` → {@link SessionSnapshotPart}, `invocationManager.snapshot()` →
- * {@link NexusInvocationSnapshot}, and `session.pipeSnapshots()` / `session.largeMessageSnapshots()`.
+ * Every layer provides its part (J17): `session.snapshot()` → {@link SessionSnapshotPart},
+ * `invocationManager.snapshot()` → {@link NexusInvocationSnapshot}, and `session.pipeSnapshots()` /
+ * `session.largeMessageSnapshots()`, which the pipe and invocation layers feed through `session.addSnapshotSource`.
+ * A field is null only where the C# field is null (`endpoint` on a client, a wait or a time that has not started).
  * @module
  */
 
@@ -21,19 +22,19 @@ import { transportTagOf } from '../metrics/instruments.js';
 
 /**
  * @typedef {object} NexusInvocationSnapshot
- * @property {number | null} queued
- * @property {number | null} executing
+ * @property {number} queued
+ * @property {number} executing
  * @property {number} maxExecuting
- * @property {number | null} inboundCredits
- * @property {number | null} outboundCredits
- * @property {number | null} creditWaits
- * @property {number | null} awaitingResults
- * @property {number | null} creditDrops
- * @property {number | null} oldestQueuedWait
- * @property {number | null} separatePoolQueued
- * @property {number | null} separatePoolExecuting
+ * @property {number} inboundCredits
+ * @property {number} outboundCredits
+ * @property {number} creditWaits
+ * @property {number} awaitingResults
+ * @property {number} creditDrops
+ * @property {number | null} oldestQueuedWait Null when none is queued.
+ * @property {number} separatePoolQueued
+ * @property {number} separatePoolExecuting
  * @property {number} separatePoolMaxExecuting
- * @property {number | null} separatePoolOldestQueuedWait
+ * @property {number | null} separatePoolOldestQueuedWait Null when none is queued.
  */
 
 /**
@@ -82,10 +83,10 @@ import { transportTagOf } from '../metrics/instruments.js';
  * @property {number | null} pingInterval Milliseconds between pings (the configured or the derived interval).
  * @property {import('../contract/enums.js').ConnectionStateValue} state
  * @property {boolean} isEstablished
- * @property {number | null} connected Milliseconds since the transport connected.
+ * @property {number} connected Milliseconds since the transport connected.
  * @property {number} sinceLastReceived
- * @property {number | null} sinceLastSent
- * @property {number | null} flushInProgress
+ * @property {number | null} sinceLastSent Null when nothing was written yet.
+ * @property {number | null} flushInProgress Null when no transport write is in flight.
  * @property {NexusBudgetSnapshot} budget
  * @property {NexusInvocationSnapshot} invocations
  * @property {NexusPipeSnapshot[]} pipes
@@ -99,9 +100,9 @@ import { transportTagOf } from '../metrics/instruments.js';
 /**
  * The session-layer part a session may provide through `snapshot()`.
  * @typedef {object} SessionSnapshotPart
- * @property {number | null} [connected]
- * @property {number | null} [sinceLastSent]
- * @property {number | null} [flushInProgress]
+ * @property {number} connected
+ * @property {number | null} sinceLastSent
+ * @property {number | null} flushInProgress
  */
 
 /**
@@ -111,16 +112,6 @@ import { transportTagOf } from '../metrics/instruments.js';
  * @property {boolean} isSecure
  * @property {import('../session/NexusSession.js').NexusSession | null} _session
  */
-
-/**
- * @param {unknown} target
- * @param {string} name
- * @returns {any}
- */
-function provide(target, name) {
-  const fn = /** @type {Record<string, unknown> | null} */ (target)?.[name];
-  return typeof fn === 'function' ? fn.call(target) : undefined;
-}
 
 /**
  * A snapshot of the client's session, or null when it has no session that completed the handshake (C#
@@ -135,26 +126,7 @@ export function getClientSnapshot(client) {
   const clock = options.clock ?? systemClock;
   const now = clock.now();
   const manager = getInvocationManager(session);
-  /** @type {SessionSnapshotPart} */
-  const part = provide(session, 'snapshot') ?? {};
-
-  /** @type {NexusInvocationSnapshot} */
-  const invocations = {
-    queued: null,
-    executing: null,
-    maxExecuting: options.maxConcurrentConnectionInvocations,
-    inboundCredits: null,
-    outboundCredits: manager ? manager.availableCredits : null,
-    creditWaits: null,
-    awaitingResults: null,
-    creditDrops: null,
-    oldestQueuedWait: null,
-    separatePoolQueued: null,
-    separatePoolExecuting: null,
-    separatePoolMaxExecuting: options.maxSeparatePoolInvocations,
-    separatePoolOldestQueuedWait: null,
-    ...(provide(manager, 'snapshot') ?? {}),
-  };
+  const part = session.snapshot(now);
 
   return {
     id: session.id,
@@ -165,18 +137,41 @@ export function getClientSnapshot(client) {
     pingInterval: session.pingInterval > 0 ? session.pingInterval : null,
     state: session.state,
     isEstablished: session.isHandshakeComplete,
-    connected: part.connected ?? null,
+    connected: part.connected,
     sinceLastReceived: Math.max(0, now - session.lastReceived),
-    sinceLastSent: part.sinceLastSent ?? null,
-    flushInProgress: part.flushInProgress ?? null,
+    sinceLastSent: part.sinceLastSent,
+    flushInProgress: part.flushInProgress,
     budget: manager ? { limit: manager.budget.limit, reserved: manager.budget.reserved } : { limit: options.sessionBudget, reserved: 0 },
-    invocations,
-    pipes: provide(session, 'pipeSnapshots') ?? [],
-    largeMessages: provide(session, 'largeMessageSnapshots') ?? [],
+    invocations: manager ? manager.snapshot(now) : emptyInvocations(options),
+    pipes: session.pipeSnapshots(now),
+    largeMessages: session.largeMessageSnapshots(now),
     framesSent: session.framesSent,
     bytesSent: session.bytesSent,
     framesReceived: session.framesReceived,
     bytesReceived: session.bytesReceived,
+  };
+}
+
+/**
+ * The invocation part of a session without an invocation layer (never the case for a `NexusClient` session).
+ * @param {import('../session/options.js').ResolvedClientOptions} options
+ * @returns {NexusInvocationSnapshot}
+ */
+function emptyInvocations(options) {
+  return {
+    queued: 0,
+    executing: 0,
+    maxExecuting: options.maxConcurrentConnectionInvocations,
+    inboundCredits: options.invocationCredits,
+    outboundCredits: 0,
+    creditWaits: 0,
+    awaitingResults: 0,
+    creditDrops: 0,
+    oldestQueuedWait: null,
+    separatePoolQueued: 0,
+    separatePoolExecuting: 0,
+    separatePoolMaxExecuting: options.maxSeparatePoolInvocations,
+    separatePoolOldestQueuedWait: null,
   };
 }
 
