@@ -44,7 +44,7 @@ public partial interface IInteropServerNexus
     ValueTask<BigInteger> EchoBigInteger(BigInteger value);
     ValueTask<Uri?> EchoUri(Uri? value);
     ValueTask<Version?> EchoVersion(Version? value);
-    ValueTask<(int, string, double)> EchoValueTuple((int, string, double) value);
+    ValueTask<(int, string?, double)> EchoValueTuple((int, string?, double) value);
     ValueTask<(int, long, string, bool, double, Guid, byte)> EchoValueTuple7((int, long, string, bool, double, Guid, byte) value);
     ValueTask<Tuple<int, string>?> EchoTuple(Tuple<int, string>? value);
     ValueTask<KeyValuePair<string, int>> EchoKeyValuePair(KeyValuePair<string, int> value);

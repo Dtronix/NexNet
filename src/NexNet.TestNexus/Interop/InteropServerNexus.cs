@@ -126,7 +126,7 @@ public partial class InteropServerNexus : IInteropTokenValidatingNexus
     public ValueTask<BigInteger> EchoBigInteger(BigInteger value) => new(value);
     public ValueTask<Uri?> EchoUri(Uri? value) => new(value);
     public ValueTask<Version?> EchoVersion(Version? value) => new(value);
-    public ValueTask<(int, string, double)> EchoValueTuple((int, string, double) value) => new(value);
+    public ValueTask<(int, string?, double)> EchoValueTuple((int, string?, double) value) => new(value);
     public ValueTask<(int, long, string, bool, double, Guid, byte)> EchoValueTuple7((int, long, string, bool, double, Guid, byte) value) => new(value);
     public ValueTask<Tuple<int, string>?> EchoTuple(Tuple<int, string>? value) => new(value);
     public ValueTask<KeyValuePair<string, int>> EchoKeyValuePair(KeyValuePair<string, int> value) => new(value);
