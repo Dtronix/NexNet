@@ -37,6 +37,16 @@ public static class ControlJson
         Add(json, "authorizationHeader", spec.AuthorizationHeader);
         Add(json, "maxMessageSize", spec.MaxMessageSize);
         Add(json, "invocationCredits", spec.InvocationCredits);
+        Add(json, "maxConcurrentConnectionInvocations", spec.MaxConcurrentConnectionInvocations);
+        if (spec.RemoteExceptionDetail is { } detail)
+            json["remoteExceptionDetail"] = detail.ToString();
+        if (spec.OnInvocationException is { } error)
+        {
+            var hook = new JsonObject();
+            Add(hook, "code", error.Code);
+            Add(hook, "message", error.Message);
+            json["onInvocationException"] = hook;
+        }
         if (spec.FakeTime)
             json["fakeTime"] = true;
         if (spec.LogLevel is { } level)

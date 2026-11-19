@@ -39,6 +39,8 @@ public sealed class InProcClientDriver<TClientNexus, TServerProxy> : IClientUnde
         Target = target;
         Capabilities = ClientLanguages.Get(ClientLanguages.CSharp).Capabilities;
         Nexus = new TClientNexus();
+        if (spec.OnInvocationException is { } invocationError)
+            InProcScriptBinder.SetInvocationExceptionHook(Nexus, invocationError);
         var config = InProcClientConfig.Create(spec, spec.Transport ?? target.Transport, out _fakeTime);
         _client = new NexusClient<TClientNexus, TServerProxy>(config, Nexus);
         _invoker = new InProcInvoker(() => _client.Proxy);

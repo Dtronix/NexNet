@@ -35,6 +35,8 @@ public sealed class InProcPoolDriver<TClientNexus, TServerProxy> : IPoolUnderTes
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(spec);
+        if (spec.OnInvocationException != null)
+            throw new NotSupportedException("The client nexus of pooled clients is not scripted: ClientSpec.OnInvocationException needs a client.");
         ArgumentNullException.ThrowIfNull(pool);
         pool.Validate();
         Target = target;

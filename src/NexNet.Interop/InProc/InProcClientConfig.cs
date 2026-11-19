@@ -72,6 +72,10 @@ public static class InProcClientConfig
             config.MaxMessageSize = maxMessageSize;
         if (spec.InvocationCredits is { } invocationCredits)
             config.InvocationCredits = invocationCredits;
+        if (spec.MaxConcurrentConnectionInvocations is { } maxConcurrent)
+            config.MaxConcurrentConnectionInvocations = maxConcurrent;
+        if (spec.RemoteExceptionDetail is { } remoteExceptionDetail)
+            config.RemoteExceptionDetail = remoteExceptionDetail;
         if (spec.ReconnectDelaysMs is { } delays)
             config.ReconnectionPolicy = new DefaultReconnectionPolicy(
                 delays.Select(d => TimeSpan.FromMilliseconds(d)).ToArray(), spec.ReconnectContinuously);
