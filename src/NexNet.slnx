@@ -20,6 +20,7 @@
   <Project Path="NexNet.Asp\NexNet.Asp.csproj" Type="C#" />
   <Project Path="NexNet.Generator.Tests\NexNet.Generator.Tests.csproj" />
   <Project Path="NexNet.Generator\NexNet.Generator.csproj" />
+  <Project Path="NexNet.GoldenVectors\NexNet.GoldenVectors.csproj" />
   <Project Path="NexNet.IntegrationTests\NexNet.IntegrationTests.csproj" />
   <Project Path="NexNet.InteropServer\NexNet.InteropServer.csproj" />
   <Project Path="NexNet.InteropServer\Cli\NexNet.InteropServer.Cli.csproj" />
