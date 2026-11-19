@@ -472,8 +472,10 @@ public final class NexusSession {
         }
         int delay = options.disconnectDelayMillis();
         if (sent && delay > 0) {
-            // A plain scheduler task, not a session timer: closing cancels the session timers.
-            timers.schedule(this::finish, delay);
+            // A plain scheduler task, not a session timer: closing cancels the session timers. Real time, never the
+            // injected clock (as C#'s Task.Delay): the delay gives the network wall-clock time to carry the byte, and a
+            // test clock that is no longer advanced must not hold the session in Disconnecting.
+            SessionTimers.system().schedule(this::finish, delay);
         } else {
             finish();
         }
@@ -809,8 +811,9 @@ public final class NexusSession {
         }
         // The writer may be stuck in a transport write that never completes, and then never sends the byte. Closing
         // waits at most the progress timeout (plus the disconnect delay) for it, then closes the transport, which
-        // unblocks the write. A plain scheduler task, not a session timer: closing cancels the session timers.
-        Registration fallback = timers.schedule(this::writerDidNotFinish,
+        // unblocks the write. A plain scheduler task, not a session timer: closing cancels the session timers. Real
+        // time, as the disconnect delay: a stuck write is real work that an injected clock does not drive.
+        Registration fallback = SessionTimers.system().schedule(this::writerDidNotFinish,
             TimeUnit.NANOSECONDS.toMillis(progressTimeoutNanos) + options.disconnectDelayMillis());
         synchronized (lock) {
             if (phase != Phase.CLOSED) {

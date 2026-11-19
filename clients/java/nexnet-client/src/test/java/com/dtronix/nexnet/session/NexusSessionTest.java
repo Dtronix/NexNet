@@ -567,12 +567,15 @@ class NexusSessionTest {
         transport.server().write(concat(FakeServer.PREAMBLE, GoldenFrames.get("server-greeting")));
         session.ready().get(5, TimeUnit.SECONDS);
         CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+        long sentAt = System.nanoTime();
         assertEquals(21, transport.server().readByte());
-        // The disconnect delay and the close fallback (progress timeout), which closing the transport cancels.
-        waitFor(() -> timers.pending() == 2);
         assertFalse(closing.isDone());
-        timers.advance(200);
+        // The disconnect delay runs on real time: the injected clock is never advanced, and the session still closes
+        // after the delay (K34).
         assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - sentAt);
+        assertTrue(elapsedMillis >= 150, "closed after the delay: " + elapsedMillis + " ms");
+        assertEquals(0, timers.pending(), "no session timer is left on the injected clock");
         transport.server().expectEnd();
         ExecutionException e = assertThrows(ExecutionException.class,
             () -> session.send(Frame.headerOnly(MessageTypes.PING)).get());
@@ -680,6 +683,26 @@ class NexusSessionTest {
         ExecutionException e = assertThrows(ExecutionException.class,
             () -> session.send(Frame.headerOnly(MessageTypes.PING)).get(5, TimeUnit.SECONDS));
         assertEquals(DisconnectReason.GRACEFUL, assertInstanceOf(SessionClosedException.class, e.getCause()).reason());
+    }
+
+    @Test
+    void aDisconnectBehindAStuckWriteClosesWithinTheProgressTimeoutPlusTheDelayOnRealTime() throws Exception {
+        // K34: the peer stopped reading, so the writer never sends the disconnect byte. The close fallback runs on real
+        // time: the injected clock is never advanced, and the session still closes within the C# bound (the progress
+        // timeout plus the disconnect delay) instead of staying in Disconnecting.
+        StuckTransport stuck = new StuckTransport(transport);
+        NexusSession session = connectedThrough(stuck, NexusSession.builder(stuck, HANDSHAKE).name("t")
+            .timers(timers).progressTimeoutMillis(300).options(SessionOptions.defaults().withDisconnectDelayMillis(100)));
+        session.send(Frame.headerOnly(MessageTypes.PING));
+        assertTrue(stuck.awaitBlocked(), "the writer is blocked in the transport");
+        long start = System.nanoTime();
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
+        assertTrue(elapsedMillis >= 350, "waited for the progress timeout plus the delay: " + elapsedMillis + " ms");
+        assertTrue(elapsedMillis < 3_000, "closed within the bound: " + elapsedMillis + " ms");
+        assertTrue(session.awaitThreads(), "threads ended");
     }
 
     @Test

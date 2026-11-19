@@ -212,10 +212,8 @@ final class PoolEntry {
 
     void audit(Leaks leaks) {
         for (NexusClient<?> client : clients) {
-            // A client the pool closed (health check, return of a broken client) is on its way out while it is
-            // Disconnecting: the pool disposed it.
             ConnectionState state = client.state();
-            if (state != ConnectionState.DISCONNECTED && state != ConnectionState.DISCONNECTING) {
+            if (state != ConnectionState.DISCONNECTED) {
                 leaks.openClients++;
                 leaks.details.add("a client of pool " + handle + " is " + Names.pascal(client.state()));
             }
