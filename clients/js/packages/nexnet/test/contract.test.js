@@ -95,13 +95,29 @@ describe('client skeleton', () => {
     expect(nexus.onConnected(false)).toBeUndefined();
     expect(nexus.onDisconnected(DisconnectReason.Graceful)).toBeUndefined();
     expect(nexus.onReconnecting()).toBeUndefined();
-    expect(() => nexus.context).toThrow(notImplemented);
+    expect(() => nexus.context).toThrow(/not attached/);
+  });
+
+  it('nexus context follows the client it is attached to (J07)', () => {
+    const nexus = new TestNexus();
+    const client = NexusClient.create({ webSocket: { url: 'ws://localhost:1' } }, nexus, binding);
+    expect(nexus.context.sessionId).toBeNull();
+    expect(() => nexus.context.proxy).toThrow(/not connected/);
+    expect(() => nexus.context.createPipe()).toThrow(notImplemented);
+    expect(client.nexus.context).toBe(nexus.context);
+  });
+
+  it('proxy pipe, channel and collection members throw not implemented (J08, J09)', () => {
+    const proxy = Object.create(ProxyBase.prototype);
+    for (const key of ['_invokePipe', '_invokeChannel', '_collection']) {
+      expect(() => proxy[key](0, null, null), key).toThrow(notImplemented);
+    }
   });
 
   it('every skeleton prototype method throws not implemented', () => {
     const classes = [
       MsgPackWriter, MsgPackReader, FormatterRegistry, NexusDuplexPipe, NexusChannelReader, NexusChannelWriter,
-      NexusDuplexChannel, NexusList, ProxyBase, NexusClientPool,
+      NexusDuplexChannel, NexusList, NexusClientPool,
     ];
     for (const cls of classes) {
       const proto = cls.prototype;
