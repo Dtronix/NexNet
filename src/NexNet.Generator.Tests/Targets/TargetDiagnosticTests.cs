@@ -145,18 +145,21 @@ public class TargetDiagnosticTests
     public async Task NamesEscapedForABaseClassMember_CollideWithTheEscapedName()
     {
         // Java escapes ProxyBase.invoke and ClientNexusBase.dispatch with a trailing '_' (K04), so Invoke and Invoke_
-        // would both become invoke_ and fail in javac rather than in the generator (G08).
+        // would both become invoke_ and fail in javac rather than in the generator (G08). JavaScript escapes the
+        // ClientNexusBase members the same way (J04, J24); its ProxyBase members start with '_', which no mapped name keeps.
         var run = RunBoth(Source(
             """
             ValueTask Invoke(int a);
             ValueTask Invoke_(int a);
             """,
-            types: "public partial interface IClientNexus { ValueTask Dispatch(int a); ValueTask Dispatch_(int a); }"));
+            types: "public partial interface IClientNexus { ValueTask Dispatch(int a); ValueTask Dispatch_(int a); ValueTask Context(int a); ValueTask Context_(int a); }"));
 
         await Assert.That(run.Messages("NEXNET041")).IsEquivalentTo(new[]
         {
             "Name collision (Java): method 'Invoke' and method 'Invoke_' of 'Demo.IServerNexus' both map to 'invoke_'",
             "Name collision (Java): method 'Dispatch' and method 'Dispatch_' of 'Demo.IClientNexus' both map to 'dispatch_'",
+            "Name collision (Java): method 'Context' and method 'Context_' of 'Demo.IClientNexus' both map to 'context_'",
+            "Name collision (JavaScript): method 'Context' and method 'Context_' of 'Demo.IClientNexus' both map to 'context_'",
         });
     }
 
