@@ -25,6 +25,7 @@ import com.dtronix.nexnet.session.ManualTimers;
 import com.dtronix.nexnet.session.MessageTypes;
 import com.dtronix.nexnet.session.NexusSession;
 import com.dtronix.nexnet.session.SessionClosedException;
+import com.dtronix.nexnet.session.SessionCounters;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.spi.ArgumentWriter;
 import com.dtronix.nexnet.spi.ClientNexusBase;
@@ -177,6 +178,16 @@ class InvocationRuntimeTest {
             return e;
         }
         throw new AssertionError("The future completed normally.");
+    }
+
+    private static void waitFor(java.util.function.BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (!condition.getAsBoolean()) {
+            if (System.nanoTime() > deadline) {
+                throw new AssertionError("Condition not met.");
+            }
+            Thread.sleep(2);
+        }
     }
 
     private DisconnectReason closedWith() throws Exception {
@@ -386,6 +397,43 @@ class InvocationRuntimeTest {
         assertEquals(0, runtime.pendingCalls());
         // After the session ended, calls fail at once.
         assertInstanceOf(CancellationException.class, failure(runtime.invokeTask(2, ArgumentWriter.NONE, null)));
+    }
+
+    @Test
+    void invocationsQueuedBeforeADisconnectAreSentBeforeTheByteAndResultCallsEndCanceled() throws Exception {
+        // K25, specification section 5.6: the invocation being written and the ones queued behind it go out before
+        // the disconnect byte. Calls waiting for a result end canceled (C-2), as in C#: the session ends before any
+        // result can arrive. The IgnoreReturn invocation completes once written.
+        GatedTransport gated = new GatedTransport();
+        connect(gated, gated.inner().server(), 32, SessionOptions.defaults().withInvocationCredits(2),
+            InvocationOptions.defaults(), true);
+        gated.limit(0);
+        CompletableFuture<byte[]> inProgress = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
+        waitFor(gated::isBlocked);
+        List<CompletableFuture<?>> queued = new ArrayList<>();
+        queued.add(runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null));
+        queued.add(runtime.invokeTask(2, ArgumentWriter.NONE, null));
+        CompletableFuture<Void> ignoreReturn = runtime.invokeIgnoreReturn(3, 1, SMALL_ARGS);
+        waitFor(() -> SessionCounters.pendingWrites() == 3);
+        CompletableFuture<DisconnectReason> closing = session.disconnect(DisconnectReason.GRACEFUL);
+        gated.open();
+
+        assertArrayEquals(invocation(1, 1, 0, SMALL_ARGS), peer.expect(MessageTypes.INVOCATION).body);
+        assertArrayEquals(invocation(2, 1, 0, SMALL_ARGS), peer.expect(MessageTypes.INVOCATION).body);
+        assertArrayEquals(invocation(3, 2, 0, new byte[] {(byte) 0x90}), peer.expect(MessageTypes.INVOCATION).body);
+        assertArrayEquals(invocation(0, 3, 1, SMALL_ARGS), peer.expect(MessageTypes.INVOCATION).body);
+        assertEquals(21, peer.next().type);
+        assertEquals(DisconnectReason.GRACEFUL, closing.get(5, TimeUnit.SECONDS));
+        peer.server().expectEnd();
+        queued.add(0, inProgress);
+        for (CompletableFuture<?> call : queued) {
+            Throwable error = failure(call);
+            assertInstanceOf(CancellationException.class, error);
+            assertEquals(DisconnectReason.GRACEFUL,
+                assertInstanceOf(SessionClosedException.class, error.getCause()).reason());
+        }
+        await(ignoreReturn);
+        assertEquals(0, runtime.pendingCalls());
     }
 
     // ------------------------------------------------------------------ inbound

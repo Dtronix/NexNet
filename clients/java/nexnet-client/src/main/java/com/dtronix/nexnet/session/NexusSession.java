@@ -324,8 +324,6 @@ public final class NexusSession {
     private void writeLoop() {
         List<Pending> batch = new ArrayList<>();
         List<Frame> control = new ArrayList<>();
-        // The first batch holds the preamble and the greeting, which start() queues before the writer runs.
-        boolean handshakeWritten = false;
         try {
             OutputStream out = new BufferedOutputStream(transport.output(), 16 * 1024);
             while (true) {
@@ -347,7 +345,7 @@ public final class NexusSession {
                     }
                 }
                 if (last != null) {
-                    writeDisconnect(out, last, handshakeWritten);
+                    writeDisconnect(out, last);
                     return;
                 }
                 if (phase() == Phase.CONNECTED) {
@@ -365,7 +363,6 @@ public final class NexusSession {
                         out.write(frame.bytes());
                     }
                     out.flush();
-                    handshakeWritten = true;
                 } catch (IOException e) {
                     writing = false;
                     fail(batch, closingReasonOr(DisconnectReason.SOCKET_CLOSED_WHEN_WRITING));
@@ -399,29 +396,23 @@ public final class NexusSession {
     }
 
     /**
-     * Writes the disconnect byte and closes the transport after the disconnect delay. Nothing is sent after it. Frames
-     * still queued are dropped, except the preamble and the greeting when the writer has not written them yet (the
-     * session closed before the writer's first batch): without them the server would read the disconnect byte as
-     * the preamble.
+     * Writes the frames still queued, then the disconnect byte, and closes the transport after the disconnect delay.
+     * Nothing is sent after the byte. Every frame queued before the disconnect started goes out before it
+     * (specification section 5.6), as the frames a C# sender wrote before its disconnect; this includes the preamble
+     * and the greeting when the session closes before the writer's first batch, without which the server would read
+     * the disconnect byte as the preamble. Frames are refused once the disconnect started.
      */
-    private void writeDisconnect(OutputStream out, DisconnectReason reason, boolean handshakeWritten) {
-        List<Pending> dropped;
+    private void writeDisconnect(OutputStream out, DisconnectReason reason) {
+        List<Pending> queued;
         synchronized (lock) {
-            dropped = new ArrayList<>(queue);
+            queued = new ArrayList<>(queue);
             queue.clear();
-            SessionCounters.PENDING_WRITES.addAndGet(-dropped.size());
+            SessionCounters.PENDING_WRITES.addAndGet(-queued.size());
             lock.notifyAll();
         }
-        List<Pending> handshakeFrames = new ArrayList<>();
-        if (!handshakeWritten) {
-            List<Pending> head = dropped.subList(0, Math.min(2, dropped.size()));
-            handshakeFrames.addAll(head);
-            head.clear();
-        }
-        fail(dropped, reason);
         boolean sent = false;
         try {
-            for (Pending pending : handshakeFrames) {
+            for (Pending pending : queued) {
                 out.write(pending.frame.bytes());
             }
             out.write(reason.code());
@@ -429,6 +420,15 @@ public final class NexusSession {
             sent = true;
         } catch (IOException e) {
             log(NexusLogLevel.DEBUG, "Could not send the disconnect byte.", e);
+        }
+        if (sent) {
+            for (Pending pending : queued) {
+                if (pending.done != null) {
+                    pending.done.complete(null);
+                }
+            }
+        } else {
+            fail(queued, reason);
         }
         int delay = options.disconnectDelayMillis();
         if (sent && delay > 0) {

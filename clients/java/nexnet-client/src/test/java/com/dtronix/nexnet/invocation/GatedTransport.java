@@ -14,6 +14,7 @@ final class GatedTransport implements Transport {
     private final Object gate = new Object();
     private long allowance = Long.MAX_VALUE;
     private boolean closed;
+    private boolean blocked;
 
     private final OutputStream output = new OutputStream() {
         @Override
@@ -27,6 +28,7 @@ final class GatedTransport implements Transport {
                 int n;
                 synchronized (gate) {
                     while (allowance <= 0 && !closed) {
+                        blocked = true;
                         try {
                             gate.wait();
                         } catch (InterruptedException e) {
@@ -37,6 +39,7 @@ final class GatedTransport implements Transport {
                     if (closed) {
                         throw new IOException("Closed.");
                     }
+                    blocked = false;
                     n = (int) Math.min(len, allowance);
                     allowance -= n;
                 }
@@ -54,6 +57,13 @@ final class GatedTransport implements Transport {
 
     LoopbackTransport inner() {
         return inner;
+    }
+
+    /** Whether a write is blocked waiting for allowance. */
+    boolean isBlocked() {
+        synchronized (gate) {
+            return blocked;
+        }
     }
 
     /** Lets {@code bytes} more bytes through, then blocks again. */
