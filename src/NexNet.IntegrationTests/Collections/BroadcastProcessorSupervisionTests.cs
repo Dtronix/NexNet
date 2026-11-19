@@ -164,6 +164,11 @@ internal class BroadcastProcessorSupervisionTests : NexusCollectionBaseTests
         await Assert.That(clientLogger.Errors.Any(m => m.Contains("stopped unexpectedly"))).IsTrue();
         await Assert.That(list.State).IsEqualTo(NexusCollectionState.Disconnected);
 
+        // EnableAsync throws as soon as the pipe completes; the disconnect cleanup runs as a separate continuation
+        // of that completion. Until it has run, the collection still holds the failed session, so an immediate
+        // EnableAsync returns true against it with the faulted ReadyTask. Wait for the cleanup first.
+        await list.DisabledTask.Timeout(1);
+
         // A retry is a fresh enable.
         await Assert.That(await list.EnableAsync().Timeout(1)).IsTrue();
         await list.ReadyTask.Timeout(1);
