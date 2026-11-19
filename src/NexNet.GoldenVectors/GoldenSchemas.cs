@@ -20,6 +20,7 @@ public sealed class GoldenSchemas
 {
     private readonly Dictionary<string, DeclSchema> _decls = new(StringComparer.Ordinal);
     private readonly SortedDictionary<string, string> _externals = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _structs = new(StringComparer.Ordinal);
     private readonly List<MessageSchema> _messages = new();
 
     private GoldenSchemas()
@@ -34,6 +35,12 @@ public sealed class GoldenSchemas
 
     /// <summary>True when <paramref name="name"/> is a type with a custom formatter.</summary>
     public bool IsExternal(string name) => _externals.ContainsKey(name);
+
+    /// <summary>
+    /// True when <paramref name="name"/> is an object declared as a C# struct: a missing member decodes as its default
+    /// and nil is not a value of it.
+    /// </summary>
+    public bool IsStruct(string name) => _structs.Contains(name);
 
     /// <summary>The declared type named <paramref name="name"/>.</summary>
     public bool TryGetDecl(string name, out DeclSchema decl) => _decls.TryGetValue(name, out decl!);
@@ -54,13 +61,16 @@ public sealed class GoldenSchemas
     /// <param name="generated">The interop zoo, as the generator describes it.</param>
     /// <param name="externals">The types with a custom formatter, with a note on their layout.</param>
     /// <param name="messages">The protocol message bodies.</param>
+    /// <param name="isStruct">True for the full metadata name of an object declared as a C# struct.</param>
     /// <param name="unions">Protocol unions whose cases are message bodies (the collection-sync items).</param>
     public static GoldenSchemas Create(
         SchemaSet generated,
         IEnumerable<(string Name, string Note)> externals,
         IEnumerable<MessageSchema> messages,
+        Func<string, bool> isStruct,
         IEnumerable<(string Id, IReadOnlyList<(ushort Tag, string CaseId)> Cases)>? unions = null)
     {
+        ArgumentNullException.ThrowIfNull(isStruct);
         var schemas = new GoldenSchemas();
         foreach (var (name, note) in externals)
             schemas._externals.Add(name, note);
@@ -78,6 +88,8 @@ public sealed class GoldenSchemas
                 _ => throw new InvalidOperationException("Unknown declared schema " + decl.Id + "."),
             };
             schemas._decls.Add(id, renamed);
+            if (decl is ObjectSchema && isStruct(decl.Id))
+                schemas._structs.Add(id);
         }
 
         foreach (var (id, cases) in unions ?? [])
@@ -154,10 +166,13 @@ public sealed class GoldenSchemas
                     var members = new JsonArray();
                     foreach (var m in o.Members)
                         members.Add(new JsonArray(m.Key, m.Name, TypeExpr.Print(m.Type)));
-                    yield return new JsonObject
+                    var line = new JsonObject
                     {
                         ["id"] = o.Id, ["kind"] = "object", ["typeParams"] = o.TypeParameterCount, ["length"] = o.ArrayLength, ["members"] = members,
                     };
+                    if (_structs.Contains(o.Id))
+                        line["struct"] = true;
+                    yield return line;
                     break;
                 }
                 case UnionSchema u:
@@ -207,6 +222,12 @@ public sealed class GoldenSchemas
                     // Placeholder until every id is known; member types may refer to any declared type.
                     schemas._decls.Add(id, new ObjectSchema(id, (int)json["typeParams"]!, 0, Array.Empty<MemberSchema>()));
                     objects.Add(json);
+                    if ((bool?)json["struct"] == true)
+                    {
+                        if ((string)json["kind"]! != "object")
+                            throw new FormatException("Schema '" + id + "': only an object may be a struct.");
+                        schemas._structs.Add(id);
+                    }
                     break;
                 case "external":
                     schemas._externals.Add(id, (string?)json["note"] ?? "");
