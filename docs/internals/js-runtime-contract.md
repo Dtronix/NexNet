@@ -202,6 +202,17 @@ from `null`.
 | an embedded raw value | `rawFormatter` | `Uint8Array` of one complete MessagePack value |
 | `sbyte[]`, `short[]`, `ushort[]`, `int[]`, `uint[]`, `long[]`, `ulong[]`, `float[]`, `double[]`, `char[]`, `Half[]` (ext 78, spec §10.5) | `int8ArrayFormatter`, `int16ArrayFormatter`, `uint16ArrayFormatter`, `int32ArrayFormatter`, `uint32ArrayFormatter`, `int64ArrayFormatter`, `uint64ArrayFormatter`, `float32ArrayFormatter`, `float64ArrayFormatter`, `charArrayFormatter`, `halfArrayFormatter` | the matching typed array (`char` → `Uint16Array`, `Half` → `Float32Array`) or null; writes accept any array-like |
 
+**Half NaN sign and payload (J25, known parity loss).** JS has no binary16 type, so `Half` is a `number` and
+`Half[]` (ext 78) is a `Float32Array`. A JS NaN has no sign or payload the runtime can rely on (engines may
+canonicalize NaN bits), and `halfFromBits` returns the plain `NaN` for every binary16 NaN. A NaN from a .NET peer
+therefore reads as `NaN` and is written back as the quiet NaN `0x7E00`: .NET's `Half.NaN` (`0xFE00`) loses its sign
+bit, and any other payload is lost. Both are still NaN in .NET (`Half.IsNaN`), so only the bits differ; every other
+half, -0 and the infinities included, round-trips bit for bit. This applies to `halfFormatter` and
+`halfArrayFormatter` alike. The runtime's golden tests compare any NaN with any NaN (`tests/golden/README.md`,
+"NaN"), and the J11 scaffolding runner skips the vector `ext78.half` (which holds `0xFE00`) for this reason. An exact
+round trip would need the raw bits (for example a `Uint16Array` for `Half[]`), which changes the formatter API (J02)
+and needs a contract amendment card.
+
 **Checked-number mapping (D13).** `long`/`ulong` are `bigint` by default. A member or assembly that opts in to the
 checked `number` mapping uses `int64NumberFormatter` (±(2^53 − 1)) or `uint64NumberFormatter` (0 … 2^53 − 1). Writing
 a value outside that range throws `RangeError`; reading one throws `NexusSerializationError` `range`. Nothing is ever
