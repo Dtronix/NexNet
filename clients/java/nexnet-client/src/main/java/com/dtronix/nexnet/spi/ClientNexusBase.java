@@ -1,6 +1,7 @@
 package com.dtronix.nexnet.spi;
 
 import com.dtronix.nexnet.client.ClientSessionContext;
+import com.dtronix.nexnet.invocation.NexusRemoteError;
 import com.dtronix.nexnet.serialization.MsgPackReader;
 import java.util.concurrent.CompletableFuture;
 import org.jspecify.annotations.Nullable;
@@ -85,6 +86,20 @@ public abstract class ClientNexusBase<TProxy> {
      */
     protected boolean separatePool(int methodId) {
         return false;
+    }
+
+    /**
+     * Called when a client nexus method that returns a result fails, before the failure is sent to the server.
+     * Return an application error to send it in place of the exception's detail, whatever the configured
+     * {@link com.dtronix.nexnet.invocation.RemoteExceptionDetail} says; return null to send what that setting
+     * selects. Not called for canceled or fire-and-forget invocations. Runs on a runtime thread.
+     *
+     * @param exception the exception the method threw
+     * @param methodId the id of the method
+     * @return the error for the server, or null
+     */
+    protected @Nullable NexusRemoteError onInvocationException(Throwable exception, int methodId) {
+        return null;
     }
 
     final void bind(@Nullable ClientSessionContext<TProxy> context) {

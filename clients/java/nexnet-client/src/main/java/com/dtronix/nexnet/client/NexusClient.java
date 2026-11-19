@@ -7,7 +7,8 @@ import com.dtronix.nexnet.NexusRuntime;
 import com.dtronix.nexnet.NexusTransportException;
 import com.dtronix.nexnet.Registration;
 import com.dtronix.nexnet.TransportError;
-import com.dtronix.nexnet.collections.NexusList;
+import com.dtronix.nexnet.invocation.ClientProxyInvoker;
+import com.dtronix.nexnet.invocation.InvocationRuntime;
 import com.dtronix.nexnet.logging.NexusLogLevel;
 import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.pipes.NexusDuplexChannel;
@@ -19,11 +20,9 @@ import com.dtronix.nexnet.session.SerialExecutor;
 import com.dtronix.nexnet.session.SessionClosedException;
 import com.dtronix.nexnet.session.SessionOptions;
 import com.dtronix.nexnet.session.SessionTimers;
-import com.dtronix.nexnet.spi.ArgumentWriter;
 import com.dtronix.nexnet.spi.ClientNexusBase;
 import com.dtronix.nexnet.spi.ClientNexusHooks;
 import com.dtronix.nexnet.spi.HandshakeDescriptor;
-import com.dtronix.nexnet.spi.PipeArgumentWriter;
 import com.dtronix.nexnet.spi.ProxyInvoker;
 import com.dtronix.nexnet.transport.NexusConnector;
 import com.dtronix.nexnet.transport.Transport;
@@ -68,6 +67,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
     private final HandshakeDescriptor handshake;
     private final ClientNexusBase<TProxy> nexus;
     private final TProxy proxy;
+    private final ClientProxyInvoker invoker;
     private final Transport.Connector connector;
     private final SessionTimers timers;
     private final SessionOptions sessionOptions;
@@ -117,7 +117,8 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         this.listenerExecutor = new SerialExecutor(callbackExecutor);
         NexusLogger root = config.logger();
         this.logger = root == null ? null : root.createLogger("CL" + id);
-        this.proxy = proxyFactory.apply(new UnattachedInvoker());
+        this.invoker = new ClientProxyInvoker(callbackExecutor);
+        this.proxy = proxyFactory.apply(invoker);
     }
 
     /**
@@ -343,6 +344,13 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             .timers(timers)
             .logger(logger)
             .build();
+        // Invocations (K07): attached before the session starts, so nothing the server sends is unhandled.
+        InvocationRuntime runtime = InvocationRuntime.builder(s, handshake, nexus)
+            .callbackExecutor(callbackExecutor)
+            .invocationExecutor(invocationExecutor)
+            .logger(logger)
+            .build();
+        s.setMessageHandler(runtime);
         synchronized (lock) {
             if (a.canceled) {
                 transport.close(DisconnectReason.GRACEFUL);
@@ -350,8 +358,10 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             }
             a.session = s;
         }
-        s.closedInternal().whenComplete((reason, error) ->
-            NexusExecutors.execute(NexusExecutors.shared(), () -> onSessionClosed(a, s, reason)));
+        s.closedInternal().whenComplete((reason, error) -> {
+            invoker.detach(runtime);
+            NexusExecutors.execute(NexusExecutors.shared(), () -> onSessionClosed(a, s, reason));
+        });
 
         try {
             s.start().get(remainingMillis(deadline), TimeUnit.MILLISECONDS);
@@ -374,6 +384,9 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             return new ConnectionResult(ConnectionResult.Status.EXCEPTION, DisconnectReason.SOCKET_ERROR, e);
         }
 
+        // The proxy works from onConnected on; the server's invocations run once onConnected has completed.
+        runtime.connected();
+        invoker.attach(runtime);
         ClientNexusHooks.bind(nexus, new Context(s));
         try {
             CompletableFuture.supplyAsync(() -> ClientNexusHooks.connected(nexus, a.reconnecting), invocationExecutor)
@@ -384,6 +397,7 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        runtime.startDispatching();
 
         synchronized (lock) {
             if (!a.canceled && s.isConnected()) {
@@ -780,46 +794,6 @@ public final class NexusClient<TProxy> implements AutoCloseable {
         @Override
         public CompletableFuture<Void> disconnect() {
             return NexusClient.this.disconnect();
-        }
-    }
-
-    /** The proxy's invoker until the invocation runtime (K07) is attached. */
-    private static final class UnattachedInvoker implements ProxyInvoker {
-        private static UnsupportedOperationException notImplemented() {
-            return new UnsupportedOperationException("not implemented");
-        }
-
-        @Override
-        public <R> CompletableFuture<R> invoke(int methodId, ArgumentWriter arguments, Formatter<R> result,
-                                               @Nullable CancellationToken cancellationToken) {
-            throw notImplemented();
-        }
-
-        @Override
-        public CompletableFuture<Void> invokeTask(int methodId, ArgumentWriter arguments,
-                                                  @Nullable CancellationToken cancellationToken) {
-            throw notImplemented();
-        }
-
-        @Override
-        public void invokeVoid(int methodId, ArgumentWriter arguments) {
-            throw notImplemented();
-        }
-
-        @Override
-        public CompletableFuture<Void> invokePipe(int methodId, NexusDuplexPipe pipe, PipeArgumentWriter arguments) {
-            throw notImplemented();
-        }
-
-        @Override
-        public <T> CompletableFuture<Void> invokeChannel(int methodId, NexusDuplexChannel<T> channel,
-                                                         PipeArgumentWriter arguments) {
-            throw notImplemented();
-        }
-
-        @Override
-        public <T> NexusList<T> list(int collectionId, Formatter<T> itemFormatter) {
-            throw notImplemented();
         }
     }
 }
