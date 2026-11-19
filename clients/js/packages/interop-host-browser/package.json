@@ -1,0 +1,11 @@
+{
+  "name": "@dtronix/nexnet-interop-host-browser",
+  "version": "0.20.0",
+  "private": true,
+  "description": "Browser language host of the NexNet cross-language test harness: a Node launcher (Playwright, WebSocket bridge) and the page that runs the host.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  }
+}
