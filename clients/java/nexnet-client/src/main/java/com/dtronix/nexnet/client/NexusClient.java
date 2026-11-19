@@ -168,12 +168,32 @@ public final class NexusClient<TProxy> implements AutoCloseable {
             SessionOptions.defaults());
     }
 
-    static <TProxy> NexusClient<TProxy> create(ClientConfig config, HandshakeDescriptor handshake,
-                                               ClientNexusBase<TProxy> nexus,
-                                               Function<ProxyInvoker, TProxy> proxyFactory,
-                                               Transport.Connector connector, SessionTimers timers,
-                                               SessionOptions sessionOptions) {
-        if (config == null || handshake == null || nexus == null || proxyFactory == null || connector == null) {
+    /**
+     * Creates a client over a custom transport, on a custom clock and with custom session options. The clock drives
+     * every session timer (handshake and idle timeouts, the ping interval, stall detection, reconnect delays), so a
+     * test can replace {@link SessionTimers#system()} with a manual clock; the options set the limits advertised in
+     * the greeting ({@code maxMessageSize}, {@code invocationCredits}) and other session limits that
+     * {@link ClientConfig} does not carry. Applications normally use the other overloads.
+     *
+     * @param config the configuration
+     * @param handshake the generated handshake constants
+     * @param nexus the client nexus
+     * @param proxyFactory the generated proxy constructor ({@code ServerProxy::new})
+     * @param connector opens the transport for each connection attempt ({@link NexusConnector#defaults()} for the
+     *     built-in transports)
+     * @param timers the session clock and timer scheduler
+     * @param sessionOptions the session options ({@link SessionOptions#defaults()} for the defaults)
+     * @param <TProxy> the proxy type
+     * @return the client, not yet connected
+     * @throws IllegalStateException when the generated code targets a different runtime major.minor version
+     */
+    public static <TProxy> NexusClient<TProxy> create(ClientConfig config, HandshakeDescriptor handshake,
+                                                      ClientNexusBase<TProxy> nexus,
+                                                      Function<ProxyInvoker, TProxy> proxyFactory,
+                                                      Transport.Connector connector, SessionTimers timers,
+                                                      SessionOptions sessionOptions) {
+        if (config == null || handshake == null || nexus == null || proxyFactory == null || connector == null
+            || timers == null || sessionOptions == null) {
             throw new NullPointerException("An argument is null.");
         }
         if (!sameMajorMinor(handshake.runtimeVersion(), NexusRuntime.VERSION)) {

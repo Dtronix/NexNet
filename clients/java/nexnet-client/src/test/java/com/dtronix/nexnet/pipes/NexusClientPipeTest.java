@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.dtronix.nexnet.NexusBusyException;
@@ -144,5 +145,30 @@ class NexusClientPipeTest {
         int open = PipeCounters.openPipes();
         channel.close();
         PipeTestBase.waitFor(() -> PipeCounters.openPipes() == open - 1);
+    }
+
+    @Test
+    void aChannelOverAnExistingPipeSharesThePipe() throws Exception {
+        connect();
+        NexusDuplexPipe pipe = client.createPipe();
+        NexusDuplexChannel<byte[]> channel = NexusDuplexChannel.over(pipe, TestCodec.BYTES);
+        assertSame(pipe, channel.pipe());
+        int fullId = 1 | (7 << 8);
+        peer.sendState(fullId, PipeWire.READY, 1000);
+        NexusChannelReader<byte[]> reader = channel.reader().get(5, TimeUnit.SECONDS);
+        assertEquals(fullId, pipe.id());
+        peer.sendState(fullId, PipeWire.COMPLETE, 0);
+        assertFalse(reader.read().get(5, TimeUnit.SECONDS).isPresent());
+        int open = PipeCounters.openPipes();
+        channel.close();
+        PipeTestBase.waitFor(() -> PipeCounters.openPipes() == open - 1);
+    }
+
+    @Test
+    void aChannelOverAForeignPipeIsRefused() {
+        NexusDuplexPipe foreign = (NexusDuplexPipe) java.lang.reflect.Proxy.newProxyInstance(
+            NexusDuplexPipe.class.getClassLoader(), new Class<?>[] {NexusDuplexPipe.class}, (p, m, a) -> null);
+        assertThrows(IllegalArgumentException.class, () -> NexusDuplexChannel.over(foreign, TestCodec.BYTES));
+        assertThrows(NullPointerException.class, () -> NexusDuplexChannel.over(null, TestCodec.BYTES));
     }
 }
