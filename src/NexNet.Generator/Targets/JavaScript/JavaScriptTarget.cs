@@ -97,8 +97,9 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         => options.Get(ModuleNameOption) ?? (IsRelative(options) ? RelativeRuntimeModule : JsSyntax.DefaultRuntimeModule);
 
     /// <summary>
-    /// D31: the @dtronix/nexnet sources in <c>nexnet-runtime/</c>, each after the runtime header line, with a
-    /// <c>package.json</c> that has the published conditional exports, and <c>LICENSE</c>.
+    /// D31: the @dtronix/nexnet sources and their committed declarations (J27, <c>.d.ts</c> beside each <c>.js</c>) in
+    /// <c>nexnet-runtime/</c>, each after the runtime header line, with a <c>package.json</c> that has the published
+    /// conditional exports, and <c>LICENSE</c>.
     /// </summary>
     protected override IEnumerable<GeneratedFile> EmitRuntimeCore(TargetOptions options)
     {
@@ -110,7 +111,10 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         yield return new GeneratedFile(RuntimeDirectory + "/package.json", RuntimePackageJson);
     }
 
-    /// <summary>The <c>package.json</c> of the emitted runtime: the exports of clients/js/packages/nexnet without types.</summary>
+    /// <summary>
+    /// The <c>package.json</c> of the emitted runtime: the exports of clients/js/packages/nexnet, with the <c>types</c>
+    /// conditions pointing at the emitted declarations (J27).
+    /// </summary>
     internal static string RuntimePackageJson { get; } =
         "{\n"
         + "  \"name\": \"@dtronix/nexnet\",\n"
@@ -120,19 +124,23 @@ internal sealed class JavaScriptTarget : TargetLanguageBase
         + "  \"private\": true,\n"
         + "  \"type\": \"module\",\n"
         + "  \"sideEffects\": false,\n"
+        + "  \"types\": \"./index.d.ts\",\n"
         + "  \"engines\": {\n"
         + "    \"node\": \">=22\"\n"
         + "  },\n"
         + "  \"exports\": {\n"
         + "    \".\": {\n"
+        + "      \"types\": \"./index.d.ts\",\n"
         + "      \"browser\": \"./browser.js\",\n"
         + "      \"node\": \"./node.js\",\n"
         + "      \"default\": \"./index.js\"\n"
         + "    },\n"
         + "    \"./node\": {\n"
+        + "      \"types\": \"./node.d.ts\",\n"
         + "      \"node\": \"./node.js\"\n"
         + "    },\n"
         + "    \"./diagnostics\": {\n"
+        + "      \"types\": \"./diagnostics.d.ts\",\n"
         + "      \"default\": \"./diagnostics.js\"\n"
         + "    },\n"
         + "    \"./package.json\": \"./package.json\"\n"
