@@ -79,7 +79,7 @@ internal sealed class FakeClient : IAsyncDisposable
             case "time.advance":
                 return Done(Driver.AdvanceTimeAsync(TimeSpan.FromMilliseconds(args["ms"]!.GetValue<long>())));
             case "invoke":
-                return InvokeAsync(args);
+                return InvokeAsync(Scope, Invoker, args);
             case "script.set":
                 _scripts[args["slot"]!.GetValue<string>()] = new SlotScript
                 {
@@ -122,15 +122,16 @@ internal sealed class FakeClient : IAsyncDisposable
 
     // ----- Invocations -----
 
-    private Task<JsonObject> InvokeAsync(JsonObject args)
+    /// <summary>The <c>invoke</c> op on <paramref name="invoker"/> (shared with pool rentals).</summary>
+    internal static Task<JsonObject> InvokeAsync(FakeScope scope, IRemoteInvoker invoker, JsonObject args)
     {
         var method = Resolve(args["method"]!.AsObject(), out var clr);
         var arguments = (JsonArray)args["args"]!.DeepClone();
-        var pipe = args["pipe"] is { } pipeHandle ? Scope.Pipe(new JsonObject { ["pipe"] = pipeHandle.GetValue<string>() }).Pipe : null;
+        var pipe = args["pipe"] is { } pipeHandle ? scope.Pipe(new JsonObject { ["pipe"] = pipeHandle.GetValue<string>() }).Pipe : null;
         var cancel = args["cancel"] switch
         {
             JsonObject c when c["afterMs"] is { } after => RemoteCancel.After(after.GetValue<int>()),
-            JsonObject c when c["token"] is { } token => RemoteCancel.FromToken(Scope.Token(token.GetValue<string>())),
+            JsonObject c when c["token"] is { } token => RemoteCancel.FromToken(scope.Token(token.GetValue<string>())),
             _ => RemoteCancel.None,
         };
 
@@ -142,12 +143,12 @@ internal sealed class FakeClient : IAsyncDisposable
         Task<JsonNode?> call;
         if (clr.ReturnType == typeof(void))
         {
-            Invoker.Invoke(invocation);
+            invoker.Invoke(invocation);
             call = Task.FromResult<JsonNode?>(null);
         }
         else if (clr.ReturnType == typeof(ValueTask))
         {
-            call = Invoker.InvokeAsync(invocation).AsTask().ContinueWith(t =>
+            call = invoker.InvokeAsync(invocation).AsTask().ContinueWith(t =>
             {
                 t.GetAwaiter().GetResult();
                 return (JsonNode?)null;
@@ -155,11 +156,11 @@ internal sealed class FakeClient : IAsyncDisposable
         }
         else
         {
-            call = Invoker.InvokeWithResultAsync(invocation).AsTask();
+            call = invoker.InvokeWithResultAsync(invocation).AsTask();
         }
 
         if (args["detach"]?.GetValue<bool>() == true)
-            return Task.FromResult(new JsonObject { ["future"] = Scope.AddFuture(call) });
+            return Task.FromResult(new JsonObject { ["future"] = scope.AddFuture(call) });
         return Result(call, r => new JsonObject { ["result"] = r });
     }
 
