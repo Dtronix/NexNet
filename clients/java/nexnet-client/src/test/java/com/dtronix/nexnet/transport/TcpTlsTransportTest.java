@@ -298,6 +298,48 @@ class TcpTlsTransportTest {
         }
     }
 
+    static byte[] certBytes(String name) throws Exception {
+        try (InputStream in = TestServer.cert(name)) {
+            return in.readAllBytes();
+        }
+    }
+
+    @Test
+    void pemCaAndPkcs12ConvenienceOptionsConnect() throws Exception {
+        CompletableFuture<String> peer = new CompletableFuture<>();
+        try (TestServer server = TestServer.tls(true, socket -> {
+            SSLSocket ssl = (SSLSocket) socket;
+            ssl.startHandshake();
+            peer.complete(((X509Certificate) ssl.getSession().getPeerCertificates()[0])
+                .getSubjectX500Principal().getName());
+            echo(socket);
+        })) {
+            TlsOptions tls = TlsOptions.builder()
+                .trustCaCertificatesPem(new String(certBytes("test-ca.pem"), StandardCharsets.US_ASCII), false)
+                .clientCertificatePkcs12(certBytes("client.pfx"), TestServer.PFX_PASSWORD)
+                .build();
+            assertNotNull(tls.trustManager());
+            assertNotNull(tls.keyManager());
+            Transport t = connectTls(server.port(), tls);
+            try {
+                roundTrip(t);
+                assertTrue(peer.get(5, TimeUnit.SECONDS).contains("CN=nexnet-test-client"));
+            } finally {
+                t.close(DisconnectReason.GRACEFUL);
+            }
+        }
+    }
+
+    @Test
+    void pemCaConvenienceWithoutTheCaRejectsTheServer() throws Exception {
+        // Trusting only the client certificate, which did not issue the server's, rejects the server.
+        TlsOptions tls = TlsOptions.builder().trustCaCertificates(certBytes("client.pem"), false).build();
+        try (TestServer server = TestServer.tls(false, TcpTlsTransportTest::handshakeOnly)) {
+            Exception e = assertThrows(Exception.class, () -> connectTls(server.port(), tls));
+            assertAuthenticationFailure(e);
+        }
+    }
+
     @Test
     void hostnameMatcherWildcards() {
         assertTrue(HostnameMatcher.matchesDns("a.example.com", "*.example.com"));
