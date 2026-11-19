@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using NexNet.Interop.Remote;
 
 namespace NexNet.Interop.Hosts;
@@ -190,7 +191,15 @@ public sealed class LanguageHost : IAsyncDisposable
             var first = await Task.WhenAny(accept, process.Exited).ConfigureAwait(false);
             if (first != accept)
             {
+                // A host whose hello is refused (schema hash, token, protocol) exits at once, and its exit can be
+                // observed before the accept reports the refusal; the refusal is the more useful error.
+                await Task.WhenAny(accept, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+                if (accept.IsFaulted && accept.Exception?.InnerException is ControlProtocolException { HelloRefused: true } refusal)
+                    ExceptionDispatchInfo.Throw(refusal);
+
                 await startup.CancelAsync().ConfigureAwait(false);
+                if (accept.IsCompletedSuccessfully)
+                    await accept.Result.DisposeAsync().ConfigureAwait(false);
                 throw new HostCrashedException(
                     $"The {Language} host exited (code {process.ExitCode}) before it connected.",
                     stderrTail: process.StderrTail());
@@ -253,11 +262,7 @@ public sealed class LanguageHost : IAsyncDisposable
 
                 if (ended == connection.Completion)
                 {
-                    // A process that dies closes its connection first; prefer the exit as the reason when it follows.
-                    await Task.WhenAny(process.Exited, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
-                    reason = process.Exited.IsCompleted
-                        ? $"the process exited (code {process.ExitCode})"
-                        : "the control connection closed: " + connection.Failure?.Message;
+                    reason = await PreferExitAsync(process, "the control connection closed: " + connection.Failure?.Message).ConfigureAwait(false);
                     break;
                 }
 
@@ -276,7 +281,8 @@ public sealed class LanguageHost : IAsyncDisposable
                 }
                 catch (Exception e)
                 {
-                    reason = "ping failed: " + e.Message;
+                    // The ping can be the first to see the closed connection of a process that is dying.
+                    reason = await PreferExitAsync(process, "ping failed: " + e.Message).ConfigureAwait(false);
                     break;
                 }
             }
@@ -287,6 +293,16 @@ public sealed class LanguageHost : IAsyncDisposable
         }
 
         await HandleCrashAsync(generation, connection, process, reason).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A process that dies closes its connection before its exit is observed; when the exit follows within a moment it
+    /// is the reason, otherwise <paramref name="otherwise"/> is.
+    /// </summary>
+    private static async Task<string> PreferExitAsync(IHostProcess process, string otherwise)
+    {
+        await Task.WhenAny(process.Exited, Task.Delay(500, CancellationToken.None)).ConfigureAwait(false);
+        return process.Exited.IsCompleted ? $"the process exited (code {process.ExitCode})" : otherwise;
     }
 
     private async Task HandleCrashAsync(int generation, ControlConnection connection, IHostProcess process, string reason)

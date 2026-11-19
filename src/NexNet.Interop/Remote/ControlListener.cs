@@ -60,12 +60,14 @@ public sealed class ControlListener : IDisposable
         var client = await _listener.AcceptTcpClientAsync(cancellationToken).ConfigureAwait(false);
         client.NoDelay = true;
         var stream = client.GetStream();
+        var helloRead = false;
         try
         {
             using var helloTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             helloTimeout.CancelAfter(TimeSpan.FromSeconds(30));
             var frame = await ControlFraming.ReadAsync(stream, helloTimeout.Token).ConfigureAwait(false)
                         ?? throw new ControlProtocolException("The host closed the control connection before its hello.");
+            helloRead = true;
 
             JsonObject message;
             try
@@ -86,6 +88,8 @@ public sealed class ControlListener : IDisposable
         }
         catch (Exception e)
         {
+            if (helloRead && e is ControlProtocolException refusal)
+                refusal.HelloRefused = true;
             await SendByeAsync(stream, e.Message).ConfigureAwait(false);
             client.Dispose();
             throw;

@@ -360,8 +360,7 @@ Built into every host; they act on the pipe or channel argument of the call (a m
 | `channel.echo` | | Writes back every item it reads until the server completes, then completes the channel. |
 | `channel.pump` | `count` (int ≥ 0, required), `size` (int ≥ 0, default 0), `delayMs` (int ≥ 0, default 0) | Writes `count` items, one at a time, waiting `delayMs` after each item but the last, then completes the channel. Does not read. Item `i` (0-based) depends on the channel's item type: an integer type (`sbyte` … `ulong`): the number `i` (wrapped to the type's width); `string`: `size` characters, character `j` being `'a' + (i + j) mod 26`; `byte[]`: the first `size` bytes of the pipe pattern of seed `i` (`PipePattern`). Any other item type fails the call with `NotSupported`. |
 
-The C# reference implementation is `InProcNamedHandlers` (`src/NexNet.Interop/InProc`); `channel.pump` is specified
-here first and joins it in a follow-up.
+The C# reference implementation of every handler above is `InProcNamedHandlers` (`src/NexNet.Interop/InProc`).
 
 ### 6.10 Synchronized collections
 

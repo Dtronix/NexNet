@@ -14,6 +14,9 @@ public sealed class ControlProtocolException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>True when the host sent its hello and the runner refused it (rather than the host closing first).</summary>
+    internal bool HelloRefused { get; set; }
 }
 
 /// <summary>
