@@ -26,7 +26,10 @@ public final class ClientConfig {
     public static final int DEFAULT_HANDSHAKE_TIMEOUT_MILLIS = 15_000;
     /** Default {@link #timeoutMillis()}: 30 seconds, as in C#. */
     public static final int DEFAULT_TIMEOUT_MILLIS = 30_000;
-    /** Default {@link #pingIntervalMillis()}: 10 seconds, as in C#. */
+    /**
+     * Ping interval used when {@link #pingIntervalMillis()} is null and the server advertises no idle timeout:
+     * 10 seconds, as in C#.
+     */
     public static final int DEFAULT_PING_INTERVAL_MILLIS = 10_000;
 
     private final TransportKind transport;
@@ -43,7 +46,7 @@ public final class ClientConfig {
     private final int connectionTimeoutMillis;
     private final int handshakeTimeoutMillis;
     private final int timeoutMillis;
-    private final int pingIntervalMillis;
+    private final @Nullable Integer pingIntervalMillis;
 
     private ClientConfig(Builder b) {
         this.transport = b.transport;
@@ -255,11 +258,15 @@ public final class ClientConfig {
     }
 
     /**
-     * The ping interval, used when the server does not advertise an idle timeout.
+     * The configured ping interval, or null (the default) to derive it from the server. When null, the client pings
+     * at a third of the idle timeout the server advertises in its greeting, at least every 1000 ms, and every
+     * {@value #DEFAULT_PING_INTERVAL_MILLIS} ms when the server advertises none. A value set here is used as is; if it
+     * is not below the server's advertised idle timeout, the client logs a warning on connect, because the server
+     * will time the session out between pings. Matches C# {@code ClientConfig.PingInterval}.
      *
-     * @return milliseconds
+     * @return milliseconds, or null to derive the interval
      */
-    public int pingIntervalMillis() {
+    public @Nullable Integer pingIntervalMillis() {
         return pingIntervalMillis;
     }
 
@@ -311,7 +318,7 @@ public final class ClientConfig {
         private int connectionTimeoutMillis = DEFAULT_CONNECTION_TIMEOUT_MILLIS;
         private int handshakeTimeoutMillis = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS;
         private int timeoutMillis = DEFAULT_TIMEOUT_MILLIS;
-        private int pingIntervalMillis = DEFAULT_PING_INTERVAL_MILLIS;
+        private @Nullable Integer pingIntervalMillis;
 
         private Builder(TransportKind transport, @Nullable URI uri, @Nullable String host, int port) {
             this.transport = transport;
@@ -438,13 +445,15 @@ public final class ClientConfig {
         }
 
         /**
-         * Sets the fallback ping interval.
+         * Sets the ping interval, used as is; null (the default) derives it from the server's advertised idle timeout.
+         * See {@link ClientConfig#pingIntervalMillis()}.
          *
-         * @param millis milliseconds, positive
+         * @param millis milliseconds, positive, or null to derive the interval
          * @return this builder
+         * @throws IllegalArgumentException when the value is zero or negative
          */
-        public Builder pingIntervalMillis(int millis) {
-            this.pingIntervalMillis = requirePositive(millis, "pingIntervalMillis");
+        public Builder pingIntervalMillis(@Nullable Integer millis) {
+            this.pingIntervalMillis = millis == null ? null : requirePositive(millis, "pingIntervalMillis");
             return this;
         }
 
