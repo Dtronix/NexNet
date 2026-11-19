@@ -156,7 +156,12 @@ class NexusClientTest {
     @Test
     void connectsOnARuntimeThreadAndCompletesOnTheCallbackExecutor() throws Exception {
         Server server = new Server(accept());
-        ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> new Thread(r, "test-callbacks"));
+        AtomicReference<Thread> callbackThread = new AtomicReference<>();
+        ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "test-callbacks");
+            callbackThread.set(thread);
+            return thread;
+        });
         try {
             NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).callbackExecutor(callbacks).build(), server);
             List<ConnectionState> states = new CopyOnWriteArrayList<>();
@@ -166,10 +171,15 @@ class NexusClientTest {
                 listenerThreads.add(Thread.currentThread().getName());
             });
             assertEquals(ConnectionState.DISCONNECTED, client.state());
-            AtomicReference<String> completedOn = new AtomicReference<>();
-            client.connect().thenRun(() -> completedOn.set(Thread.currentThread().getName())).get(5, TimeUnit.SECONDS);
+            // Hold the callback executor until thenRun is attached: a dependent attached to an already-completed
+            // future runs on the attaching thread, so a fast connect would run it on this test thread.
+            CountDownLatch attached = hold(callbacks);
+            AtomicReference<Thread> completedOn = new AtomicReference<>();
+            CompletableFuture<Void> connected = client.connect().thenRun(() -> completedOn.set(Thread.currentThread()));
+            attached.countDown();
+            connected.get(5, TimeUnit.SECONDS);
 
-            assertEquals("test-callbacks", completedOn.get());
+            assertSame(callbackThread.get(), completedOn.get());
             assertTrue(server.connectThreads.get(0).startsWith("nexnet-pool-"), server.connectThreads.get(0));
             assertNotEquals(Thread.currentThread().getName(), server.connectThreads.get(0));
             assertEquals(ConnectionState.CONNECTED, client.state());
@@ -408,6 +418,9 @@ class NexusClientTest {
             NexusClient<TestProxy> client = client(ClientConfig.tcp("h", 1).callbackExecutor(callbacks).build(),
                 server);
             AtomicInteger ran = new AtomicInteger();
+            // Hold the callback executor until thenApply is attached: if connect completed first, the blocking
+            // continuation would run on this test thread and the test would hang until its timeout.
+            CountDownLatch attached = hold(callbacks);
             CompletableFuture<Integer> blocked = client.connect().thenApply(v -> {
                 ran.incrementAndGet();
                 try {
@@ -417,6 +430,7 @@ class NexusClientTest {
                 }
                 return 1;
             });
+            attached.countDown();
             waitFor(() -> ran.get() == 1);
             NexusSession session = client.session();
             server.last().server().write(new byte[] {28});
@@ -454,6 +468,22 @@ class NexusClientTest {
         assertTrue(NexusClient.sameMajorMinor("0.20.0", "0.20.3"));
         assertTrue(NexusClient.sameMajorMinor("0.20.0-beta.1", "0.20.1"));
         assertFalse(NexusClient.sameMajorMinor("0.21.0", "0.20.0"));
+    }
+
+    /** Occupies a single-thread executor until the returned latch is counted down. */
+    static CountDownLatch hold(ExecutorService executor) throws InterruptedException {
+        CountDownLatch running = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        executor.execute(() -> {
+            running.countDown();
+            try {
+                release.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        assertTrue(running.await(5, TimeUnit.SECONDS));
+        return release;
     }
 
     static void waitFor(java.util.function.BooleanSupplier condition) throws InterruptedException {
