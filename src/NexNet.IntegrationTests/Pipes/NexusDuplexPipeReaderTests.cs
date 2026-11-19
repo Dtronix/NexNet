@@ -88,40 +88,32 @@ internal class NexusDuplexPipeReaderTests
     [Test]
     public async Task ReadAsyncReadsOnEachNewReceive()
     {
-        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Each read returns everything buffered so far: the reader examines but never consumes.
+        // The steps are bounded generously and awaited (no blocking .Result) so a loaded thread pool cannot trip them.
         var bufferSemaphore = new SemaphoreSlim(0, 1);
         var reader = CreateReader();
 
-        _ = Task.Run(async () =>
+        var writer = Task.Run(async () =>
         {
             for (var i = 0; i < 100; i++)
             {
-                //Console.WriteLine("Writer");
                 reader.BufferData(new ReadOnlySequence<byte>(new[] { (byte)i }));
-                await bufferSemaphore.WaitAsync().Timeout(1);
+                await bufferSemaphore.WaitAsync().Timeout(5);
             }
-
         });
 
-        _ = Task.Run(async () =>
+        var readerTask = Task.Run(async () =>
         {
             for (var i = 0; i < 100; i++)
             {
-                //Console.WriteLine("Reader");
-                var task = reader.ReadAsync().AsTask();
-                reader.AdvanceTo(task.Result.Buffer.Start, task.Result.Buffer.End);
-              
-                var data = await task.Timeout(1);
+                var data = await reader.ReadAsync().AsTask().Timeout(5);
                 await Assert.That(data.Buffer.Length).IsEqualTo(i + 1);
+                reader.AdvanceTo(data.Buffer.Start, data.Buffer.End);
                 bufferSemaphore.Release(1);
-                //Console.WriteLine("Writer Released");
             }
-
-            tcs.SetResult();
         });
 
-
-        await tcs.Task.Timeout(1);
+        await Task.WhenAll(writer, readerTask).Timeout(10);
     }
 
 
