@@ -404,7 +404,8 @@ class InvocationRuntimeTest {
         assertEquals("test-invocations", nexus.threads.get(0));
         // The credit was returned when the invocation was dequeued for execution.
         assertEquals(1, peer.creditsReturned);
-        assertEquals(0, runtime.inboundInvocations());
+        // The result can reach the server before the runtime retires the invocation.
+        awaitInboundInvocations(0);
     }
 
     @Test
@@ -727,6 +728,14 @@ class InvocationRuntimeTest {
     }
 
     // ------------------------------------------------------------------ progress (K17)
+
+    private void awaitInboundInvocations(int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (runtime.inboundInvocations() != count) {
+            assertTrue(System.nanoTime() < deadline, "inbound invocations: " + count);
+            Thread.sleep(5);
+        }
+    }
 
     private void awaitLargeMessages(int count) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
