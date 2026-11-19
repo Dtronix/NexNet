@@ -4,7 +4,8 @@ import { DisconnectReason } from '../../src/contract/enums.js';
 import { NexusTransportError } from '../../src/contract/errors.js';
 import { CloseCode, FrameDecoder, Opcode, WebSocketProtocolError, acceptKey, encodeClientFrame, nodeWebSocketTransport } from '../../src/transport/node/ws.js';
 import {
-  PREAMBLE, certs, clientFrames, collect, httpStatus, listenHttp, noSignal, serverFrame, serverTls, webSocket101,
+  PREAMBLE, certs, clientFrames, collect, httpStatus, listenHttp, listenSocket, noSignal, serverFrame, serverTls,
+  webSocket101,
 } from './support/servers.js';
 
 /** @type {Array<() => Promise<void>>} */
@@ -265,6 +266,26 @@ describe('Node WebSocket transport', () => {
   ])('maps a refused upgrade (HTTP %i)', async (status, kind, reason) => {
     const url = await server(({ socket }) => socket.end(httpStatus(status)));
     await expect(connect(url)).rejects.toMatchObject({ name: 'NexusTransportError', transportError: kind, reason, status });
+  });
+
+  it.each([301, 302, 307])('does not follow a redirect (HTTP %i): ProtocolError, no second request', async (status) => {
+    let targetConnections = 0;
+    const target = await listenSocket((socket) => {
+      targetConnections++;
+      socket.destroy();
+    });
+    cleanup.push(target.close);
+    let requests = 0;
+    const url = await server(({ socket }) => {
+      requests++;
+      socket.end(Buffer.from(`HTTP/1.1 ${status} Redirect\r\nLocation: http://127.0.0.1:${target.port}/elsewhere\r\n`
+        + 'Content-Length: 0\r\nConnection: close\r\n\r\n', 'latin1'));
+    });
+    await expect(connect(url)).rejects.toMatchObject({
+      name: 'NexusTransportError', transportError: 'ProtocolError', reason: DisconnectReason.SocketError, status,
+    });
+    expect(requests).toBe(1);
+    expect(targetConnections).toBe(0);
   });
 
   it('a refused connection is SocketError/ConnectionRefused', async () => {

@@ -2,7 +2,9 @@ import { X509Certificate } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DisconnectReason } from '../../src/contract/enums.js';
 import { httpSocketTransport } from '../../src/transport/node/httpSocket.js';
-import { PREAMBLE, certs, collect, httpSocket101, httpStatus, listenHttp, noSignal, received, serverTls } from './support/servers.js';
+import {
+  PREAMBLE, certs, collect, httpSocket101, httpStatus, listenHttp, listenSocket, noSignal, received, serverTls,
+} from './support/servers.js';
 
 /** @type {Array<() => Promise<void>>} */
 let cleanup = [];
@@ -69,6 +71,26 @@ describe('HttpSocket transport', () => {
   ])('maps HTTP %i to %s', async (status, kind, reason) => {
     const url = await server(({ socket }) => socket.end(httpStatus(status)));
     await expect(connect(url)).rejects.toMatchObject({ name: 'NexusTransportError', transportError: kind, reason, status });
+  });
+
+  it.each([301, 302, 307])('does not follow a redirect (HTTP %i): ProtocolError, no second request', async (status) => {
+    let targetConnections = 0;
+    const target = await listenSocket((socket) => {
+      targetConnections++;
+      socket.destroy();
+    });
+    cleanup.push(target.close);
+    let requests = 0;
+    const url = await server(({ socket }) => {
+      requests++;
+      socket.end(Buffer.from(`HTTP/1.1 ${status} Redirect\r\nLocation: http://127.0.0.1:${target.port}/elsewhere\r\n`
+        + 'Content-Length: 0\r\nConnection: close\r\n\r\n', 'latin1'));
+    });
+    await expect(connect(url)).rejects.toMatchObject({
+      name: 'NexusTransportError', transportError: 'ProtocolError', reason: DisconnectReason.SocketError, status,
+    });
+    expect(requests).toBe(1);
+    expect(targetConnections).toBe(0);
   });
 
   it('rejects a 101 that names another upgrade token', async () => {
