@@ -233,7 +233,15 @@ internal class NexusPipeWriter : PipeWriter, IDisposable
         {
             cancellationTokenRegistration = cancellationToken.Register(static (object? ctsObject) =>
             {
-                Unsafe.As<CancellationTokenSource?>(ctsObject)?.Cancel();
+                try
+                {
+                    Unsafe.As<CancellationTokenSource?>(ctsObject)?.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // The writer was disposed (its pipe freed) while this flush waited; there is nothing left to
+                    // cancel. Throwing here would fail the caller's Cancel instead.
+                }
             }, _flushCts);
         }
 
