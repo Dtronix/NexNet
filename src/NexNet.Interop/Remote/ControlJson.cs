@@ -43,6 +43,17 @@ public static class ControlJson
         return json;
     }
 
+    /// <summary>The pool options JSON of control protocol §6.11.1; null members are omitted.</summary>
+    public static JsonObject ToJson(ClientPoolSpec pool)
+    {
+        ArgumentNullException.ThrowIfNull(pool);
+        var json = new JsonObject();
+        Add(json, "maxConnections", pool.MaxConnections);
+        Add(json, "maxIdleTimeMs", pool.MaxIdleTimeMs);
+        Add(json, "minIdleConnections", pool.MinIdleConnections);
+        return json;
+    }
+
     /// <summary>A method reference: <c>{nexus, name, id}</c>.</summary>
     public static JsonObject ToJson(RemoteMethod method)
     {

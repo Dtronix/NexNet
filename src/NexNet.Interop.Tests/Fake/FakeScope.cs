@@ -13,6 +13,8 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
     private readonly ConcurrentDictionary<string, FakePipe> _pipes = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _tokens = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task<JsonNode?>> _futures = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, FakePool> _pools = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, FakeRental> _rentals = new(StringComparer.Ordinal);
 
     public FakeHost Host { get; } = host;
 
@@ -27,6 +29,10 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
         {
             case "client.create":
                 return CreateClientAsync(args);
+            case "pool.create":
+                return CreatePoolAsync(args);
+            case "pool.ensureConnected":
+                return Rental(args).DispatchAsync(op, args);
             case "token.create":
                 _tokens[args["token"]!.GetValue<string>()] = new CancellationTokenSource();
                 return Done();
@@ -46,6 +52,12 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
 
         if (op.StartsWith("pipe.", StringComparison.Ordinal) && op != "pipe.create" || op.StartsWith("channel.", StringComparison.Ordinal))
             return Pipe(args).DispatchAsync(op, args);
+
+        if (op.StartsWith("pool.", StringComparison.Ordinal))
+            return Pool(args).DispatchAsync(op, args);
+
+        if (args["h"]?.GetValue<string>() is { } rentalHandle && _rentals.TryGetValue(rentalHandle, out var rental))
+            return rental.DispatchAsync(op, args);
 
         return Client(args).DispatchAsync(op, args);
     }
@@ -74,12 +86,49 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
 
     public IEnumerable<FakePipe> PipesOf(FakeClient client) => _pipes.Values.Where(p => p.Client == client);
 
-    public async Task<JsonObject> AuditAsync(string? handle)
+    public FakeRental AddRental(FakePool pool, IRentedClientUnderTest rental)
+    {
+        var fake = new FakeRental(this, Host.NewHandle("c"), pool, rental);
+        _rentals[fake.Handle] = fake;
+        return fake;
+    }
+
+    public FakeRental Rental(JsonObject args)
+    {
+        var handle = args["h"]?.GetValue<string>() ?? throw new ArgumentException("The op needs a client handle.");
+        return _rentals.TryGetValue(handle, out var rental) ? rental : throw new UnknownHandleException("Unknown rented client " + handle + ".");
+    }
+
+    public async Task RemoveRentalAsync(FakeRental rental)
+    {
+        if (_rentals.TryRemove(rental.Handle, out _))
+            await rental.Rental.ReturnAsync();
+    }
+
+    public async Task<JsonObject> AuditAsync(string? handle, string? pool = null)
     {
         var report = LeakReport.Clean;
+        foreach (var fake in _pools.Values)
+        {
+            if (handle != null || pool != null && fake.Handle != pool)
+                continue;
+            var poolReport = await fake.Driver.EndTestAuditAsync();
+            if (!poolReport.IsClean)
+                report = LeakReports.Add(report, poolReport with { Details = poolReport.Details.Select(d => fake.Handle + ": " + d).ToArray() });
+        }
+
+        foreach (var rental in _rentals.Values)
+        {
+            if (pool != null || handle != null && rental.Handle != handle)
+                continue;
+            var rentalReport = await rental.AuditAsync();
+            if (!rentalReport.IsClean)
+                report = LeakReports.Add(report, rentalReport with { Details = rentalReport.Details.Select(d => rental.Handle + ": " + d).ToArray() });
+        }
+
         foreach (var client in _clients.Values)
         {
-            if (handle != null && client.Handle != handle)
+            if (pool != null || handle != null && client.Handle != handle)
                 continue;
             var clientReport = await client.Driver.EndTestAuditAsync();
             if (!clientReport.IsClean)
@@ -109,6 +158,14 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        foreach (var rental in _rentals.Values.ToArray())
+            await RemoveRentalAsync(rental);
+        foreach (var pool in _pools.Values.ToArray())
+        {
+            _pools.TryRemove(pool.Handle, out _);
+            await pool.DisposeAsync();
+        }
+
         foreach (var client in _clients.Values.ToArray())
             await RemoveClientAsync(client);
         foreach (var token in _tokens.Values)
@@ -129,6 +186,47 @@ internal sealed class FakeScope(FakeHost host, string test) : IAsyncDisposable
         var client = new FakeClient(this, Host.NewHandle("c"), (InProc.InProcClientDriver<InteropClientNexus, InteropClientNexus.ServerProxy>)driver);
         _clients[client.Handle] = client;
         return new JsonObject { ["h"] = client.Handle };
+    }
+
+    private async Task<JsonObject> CreatePoolAsync(JsonObject args)
+    {
+        var nexus = args["nexus"]!.AsObject();
+        if (nexus["client"]?.GetValue<string>() != typeof(IInteropClientNexus).FullName)
+            throw new NotSupportedException("The fake host only has the interop nexus pair.");
+
+        var spec = ParseSpec(args["spec"]!.AsObject());
+        var options = new ClientPoolSpec();
+        if (args["options"] is JsonObject json)
+        {
+            foreach (var (name, value) in json)
+            {
+                switch (name)
+                {
+                    case "maxConnections":
+                        options.MaxConnections = value!.GetValue<int>();
+                        break;
+                    case "maxIdleTimeMs":
+                        options.MaxIdleTimeMs = value!.GetValue<int>();
+                        break;
+                    case "minIdleConnections":
+                        options.MinIdleConnections = value!.GetValue<int>();
+                        break;
+                    default:
+                        throw new NotSupportedException("Unknown pool option '" + name + "'.");
+                }
+            }
+        }
+
+        var driver = await Harness.CreatePoolAsync(ClientTarget.CSharp(spec.Transport!.Value), spec, options);
+        var pool = new FakePool(this, Host.NewHandle("pool"), driver);
+        _pools[pool.Handle] = pool;
+        return new JsonObject { ["pool"] = pool.Handle };
+    }
+
+    private FakePool Pool(JsonObject args)
+    {
+        var handle = args["pool"]?.GetValue<string>() ?? throw new ArgumentException("The op needs a pool handle.");
+        return _pools.TryGetValue(handle, out var pool) ? pool : throw new UnknownHandleException("Unknown pool " + handle + ".");
     }
 
     private FakeClient Client(JsonObject args)

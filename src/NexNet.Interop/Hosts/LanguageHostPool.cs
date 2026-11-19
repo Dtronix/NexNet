@@ -151,12 +151,19 @@ public sealed class LanguageHostPool : IAsyncDiscoveryInitializer, IAsyncDisposa
     }
 
     /// <summary>Fails every row of a language whose host could not start.</summary>
-    private sealed class FailingDriverFactory(string language, Exception reason) : IClientDriverFactory
+    private sealed class FailingDriverFactory(string language, Exception reason) : IClientDriverFactory, IPoolDriverFactory
     {
         public Task<IClientUnderTest> CreateAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec)
             where TClientNexus : ClientNexusBase<TServerProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
             where TServerProxy : ProxyInvocationBase, IInvocationMethodHash, new()
-            => Task.FromException<IClientUnderTest>(new InvalidOperationException(
-                $"The {language} language host is not available: {reason.Message}", reason));
+            => Task.FromException<IClientUnderTest>(Unavailable());
+
+        public Task<IPoolUnderTest> CreatePoolAsync<TClientNexus, TServerProxy>(ClientTarget target, ClientSpec spec, ClientPoolSpec pool)
+            where TClientNexus : ClientNexusBase<TServerProxy>, IInvocationMethodHash, ICollectionConfigurer, new()
+            where TServerProxy : ProxyInvocationBase, IInvocationMethodHash, new()
+            => Task.FromException<IPoolUnderTest>(Unavailable());
+
+        private InvalidOperationException Unavailable()
+            => new($"The {language} language host is not available: {reason.Message}", reason);
     }
 }
