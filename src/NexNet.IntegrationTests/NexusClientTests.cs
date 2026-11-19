@@ -416,19 +416,23 @@ internal partial class NexusClientTests(LanguageHostPool hosts) : BaseTests
     [ClientMatrix(Transports = [ClientTransport.Uds, ClientTransport.Tcp, ClientTransport.TcpTls, ClientTransport.HttpSocket, ClientTransport.HttpSocketTls, ClientTransport.WebSocket, ClientTransport.WebSocketTls], CSharpTransports = [ClientTransport.Quic])]
     public async Task ReconnectsStopsAfterSpecifiedTimes(ClientTarget target)
     {
+        // The connection timeout applies to the initial connect too, so it gets the standard connect budget: a 100 ms
+        // timeout failed that connect whenever a cold process or a loaded machine made the (TLS) HTTP connect slower.
+        var connectionTimeoutSeconds = T(TestTimeouts.Connect);
         await using var server = await StartDedicatedServer(AbruptStop());
         await using var client = await Connect(target, server, spec =>
         {
-            spec.ConnectionTimeoutMs = 100;
+            spec.ConnectionTimeoutMs = (int)(connectionTimeoutSeconds * 1000);
             spec.ReconnectDelaysMs = [20];
             spec.ReconnectContinuously = false;
         });
 
         await server.StopAsync();
 
-        // One reconnect attempt fails, then the client gives up.
+        // One reconnect attempt fails, then the client gives up. The attempt is refused quickly; it is bounded by the
+        // connection timeout at worst.
         await Script(client).OnDisconnected.NextCallAsync().AsTask().Timeout(T(5));
-        await client.WaitForStateAsync(ConnectionState.Disconnected, T(1));
+        await client.WaitForStateAsync(ConnectionState.Disconnected, connectionTimeoutSeconds + T(1));
     }
 
     [Test]
