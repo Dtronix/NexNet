@@ -72,12 +72,24 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         if (_client == null)
             return;
 
+        // Captured before the pipe closes: once it has, a new enable may replace them.
         var disconnectedTask = _disconnectTcs!.Task.ConfigureAwait(false);
+        var loopTask = Processor.LoopTask;
         // Complete the pipe and everything closes.
         await _client!.CompletePipe().ConfigureAwait(false);
-        
+
         await disconnectedTask;
-        await Processor.StoppedTask.ConfigureAwait(false);
+
+        // This run's processor loop, not Processor.StoppedTask: that pooled task is reset by the next run's start.
+        try
+        {
+            await loopTask.ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            // A faulted loop is logged by SuperviseProcessorAsync; the collection is disabled either way.
+            Logger?.LogDebug(e, "Collection message processor loop ended with an error.");
+        }
     }
 
     public async ValueTask<bool> EnableAsync(CancellationToken cancellationToken = default)
@@ -137,13 +149,17 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         _client = new NexusBroadcastSession<TUnion>(pipe, writer, _session);
 
         _initializedTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var disconnectTcs = _disconnectTcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var run = new EnableRun(this, _client, stopCts, OperationSemaphore, readyTcs, disconnectTcs);
 
         // Registered once the enable's state is in place, so a pipe that is already closed still runs the full
         // disconnect path against it. Not tied to the enable token: the cleanup must run whenever the pipe closes,
         // even after that token is canceled.
-        _ = pipe.CompleteTask.ContinueWith((s, state) =>
-            Unsafe.As<NexusBroadcastClient<TUnion>>(state)!.Disconnected(), this, CancellationToken.None);
+        _ = pipe.CompleteTask.ContinueWith(static (_, state) =>
+        {
+            var run = Unsafe.As<EnableRun>(state)!;
+            run.Owner.Disconnected(run);
+        }, run, CancellationToken.None);
 
         // Long-running task listening for changes.
         // The reader feeds this run only: messages still buffered in this pipe after it closes must not reach the
@@ -200,6 +216,11 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
         // Check to see if we have connected or have just been disconnected.
         var isDisconnected = client.Pipe.CompleteTask.IsCompleted;
         _initializedTcs = null;
+
+        // Finish this run's cleanup before reporting the failure, so an immediate retry starts a fresh enable instead
+        // of returning true for the closed pipe.
+        if (isDisconnected)
+            await disconnectTcs.Task.ConfigureAwait(false);
 
         // The pipe is closed after the failure is recorded, so a processor failure is always visible here.
         if (isDisconnected && Volatile.Read(ref _processorFailure) is { } failure)
@@ -312,50 +333,83 @@ internal abstract class NexusBroadcastClient<TUnion> : NexusBroadcastBase<TUnion
             _ = readyTcs.Task.Exception;
     }
 
-    private void Disconnected()
+    /// <summary>
+    /// The state of one enable run. The pipe-close cleanup of a run acts on this, never on whichever run the fields
+    /// hold by then: once <see cref="_client"/> is cleared a new enable may already have installed its own.
+    /// </summary>
+    private sealed class EnableRun(
+        NexusBroadcastClient<TUnion> owner,
+        NexusBroadcastSession<TUnion> client,
+        CancellationTokenSource stopCts,
+        SemaphoreSlim? operationSemaphore,
+        TaskCompletionSource readyTcs,
+        TaskCompletionSource disconnectTcs)
     {
-        // Captured first: once _client is cleared a new enable may install its own completion sources.
-        var readyTcs = _readyTcs;
-        var disconnectTcs = _disconnectTcs;
+        public readonly NexusBroadcastClient<TUnion> Owner = owner;
+        public readonly NexusBroadcastSession<TUnion> Client = client;
+        public readonly CancellationTokenSource StopCts = stopCts;
+        public readonly SemaphoreSlim? OperationSemaphore = operationSemaphore;
+        public readonly TaskCompletionSource ReadyTcs = readyTcs;
+        public readonly TaskCompletionSource DisconnectTcs = disconnectTcs;
+    }
 
-        State = NexusCollectionState.Disconnected;
+    /// <summary>
+    /// Test seam: runs during a run's disconnect cleanup, after the collection accepts a new enable and before the
+    /// run's own tasks complete. Always null outside tests.
+    /// </summary>
+    internal Action? DisconnectCleanupTestHook { get; set; }
 
-        // Stop the run and reset the state together, between two messages: a message of the closed pipe that the
-        // processor still holds is then dropped (see OnProcessCore), and cannot reach the reset state.
-        lock (_processLock)
+    private void Disconnected(EnableRun run)
+    {
+        try
         {
-            // ReSharper disable once MethodHasAsyncOverload
-            StopCts?.Cancel();
+            State = NexusCollectionState.Disconnected;
 
-            try
+            // Stop the run and reset the state together, between two messages: a message of the closed pipe that the
+            // processor still holds is then dropped (see OnProcessCore), and cannot reach the reset state.
+            lock (_processLock)
             {
-                OnDisconnected();
+                // ReSharper disable once MethodHasAsyncOverload
+                run.StopCts.Cancel();
+
+                try
+                {
+                    OnDisconnected();
+                }
+                catch (Exception e)
+                {
+                    Logger?.LogError(e, "Error while disconnecting client.");
+                }
             }
-            catch (Exception e)
+
+            if (ReferenceEquals(OperationSemaphore, run.OperationSemaphore))
+                OperationSemaphore = null;
+            run.OperationSemaphore?.Dispose();
+
+            using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
             {
-                Logger?.LogError(e, "Error while disconnecting client.");
+                CoreChangedEvent.Raise(eventArgsOwner.Value);
             }
+
+            Interlocked.CompareExchange(ref _client, null, run.Client);
+
+            DisconnectCleanupTestHook?.Invoke();
+
+            // From here on another enable may own the fields: only clear what still belongs to this run.
+            if (ReferenceEquals(StopCts, run.StopCts))
+                StopCts = null;
         }
-
-        OperationSemaphore?.Dispose();
-        OperationSemaphore = null;
-
-        using (var eventArgsOwner = NexusCollectionChangedEventArgs.Rent(NexusCollectionChangedAction.Reset))
+        finally
         {
-            CoreChangedEvent.Raise(eventArgsOwner.Value);
-        }
-
-        _client = null;
-        StopCts = null;
-
-        // A disconnect before the first synchronization fails ReadyTask instead of leaving it pending forever. A
-        // processor failure (OnProcessorStopped) has already faulted it with its own reason.
-        if (readyTcs != null)
-            FailReady(readyTcs, new InvalidOperationException(
+            // A disconnect before the first synchronization fails ReadyTask instead of leaving it pending forever. A
+            // processor failure (OnProcessorStopped) has already faulted it with its own reason. ReadyTask keeps this
+            // run's outcome until the next enable replaces it.
+            FailReady(run.ReadyTcs, new InvalidOperationException(
                 "The collection disconnected before its initial synchronization completed. Enable it again to resynchronize."));
 
-        disconnectTcs?.TrySetResult();
-        Interlocked.CompareExchange(ref _disconnectTcs, null, disconnectTcs);
+            run.DisconnectTcs.TrySetResult();
+            Interlocked.CompareExchange(ref _disconnectTcs, null, run.DisconnectTcs);
+        }
     }
     protected abstract void OnDisconnected();
 
