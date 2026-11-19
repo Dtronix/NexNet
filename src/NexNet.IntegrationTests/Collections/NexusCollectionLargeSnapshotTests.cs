@@ -118,6 +118,86 @@ internal class NexusCollectionLargeSnapshotTests : NexusCollectionBaseTests
     }
 
     [Test]
+    [Transports(Type.Uds, Type.Tcp)]
+    public async Task LargeRelayResync_SlowClient_ReceivesEveryItem(Type type)
+    {
+        // A relay resync resets the clients already connected with the same backpressure as a new client's
+        // snapshot, so a large list reaches a slow client whole (F32).
+        const int count = 100_000;
+
+        CurrentUdsPath = null;
+        CurrentTcpPort = null;
+        var parent = CreateServer(CreateServerConfig(type), _ => { });
+        await using var clientPool = new NexusClientPool<ClientNexus, ClientNexus.ServerProxy>(
+            new NexusClientPoolConfig(CreateClientConfig(type)));
+
+        CurrentUdsPath = null;
+        CurrentTcpPort = null;
+        var relayServer = CreateServer(CreateServerConfig(type), _ => { }, configureCollections: nexus =>
+            nexus.IntListRelay.ConfigureRelay(clientPool.GetCollectionConnector(n => n.IntListBi)));
+        var (client, _) = CreateClient(CreateClientConfig(type));
+
+        await parent.StartAsync().Timeout(TestTimeouts.Connect);
+        var sourceList = (NexusListServer<int>)parent.ContextProvider.Rent().Collections.IntListBi;
+        sourceList.TestResetTo(Enumerable.Range(0, count));
+
+        await relayServer.StartAsync().Timeout(TestTimeouts.Connect);
+        var serverRelay = relayServer.ContextProvider.Rent().Collections.IntListRelay;
+        await serverRelay.ReadyTask.Timeout(30);
+
+        await client.ConnectAsync().Timeout(TestTimeouts.Connect);
+        var list = client.Proxy.IntListRelay;
+        await Assert.That(await list.EnableAsync().Timeout(30)).IsTrue();
+        await Assert.That(list.Count).IsEqualTo(count);
+
+        var broadcaster = (NexusBroadcastClient<INexusCollectionListMessage>)(object)list;
+
+        // Throttle the client: it stalls at the start of the resync, then reads it far slower than the relay can
+        // write it. Without backpressure the relay would overflow the client's buffer and close its pipe.
+        var processed = 0;
+        broadcaster.ProcessTestHook = _ =>
+        {
+            var n = Interlocked.Increment(ref processed);
+            if (n == 1)
+                Thread.Sleep(500);
+            else if (n % 25 == 0)
+                Thread.Sleep(1);
+        };
+
+        int[] expected;
+        try
+        {
+            // A move in the parent resyncs the relay, which resets its connected clients with the whole list. The
+            // change after it is applied on top of the reset.
+            await Assert.That(await sourceList.MoveAsync(0, count - 1).Timeout(5)).IsTrue();
+            await Assert.That(await sourceList.AddAsync(-1).Timeout(5)).IsTrue();
+            expected = Enumerable.Range(1, count - 1).Append(0).Append(-1).ToArray();
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (!(list.Count == count + 1 && list[count] == -1 && list[count - 1] == 0))
+            {
+                if (list.DisabledTask.IsCompleted)
+                    throw new InvalidOperationException(
+                        $"The relay client was disconnected from the collection during the resync (count {list.Count}).");
+                if (sw.Elapsed > TimeSpan.FromSeconds(60))
+                    throw new TimeoutException($"Relay client list has {list.Count} items, expected {count + 1}.");
+                await Task.Delay(50);
+            }
+        }
+        finally
+        {
+            broadcaster.ProcessTestHook = null;
+        }
+
+        using (Assert.Multiple())
+        {
+            await Assert.That(list.State).IsEqualTo(NexusCollectionState.Connected);
+            await Assert.That(list.DisabledTask.IsCompleted).IsFalse();
+            await Assert.That(list.SequenceEqual(expected)).IsTrue();
+        }
+    }
+
+    [Test]
     public async Task VeryLargeSnapshot_ReceivesEveryItem()
     {
         const int count = 1_000_000;

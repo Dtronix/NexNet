@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using NexNet.Collections;
@@ -30,7 +31,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
     private readonly object _lifecycleLock = new();
 
     // Sessions currently inside ServerStartCollectionConnection, so a processor restart can reset them.
-    private readonly ConcurrentDictionary<NexusBroadcastSession<TUnion>, byte> _sessions = new();
+    private readonly ConcurrentDictionary<ServerSession, byte> _sessions = new();
 
     // Start times (Environment.TickCount64) of the processor restarts within the restart window.
     private readonly Queue<long> _restartTimes = new();
@@ -79,7 +80,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         }
         
         var writer = new NexusChannelWriter<TUnion>(pipe, NexNet.Serialization.NexusFormatterRegistry.Get<TUnion>());
-        var client = new NexusBroadcastSession<TUnion>(pipe, writer, session);
+        var client = new ServerSession(pipe, writer, session);
         _sessions.TryAdd(client, 0);
         try
         {
@@ -94,7 +95,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
     private async ValueTask RunClientAsync(
         INexusDuplexPipe pipe,
         NexusChannelWriter<TUnion> writer,
-        NexusBroadcastSession<TUnion> client)
+        ServerSession client)
     {
         var session = client.Session;
         Logger?.LogTrace($"S{session.Id} Sending client init data");
@@ -111,6 +112,7 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
             {
                 snapshot = CaptureSnapshot();
                 await _connectionManager.RegisterClientAsync(client, ct).ConfigureAwait(false);
+                client.Registered = true;
             }).ConfigureAwait(false);
         }
         catch (Exception e)
@@ -433,9 +435,106 @@ internal abstract class NexusBroadcastServer<TUnion> : NexusBroadcastBase<TUnion
         return _connectionManager.BroadcastAsync(message, null, ct);
     }
 
+    /// <summary>
+    /// Sends a new reset to every client already connected, paced like a new client's snapshot. Call it only from
+    /// an action running on the processing loop, as <see cref="BroadcastFromLoopAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="resetStart"/> is broadcast in order with the changes. When a client's writer reaches it, it
+    /// writes the messages of <paramref name="resetRest"/> to that client before anything queued after it, waiting
+    /// on the pipe's flow control for each one, so a large reset never overflows the client's buffer. Each client
+    /// enumerates its own <paramref name="resetRest"/>: capture the state before calling, and rent each message as
+    /// it is enumerated; it is returned to its pool once written.
+    /// </remarks>
+    /// <param name="resetStart">The first message of the reset. It is returned to its pool once sent.</param>
+    /// <param name="resetRest">Creates the rest of the reset for one client.</param>
+    /// <param name="ct">Cancellation token.</param>
+    protected ValueTask ResetClientsFromLoopAsync(TUnion resetStart, Func<IEnumerable<TUnion>> resetRest,
+        CancellationToken ct)
+    {
+        // The clients registered before this action are exactly the clients the broadcast reaches.
+        foreach (var session in _sessions.Keys)
+        {
+            if (session.Registered)
+                session.QueueReset(resetStart, resetRest);
+        }
+
+        return _connectionManager.BroadcastAsync(resetStart, null, ct);
+    }
+
     protected ValueTask<bool> ProcessMessage(TUnion message)
     {
         return Processor.EnqueueWaitForResult(message, null);
+    }
+
+    /// <summary>
+    /// A server-side collection client. Its buffer reader writes the rest of each reset queued with
+    /// <see cref="ResetClientsFromLoopAsync"/> right after that reset's first message, so
+    /// the client's writer sends the reset with backpressure before the changes queued after it.
+    /// </summary>
+    private sealed class ServerSession : NexusBroadcastSession<TUnion>, INexusBroadcastSession<TUnion>
+    {
+        private readonly ConcurrentQueue<(TUnion Start, Func<IEnumerable<TUnion>> Values)> _resets = new();
+        private volatile bool _registered;
+
+        public ServerSession(INexusDuplexPipe pipe, INexusChannelWriter<TUnion>? writer, INexusSession session)
+            : base(pipe, writer, session)
+        {
+        }
+
+        /// <summary>
+        /// True once the client is registered for broadcasts. Set on the processing loop.
+        /// </summary>
+        public bool Registered
+        {
+            get => _registered;
+            set => _registered = value;
+        }
+
+        /// <summary>
+        /// Queues the rest of a reset whose first message is broadcast next. Called on the processing loop.
+        /// </summary>
+        public void QueueReset(TUnion start, Func<IEnumerable<TUnion>> rest) => _resets.Enqueue((start, rest));
+
+        async IAsyncEnumerable<INexusCollectionBroadcasterMessageWrapper<TUnion>> INexusBroadcastSession<TUnion>.BufferRead(
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            await foreach (var wrapper in MessageBuffer.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            {
+                // Matched before the wrapper is yielded: once sent, its message can go back to its pool. Until then
+                // the instance is in use, so it is the queued reset start and nothing else.
+                Func<IEnumerable<TUnion>>? rest = null;
+                if (_resets.TryPeek(out var reset) && ReferenceEquals(reset.Start, wrapper.Message))
+                {
+                    _resets.TryDequeue(out _);
+                    rest = reset.Values;
+                }
+
+                yield return wrapper;
+
+                if (rest == null)
+                    continue;
+
+                // The writer sends each message before it asks for the next one, so the reset is paced by the pipe.
+                foreach (var message in rest())
+                    yield return new ResetItem(message);
+            }
+        }
+
+        /// <summary>
+        /// One message of a reset, for this client only. Returned to its pool once sent.
+        /// </summary>
+        private sealed class ResetItem : INexusCollectionBroadcasterMessageWrapper<TUnion>
+        {
+            public ResetItem(TUnion message) => Message = message;
+
+            public INexusBroadcastSession<TUnion>? SourceClient => null;
+            public TUnion? MessageToSource => null;
+            public TUnion? Message { get; }
+            public int ClientCount { get; set; } = 1;
+
+            public void SignalSent() => Message?.Return();
+        }
     }
 }
 

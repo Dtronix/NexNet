@@ -246,12 +246,13 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
                     await hook().ConfigureAwait(false);
                 if (broadcast.Change != null)
                     await BroadcastFromLoopAsync(broadcast.Change, ct).ConfigureAwait(false);
-                else if (broadcast.Resync != null)
+                else if (broadcast.Resync is { } state)
                 {
-                    // The same reset sequence a connecting client gets as its snapshot. Each client already
-                    // connected starts a new reset and replaces its list (protocol specification §12.4).
-                    foreach (var message in SnapshotMessages(broadcast.Resync))
-                        await BroadcastFromLoopAsync(message, ct).ConfigureAwait(false);
+                    // The same reset sequence a connecting client gets as its snapshot, written to each client
+                    // with the same backpressure. Each client already connected starts a new reset and replaces
+                    // its list (protocol specification §12.4).
+                    await ResetClientsFromLoopAsync(ResetStartMessage(state), () => ResetValueMessages(state), ct)
+                        .ConfigureAwait(false);
                 }
             }).ConfigureAwait(false);
         }
@@ -576,11 +577,26 @@ internal class NexusListRelay<T> : NexusBroadcastServer<INexusCollectionListMess
 
     private static IEnumerable<INexusCollectionListMessage> SnapshotMessages(VersionedList<T>.ListState state)
     {
+        yield return ResetStartMessage(state);
+
+        foreach (var message in ResetValueMessages(state))
+            yield return message;
+    }
+
+    private static INexusCollectionListMessage ResetStartMessage(VersionedList<T>.ListState state)
+    {
         var reset = NexusCollectionListResetStartMessage.Rent();
         reset.Version = state.Version;
         reset.TotalValues = state.List.Count;
-        yield return reset;
+        return reset;
+    }
 
+    /// <summary>
+    /// The messages of a reset after its start: the values, then the reset complete. Each one is rented as it is
+    /// enumerated.
+    /// </summary>
+    private static IEnumerable<INexusCollectionListMessage> ResetValueMessages(VersionedList<T>.ListState state)
+    {
         if (state.List.Count > 0)
         {
             var bufferSize = Math.Min(state.List.Count, 40);
