@@ -146,6 +146,9 @@ public final class ChatServerProxy extends ProxyBase {
 public abstract class ChatClientNexusBase extends ClientNexusBase<ChatServerProxy> {
     protected abstract CompletableFuture<Integer> square(int value, CancellationToken cancellationToken);
     protected abstract void message(String text);
+    // C# ValueTask Receive(INexusDuplexPipe pipe) and ValueTask Feed(INexusDuplexChannel<Message> channel)
+    protected abstract CompletableFuture<Void> receive(NexusDuplexPipe pipe);
+    protected abstract CompletableFuture<Void> feed(NexusDuplexChannel<Message> channel);
 
     @Override
     protected CompletableFuture<Void> dispatch(int methodId, MsgPackReader args, InvocationContext ctx) {
@@ -153,6 +156,10 @@ public abstract class ChatClientNexusBase extends ClientNexusBase<ChatServerProx
             case 0: { args.readArrayHeader(); int v = Formatters.INT.read(args);
                       return ctx.result(square(v, ctx.cancellationToken()), Formatters.INT); }
             case 1: { args.readArrayHeader(); message(Formatters.STRING.read(args)); return ctx.noResult(); }
+            // Pipe and channel methods return ctx.result(future): the runtime closes the pipe when it completes.
+            case 2: { args.readArrayHeader(); return ctx.result(receive(ctx.pipe(args.readInt()))); }
+            case 3: { args.readArrayHeader();
+                      return ctx.result(feed(ctx.channel(args.readInt(), Message.FORMATTER))); }
             default: throw new IllegalArgumentException("Unknown method id " + methodId);
         }
     }
@@ -162,7 +169,12 @@ public abstract class ChatClientNexusBase extends ClientNexusBase<ChatServerProx
 - Lifecycle hooks (override in user code): `onConnected(boolean isReconnected)`, `onDisconnected()`,
   `onReconnecting()`, each returning `CompletableFuture<Void>`. `context()` returns the `ClientSessionContext`.
 - `InvocationContext.result(future, formatter)` for `ValueTask<T>`, `result(future)` for `ValueTask`,
-  `noResult()` for `void` and pipe methods. Pipe and channel arguments: `ctx.pipe(id)`, `ctx.channel(id, formatter)`.
+  `noResult()` for `void` methods only. Pipe and channel arguments: `ctx.pipe(id)`, `ctx.channel(id, formatter)`.
+- **Pipe and channel methods return `ctx.result(future)`** with the user method's future (amendment C-3). They
+  are invoked with `IgnoreReturn | DuplexPipe`, so no result is sent, but the runtime closes the method's pipes
+  (specification section 7.6) and finishes the invocation only when that future completes. `noResult()` completes
+  at once, so it would close the pipe before the method has used it. A pipe method's execution slot is freed as soon
+  as its pipe opens (specification section 8), so long-running pipe methods don't block other invocations.
 - The runtime validates the id against `HandshakeDescriptor.acceptsMethod` before dispatch.
 - Methods with `separatePool` in the IR: the generated base overrides `protected boolean separatePool(int methodId)`
   to return true for their ids; the runtime runs them in the separate invocation pool.
