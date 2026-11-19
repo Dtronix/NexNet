@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionResultState, ConnectionState, DisconnectReason } from '../../src/contract/enums.js';
 import { getSessionCounters } from '../../src/session/diagnostics.js';
 import { encodeFrame, encodeHeaderOnly, encodePreamble } from '../../src/session/frames.js';
@@ -18,7 +18,26 @@ function harness(options) {
   return h;
 }
 
+/**
+ * Fakes the global timers, which the disconnect delay and the disconnect byte wait run on whatever the client clock
+ * (J26). The harness `tick` needs real timers: use {@link flush} after this.
+ */
+function fakeRealTime() {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+}
+
+/**
+ * Moves the faked global timers by `ms`, letting promise continuations run before and after.
+ * @param {number} [ms]
+ */
+async function flush(ms = 0) {
+  for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+  if (ms > 0) await vi.advanceTimersByTimeAsync(ms);
+  for (let i = 0; i < 5; i++) await vi.advanceTimersByTimeAsync(0);
+}
+
 afterEach(async () => {
+  vi.useRealTimers();
   for (const h of harnesses) {
     const done = h.client.disconnect();
     h.clock.advance(60_000);
@@ -274,19 +293,30 @@ describe('timers', () => {
 });
 
 describe('disconnect (§5.6)', () => {
-  it('Graceful: writes the byte, waits DisconnectDelay, then closes the transport', async () => {
+  it('Graceful: writes the byte, waits DisconnectDelay in real time, then closes the transport', async () => {
     const h = harness({ config: { disconnectDelay: 200 } });
     await connected(h);
+    fakeRealTime();
     const done = h.client.disconnect();
-    await tick();
+    await flush();
     expect(afterHello(h)).toEqual([DisconnectReason.Graceful]);
     expect(h.transport.closed).toBe(false);
     expect(h.client.state).toBe(ConnectionState.Disconnecting);
-    h.clock.advance(199);
-    await tick();
+    await flush(199);
     expect(h.transport.closed).toBe(false);
-    h.clock.advance(1);
+    await flush(1);
     await done;
+    expect(h.transport.closed).toBe(true);
+    expect(h.client.state).toBe(ConnectionState.Disconnected);
+  });
+
+  it('a client clock that never moves does not hold the disconnect delay (J26, C# and Java parity)', async () => {
+    const h = harness({ config: { disconnectDelay: 20 } });
+    await connected(h);
+    const start = performance.now();
+    await h.client.disconnect(); // the manual clock is never advanced
+    expect(performance.now() - start).toBeGreaterThanOrEqual(15);
+    expect(afterHello(h)).toEqual([DisconnectReason.Graceful]);
     expect(h.transport.closed).toBe(true);
     expect(h.client.state).toBe(ConnectionState.Disconnected);
   });
@@ -418,14 +448,13 @@ describe('stuck transport write (J20)', () => {
     const h = await stuck({ pingInterval: 60_000, progressTimeout: 300, disconnectDelay: 50 });
     void h.client._session?.send(encodeHeaderOnly(MessageType.Ping));
     await tick();
-    h.clock.advance(100); // the write has been stuck for 100 ms
+    h.clock.advance(100); // the write has been stuck for 100 ms on the session clock
+    fakeRealTime(); // what is left of progressTimeout is waited in real time (J26)
     const done = h.client.disconnect();
-    await tick();
-    h.clock.advance(199);
-    await tick();
+    await flush(199);
     expect(h.transport.closed).toBe(false);
     expect(h.client.state).toBe(ConnectionState.Disconnecting);
-    h.clock.advance(1);
+    await flush(1);
     await done;
     expect(h.transport.closed).toBe(true);
     expect(h.client.state).toBe(ConnectionState.Disconnected);
@@ -434,13 +463,13 @@ describe('stuck transport write (J20)', () => {
 
   it('a graceful close whose disconnect byte write never resolves ends after progressTimeout', async () => {
     const h = await stuck({ pingInterval: 60_000, progressTimeout: 300, disconnectDelay: 50 });
+    fakeRealTime();
     const done = h.client.disconnect();
-    await tick();
+    await flush();
     expect(afterHello(h)).toEqual([DisconnectReason.Graceful]); // handed to the transport, never acknowledged
-    h.clock.advance(299);
-    await tick();
+    await flush(299);
     expect(h.transport.closed).toBe(false);
-    h.clock.advance(1);
+    await flush(1);
     await done;
     expect(h.transport.closed).toBe(true);
     expect(closedReason(h)).toBe(DisconnectReason.Graceful);
@@ -448,12 +477,11 @@ describe('stuck transport write (J20)', () => {
 
   it('the close wait never exceeds the 5 s disconnect write timeout', async () => {
     const h = await stuck({ pingInterval: 60_000, timeout: 300_000, progressTimeout: 600_000 });
+    fakeRealTime();
     const done = h.client.disconnect();
-    await tick();
-    h.clock.advance(4_999);
-    await tick();
+    await flush(4_999);
     expect(h.transport.closed).toBe(false);
-    h.clock.advance(1);
+    await flush(1);
     await done;
     expect(closedReason(h)).toBe(DisconnectReason.Graceful);
   });
@@ -462,13 +490,13 @@ describe('stuck transport write (J20)', () => {
     const h = await stuck({ pingInterval: 100, timeout: 250, progressTimeout: 1_000, disconnectDelay: 50 });
     h.clock.advance(100); // first ping: its write never resolves
     await tick();
+    fakeRealTime(); // the session clock drives the keepalive; the byte wait runs in real time (J26)
     h.clock.advance(200); // tick at 300: nothing received for 300 ms > timeout
-    await tick();
+    await flush();
     expect(h.client.state).toBe(ConnectionState.Disconnecting);
-    h.clock.advance(799); // 1,099: the ping write has run 999 ms
-    await tick();
+    await flush(799); // the ping write has run 200 ms on the session clock: 800 ms left
     expect(h.transport.closed).toBe(false);
-    h.clock.advance(1);
+    await flush(1);
     await h.client.disconnected;
     expect(h.transport.closed).toBe(true);
     expect(closedReason(h)).toBe(DisconnectReason.Timeout);

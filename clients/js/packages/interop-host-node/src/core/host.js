@@ -1231,9 +1231,6 @@ export class Host {
       const fake = parsed.fakeTime ? new FakeClock() : null;
       const entry = new ClientEntry(this.#newHandle('c'), scope, exp, new TrackingClock(fake ?? systemClock), fake);
       entry.config = { ...parsed.config, clock: entry.clock, logger: parsed.logLevel ? this.#logger(entry, parsed.logLevel, null) : null };
-      // The runtime waits the disconnect delay on the client clock (C# waits real time): a fake clock would hold every
-      // disconnect until the test moves it.
-      if (fake) entry.config.disconnectDelay = 0;
       entry.scripts = new ClientScripts({
         event: (ev, data) => this.#event(entry, ev, data),
         forward: (slot, callArgs, signal) => this.#forward(entry, slot, callArgs, signal),
@@ -1792,8 +1789,6 @@ export class Host {
     }
     /** @type {Record<string, any>} */
     const clientConfig = { ...parsed.config, clock: fake ?? systemClock, logger: null };
-    // As for clients (client.create): the disconnect delay must not wait on a fake clock.
-    if (fake) clientConfig.disconnectDelay = 0;
     if (parsed.logLevel) {
       // Pool logs are not about one client handle; they travel as host log events.
       const min = levelOrder(parsed.logLevel);

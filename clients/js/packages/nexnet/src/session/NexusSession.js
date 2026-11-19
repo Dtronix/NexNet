@@ -14,7 +14,7 @@ import { ControlSender } from './ControlSender.js';
 import { FrameReader } from './FrameReader.js';
 import { countSession } from './diagnostics.js';
 import { encodeFrame, encodeHeaderOnly, encodePreamble } from './frames.js';
-import { startIntervalTimer } from './clock.js';
+import { startIntervalTimer, systemClock } from './clock.js';
 import { effectivePingInterval } from './options.js';
 import { notifySessionStarted } from './observers.js';
 import { MIN_PEER_MAX_MESSAGE_SIZE, MessageType } from './protocol.js';
@@ -561,8 +561,10 @@ export class NexusSession {
       const finished = this.#writer.finish(encodeHeaderOnly(reason));
       const written = limit > 0 ? await this.#within(finished, limit) : false;
       const delayMs = this.#options.disconnectDelay;
-      // Real-time wait in C#, so the byte reaches the wire before the transport closes (§5.6).
-      if (written && delayMs > 0) await new Promise((resolve) => { this.#timer(delayMs, () => resolve(undefined)); });
+      // Real time, never the injected clock (C# Task.Delay, Java SessionTimers.system(); J26): the delay gives the
+      // network wall-clock time to carry the byte (§5.6), and a test clock that no longer moves must not hold the
+      // session in Disconnecting.
+      if (written && delayMs > 0) await new Promise((resolve) => { this.#timer(delayMs, () => resolve(undefined), systemClock); });
     }
     this.#writer.close();
 
@@ -593,7 +595,7 @@ export class NexusSession {
    * what is left of `progressTimeout` (§9) for the transport write in flight, if any. A write running past
    * `progressTimeout` is a stall and will not carry the byte, so the wait is then 0: a graceful close, idle timeout or
    * stall over a transport whose write never resolves ends within `progressTimeout` (plus `disconnectDelay` once the
-   * byte is written) of that write's start.
+   * byte is written) of that write's start. The limit is measured on the session clock and waited in real time (J26).
    * @returns {number} Milliseconds; 0 when the byte can't be written in time.
    */
   #disconnectWriteLimit() {
@@ -602,14 +604,15 @@ export class NexusSession {
   }
 
   /**
-   * Resolves `promise`'s value, or false after `ms`.
+   * Resolves `promise`'s value, or false after `ms` of real time: a stuck write is real work that an injected clock
+   * does not drive (J26, as Java's close fallback).
    * @param {Promise<boolean>} promise
    * @param {number} ms
    * @returns {Promise<boolean>}
    */
   #within(promise, ms) {
     return new Promise((resolve) => {
-      const cancel = this.#timer(ms, () => resolve(false));
+      const cancel = this.#timer(ms, () => resolve(false), systemClock);
       promise.then((value) => {
         cancel();
         resolve(value);
@@ -618,15 +621,16 @@ export class NexusSession {
   }
 
   /**
-   * A one-shot timer on the session clock, counted in the diagnostics. Returns its cancel function.
+   * A one-shot timer on the session clock (or `clock`), counted in the diagnostics. Returns its cancel function.
    * @param {number} ms
    * @param {() => void} callback
+   * @param {import('./clock.js').Clock} [clock]
    * @returns {() => void}
    */
-  #timer(ms, callback) {
+  #timer(ms, callback, clock = this.#clock) {
     let active = true;
     countSession('timers', 1);
-    const handle = this.#clock.setTimeout(() => {
+    const handle = clock.setTimeout(() => {
       if (!active) return;
       active = false;
       countSession('timers', -1);
@@ -636,7 +640,7 @@ export class NexusSession {
       if (!active) return;
       active = false;
       countSession('timers', -1);
-      this.#clock.clearTimeout(handle);
+      clock.clearTimeout(handle);
     };
   }
 
