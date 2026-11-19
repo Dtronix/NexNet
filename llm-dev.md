@@ -269,7 +269,7 @@ Per-frame counts (`_framesSent`/`_bytesSent` under the write mutex, `_framesRece
 ### 2.3 Utilities
 
 - `IncrementalHasher.cs` - FNV-1a hasher used for method, collection, interface and shape hashes
-- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization
+- `DiagnosticDescriptors.cs` - Error/warning/info definitions; NEXNET001-027 (024-027 are authorization: client nexus, missing OnAuthorize, mixed enums, non-int enum); NEXNET028-034 and 036-038 are serialization; NEXNET039 is the `SeparatePool` warning on a pipe/channel method. NEXNET040-049 are pre-allocated for the multi-language train (plan 00-index §4.5); add descriptors append-only with those IDs: 040 type not representable in a target, 041 target name collision, 042 duplicate/overloaded method names (any nexus interface, inherited ones included; nexus not generated), 043 `Targets` on a client nexus, 044 target without output dir (warning), 045 invalid target configuration, 046 reference-equality set/dictionary key (warning), 047 output file collision, 048 invalid `NexusTargetFormatter`, 049 reserved (H06). `FindTargetDescriptor` maps the IDs `Validation/TargetValidator.cs` reports
 - `SymbolUtilities.cs` - Symbol inspection helpers
 
 ### 2.4 Serialization (Serialization/)
@@ -296,14 +296,20 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 3.2 NexNet.Asp (src/NexNet.Asp/)
 
-`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection and ApplyAuthentication().
+`NexNetMiddlewareExtensions.cs` provides AddNexusServer<>() for IServiceCollection and ApplyAuthentication() (promotes the opt-in `AccessTokenQueryParameter` query value to `Authorization: Bearer` when no header is sent, strips it from the query, never logs it).
 
-**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config.
+**Multi-endpoint and hosting:**
+- `AddNexusServer<>(o => ...)` takes `NexusServerOptions.cs` (`Configure(primary)`, `AddListener(config, name)`; the app's `ILogger`/`IMeterFactory` fill a primary that has none) and registers `NexusServerHostedService.cs`: starts the server on `ApplicationStarted` (after Kestrel binds; a start failure logs critical and stops the app) and stops it on `ApplicationStopping`
+- `MapNexusWebSocket(server, config[, name])` / `MapNexusHttpSocket(server, config[, name])` map an ASP endpoint of an already configured server (`AddExternalEndpoint`; the config supplies that endpoint's session settings)
+- `MapWebSocketNexus`/`MapHttpSocketNexus(config, server)`: the primary config behaves as before; another config on a configured server becomes its own endpoint
+- `UseWebSocketNexusServerAsync`/`UseHttpSocketNexusServerAsync` configure the server, or attach to one already configured instead of throwing
+
+**WebSocket:** `WebSocket/WebSocketServerConfig.cs` provides WebSocket-specific server config: `AllowedOrigins` (empty or `*` = any; checked per request by `MapWebSocketNexus`, 403 otherwise; `UseWebSocketNexusServerAsync` also passes it to `WebSocketOptions.AllowedOrigins`), `AccessTokenQueryParameter`.
 
 **HttpSocket (HttpSocket/):**
 - `HttpSocketMiddleware.cs` - ASP.NET middleware for dynamic HTTP/WebSocket upgrade
 - Both `Map*Nexus` paths build the transport with `ProxyHeaderResolver.GetRemoteEndPoint` and `context.Connection.ClientCertificate`
-- `HttpSocketServerConfig.cs` - HttpSocket transport config
+- `HttpSocketServerConfig.cs` - HttpSocket transport config; `AccessTokenQueryParameter`. Origins are checked by `HttpSocketOptions.AllowedOrigins`
 
 **Utilities:**
 - `NexusILoggerBridgeLogger.cs` - Adapts Microsoft.Extensions.Logging to INexusLogger
@@ -315,7 +321,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 
 ### 4.1 Base Classes
 
-- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger and resets the session id counter, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS socket files in one run-wide temp directory with a static counter, transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test
+- `BaseTests.cs` - Abstract base: lifecycle (`[Before(Test)] BaseSetUp` creates the logger and resets the session id counter, then calls the virtual `SetUp()`; `[After(Test)] BaseTearDown` awaits the virtual `TearDown()`, which disconnects the clients and stops the servers and ASP.NET apps the test created, then flushes the log when the test failed; overrides of `SetUp()`/`TearDown()` call the base and carry no hook attribute), UDS socket files in one run-wide temp directory with a static counter, transport type enum (Uds/Tcp/TcpTls/Quic/WebSocket/HttpSocket), config creation, port allocation, TLS cert loading, cleanup tracking; `AspListenOptions` configures the Kestrel endpoint (e.g. HTTPS) for one test; `CreateMultiEndpointServer(types...)` builds one stopped server with an endpoint per transport (first = primary, others via `AddListener` or `MapNexusWebSocket`/`MapNexusHttpSocket` on one ASP app; optional nexus callback, per-config `configure`, ASP service/app hooks), returned as `MultiEndpointServer(Server, Configs, Transports, CreateClientConfig)`
 - `BasePipeTests.cs` - Pipe test base: LogMode enum (None/OnTestFail/Always), Setup() with auto server/client connection
 - `NexusCollectionBaseTests.cs` (Collections/) - Collection base: ConnectServerAndClient(), CreateRelayCollectionClientServers() for relay topology
 - `BaseAspTests.cs` - ASP.NET base: AspCreateAuthServices(), AspAppAuthConfigure()
@@ -351,6 +357,7 @@ One shape walk per producer: each producer (a `[Nexus]` class, a non-generic `[N
 - `NexusServerTests_NexusGroupInvocations.cs` - Group invocations
 - `NexusServerTests_Versioned.cs` - Versioning
 - `NexusServerTests_Authorization.cs` - Authorization: allow/deny/disconnect, collections, caching (TTL, expiry, invalidation, concurrent access), multi-permission
+- `NexusServerTests_MultiEndpoint.cs` - One server, many endpoints (`BaseAspTests`): endpoint order, broadcasts and collections across transports, `Context.Endpoint` (incl. ASP over HTTPS), per-endpoint `MaxMessageSize`/`Authenticate`/`Timeout`, primary `Authenticate` rule, `nexnet.endpoint` metrics, bind-failure rollback, rate limit across transports, `AddListener`/`AddExternalEndpoint` validation, hosted service lifecycle, `Use*NexusServerAsync` attach, added ASP endpoints' `AllowedOrigins` and query-string token
 
 **Collections (Collections/, 24 files):**
 - `NexusCollectionAckTests.cs` - Acknowledgments

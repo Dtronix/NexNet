@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The contract between the generated test scaffolding (H06: remote proxies, script facades, typed-JSON codecs) and
+       the cross-language harness that implements it (H04/H05). Test-only: never packed. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <IsAotCompatible>true</IsAotCompatible>
+    <RootNamespace>NexNet.Interop</RootNamespace>
+    <Description>Interfaces and value codecs of the NexNet cross-language test harness.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+  </ItemGroup>
+</Project>

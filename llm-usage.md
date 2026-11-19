@@ -51,6 +51,11 @@ Nexus classes must be `partial`, not abstract/nested/generic. One instance per c
 
 `[NexusMethod(SeparatePool = true)]` on a slow plain method: runs in a separate per-session pool (`MaxSeparatePoolInvocations`) instead of taking a `MaxConcurrentConnectionInvocations` slot. Not `LongRunning` (thread pool, no dedicated thread): must be truly async. Not in the method hash. No effect on pipe/channel methods (NEXNET039 warning).
 
+Method names must be unique across the nexus interface and its inherited interfaces: no overloads, and no name that an
+inherited interface also declares. A duplicate is the error NEXNET042 (`Nexus interface '{0}' declares more than one method
+named '{1}'; method names must be unique across the interface and its inherited interfaces`), reported at the duplicate
+method; that nexus is not generated.
+
 CancellationToken must be last. Args and results up to `MaxMessageSize` (4 MiB default; larger than one 64 KiB frame are streamed automatically); over the limit throws `NexusMessageTooLargeException`, session stays up. Use pipes or channels for larger data.
 
 ## Serialization
@@ -717,9 +722,15 @@ Java or JavaScript files are written yet. Without them, the generator's output i
 
 | ID | Severity | Meaning |
 |---|---|---|
+| NEXNET040 | Error | A type used by an export cannot be represented in an opted-in language |
+| NEXNET041 | Error | Name collision in an opted-in language, or two exports with the same namespace and name (give each `NexusClientExport` a distinct `Name`) |
+| NEXNET042 | Error | Duplicate method names (see Method Signatures); also reported for a `NexusClientExport` interface (the export is skipped) |
 | NEXNET043 | Error | `Targets` set on a client nexus; set it on the server nexus or use `NexusClientExport` |
+| NEXNET044 | Warning | A nexus opts in to a language but no output directory is configured for it (`NexNet<Lang>OutputDir` or a `NexNetTarget` item with `OutputDir`); nothing is generated for it |
+| NEXNET045 | Error | Invalid target configuration: unknown target in `NexNetTargets`, a missing or invalid option, or an unknown `NexusTargets` value |
+| NEXNET046 | Warning | A set element or dictionary key compares by reference in an opted-in language |
+| NEXNET047 | Error | Two exports or types would write the same output file (paths compared ignoring case) |
 | NEXNET048 | Error | Invalid `NexusTargetFormatter`: `None` or undefined target, empty formatter name, or a second one for the same (T, language) |
-| NEXNET042 | Error | Also reported for a `NexusClientExport` interface with duplicate method names (the export is skipped) |
 
 ## ASP.NET Integration
 
@@ -752,7 +763,17 @@ app.MapNexusWebSocket(srv, new WebSocketServerConfig { Path = "/ws" });         
 app.UseHttpSockets();
 app.MapNexusHttpSocket(srv, new HttpSocketServerConfig { Path = "/hs" }, "http"); // own session settings
 // MapWebSocketNexus/MapHttpSocketNexus(cfg, server): primary cfg = old behavior; another cfg = its own endpoint.
+
+// Browser clients (cookies, no Authorization header on a WebSocket):
+c.NexusConfig.AllowedOrigins.Add("https://app.example.com"); // WebSocketServerConfig; empty (default) or "*" = any origin
+// HttpSocket: c.SocketOptions.AllowedOrigins (HttpSocketOptions). Other Origin -> 403; a request with no Origin is allowed.
+c.NexusConfig.AccessTokenQueryParameter = "access_token";    // WebSocket + HttpSocket configs; null (default) = off
+// With AspEnableAuthentication: ?access_token=<t> becomes "Authorization: Bearer <t>" when no Authorization header is
+// sent, before AspAuthenticationScheme runs; removed from the query string, never logged. The greeting token
+// (ClientConfig.Authenticate) stays the canonical mechanism.
 ```
+
+Browser clients: docs/articles/asp-net-integration.md#browser-clients.
 
 ## Logging
 

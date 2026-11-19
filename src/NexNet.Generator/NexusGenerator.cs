@@ -8,6 +8,7 @@ using NexNet.Generator.Ir;
 using NexNet.Generator.Models;
 using NexNet.Generator.Serialization;
 using NexNet.Generator.Targets;
+using NexNet.Generator.Targets.CSharpTest;
 using NexNet.Generator.Validation;
 
 namespace NexNet.Generator;
@@ -37,6 +38,11 @@ internal partial class NexusGenerator : IIncrementalGenerator
     /// Incremental step name of the target bundle source (<see cref="TargetBundle"/>, null without one). Used by tests.
     /// </summary>
     public const string BundleTrackingName = "NexusTargetBundle";
+
+    /// <summary>
+    /// Incremental step name of the C# test scaffolding (<see cref="TestScaffoldingOutput"/>). Used by tests.
+    /// </summary>
+    public const string TestScaffoldingTrackingName = "NexusTestScaffolding";
 
     /// <summary>MSBuild property telling the generator it runs in a design-time (IDE) build.</summary>
     public const string DesignTimeBuildProperty = "build_property.DesignTimeBuild";
@@ -163,6 +169,19 @@ internal partial class NexusGenerator : IIncrementalGenerator
         {
             if (text != null)
                 ctx.AddSource(TargetBundle.HintName, text);
+        });
+
+        // C# test scaffolding (remote proxies, script facades) for [assembly: NexusTestScaffolding<TServer, TClient>].
+        // Without the attribute this is one scan of the assembly attributes.
+        var testScaffolding = context.CompilationProvider
+            .Select(static (compilation, ct) => TestScaffoldingExtractor.Extract(compilation, ct))
+            .WithTrackingName(TestScaffoldingTrackingName);
+
+        context.RegisterSourceOutput(testScaffolding, static (ctx, output) =>
+        {
+            ReportTargetDiagnostics(output.Diagnostics, ctx);
+            foreach (var file in output.Files)
+                ctx.AddSource(file.Path, file.Content);
         });
     }
 

@@ -32,4 +32,6 @@
 - **Generator diagnostics are reported at their source location.** Nexus validation and serialization diagnostics (NEXNET001 – NEXNET042) had no location, so the build and the IDE showed them without a file or line. They now point at the method, member, interface or class they are about.
 
 ## Documentation
-## Documentation
+
+- [Metrics and Diagnostics](../metrics.md) documents the `nexnet.endpoint` tag and the endpoint snapshot fields (`NexusServerSnapshot.Endpoints`, `NexusSessionSnapshot.Endpoint`).
+- The [Serialization](../serialization.md) link to the wire protocol's payload encoding points at its current section.

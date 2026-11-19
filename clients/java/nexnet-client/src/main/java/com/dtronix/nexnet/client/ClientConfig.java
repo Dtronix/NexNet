@@ -1,5 +1,6 @@
 package com.dtronix.nexnet.client;
 
+import com.dtronix.nexnet.logging.NexusLogger;
 import com.dtronix.nexnet.reconnect.ReconnectionPolicy;
 import java.net.URI;
 import java.util.Locale;
@@ -38,6 +39,7 @@ public final class ClientConfig {
     private final @Nullable Executor callbackExecutor;
     private final @Nullable Executor invocationExecutor;
     private final @Nullable ReconnectionPolicy reconnectionPolicy;
+    private final @Nullable NexusLogger logger;
     private final int connectionTimeoutMillis;
     private final int handshakeTimeoutMillis;
     private final int timeoutMillis;
@@ -54,6 +56,7 @@ public final class ClientConfig {
         this.callbackExecutor = b.callbackExecutor;
         this.invocationExecutor = b.invocationExecutor;
         this.reconnectionPolicy = b.reconnectionPolicy;
+        this.logger = b.logger;
         this.connectionTimeoutMillis = b.connectionTimeoutMillis;
         this.handshakeTimeoutMillis = b.handshakeTimeoutMillis;
         this.timeoutMillis = b.timeoutMillis;
@@ -216,6 +219,15 @@ public final class ClientConfig {
     }
 
     /**
+     * The logger. Without one the client logs nothing, including the plaintext warning (D7).
+     *
+     * @return the logger, or null
+     */
+    public @Nullable NexusLogger logger() {
+        return logger;
+    }
+
+    /**
      * How long a connection attempt may take, transport and handshake included.
      *
      * @return milliseconds
@@ -295,6 +307,7 @@ public final class ClientConfig {
         private @Nullable Executor callbackExecutor;
         private @Nullable Executor invocationExecutor;
         private @Nullable ReconnectionPolicy reconnectionPolicy;
+        private @Nullable NexusLogger logger;
         private int connectionTimeoutMillis = DEFAULT_CONNECTION_TIMEOUT_MILLIS;
         private int handshakeTimeoutMillis = DEFAULT_HANDSHAKE_TIMEOUT_MILLIS;
         private int timeoutMillis = DEFAULT_TIMEOUT_MILLIS;
@@ -377,6 +390,17 @@ public final class ClientConfig {
          */
         public Builder reconnectionPolicy(@Nullable ReconnectionPolicy policy) {
             this.reconnectionPolicy = policy;
+            return this;
+        }
+
+        /**
+         * Sets the logger. Each client logs through {@code logger.createLogger("CL<id>")}.
+         *
+         * @param logger the logger, or null to log nothing
+         * @return this builder
+         */
+        public Builder logger(@Nullable NexusLogger logger) {
+            this.logger = logger;
             return this;
         }
 

@@ -79,15 +79,15 @@ describe('client skeleton', () => {
     expect(client.nexus).toBe(nexus);
   });
 
-  it('members throw not implemented', async () => {
+  it('session members are implemented (J05); pipe members throw not implemented (J08)', async () => {
     const client = NexusClient.create({ webSocket: { url: 'ws://localhost:1' } }, new TestNexus(), binding);
-    expect(() => client.state).toThrow(notImplemented);
-    expect(() => client.proxy).toThrow(notImplemented);
-    expect(() => client.isSecure).toThrow(notImplemented);
-    expect(() => client.connect()).toThrow(notImplemented);
-    expect(() => client.tryConnect()).toThrow(notImplemented);
-    expect(() => client.disconnect()).toThrow(notImplemented);
-    expect(() => client[Symbol.asyncDispose]()).toThrow(notImplemented);
+    expect(client.state).toBe(ConnectionState.Disconnected);
+    expect(() => client.proxy).toThrow(/not connected/);
+    expect(client.isSecure).toBe(false);
+    expect(client.getSnapshot()).toBeNull();
+    await expect(client.disconnect()).resolves.toBeUndefined();
+    expect(() => client.createPipe()).toThrow(notImplemented);
+    expect(() => client.createChannel(/** @type {any} */ ({}))).toThrow(notImplemented);
   });
 
   it('nexus lifecycle hooks default to no-ops; _dispatch throws', () => {

@@ -114,7 +114,7 @@ These types are supported without any attribute:
 | `Uri`, `Version` | string |
 | `ValueTuple<...>` and `Tuple<...>` (1 to 7 elements), `KeyValuePair<TKey, TValue>` | array |
 
-The exact byte layouts are in the [wire protocol specification](../internals/protocol-specification.md#5-payload-encoding). A type that is neither built in, `[NexusObject]`, nor covered by a custom formatter is reported as NEXNET028.
+The exact byte layouts are in the [wire protocol specification](../internals/protocol-specification.md#10-payload-encoding). A type that is neither built in, `[NexusObject]`, nor covered by a custom formatter is reported as NEXNET028.
 
 ## Types Used Only at Runtime
 
