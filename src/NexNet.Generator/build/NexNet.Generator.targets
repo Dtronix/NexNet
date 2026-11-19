@@ -92,6 +92,7 @@
                         ProjectDirectory="$(MSBuildProjectDirectory)"
                         IrOutputPath="$(NexNetIrOutputPath)"
                         ManifestFile="$(NexNetTargetsManifest)" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_NexNetUnpackStamp)'))" />
     <Touch Files="$(_NexNetUnpackStamp)" AlwaysCreate="true" />
     <ItemGroup>
       <FileWrites Include="$(_NexNetUnpackStamp)" />
