@@ -14,7 +14,7 @@ using NexNet.InteropServer;
 
 // The C# test scaffolding (remote proxies, script facades) of the authorization nexuses, for the client matrix.
 [assembly: NexNet.Interop.NexusTestScaffolding<NexNet.IntegrationTests.TestInterfaces.IAuthServerNexus, NexNet.IntegrationTests.TestInterfaces.IAuthClientNexus>]
-[assembly: NexNet.Interop.NexusTestScaffolding<NexNet.IntegrationTests.IAuthPipeServerNexus, NexNet.IntegrationTests.IAuthPipeClientNexus>]
+[assembly: NexNet.Interop.NexusTestScaffolding<NexNet.IntegrationTests.TestInterfaces.IAuthPipeServerNexus, NexNet.IntegrationTests.TestInterfaces.IAuthPipeClientNexus>]
 
 namespace NexNet.IntegrationTests;
 
@@ -1049,47 +1049,3 @@ internal class NexusServerTests_Authorization(LanguageHostPool hosts) : MatrixTe
         Fail.Test($"Expected {typeof(TException).Name}.");
     }
 }
-
-public partial interface IAuthPipeServerNexus
-{
-    ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe);
-    ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel);
-    ValueTask<int> Ping(int value);
-}
-
-public partial interface IAuthPipeClientNexus { }
-
-[Nexus<IAuthPipeServerNexus, IAuthPipeClientNexus>(NexusType = NexusType.Server)]
-public partial class AuthPipeServerNexus
-{
-    public Func<ServerSessionContext<ClientProxy>, int, string, ReadOnlyMemory<int>, ValueTask<AuthorizeResult>>? OnAuthorizeHandler;
-    public Func<string, INexusDuplexPipe, ValueTask>? ProtectedPipeHandler;
-    public Func<int, string, INexusDuplexChannel<int>, ValueTask>? ProtectedChannelHandler;
-
-    [NexusAuthorize<TestPermission>(TestPermission.Write)]
-    public ValueTask ProtectedPipe(string input, INexusDuplexPipe pipe)
-    {
-        return ProtectedPipeHandler?.Invoke(input, pipe) ?? ValueTask.CompletedTask;
-    }
-
-    [NexusAuthorize<TestPermission>(TestPermission.Write)]
-    public ValueTask ProtectedChannel(int value, string input, INexusDuplexChannel<int> channel)
-    {
-        return ProtectedChannelHandler?.Invoke(value, input, channel) ?? ValueTask.CompletedTask;
-    }
-
-    public ValueTask<int> Ping(int value) => new(value);
-
-    protected override ValueTask<AuthorizeResult> OnAuthorize(
-        ServerSessionContext<ClientProxy> context,
-        int methodId,
-        string methodName,
-        ReadOnlyMemory<int> requiredPermissions)
-    {
-        return OnAuthorizeHandler?.Invoke(context, methodId, methodName, requiredPermissions)
-               ?? new ValueTask<AuthorizeResult>(AuthorizeResult.Allowed);
-    }
-}
-
-[Nexus<IAuthPipeClientNexus, IAuthPipeServerNexus>(NexusType = NexusType.Client)]
-public partial class AuthPipeClientNexus { }
