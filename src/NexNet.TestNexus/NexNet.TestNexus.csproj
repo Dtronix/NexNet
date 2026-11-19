@@ -18,8 +18,6 @@
     <IsPackable>false</IsPackable>
 
     <NexNetInteropArtifactsDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'interop'))</NexNetInteropArtifactsDir>
-    <NexNetJavaScriptOutputDir>$(NexNetInteropArtifactsDir)javascript/generated</NexNetJavaScriptOutputDir>
-    <NexNetJavaScriptModuleName>nexnet-testnexus</NexNetJavaScriptModuleName>
   </PropertyGroup>
 
   <!--
@@ -30,6 +28,14 @@
   <ItemGroup>
     <NexNetTarget Include="java" OutputDir="$(NexNetInteropArtifactsDir)java/generated" Package="com.dtronix.nexnet.testnexus"
                   EmitTestScaffolding="true" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      JavaScript (J12): the clients and the test scaffolding (J11) of the Node and browser language hosts. npm run
+      build:interop-host (clients/js) copies them into the hosts; they import the runtime as @dtronix/nexnet.
+    -->
+    <NexNetTarget Include="javascript" OutputDir="$(NexNetInteropArtifactsDir)js/generated" EmitTestScaffolding="true" />
   </ItemGroup>
 
   <ItemGroup>
