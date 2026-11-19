@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared test nexuses (H02): the nexus interfaces and classes of the integration tests, and the interop type zoo used by
+    the cross-language harness. Test infrastructure; not packaged.
+
+    The interop server nexus opts in to Java and JavaScript (Targets), so the generator writes their clients to
+    artifacts/interop/<lang>/generated (gitignored) through the NexNet.Generator props and targets imported below.
+  -->
+  <Import Project="..\NexNet.Generator\buildTransitive\NexNet.Generator.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IsPackable>false</IsPackable>
+
+    <NexNetInteropArtifactsDir>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', '..', 'artifacts', 'interop'))</NexNetInteropArtifactsDir>
+    <NexNetJavaOutputDir>$(NexNetInteropArtifactsDir)java/generated</NexNetJavaOutputDir>
+    <NexNetJavaPackage>com.dtronix.nexnet.testnexus</NexNetJavaPackage>
+    <NexNetJavaScriptOutputDir>$(NexNetInteropArtifactsDir)javascript/generated</NexNetJavaScriptOutputDir>
+    <NexNetJavaScriptModuleName>nexnet-testnexus</NexNetJavaScriptModuleName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NexNet.IntegrationTests" />
+    <InternalsVisibleTo Include="NexNet.Interop" />
+    <InternalsVisibleTo Include="NexNet.GoldenVectors" />
+    <InternalsVisibleTo Include="NexNet.Serialization.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NexNet\NexNet.csproj" />
+    <ProjectReference Include="..\NexNet.InteropServer\NexNet.InteropServer.csproj" />
+    <ProjectReference Include="..\NexNet.Generator\NexNet.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" SetTargetFramework="TargetFramework=netstandard2.0" />
+  </ItemGroup>
+
+  <Import Project="..\NexNet.Generator\buildTransitive\NexNet.Generator.targets" />
+
+</Project>
