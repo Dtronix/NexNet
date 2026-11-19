@@ -10,3 +10,5 @@
   href: java-runtime-contract.md
 - name: Interop Control Protocol
   href: interop-control-protocol.md
+- name: Generator-Emitted Client Runtime
+  href: generator-emitted-runtime.md
