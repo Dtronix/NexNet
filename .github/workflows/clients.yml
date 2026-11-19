@@ -277,13 +277,15 @@ jobs:
         if: steps.host.outputs.ready == 'true' && matrix.lang == 'java'
         run: clients/java/gradlew -p clients/java :interop-host:installInteropHost
 
+      # --ignore-exit-code 8 (no test ran): until P01 has ported the bucket-A tests onto ClientMatrix, a language can have
+      # no [Lang=...] rows yet. TODO(P01): remove it once every P01 card has landed, so an empty selection fails again.
       - name: Interop tests (${{ matrix.lang }}; HttpSocketTls and WebSocketTls)
         if: steps.host.outputs.ready == 'true'
         env:
           NODE_OPTIONS: --report-on-fatalerror --report-uncaught-exception --report-directory=${{ github.workspace }}/artifacts/interop/node-reports
         run: >-
           dotnet test src/NexNet.IntegrationTests -c Release --no-build --results-directory TestResults
-          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]"
+          --treenode-filter "/*/*/*/*[Lang=${{ matrix.lang }}]" --ignore-exit-code 8
           -- --report-trx
 
       - name: Upload interop results
