@@ -122,8 +122,9 @@ class DefaultConnectorClientTest {
                 assertEquals("127.0.0.1", nexus.context().remoteAddress());
                 client.disconnect().get(10, TimeUnit.SECONDS);
             }
-            assertEquals(DisconnectReason.GRACEFUL.code(), disconnectByte.get(10, TimeUnit.SECONDS));
+            // The server's own failure first: it explains a missing disconnect byte better than a timeout would.
             server.await();
+            assertEquals(DisconnectReason.GRACEFUL.code(), disconnectByte.get(10, TimeUnit.SECONDS));
         }
     }
 }

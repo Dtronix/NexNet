@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,6 +46,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -88,7 +90,13 @@ class InvocationRuntimeTest {
         }
     }
 
-    private final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> daemon(r, "test-callbacks"));
+    /** The callback executor's thread: callbacks are asserted to run on it by identity, not by name. */
+    private final AtomicReference<Thread> callbackThread = new AtomicReference<>();
+    private final ExecutorService callbacks = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = daemon(r, "test-callbacks");
+        callbackThread.set(thread);
+        return thread;
+    });
     private final ExecutorService invocations = Executors.newCachedThreadPool(r -> daemon(r, "test-invocations"));
     private final TestNexus nexus = new TestNexus();
     private final List<NexusSession> sessions = new ArrayList<>();
@@ -195,12 +203,15 @@ class InvocationRuntimeTest {
     void invokeSendsTheInvocationAndCompletesWithTheResultOnTheCallbackExecutor() throws Exception {
         connect();
         CompletableFuture<byte[]> call = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
-        CompletableFuture<String> thread = call.thenApply(v -> Thread.currentThread().getName());
+        CompletableFuture<Thread> thread = call.thenApply(v -> Thread.currentThread());
         Peer.Msg msg = peer.expect(MessageTypes.INVOCATION);
         assertArrayEquals(invocation(1, 1, 0, SMALL_ARGS), msg.body);
         peer.send(MessageTypes.INVOCATION_RESULT, array(1, 1, new byte[] {0x2A}));
+        // Wait for the dependent first: CompletableFuture.get() on 'call' helps run call's pending dependents on the
+        // waiting thread, so awaiting 'call' first could run the thenApply above on this test thread.
+        Thread completedOn = await(thread);
+        assertSame(callbackThread.get(), completedOn);
         assertArrayEquals(new byte[] {0x2A}, await(call));
-        assertEquals("test-callbacks", await(thread));
         assertEquals(0, runtime.pendingCalls());
     }
 
@@ -393,7 +404,8 @@ class InvocationRuntimeTest {
         assertEquals("test-invocations", nexus.threads.get(0));
         // The credit was returned when the invocation was dequeued for execution.
         assertEquals(1, peer.creditsReturned);
-        assertEquals(0, runtime.inboundInvocations());
+        // The result can reach the server before the runtime retires the invocation.
+        awaitInboundInvocations(0);
     }
 
     @Test
@@ -717,6 +729,14 @@ class InvocationRuntimeTest {
 
     // ------------------------------------------------------------------ progress (K17)
 
+    private void awaitInboundInvocations(int count) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (runtime.inboundInvocations() != count) {
+            assertTrue(System.nanoTime() < deadline, "inbound invocations: " + count);
+            Thread.sleep(5);
+        }
+    }
+
     private void awaitLargeMessages(int count) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
         while (runtime.largeMessagesReceiving() != count) {
@@ -731,8 +751,14 @@ class InvocationRuntimeTest {
         connect();
         CompletableFuture<byte[]> call = runtime.invoke(1, TestCodec.args(SMALL_ARGS), TestCodec.BYTES, null);
         peer.expect(MessageTypes.INVOCATION);
+        CompletableFuture<Void> barrier = runtime.invokeTask(2, ArgumentWriter.NONE, null);
+        peer.expect(MessageTypes.INVOCATION);
         peer.send(MessageTypes.MESSAGE_START, array(1, 1, MessageTypes.INVOCATION_RESULT, 200_000));
         peer.sendChunk(1, 1, new byte[1000], 0, 1000);
+        // Frames are handled in order: once the barrier's result is in, so is the chunk. Otherwise the reader could
+        // handle the chunk after the clock moved below, and the stream would not look stalled.
+        peer.send(MessageTypes.INVOCATION_RESULT, array(2, 1));
+        await(barrier);
         awaitLargeMessages(1);
 
         // The first keepalive tick (10 s): nothing arrived for the stream for longer than the progress timeout.
