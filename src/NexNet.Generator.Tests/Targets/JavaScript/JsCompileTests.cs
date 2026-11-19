@@ -220,6 +220,8 @@ public class JsCompileTests
         export const event: IEvent = new Spot({ x: 1, cost: 5n });
         export const flags: Small = Small.A | Small.Top;
         export const huge: Huge = Huge.Max;
+        export const checkedValue: Checked = new Checked({ id: 1, max: 2, maybe: null, seq: [3], packed: new BigInt64Array(1), held: new Holder<number>({ value: 4 }), plain: 5n });
+        export const checkedId: number = checkedValue.id;
         export const tree: Tree<string> = new Tree<string>({ value: 'root', children: [new Tree<string>({ value: 'leaf' })] });
         """;
 
@@ -643,6 +645,7 @@ public class JsCompileTests
             _ when name.StartsWith("Defaults.", StringComparison.Ordinal) => "F.DefaultsFormatter",
             _ when name.StartsWith("Everything.", StringComparison.Ordinal) => "F.EverythingFormatter",
             "Empty.new" => "F.EmptyFormatter",
+            _ when name.StartsWith("Checked.", StringComparison.Ordinal) => "F.CheckedFormatter",
             "Holder<int>" => "F.HolderFormatter(rt.int32Formatter)",
             "Holder<byte>" => "F.HolderFormatter(rt.byteFormatter)",
             "Holder<string>" => "F.HolderFormatter(rt.stringFormatter)",

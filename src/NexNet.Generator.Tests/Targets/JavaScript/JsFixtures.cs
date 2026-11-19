@@ -148,6 +148,20 @@ internal static class JsFixtures
         [NexusObject]
         public class Empty { }
 
+        // D13 opt-in: checked numbers for long/ulong.
+        [NexusObject]
+        public class Checked
+        {
+            [NexusKey(0), NexusJsNumber] public long Id { get; set; } = 7;
+            [NexusKey(1), NexusJsNumber] public ulong Max { get; set; } = 9007199254740991;
+            [NexusKey(2), NexusJsNumber] public long? Maybe { get; set; }
+            [NexusKey(3), NexusJsNumber] public Dictionary<string, ulong>? Totals { get; set; }
+            [NexusKey(4), NexusJsNumber] public IReadOnlyList<long>? Seq { get; set; }
+            [NexusKey(5), NexusJsNumber] public long[]? Packed { get; set; }
+            [NexusKey(6), NexusJsNumber] public Holder<long>? Held { get; set; }
+            [NexusKey(7)] public long Plain { get; set; } = 3;
+        }
+
         [NexusObject]
         public class Everything
         {
@@ -220,6 +234,13 @@ internal static class JsFixtures
                     S("Holder<ushort>", new Holder<ushort> { Items = new() { 65535 }, Array = new ushort[] { 1 }, Value = 2 }),
                     S("Holder<Half>", new Holder<Half> { Items = new() { (Half)1.5f }, Array = new[] { (Half)(-2f) }, Value = Half.MaxValue }),
                     S("Tree<string>", tree),
+                    S("Checked.new", new Checked()),
+                    S("Checked.set", new Checked
+                    {
+                        Id = -9007199254740991, Max = 9007199254740991, Maybe = 5, Totals = new() { ["a"] = 1 },
+                        Seq = new List<long> { -1, 2 }, Packed = new long[] { long.MinValue }, Plain = long.MaxValue,
+                        Held = new Holder<long> { Items = new() { 1, -9007199254740991 }, Array = new long[] { -2 }, Plain = new List<long> { 4 }, Value = 5 },
+                    }),
                     S("Ping<int>", new Ping<int> { Value = 1, Next = new Pong<int> { Next = new Ping<int> { Value = 2 } } }),
                     S<Shape>("Shape.circle", new Circle { Radius = 1.5 }),
                     S<Shape>("Shape.big", new BigCircle { Radius = 2, Label = "big" }),

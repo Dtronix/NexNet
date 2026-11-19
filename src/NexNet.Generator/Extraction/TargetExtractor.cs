@@ -149,7 +149,7 @@ internal static class TargetExtractor
             fragments.Add(IrBuilder.BuildTypes(new ShapeBuilder(compilation), objects, cancellationToken));
         fragments.Add(IrBuilder.BuildAssemblyDeclared(compilation, cancellationToken));
 
-        return IrNativeFormatters.Apply(IrBuilder.Merge(fragments), assembly.Formatters);
+        return IrJsNumbers.Apply(IrNativeFormatters.Apply(IrBuilder.Merge(fragments), assembly.Formatters), compilation);
     }
 
     private static IrFragment? ClientExport(

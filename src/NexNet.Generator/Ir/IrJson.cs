@@ -119,6 +119,8 @@ internal static class IrJson
             o.Add("ordinal", t.Ordinal);
         if (t.RefNullable)
             o.Add("refNullable", true);
+        if (t.JsNumber)
+            o.Add("jsNumber", true);
         if (t.NativeFormatters.Length > 0)
             o.Add("nativeFormatters", ToArray(t.NativeFormatters, f => new JsonObject().Add("target", f.Target).Add("formatter", f.Formatter)));
         return o;
@@ -267,6 +269,7 @@ internal static class IrJson
         DeclId = o.OptString("id"),
         Ordinal = o.TryGet("ordinal", out _) ? o.Int("ordinal") : 0,
         RefNullable = o.TryGet("refNullable", out _) && o.Bool("refNullable"),
+        JsNumber = o.TryGet("jsNumber", out _) && o.Bool("jsNumber"),
         NativeFormatters = Array(o, "nativeFormatters", f => new NativeFormatterIr(f.Int("target"), f.String("formatter"))),
     };
 

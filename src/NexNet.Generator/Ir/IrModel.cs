@@ -273,6 +273,12 @@ internal sealed record TypeRef(TypeRefKind Kind)
     /// </summary>
     public EquatableArray<NativeFormatterIr> NativeFormatters { get; init; } = EquatableArray<NativeFormatterIr>.Empty;
 
+    /// <summary>
+    /// <see cref="TypeRefKind.Prim"/> Int64/UInt64 only: the occurrence opted in to the checked JavaScript <c>number</c>
+    /// mapping (D13, <c>[NexusJsNumber]</c>) instead of <c>bigint</c>. Other targets ignore it.
+    /// </summary>
+    public bool JsNumber { get; init; }
+
     /// <summary>True when the referenced value may be null: a nullable reference or a <c>Nullable&lt;T&gt;</c>.</summary>
     public bool MayBeNull => RefNullable || Kind == TypeRefKind.Nullable;
 
