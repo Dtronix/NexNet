@@ -350,16 +350,42 @@ public sealed class RemoteClientDriver : IClientUnderTest
         var steps = slot.Steps;
         var times = slot.TimesLimit;
         var args = new JsonObject { ["h"] = Handle, ["slot"] = slot.Name };
+        Task request;
         if (steps.Count == 0 && times == null)
         {
-            _ = Post("script.clear", args);
-            return;
+            request = Post("script.clear", args);
+        }
+        else
+        {
+            args["steps"] = new JsonArray(steps.Select(s => (JsonNode?)ControlJson.ToJson(s)).ToArray());
+            if (times != null)
+                args["times"] = times.Value;
+            request = Post("script.set", args);
         }
 
-        args["steps"] = new JsonArray(steps.Select(s => (JsonNode?)ControlJson.ToJson(s)).ToArray());
-        if (times != null)
-            args["times"] = times.Value;
-        _ = Post("script.set", args);
+        AwaitInstalled(request);
+    }
+
+    /// <summary>
+    /// Waits for the host to acknowledge a script change. The server reaches the client over its own connection, not the
+    /// control connection, so a call it makes right after the test scripts a slot could otherwise reach the client
+    /// before the host has installed the script (control protocol §6.1). The script API is synchronous, hence the
+    /// blocking wait. A failure or timeout is left to <see cref="BarrierAsync"/> (the request is tracked).
+    /// </summary>
+    private static void AwaitInstalled(Task request)
+    {
+        // On the read loop (an event handler, or a continuation it ran inline) the ack cannot arrive while we block.
+        if (request.IsCompleted || ControlConnection.IsDispatching)
+            return;
+
+        try
+        {
+            request.Wait(DefaultOpMs);
+        }
+        catch (AggregateException)
+        {
+            // Reported by BarrierAsync.
+        }
     }
 
     private void OnEvent(ControlEvent evt)

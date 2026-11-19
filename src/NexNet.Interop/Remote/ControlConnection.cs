@@ -28,6 +28,10 @@ public sealed class ControlConnection : IAsyncDisposable
     private readonly Channel<byte[]> _outbound = Channel.CreateUnbounded<byte[]>(new UnboundedChannelOptions { SingleReader = true });
     private readonly CancellationTokenSource _closing = new();
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    // True while this thread dispatches a frame of some connection's read loop; a response cannot arrive until it ends.
+    [ThreadStatic]
+    private static bool t_dispatching;
     private Exception? _failure;
     private long _nextId;
     private int _started;
@@ -136,6 +140,12 @@ public sealed class ControlConnection : IAsyncDisposable
         var report = await RequestAsync(test, "test.end", timeoutMs: 30_000).ConfigureAwait(false);
         return LeakReports.Parse(report);
     }
+
+    /// <summary>
+    /// True on a read loop while it dispatches a frame (event handlers and what they run inline). Waiting for a response
+    /// there blocks the loop that would deliver it.
+    /// </summary>
+    internal static bool IsDispatching => t_dispatching;
 
     /// <summary>True when <paramref name="test"/> has an open scope on this connection.</summary>
     public bool HasScope(string test) => _scopes.ContainsKey(test);
@@ -262,7 +272,15 @@ public sealed class ControlConnection : IAsyncDisposable
                     throw new ControlProtocolException("A control frame holds invalid JSON: " + e.Message, e);
                 }
 
-                Dispatch(message, frame.Value.Payload.Length);
+                t_dispatching = true;
+                try
+                {
+                    Dispatch(message, frame.Value.Payload.Length);
+                }
+                finally
+                {
+                    t_dispatching = false;
+                }
             }
         }
         catch (Exception e) when (IsClosed)
