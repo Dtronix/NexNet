@@ -3,9 +3,9 @@
  * The same suite runs in Chromium: `test/serialization/golden.browser.test.js`.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { GoldenCodecs, VECTOR_FILES, parseVectors, replay } from './serialization/support/golden.js';
+import { GoldenCodecs, VECTOR_FILES, parseVectors, replay, vectorFiles } from './serialization/support/golden.js';
 
 const dir = new URL('../../../../../tests/golden/', import.meta.url);
 
@@ -13,7 +13,8 @@ const dir = new URL('../../../../../tests/golden/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, dir), 'utf8');
 
 const codecs = new GoldenCodecs(read('schemas.jsonl'));
-const vectors = VECTOR_FILES.flatMap((file) => parseVectors(file, read(`${file}.jsonl`)));
+const files = vectorFiles(readdirSync(dir).filter((f) => f.endsWith('.jsonl')).map((f) => f.slice(0, -'.jsonl'.length)));
+const vectors = files.flatMap((file) => parseVectors(file, read(`${file}.jsonl`)));
 
 describe('golden vectors (Node)', () => {
   it('every file has vectors and ids are unique', () => {

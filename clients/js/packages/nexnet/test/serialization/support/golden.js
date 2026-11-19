@@ -23,9 +23,21 @@ import {
 import {
   NexusDateOnly, NexusDateTime, NexusDateTimeOffset, NexusDecimal, NexusTimeOnly, NexusTimeSpan, NexusVersion,
 } from '../../../src/values/index.js';
+import { listMessageFormatter } from '../../../src/collections/messages.js';
 
-/** The vector files, in replay order (README "Files"). */
+/** The vector files every runtime replays (README "Files"); any other `*.jsonl` next to them is replayed too. */
 export const VECTOR_FILES = Object.freeze(['primitives', 'containers', 'ext78', 'objects', 'unions', 'messages', 'frames', 'reject']);
+
+/**
+ * The vector files to replay: {@link VECTOR_FILES} first, then any other `*.jsonl` present (`schemas.jsonl` excluded),
+ * so a new vector file is replayed as soon as it lands.
+ * @param {string[]} present File names without the `.jsonl` extension.
+ * @returns {string[]}
+ */
+export function vectorFiles(present) {
+  const extra = present.filter((f) => f !== 'schemas' && !VECTOR_FILES.includes(f)).sort();
+  return [...VECTOR_FILES, ...extra];
+}
 
 /**
  * Declared objects that are C# structs, so never nil. `schemas.jsonl` does not record it; these come from
@@ -857,6 +869,37 @@ export function replay(vector, codecs) {
     default:
       throw new Error(`${where}: unknown mode '${vector.mode}'`);
   }
+  if (vector.type === 'CollectionListMessage') replayCollectionCodec(vector, bytes, c, where);
+}
+
+/** Embedded values as their raw bytes, nil as null: the collection codec under test does not interpret them. */
+const rawOrNil = nullableFormatter(rawFormatter);
+
+/** The runtime's collection item codec (J09, `src/collections/messages.js`), with raw item values. */
+const collectionCodec = listMessageFormatter(/** @type {any} */ (rawOrNil), /** @type {any} */ (rawOrNil));
+
+/**
+ * Replays a collection item vector through the runtime's collection codec too: it reads the bytes and writes the
+ * canonical bytes again, and it refuses every reject vector.
+ * @param {Vector} vector
+ * @param {Uint8Array} bytes
+ * @param {Codec} c The schema codec of `CollectionListMessage`.
+ * @param {string} where
+ */
+function replayCollectionCodec(vector, bytes, c, where) {
+  const read = () => {
+    const r = new MsgPackReader(bytes, readerOptions(vector.options));
+    const message = collectionCodec.read(/** @type {any} */ (r));
+    r.ensureEnd();
+    return message;
+  };
+  if (vector.mode === 'reject') {
+    expect(read, `${where} [collection codec]`).toThrow();
+    return;
+  }
+  const w = new MsgPackWriter();
+  collectionCodec.write(/** @type {any} */ (w), read());
+  expect(toHex(w.toUint8Array()), `${where} [collection codec]`).toBe(toHex(encode(c, c.toJs(vector.value))));
 }
 
 /**

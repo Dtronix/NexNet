@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { GoldenCodecs, VECTOR_FILES, parseVectors, replay } from './support/golden.js';
+import { GoldenCodecs, VECTOR_FILES, parseVectors, replay, vectorFiles } from './support/golden.js';
 
 const files = /** @type {Record<string, string>} */ (import.meta.glob('../../../../../../tests/golden/*.jsonl', { query: '?raw', import: 'default', eager: true }));
 
@@ -17,7 +17,8 @@ function read(name) {
 }
 
 const codecs = new GoldenCodecs(read('schemas.jsonl'));
-const vectors = VECTOR_FILES.flatMap((file) => parseVectors(file, read(`${file}.jsonl`)));
+const names = vectorFiles(Object.keys(files).map((k) => /** @type {string} */ (k.split('/').pop()).slice(0, -'.jsonl'.length)));
+const vectors = names.flatMap((file) => parseVectors(file, read(`${file}.jsonl`)));
 
 describe('golden vectors (browser)', () => {
   it('every file is bundled', () => {
