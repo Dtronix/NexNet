@@ -227,8 +227,24 @@ public final class ChatClient {
     public static NexusClient<ChatServerProxy> create(ClientConfig config, ChatClientNexusBase nexus) {
         return NexusClient.create(config, ChatHandshake.DESCRIPTOR, nexus, ChatServerProxy::new);
     }
+
+    // A custom transport, or the default one with extra upgrade headers (NexusConnector.builder()).
+    public static NexusClient<ChatServerProxy> create(ClientConfig config, ChatClientNexusBase nexus,
+                                                      Transport.Connector connector) {
+        return NexusClient.create(config, ChatHandshake.DESCRIPTOR, nexus, ChatServerProxy::new, connector);
+    }
 }
 ```
+
+- **Class names (K04).** Each export's classes share a stem: the export name without a trailing `ServerNexus`, or
+  else without a trailing `Nexus` (`ChatServerNexus` and `ChatNexus` both give `Chat`; a name that is only the
+  suffix is kept whole). The files are `<Stem>Handshake`, `<Stem>ServerProxy`, `<Stem>ClientNexusBase` and
+  `<Stem>Client`. Two exports with the same stem in one package are NEXNET047.
+- **Base-member clashes (K04).** A method or collection accessor whose Java name equals a member of the generated
+  class's base gets a trailing `_`: on the proxy, `ProxyBase`'s `invoke`, `invokeTask`, `invokeVoid`,
+  `invokePipe`, `invokeChannel` and `list`; on the client nexus base, `ClientNexusBase`'s `context`,
+  `onConnected`, `onDisconnected`, `onReconnecting`, `dispatch`, `separatePool`, `onInvocationException`
+  and `bind`. So a C# `Invoke` method is `invoke_()` in Java.
 
 ### 3.6 Collections
 
