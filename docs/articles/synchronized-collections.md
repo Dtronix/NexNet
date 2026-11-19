@@ -107,7 +107,7 @@ re-enables itself.
 
 If the message processor of a server collection stops on an unexpected error, the server logs it, restarts the
 processor after a short backoff and closes the collection pipe of every client of that collection, so each client
-sees its collection disabled and must re-enable it. After more than 5 restarts within a minute the server stops the
+sees its collection disabled and must re-enable it. If it stops again after 5 restarts within one minute, the server stops the
 collection: its clients are disconnected from it and new enables are refused until the server restarts.
 
 ## Relay Mode
