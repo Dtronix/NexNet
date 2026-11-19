@@ -89,7 +89,7 @@ Any type not listed here is a protocol error.
 ## 4. Message bodies
 
 Every MessagePack body is a **fixed-length MessagePack array**. Readers require the exact element count and reject
-trailing bytes.
+trailing bytes. The one exception is `ServerGreeting` (§4.2), whose last field is a trailing field.
 
 **"Embedded value"** means a payload value (§10) encoded inline as exactly one MessagePack value. It is never
 wrapped in `bin` or length-prefixed.
@@ -103,7 +103,7 @@ wrapped in `bin` or length-prefixed.
 - `invocationCredits`: how many invocations the server may have queued at the client (§4.7).
 
 ### 4.2 ServerGreeting
-`[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int]`
+`[version: int, clientId: int64, maxMessageSize: int, invocationCredits: int, idleTimeoutMs: uint32]`
 
 `version` is the hash of the **client** nexus the server expects (§5.2), not a version string. `clientId` is the
 session ID the server assigned.
@@ -111,6 +111,13 @@ session ID the server assigned.
 `maxMessageSize` and `invocationCredits` have the same meaning for the server. A side whose advertised
 `maxMessageSize` is below one frame (65,526 bytes) or whose `invocationCredits` is below 1 is disconnected with
 `ProtocolError`.
+
+`idleTimeoutMs` is the server's idle timeout for this session (§5.5): the `Timeout` of the endpoint that accepted
+it, in milliseconds. A server always writes all five elements.
+
+`idleTimeoutMs` is a **trailing field**. A reader requires at least the first four elements. A body with only four
+means the server advertised no idle timeout (read as 0). A reader skips any elements after the fifth, so later
+fields can be appended the same way without breaking it. Fewer than four elements is malformed.
 
 ### 4.3 Invocation
 `[invocationId: uint16, methodId: uint16, flags: uint8, arguments: array]`
@@ -350,21 +357,26 @@ Source: `src/NexNet/Messages/IClientGreetingMessageBase.cs` (`ReadAuthentication
 
 `Ping` (type 1) is a single byte with no length and no body.
 
-- **Only the client pings.** Every `PingInterval` (10 s by default), starting once the connection completes, the
-  client first checks its idle timeout and then sends `Ping`.
+- **Only the client pings.** Every ping interval, starting once the connection completes, the client first checks
+  its idle timeout and then sends `Ping`.
+- **The ping interval comes from the server.** By default it is a third of the `idleTimeoutMs` the server advertised
+  in `ServerGreeting` (§4.2), and at least 1 s. If the server advertised none (0 or absent), it is 10 s. A client may
+  configure an explicit interval (`ClientConfig.PingInterval` in C#). An explicit interval that is not below the
+  advertised idle timeout is used anyway, and the client logs a warning: the server will time the session out
+  between pings.
 - **The server only replies.** For every `Ping` it receives, it sends a `Ping` back. Pings that arrive before the
   reply is sent may be answered with a single `Ping`. The server never pings on its own.
-- **The idle timeout is local to each side** and is not advertised. Each side disconnects with `Timeout` (sending
-  the disconnect byte) when it has received no complete frame for `Timeout` (30 s by default). Any complete frame
+- **The idle timeout is enforced by each side on its own.** The server advertises its idle timeout; the client does
+  not advertise one. Each side disconnects with `Timeout` (sending the disconnect byte) when it has received no
+  complete frame for `Timeout` (30 s by default). Any complete frame
   counts, not only `Ping`; a partial frame does not. The server checks every `Timeout` / 4. The client checks on
   each ping tick.
 
-So a client must ping well within the server's idle timeout, which it cannot learn from the protocol today.
+So a client must ping well within the server's idle timeout. It learns that timeout from `ServerGreeting`. At the
+default third, the server times the session out only after about three ping intervals without a complete frame.
 
-**Forward note:** unit S04 adds a trailing field `idleTimeoutMs` to `ServerGreeting`. Clients will derive their
-ping interval from it (a third of it by default). Older readers ignore trailing fields.
-
-Source: `src/NexNet/NexusClient.cs` (`PingTimer`), `src/NexNet/NexusServer.cs` (`ConnectionWatchdog`),
+Source: `src/NexNet/NexusClient.cs` (`PingTimer`), `src/NexNet/Transports/ClientConfig.cs`
+(`GetEffectivePingInterval`), `src/NexNet/NexusServer.cs` (`ConnectionWatchdog`),
 `src/NexNet/Internals/NexusSession.Receiving.cs` (the `Ping` case), `src/NexNet/Internals/SessionControlSender.cs`
 (`RequestPong`), `src/NexNet/Internals/NexusSession.cs` (`DisconnectIfTimeout`).
 
