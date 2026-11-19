@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { NodeNexusClient } from '../src/node.js';
+import { NexusList, NodeNexusClient } from '../src/node.js';
 import { SampleClientNexusBase, SampleHandshake, SampleServerProxy, createSampleClient } from './fixtures/generated-sample.js';
 
 class SampleNexus extends SampleClientNexusBase {
@@ -21,7 +21,9 @@ describe('generated-code shape against the contract', () => {
     // J07: invocations need a connected session; fire-and-forget failures are logged, not thrown.
     await expect(proxy.echo('x')).rejects.toMatchObject({ name: 'NexusTransportError' });
     expect(proxy.notify()).toBeUndefined();
-    expect(() => proxy.names).toThrow(/not implemented: ProxyBase._collection/);
+    // J09: a collection property returns the same list every time.
+    expect(proxy.names).toBeInstanceOf(NexusList);
+    expect(proxy.names).toBe(proxy.names);
   });
 
   it('unknown method IDs fall through to the base dispatcher', () => {
