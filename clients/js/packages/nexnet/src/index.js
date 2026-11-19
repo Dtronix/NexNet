@@ -40,6 +40,7 @@ export { ProxyBase } from './contract/proxy.js';
 export { ClientNexusBase } from './contract/nexus.js';
 export { NexusDuplexPipe, NexusChannelReader, NexusChannelWriter, NexusDuplexChannel } from './contract/pipes.js';
 export { NexusList } from './contract/collections.js';
+export { NexusCollectionMode } from './collections/mode.js';
 export { NexusClientPool } from './contract/pool.js';
 export { NexusClientPoolConnectionError } from './pool/NexusClientPool.js';
 export { CoreLogger, ConsoleLogger, RollingLogger, NexusLogBehaviors, NexusLogLevelOrder } from './logging/index.js';
