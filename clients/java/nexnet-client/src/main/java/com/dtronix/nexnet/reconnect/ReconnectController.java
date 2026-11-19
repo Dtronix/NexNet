@@ -36,6 +36,7 @@ public final class ReconnectController implements AutoCloseable {
     private boolean stopped;
     private boolean running;
     private int attempts;
+    private int loop;
     private @Nullable Object delayToken;
     private @Nullable Registration pendingDelay;
     private CompletableFuture<Void> idle = CompletableFuture.completedFuture(null);
@@ -187,12 +188,14 @@ public final class ReconnectController implements AutoCloseable {
             log(NexusLogLevel.INFORMATION, "Can't reconnect with " + reason + " disconnection reason.", null);
             return false;
         }
+        int gen;
         synchronized (lock) {
             if (stopped || running) {
                 return false;
             }
             running = true;
             attempts = 0;
+            gen = ++loop;
             idle = new CompletableFuture<>();
         }
         ReconnectCounters.RUNNING_LOOPS.incrementAndGet();
@@ -209,7 +212,7 @@ public final class ReconnectController implements AutoCloseable {
                 if (e != null) {
                     log(NexusLogLevel.ERROR, "onReconnecting failed.", e);
                 }
-                executor.execute(() -> next(reason));
+                executor.execute(() -> next(reason, gen));
             });
         });
         return true;
@@ -234,23 +237,25 @@ public final class ReconnectController implements AutoCloseable {
             delay.close();
         }
         ReconnectCounters.PENDING_DELAYS.decrementAndGet();
-        executor.execute(this::attempt);
+        int gen = currentLoop();
+        executor.execute(() -> attempt(gen));
         return true;
     }
 
     /**
-     * Stops reconnecting for good: cancels a pending delay. An attempt already connecting is not interrupted; the
-     * loop ends after it. Idempotent.
+     * Ends the current loop, if any: cancels a pending delay and ignores the outcome of an attempt in flight. Later
+     * lost sessions start new loops. The client calls it when the user disconnects or closes.
+     *
+     * @return true when a loop was running
      */
-    @Override
-    public void close() {
+    public boolean cancel() {
         Registration delay;
         boolean waiting;
         synchronized (lock) {
-            if (stopped) {
-                return;
+            if (!running) {
+                return false;
             }
-            stopped = true;
+            loop++;
             waiting = delayToken != null;
             delay = pendingDelay;
             delayToken = null;
@@ -261,17 +266,44 @@ public final class ReconnectController implements AutoCloseable {
         }
         if (waiting) {
             ReconnectCounters.PENDING_DELAYS.decrementAndGet();
-            finish();
+        }
+        finish();
+        return true;
+    }
+
+    private int currentLoop() {
+        synchronized (lock) {
+            return loop;
         }
     }
 
+    /** Whether the loop is still the current one and the controller runs. Call under the lock. */
+    private boolean live(int gen) {
+        return !stopped && running && gen == loop;
+    }
+
+    /**
+     * Stops reconnecting for good: ends the current loop like {@link #cancel()}, and later lost sessions are
+     * ignored. Idempotent.
+     */
+    @Override
+    public void close() {
+        synchronized (lock) {
+            stopped = true;
+        }
+        cancel();
+    }
+
     /** Asks the policy for the next delay and schedules the attempt. Runs on the executor. */
-    private void next(DisconnectReason reason) {
+    private void next(DisconnectReason reason, int gen) {
         int attempt;
         synchronized (lock) {
-            attempt = stopped ? -1 : attempts;
+            if (!live(gen)) {
+                return;
+            }
+            attempt = attempts;
         }
-        if (attempt < 0 || client.state() == ConnectionState.CONNECTED) {
+        if (client.state() == ConnectionState.CONNECTED) {
             finish();
             return;
         }
@@ -295,19 +327,13 @@ public final class ReconnectController implements AutoCloseable {
         }
         Object token = new Object();
         synchronized (lock) {
-            if (stopped) {
-                token = null;
-            } else {
-                delayToken = token;
+            if (!live(gen)) {
+                return;
             }
+            delayToken = token;
+            ReconnectCounters.PENDING_DELAYS.incrementAndGet();
         }
-        if (token == null) {
-            finish();
-            return;
-        }
-        ReconnectCounters.PENDING_DELAYS.incrementAndGet();
-        Object scheduled = token;
-        Registration registration = timers.schedule(() -> onDelayElapsed(scheduled), delay);
+        Registration registration = timers.schedule(() -> onDelayElapsed(token, gen), delay);
         synchronized (lock) {
             if (delayToken == token) {
                 pendingDelay = registration;
@@ -315,7 +341,7 @@ public final class ReconnectController implements AutoCloseable {
         }
     }
 
-    private void onDelayElapsed(Object token) {
+    private void onDelayElapsed(Object token, int gen) {
         synchronized (lock) {
             if (delayToken != token) {
                 return;
@@ -324,16 +350,19 @@ public final class ReconnectController implements AutoCloseable {
             pendingDelay = null;
         }
         ReconnectCounters.PENDING_DELAYS.decrementAndGet();
-        executor.execute(this::attempt);
+        executor.execute(() -> attempt(gen));
     }
 
     /** One attempt. Runs on the executor. */
-    private void attempt() {
+    private void attempt(int gen) {
         int attempt;
         synchronized (lock) {
-            attempt = stopped ? -1 : ++attempts;
+            if (!live(gen)) {
+                return;
+            }
+            attempt = ++attempts;
         }
-        if (attempt < 0 || client.state() == ConnectionState.CONNECTED) {
+        if (client.state() == ConnectionState.CONNECTED) {
             finish();
             return;
         }
@@ -346,6 +375,11 @@ public final class ReconnectController implements AutoCloseable {
             result = failed(e);
         }
         result.whenComplete((r, e) -> executor.execute(() -> {
+            synchronized (lock) {
+                if (!live(gen)) {
+                    return;
+                }
+            }
             if (r != null && r.isSuccess()) {
                 log(NexusLogLevel.INFORMATION, "Reconnected", null);
                 notify(l -> l.onReconnected(attempt));
@@ -357,7 +391,7 @@ public final class ReconnectController implements AutoCloseable {
                 log(NexusLogLevel.ERROR, "Reconnection attempt " + attempt + " failed.", error);
             }
             DisconnectReason reason = r == null ? DisconnectReason.SOCKET_ERROR : r.disconnectReason();
-            next(reason == DisconnectReason.NONE ? DisconnectReason.SOCKET_ERROR : reason);
+            next(reason == DisconnectReason.NONE ? DisconnectReason.SOCKET_ERROR : reason, gen);
         }));
     }
 

@@ -213,19 +213,30 @@ class ReconnectControllerTest {
     }
 
     @Test
-    void closeDuringAnAttemptEndsTheLoopAfterIt() {
+    void cancelDuringAnAttemptIgnoresItsOutcomeAndLaterLossesStartNewLoops() {
         CompletableFuture<ConnectionResult> pending = new CompletableFuture<>();
         client.results.add(pending);
         ReconnectController c = controller(new DefaultReconnectionPolicy());
+        assertFalse(c.cancel());
         c.onSessionLost(DisconnectReason.SOCKET_ERROR);
         timers.advance(0);
         assertTrue(c.isReconnecting());
         assertFalse(c.isWaiting());
-        c.close();
-        assertTrue(c.isReconnecting());
+        CompletableFuture<Void> idle = c.idle();
+        assertTrue(c.cancel());
+        assertFalse(c.isReconnecting());
+        assertTrue(idle.isDone());
         pending.complete(failure());
         assertFalse(c.isReconnecting());
         assertEquals(0, timers.pending());
+        assertEquals(List.of("reconnecting:SOCKET_ERROR", "attempt:1"), events.list);
+
+        // Not stopped: the next loss reconnects again; canceling during a delay clears the timer.
+        assertTrue(c.onSessionLost(DisconnectReason.TIMEOUT));
+        assertTrue(c.isWaiting());
+        assertTrue(c.cancel());
+        assertEquals(0, timers.pending());
+        assertFalse(c.isStopped());
     }
 
     @Test
